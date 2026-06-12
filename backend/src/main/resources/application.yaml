@@ -2,6 +2,30 @@ spring:
   application:
     name: leadora
 
+  main:
+    allow-bean-definition-overriding: true
+
+  # Spring AI starters are on the classpath but not yet configured (the `ai:`
+  # block below is commented out). Their auto-configurations fail fast on missing
+  # credentials / unavailable services, so exclude them while AI is disabled.
+  # Remove the relevant entry when you enable that integration.
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration
+      - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiEmbeddingConnectionAutoConfiguration
+      - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiTextEmbeddingAutoConfiguration
+      - org.springframework.ai.model.ollama.autoconfigure.OllamaApiAutoConfiguration
+      - org.springframework.ai.model.ollama.autoconfigure.OllamaChatAutoConfiguration
+      - org.springframework.ai.model.ollama.autoconfigure.OllamaEmbeddingAutoConfiguration
+      - org.springframework.ai.model.chat.memory.repository.jdbc.autoconfigure.JdbcChatMemoryRepositoryAutoConfiguration
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+      - org.springframework.ai.vectorstore.elasticsearch.autoconfigure.ElasticsearchVectorStoreAutoConfiguration
+      - org.springframework.ai.vectorstore.redis.autoconfigure.RedisVectorStoreAutoConfiguration
+
+  docker:
+    compose:
+      enabled: false
+
   # Import environment variables from the root .env file if present
   config:
     import:
@@ -16,7 +40,7 @@ spring:
   
   jpa:
     hibernate:
-      ddl-auto: ${SPRING_JPA_DDL_AUTO:update}
+      ddl-auto: ${SPRING_JPA_DDL_AUTO:validate}
     show-sql: ${SPRING_JPA_SHOW_SQL:false}
     properties:
       hibernate:
@@ -26,15 +50,15 @@ spring:
           lob:
             non_contextual_creation: true
 
-  # Redis Configuration for caching and HTTP session management
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+  # # Redis Configuration for caching and HTTP session management
+  # data:
+  #   redis:
+  #     host: ${REDIS_HOST:localhost}
+  #     port: ${REDIS_PORT:6379}
+  #     password: ${REDIS_PASSWORD:}
 
-  session:
-    store-type: redis
+  # session:
+  #   store-type: redis
 
   # Spring Security / JWT configuration (for verifying Supabase JWTs)
   security:
@@ -44,21 +68,26 @@ spring:
           jwk-set-uri: ${SUPABASE_URL}/auth/v1/certs
           issuer-uri: ${SUPABASE_URL}/auth/v1
 
-  # Spring AI configuration
-  ai:
-    google:
-      genai:
-        api-key: ${GOOGLE_GENAI_API_KEY:}
-        chat:
-          options:
-            model: gemini-3.5-flash
-    ollama:
-      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-      chat:
-        options:
-          model: ${OLLAMA_MODEL:qwen}
-    vectorstore:
-      pgvector:
-        database-name: ${SPRING_DATASOURCE_USERNAME:postgres}
-        table-name: leadora_vector_store
-        dimensions: 1536
+  # # Spring AI configuration
+  # ai:
+  #   google:
+  #     genai:
+  #       api-key: ${GOOGLE_GENAI_API_KEY:}
+  #       project-id: ${GOOGLE_GENAI_PROJECT_ID:dummy-project}
+  #       location: ${GOOGLE_GENAI_LOCATION:us-central1}
+  #       embedding:
+  #         project-id: ${GOOGLE_GENAI_PROJECT_ID:dummy-project}
+  #         location: ${GOOGLE_GENAI_LOCATION:us-central1}
+  #       chat:
+  #         options:
+  #           model: gemini-3.5-flash
+  #   ollama:
+  #     base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  #     chat:
+  #       options:
+  #         model: ${OLLAMA_MODEL:qwen}
+  #   vectorstore:
+  #     pgvector:
+  #       database-name: ${SPRING_DATASOURCE_USERNAME:postgres}
+  #       table-name: leadora_vector_store
+  #       dimensions: 1536

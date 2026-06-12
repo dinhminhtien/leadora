@@ -51,14 +51,14 @@ export function CustomerFeedbackListScreen() {
         </div>
         <div className="border-r border-slate-100 last:border-0 px-4">
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Average Star Rating</span>
-          <span className="text-lg font-bold text-slate-800 block mt-1 flex items-center gap-1">
+          <span className="text-lg font-bold text-slate-800 mt-1 flex items-center gap-1">
             <Star className="size-4 text-amber-400 fill-amber-400" />
             {stats.avgRating} / 5.0
           </span>
         </div>
         <div className="px-4">
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Positive Sentiment Rate</span>
-          <span className="text-lg font-bold text-blue-600 block mt-1 flex items-center gap-1">
+          <span className="text-lg font-bold text-blue-600 mt-1 flex items-center gap-1">
             <ThumbsUp className="size-4 text-blue-500" />
             {stats.positivePct}% Excellent
           </span>

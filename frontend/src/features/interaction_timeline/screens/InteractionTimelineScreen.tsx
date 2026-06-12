@@ -82,7 +82,7 @@ export function InteractionTimelineScreen() {
               {filteredInteractions.map((item, idx) => (
                 <div key={item.id} className="relative">
                   {/* Timeline icon */}
-                  <span className="absolute -left-[45px] top-0.5 flex size-8 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm">
+                  <span className="absolute left-[-45px] top-0.5 flex size-8 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm">
                     {item.type === "call" && <Phone className="size-4 text-blue-500" />}
                     {item.type === "email" && <Mail className="size-4 text-emerald-500" />}
                     {item.type === "meeting" && <Calendar className="size-4 text-purple-500" />}
