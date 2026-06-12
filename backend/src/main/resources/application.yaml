@@ -51,7 +51,7 @@ spring:
         api-key: ${GOOGLE_GENAI_API_KEY:}
         chat:
           options:
-            model: gemini-1.5-flash
+            model: gemini-3.5-flash
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:
