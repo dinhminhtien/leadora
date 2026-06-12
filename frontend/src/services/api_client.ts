@@ -1,5 +1,7 @@
 import axios, { type AxiosError } from "axios";
 
+import { createSupabaseBrowserClient } from "@/services/supabase/client";
+
 export type ApiResponse<T> = {
   success: boolean;
   message?: string;
@@ -38,7 +40,20 @@ export const apiClient = axios.create({
   },
 });
 
-apiClient.interceptors.request.use((config) => config);
+// Inject Supabase access token as Bearer token on every request
+apiClient.interceptors.request.use(async (config) => {
+  if (typeof window !== "undefined") {
+    const supabase = createSupabaseBrowserClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (session?.access_token) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
+    }
+  }
+  return config;
+});
 
 apiClient.interceptors.response.use(
   (response) => response,
