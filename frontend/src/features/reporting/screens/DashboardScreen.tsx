@@ -48,7 +48,7 @@ export function DashboardScreen() {
   return (
     <div className="space-y-6">
       {/* Welcome Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-blue-700 to-indigo-800 rounded-2xl p-6 text-white shadow-md">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-linear-to-r from-blue-700 to-indigo-800 rounded-2xl p-6 text-white shadow-md">
         <div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight">Welcome back, John!</h1>
           <p className="text-xs md:text-sm text-blue-100 mt-1">

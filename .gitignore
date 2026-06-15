@@ -64,3 +64,9 @@ replay_pid*
 .env.production.local
 *.env
 
+*docs/
+*sql/
+*AGENTS.md
+*CLAUDE.md
+*CODING_GUIDELINES.md
+*MILESTONES.md

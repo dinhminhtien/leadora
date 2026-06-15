@@ -23,11 +23,19 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
-import { mockDb, type Lead } from "@/shared/mock/mockData";
+import { mockDb } from "@/shared/mock/mockData";
 import Link from "next/link";
+import { useLeads, useCreateLead } from "@/features/lead/hooks/use_leads";
 
 export function LeadListScreen() {
-  const [leads, setLeads] = useState<Lead[]>(mockDb.leads);
+  const { data: leadsResponse, isLoading } = useLeads();
+  const createLeadMutation = useCreateLead();
+
+  const leads = useMemo(() => {
+    const dbLeads = leadsResponse?.data ?? [];
+    return dbLeads.length > 0 ? dbLeads : (mockDb.leads as any[]);
+  }, [leadsResponse]);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -49,13 +57,19 @@ export function LeadListScreen() {
   // Filter Logic
   const filteredLeads = useMemo(() => {
     return leads.filter(lead => {
+      const leadName = lead.name || "";
+      const leadContact = lead.contactName || "";
+      const leadCompany = lead.company || "";
+      const leadStatus = lead.status || "";
+      const leadSource = lead.source || "";
+
       const matchesSearch =
-        lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        lead.contactName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        lead.company.toLowerCase().includes(searchTerm.toLowerCase());
+        leadName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        leadContact.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        leadCompany.toLowerCase().includes(searchTerm.toLowerCase());
       
-      const matchesStatus = statusFilter === "all" || lead.status === statusFilter;
-      const matchesSource = sourceFilter === "all" || lead.source === sourceFilter;
+      const matchesStatus = statusFilter === "all" || leadStatus === statusFilter;
+      const matchesSource = sourceFilter === "all" || leadSource === sourceFilter;
 
       return matchesSearch && matchesStatus && matchesSource;
     });
@@ -64,7 +78,7 @@ export function LeadListScreen() {
   // Statistics
   const stats = useMemo(() => {
     const active = leads.filter(l => l.status !== "lost");
-    const totalVal = active.reduce((sum, l) => sum + l.value, 0);
+    const totalVal = active.reduce((sum, l) => sum + (Number(l.value) || 0), 0);
     const qualified = leads.filter(l => l.status === "qualified").length;
     return {
       totalCount: leads.length,
@@ -82,36 +96,37 @@ export function LeadListScreen() {
       return;
     }
 
-    const created: Lead = {
-      id: `L-${100 + leads.length + 1}`,
+    createLeadMutation.mutate({
       name: newLead.name,
       contactName: newLead.contactName,
-      email: newLead.email || "n/a",
-      phone: newLead.phone || "n/a",
-      company: newLead.company || "Individual",
+      email: newLead.email,
+      phone: newLead.phone,
+      company: newLead.company,
       source: newLead.source,
-      status: "new",
-      owner: newLead.owner,
       value: Number(newLead.value) || 0,
-      createdAt: new Date().toISOString().split("T")[0],
       notes: newLead.notes
-    };
-
-    setLeads([created, ...leads]);
-    setIsNewLeadDrawerOpen(false);
-    // Reset Form
-    setNewLead({
-      name: "",
-      contactName: "",
-      email: "",
-      phone: "",
-      company: "",
-      source: "Website Inquiry",
-      owner: "John Doe",
-      value: "",
-      notes: ""
+    }, {
+      onSuccess: () => {
+        setIsNewLeadDrawerOpen(false);
+        // Reset Form
+        setNewLead({
+          name: "",
+          contactName: "",
+          email: "",
+          phone: "",
+          company: "",
+          source: "Website Inquiry",
+          owner: "John Doe",
+          value: "",
+          notes: ""
+        });
+      },
+      onError: (error: any) => {
+        alert("Failed to create lead: " + (error?.response?.data?.message || error.message || "Unknown error"));
+      }
     });
   };
+
 
   return (
     <div className="space-y-6 relative">
@@ -235,15 +250,15 @@ export function LeadListScreen() {
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-600 font-medium">{lead.company}</TableCell>
                   <TableCell className="py-3 px-4 text-xs font-bold text-slate-800">
-                    ${lead.value.toLocaleString()}
+                    ${(Number(lead.value) || 0).toLocaleString()}
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-500">{lead.source}</TableCell>
                   <TableCell className="py-3 px-4">
                     <div className="flex items-center gap-1.5 text-xs text-slate-700 font-medium">
                       <span className="size-4.5 rounded-full bg-blue-100 text-blue-700 text-[8px] font-bold flex items-center justify-center">
-                        {lead.owner.slice(0, 2).toUpperCase()}
+                        {(lead.owner || "Unassigned").slice(0, 2).toUpperCase()}
                       </span>
-                      {lead.owner}
+                      {lead.owner || "Unassigned"}
                     </div>
                   </TableCell>
                   <TableCell className="py-3 px-4">
