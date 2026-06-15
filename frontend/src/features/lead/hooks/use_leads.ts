@@ -1,8 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { leadService } from "@/services/lead_service";
+import { leadService, type LeadPayload } from "@/services/lead_service";
 import type { ListQuery } from "@/shared/types/api";
 
 export function useLeads(params?: ListQuery) {
@@ -11,3 +11,14 @@ export function useLeads(params?: ListQuery) {
     queryFn: () => leadService.getList(params),
   });
 }
+
+export function useCreateLead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: LeadPayload) => leadService.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+    },
+  });
+}
+

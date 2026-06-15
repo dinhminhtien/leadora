@@ -27,4 +27,4 @@ services:
     labels:
       - "org.springframework.boot.service-connection=redis"
     ports:
-      - '6379'
+      - '6379:6379'
