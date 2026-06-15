@@ -24,7 +24,7 @@ export function handleAuthMiddleware(
   user: User | null,
 ): NextResponse | undefined {
   const { pathname } = request.nextUrl;
-  const isAuthenticated = Boolean(user);
+  const isAuthenticated = Boolean(user); // Restore production auth checks
 
   // Authenticated user visiting login → redirect to dashboard
   if (isAuthenticated && pathname === ROUTE_PATHS.login) {
