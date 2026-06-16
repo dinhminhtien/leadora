@@ -21,10 +21,23 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
-import { mockDb, type Deal } from "@/shared/mock/mockData";
+export type Deal = {
+  id: string;
+  title: string;
+  contactName: string;
+  email?: string;
+  phone?: string;
+  value: number;
+  probability: number;
+  stage: "Inquiry" | "Site Visit" | "Proposal" | "Negotiation" | "Contract" | "Confirmed";
+  owner: string;
+  status: "active" | "won" | "lost";
+  expectedClose: string;
+  createdAt?: string;
+};
 
 export function DealListScreen() {
-  const [deals, setDeals] = useState<Deal[]>(mockDb.deals);
+  const [deals, setDeals] = useState<Deal[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("active");

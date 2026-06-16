@@ -6,10 +6,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { mockDb, type FrontOfficeHandover } from "@/shared/mock/mockData";
+export type FrontOfficeHandover = {
+  id: string;
+  shift: "Morning" | "Afternoon" | "Night";
+  date: string;
+  agentName: string;
+  notes: string;
+  status: "pending" | "completed";
+};
 
 export function FrontOfficeHandoverScreen() {
-  const [logs, setLogs] = useState<FrontOfficeHandover[]>(mockDb.foHandovers);
+  const [logs, setLogs] = useState<FrontOfficeHandover[]>([]);
   const [shiftNote, setShiftNote] = useState("");
 
   const handlePostNote = (e: React.FormEvent) => {

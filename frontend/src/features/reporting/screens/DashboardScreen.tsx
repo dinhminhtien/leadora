@@ -21,10 +21,28 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { mockDb, type FollowUpTask } from "@/shared/mock/mockData";
+export type FollowUpTask = {
+  id: string;
+  title: string;
+  description: string;
+  dueDate: string;
+  priority: "high" | "medium" | "low";
+  status: "pending" | "completed" | "overdue";
+  linkedEntityName: string;
+};
+
+export type InteractionTimeline = {
+  id: string;
+  type: "call" | "email" | "meeting" | "note";
+  date: string;
+  description: string;
+  agentName: string;
+  linkedName: string;
+};
 
 export function DashboardScreen() {
-  const [tasks, setTasks] = useState<FollowUpTask[]>(mockDb.tasks);
+  const [tasks, setTasks] = useState<FollowUpTask[]>([]);
+  const [interactions, setInteractions] = useState<InteractionTimeline[]>([]);
 
   // Toggle task status
   const handleToggleTask = (taskId: string) => {
@@ -38,10 +56,8 @@ export function DashboardScreen() {
   };
 
   // KPI Calculations
-  const activeLeadsCount = mockDb.leads.filter(l => l.status !== "lost").length;
-  const activeDealsValue = mockDb.deals
-    .filter(d => d.status === "active")
-    .reduce((sum, d) => sum + d.value, 0);
+  const activeLeadsCount = 0;
+  const activeDealsValue = 0;
   const pendingTasksCount = tasks.filter(t => t.status === "pending").length;
   const overdueTasksCount = tasks.filter(t => t.status === "overdue").length;
 
@@ -320,7 +336,7 @@ export function DashboardScreen() {
           </CardHeader>
           <CardContent className="px-2">
             <div className="relative border-l border-slate-200 ml-5 pl-6 space-y-5">
-              {mockDb.interactions.map((interaction, idx) => (
+              {interactions.map((interaction, idx) => (
                 <div key={interaction.id} className="relative">
                   {/* Timeline icon */}
                   <span className="absolute -left-9.5 top-0.5 flex size-7 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm">

@@ -6,10 +6,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { mockDb, type OperationalHandover } from "@/shared/mock/mockData";
+export type OperationalHandover = {
+  id: string;
+  handoverNo: string;
+  fromDept: string;
+  toDept: string;
+  date: string;
+  notes: string;
+  status: string;
+};
 
 export function OperationalHandoverScreen() {
-  const [handovers, setHandovers] = useState<OperationalHandover[]>(mockDb.handovers);
+  const [handovers, setHandovers] = useState<OperationalHandover[]>([]);
   const [search, setSearch] = useState("");
 
   const filteredHandovers = useMemo(() => {

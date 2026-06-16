@@ -5,10 +5,17 @@ import { Star, ThumbsUp, Search } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { mockDb, type CustomerFeedback } from "@/shared/mock/mockData";
+export type CustomerFeedback = {
+  id: string;
+  guestName: string;
+  category: string;
+  rating: number;
+  comment: string;
+  date: string;
+};
 
 export function CustomerFeedbackListScreen() {
-  const [feedbacks, setFeedbacks] = useState<CustomerFeedback[]>(mockDb.feedbacks);
+  const [feedbacks, setFeedbacks] = useState<CustomerFeedback[]>([]);
   const [search, setSearch] = useState("");
 
   const filteredFeedbacks = useMemo(() => {

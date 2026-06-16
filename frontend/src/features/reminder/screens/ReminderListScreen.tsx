@@ -6,10 +6,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { mockDb, type Reminder } from "@/shared/mock/mockData";
+export type Reminder = {
+  id: string;
+  title: string;
+  dueDate: string;
+  priority: "high" | "medium" | "low";
+  linkedEntityName: string;
+};
 
 export function ReminderListScreen() {
-  const [reminders, setReminders] = useState<Reminder[]>(mockDb.reminders);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
 
   const handleDismiss = (id: string) => {
     setReminders(prev => prev.filter(r => r.id !== id));

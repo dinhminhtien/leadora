@@ -23,45 +23,114 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { mockDb, type Lead, type InteractionTimeline } from "@/shared/mock/mockData";
+import {
+  useLeadDetail,
+  useUpdateLead,
+  useInteractions,
+  useCreateInteraction
+} from "@/features/lead/hooks/use_leads";
+
+export type Lead = {
+  id: string;
+  name: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  company: string;
+  source: string;
+  status: string;
+  owner: string;
+  value: number;
+  createdAt: string;
+  notes: string;
+};
+
+export type InteractionTimeline = {
+  id: string;
+  type: "call" | "email" | "meeting" | "note";
+  date: string;
+  description: string;
+  agentName: string;
+  linkedName: string;
+};
 
 type LeadDetailScreenProps = {
   leadId: string;
 };
 
 export function LeadDetailScreen({ leadId }: LeadDetailScreenProps) {
-  // Find lead
-  const leadData = mockDb.leads.find(l => l.id === leadId) || mockDb.leads[0];
-  const [lead, setLead] = useState<Lead>(leadData);
-  const [interactions, setInteractions] = useState<InteractionTimeline[]>(
-    mockDb.interactions.filter(i => i.linkedName === lead.name || i.linkedName.includes("Wedding") || i.linkedName.includes("TechCorp"))
-  );
+  const { data: leadResponse, isLoading: isLeadLoading } = useLeadDetail(leadId);
+  const updateLeadMutation = useUpdateLead();
+  const { data: interactionsResponse } = useInteractions();
+  const createInteractionMutation = useCreateInteraction();
 
   // Quick Interaction Log state
   const [logType, setLogType] = useState<"call" | "email" | "meeting" | "note">("call");
   const [logNotes, setLogNotes] = useState("");
 
+  const lead = leadResponse?.data as Lead | undefined;
+
   const handleLogInteraction = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!logNotes) return;
+    if (!logNotes || !lead) return;
 
-    const newInteraction: InteractionTimeline = {
-      id: `I-${Date.now()}`,
-      type: logType,
-      date: new Date().toISOString().slice(0, 16).replace("T", " "),
+    createInteractionMutation.mutate({
+      interactionType: logType,
+      occurredAt: new Date().toISOString(),
       description: logNotes,
-      agentName: "John Doe",
-      linkedName: lead.name
-    };
-
-    setInteractions([newInteraction, ...interactions]);
-    setLogNotes("");
+      lead: { id: leadId },
+    }, {
+      onSuccess: () => {
+        setLogNotes("");
+      },
+      onError: (error: any) => {
+        alert("Failed to log interaction: " + (error?.response?.data?.message || error.message));
+      }
+    });
   };
 
   const handleConvert = () => {
-    setLead(prev => ({ ...prev, status: "qualified" }));
-    alert(`Success! Lead converted to an Active Deal. Status updated to 'Qualified'.`);
+    if (!lead) return;
+    updateLeadMutation.mutate({
+      id: leadId,
+      payload: { ...lead, status: "qualified" }
+    }, {
+      onSuccess: () => {
+        alert(`Success! Lead converted to an Active Deal. Status updated to 'Qualified'.`);
+      },
+      onError: (error: any) => {
+        alert("Failed to convert lead: " + (error?.response?.data?.message || error.message));
+      }
+    });
   };
+
+  if (isLeadLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-sm font-medium text-slate-500">Loading lead details...</div>
+      </div>
+    );
+  }
+
+  if (!lead) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-sm font-medium text-red-500">Lead not found.</div>
+      </div>
+    );
+  }
+
+  const allInteractions = (interactionsResponse?.data ?? []) as any[];
+  const interactions = allInteractions
+    .filter((i: any) => i.lead?.id === leadId || i.linkedName === lead.name)
+    .map((i: any) => ({
+      id: i.id || i.interactionId,
+      type: i.interactionType || i.type || "call",
+      date: i.occurredAt || i.date || i.createdAt || "",
+      description: i.description,
+      agentName: i.user?.fullName || i.agentName || "John Doe",
+      linkedName: i.lead?.name || i.linkedName || lead.name,
+    }));
 
   return (
     <div className="space-y-6">
