@@ -10,7 +10,7 @@ import {
 import Link from "next/link";
 import { useLeadDetail, useUpdateLead } from "@/features/lead/hooks/use_leads";
 import type { Lead, LeadStatus, UpdateLeadPayload } from "@/services/lead_service";
-import { mockDb } from "@/shared/mock/mockData";
+
 
 // ── Status pipeline config ────────────────────────────────────────────────────
 
@@ -86,16 +86,19 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
   const [logType, setLogType]     = useState<"call" | "email" | "meeting" | "note">("call");
   const [logText, setLogText]     = useState("");
 
-  // Real data or mock fallback
-  const apiLead = resp?.data;
-  const mockRaw = mockDb.leads[0] as any;
-  const lead: Lead = apiLead ?? {
-    leadId, fullName: mockRaw.name, email: mockRaw.email, phone: mockRaw.phone,
-    companyName: mockRaw.company, source: mockRaw.source, notes: mockRaw.notes,
-    status: (mockRaw.status?.toUpperCase() ?? "NEW") as LeadStatus,
-    convertedAt: null, assignedUserId: null, assignedUserName: mockRaw.owner ?? null,
-    createdById: null, createdByName: null, createdAt: mockRaw.createdAt, updatedAt: mockRaw.createdAt,
-  };
+  const lead = resp?.data;
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center h-64 gap-2 text-slate-400">
+      <Loader2 className="size-5 animate-spin" /> Loading lead…
+    </div>
+  );
+
+  if (isError || !lead) return (
+    <div className="flex items-center justify-center h-64 gap-2 text-rose-500">
+      <AlertCircle className="size-5" /> Lead not found.
+    </div>
+  );
 
   const openEdit = () => {
     setEditForm({
@@ -123,12 +126,6 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
 
   const currentStepIdx = PIPELINE.findIndex(p => p.status === lead.status);
   const isLost = lead.status === "LOST";
-
-  if (isLoading) return (
-    <div className="flex items-center justify-center h-64 gap-2 text-slate-400">
-      <Loader2 className="size-5 animate-spin" /> Loading lead…
-    </div>
-  );
 
   return (
     <div className="space-y-6">

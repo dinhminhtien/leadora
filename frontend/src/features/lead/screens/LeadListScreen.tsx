@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import {
   Search, Plus, X, Handshake, Users, TrendingUp,
   DollarSign, Percent, Mail, Phone, Building2, ArrowUpRight,
@@ -9,7 +9,7 @@ import {
 import Link from "next/link";
 import { useLeads, useCreateLead } from "@/features/lead/hooks/use_leads";
 import type { LeadStatus, CreateLeadPayload } from "@/services/lead_service";
-import { mockDb } from "@/shared/mock/mockData";
+
 
 // ── Status config ─────────────────────────────────────────────────────────────
 
@@ -78,21 +78,12 @@ export function LeadListScreen() {
   const pageData  = resp?.data;
   const apiLeads  = pageData?.content ?? [];
 
-  // Mock fallback mapped to same shape
-  const mockLeads = useMemo(() => mockDb.leads.map((l: any) => ({
-    leadId: l.id, fullName: l.name, email: l.email, phone: l.phone,
-    companyName: l.company, source: l.source, status: (l.status?.toUpperCase() ?? "NEW") as LeadStatus,
-    notes: l.notes, convertedAt: null, assignedUserId: null,
-    assignedUserName: l.owner ?? null, createdById: null, createdByName: null,
-    createdAt: l.createdAt, updatedAt: l.createdAt,
-  })), []);
-
-  const leads = apiLeads.length > 0 ? apiLeads : mockLeads;
+  const leads = apiLeads;
   const totalPages = pageData?.totalPages ?? 1;
   const totalElements = pageData?.totalElements ?? leads.length;
 
   // Stats
-  const active    = leads.filter(l => l.status !== "LOST" && l.status !== "lost");
+  const active    = leads.filter(l => l.status !== "LOST");
   const qualified = leads.filter(l => l.status === "QUALIFIED").length;
 
   // Submit
