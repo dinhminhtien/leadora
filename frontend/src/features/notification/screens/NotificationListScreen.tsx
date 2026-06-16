@@ -6,10 +6,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { mockDb, type Notification } from "@/shared/mock/mockData";
+export type Notification = {
+  id: string;
+  message: string;
+  type: string;
+  time: string;
+  read: boolean;
+};
 
 export function NotificationListScreen() {
-  const [alerts, setAlerts] = useState<Notification[]>(mockDb.notifications);
+  const [alerts, setAlerts] = useState<Notification[]>([]);
 
   const handleRead = (id: string) => {
     setAlerts(prev =>
