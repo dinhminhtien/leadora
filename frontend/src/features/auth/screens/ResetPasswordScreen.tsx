@@ -1,5 +1,4 @@
 "use client";
-
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +8,8 @@ import { KeyRound, AlertCircle, CheckCircle2, ArrowRight } from "lucide-react";
 
 import { supabaseAuthService } from "@/services/supabase_auth_service";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 
 const resetPasswordSchema = z
   .object({
@@ -55,100 +56,81 @@ export function ResetPasswordScreen() {
   };
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-8 shadow-xl transition-all dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex flex-col space-y-2 text-center">
-        <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
+    <div className="rounded-2xl border border-border bg-background/60 p-6.5 shadow-lg backdrop-blur-xl transition-all duration-300">
+      <div className="flex flex-col space-y-1">
+        <h2 className="text-lg font-bold tracking-tight text-foreground">
           Set new password
         </h2>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Enter your new password below to secure your account
+        <p className="text-xs text-muted-foreground">
+          Enter your new password below to secure your account.
         </p>
       </div>
 
       {isSuccess ? (
-        <div className="mt-6 space-y-6">
-          <div className="flex flex-col items-center gap-3 rounded-xl bg-teal-50/50 p-6 text-center dark:bg-teal-950/20">
-            <CheckCircle2 className="h-12 w-12 text-teal-600 dark:text-teal-400" />
+        <div className="mt-5 space-y-5">
+          <div className="flex flex-col items-center gap-3 rounded-xl bg-success/10 p-5 text-center border border-success/15">
+            <CheckCircle2 className="h-9 w-9 text-success" />
             <div className="space-y-1">
-              <h3 className="text-sm font-semibold text-teal-900 dark:text-teal-300">
+              <h3 className="text-sm font-bold text-foreground">
                 Password updated
               </h3>
-              <p className="text-xs text-teal-700/80 dark:text-teal-400/80">
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 Your password has been successfully updated. You can now use your new password to sign in.
               </p>
             </div>
           </div>
-          <Link
-            href={ROUTE_PATHS.login}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white transition-all hover:bg-teal-500 active:scale-[0.98]"
-          >
-            Go to Sign In
-            <ArrowRight className="h-4 w-4" />
+          <Link href={ROUTE_PATHS.login} className="block w-full">
+            <Button className="w-full" rightIcon={<ArrowRight className="h-4 w-4" />}>
+              Go to Sign In
+            </Button>
           </Link>
         </div>
       ) : (
         <>
           {error && (
-            <div className="mt-4 flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-400">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <p className="font-medium">{error}</p>
+            <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-danger/10 p-3 text-xs text-danger border border-danger/15">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <p className="font-semibold leading-relaxed">{error}</p>
             </div>
           )}
 
-          <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+          <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 New Password
               </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
-                  <KeyRound className="h-4 w-4" />
-                </span>
-                <input
-                  {...register("password")}
-                  type="password"
-                  disabled={isLoading}
-                  placeholder="••••••••"
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 py-2.5 pl-10 pr-4 text-sm text-zinc-900 outline-none transition-all placeholder:text-zinc-400 focus:border-teal-500 focus:bg-white focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:focus:border-teal-500 dark:focus:bg-zinc-950"
-                />
-              </div>
-              {errors.password && (
-                <p className="text-xs text-red-600 dark:text-red-400">{errors.password.message}</p>
-              )}
+              <Input
+                {...register("password")}
+                type="password"
+                disabled={isLoading}
+                placeholder="••••••••"
+                icon={<KeyRound className="h-4 w-4" />}
+                error={errors.password?.message}
+              />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 Confirm New Password
               </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
-                  <KeyRound className="h-4 w-4" />
-                </span>
-                <input
-                  {...register("confirmPassword")}
-                  type="password"
-                  disabled={isLoading}
-                  placeholder="••••••••"
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 py-2.5 pl-10 pr-4 text-sm text-zinc-900 outline-none transition-all placeholder:text-zinc-400 focus:border-teal-500 focus:bg-white focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white dark:focus:border-teal-500 dark:focus:bg-zinc-950"
-                />
-              </div>
-              {errors.confirmPassword && (
-                <p className="text-xs text-red-600 dark:text-red-400">{errors.confirmPassword.message}</p>
-              )}
+              <Input
+                {...register("confirmPassword")}
+                type="password"
+                disabled={isLoading}
+                placeholder="••••••••"
+                icon={<KeyRound className="h-4 w-4" />}
+                error={errors.confirmPassword?.message}
+              />
             </div>
 
-            <button
+            <Button
               type="submit"
               disabled={isLoading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white transition-all hover:bg-teal-500 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+              isLoading={isLoading}
+              className="w-full mt-2"
             >
-              {isLoading ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              ) : (
-                "Update Password"
-              )}
-            </button>
+              Update Password
+            </Button>
           </form>
         </>
       )}

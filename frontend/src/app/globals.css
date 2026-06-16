@@ -1,39 +1,44 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  /* Semantic Colors - Light Mode */
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --muted: #e2e8f0;
-  --muted-foreground: #64748b;
-  --border: #e2e8f0;
-  --input: #f1f5f9;
-  --ring: #2563eb;
+  /* Semantic Colors - Light Mode (Premium Zinc/Indigo) */
+  --background: #fcfcfd;
+  --foreground: #09090b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --border: #e4e4e7;
+  --input: #ffffff;
+  --ring: rgba(79, 70, 229, 0.12);
   
   /* Brand Colors */
-  --primary: #2563eb;
+  --primary: #4f46e5;
   --primary-foreground: #ffffff;
-  --secondary: #0f172a;
+  --secondary: #18181b;
   --secondary-foreground: #ffffff;
-  --accent: #06b6d4;
+  --accent: #6366f1;
   --accent-foreground: #ffffff;
   
   /* Status Colors */
-  --success: #22c55e;
+  --success: #10b981;
   --success-foreground: #ffffff;
   --warning: #f59e0b;
   --warning-foreground: #ffffff;
-  --danger: #ef4444;
+  --danger: #f43f5e;
   --danger-foreground: #ffffff;
-  --info: #06b6d4;
+  --info: #0ea5e9;
   --info-foreground: #ffffff;
   
   /* Chart Colors */
-  --chart-1: #2563eb;
-  --chart-2: #06b6d4;
-  --chart-3: #8b5cf6;
+  --chart-1: #4f46e5;
+  --chart-2: #0ea5e9;
+  --chart-3: #10b981;
   --chart-4: #ec4899;
   --chart-5: #f59e0b;
+
+  /* Custom Chart Grid Color */
+  --chart-grid: #e4e4e7;
 }
 
 @theme inline {
@@ -55,15 +60,58 @@
   --radius: 0.75rem;
 }
 
+/* Base preference: Dark preference unless overridden by .light class */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0f172a;
-    --foreground: #f1f5f9;
-    --muted: #1e293b;
-    --muted-foreground: #94a3b8;
-    --border: #1e293b;
-    --input: #1e293b;
+  :root:not(.light) {
+    --background: #09090b;
+    --foreground: #f4f4f5;
+    --muted: #18181b;
+    --muted-foreground: #a1a1aa;
+    --border: #27272a;
+    --input: #09090b;
+    --ring: rgba(99, 102, 241, 0.2);
+    --primary: #6366f1;
+    --primary-foreground: #ffffff;
+    --secondary: #27272a;
+    --secondary-foreground: #ffffff;
+    --accent: #818cf8;
+    --accent-foreground: #09090b;
+    --chart-grid: #27272a;
   }
+}
+
+:root.dark {
+  --background: #09090b;
+  --foreground: #f4f4f5;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --border: #27272a;
+  --input: #09090b;
+  --ring: rgba(99, 102, 241, 0.2);
+  --primary: #6366f1;
+  --primary-foreground: #ffffff;
+  --secondary: #27272a;
+  --secondary-foreground: #ffffff;
+  --accent: #818cf8;
+  --accent-foreground: #09090b;
+  --chart-grid: #27272a;
+}
+
+:root.light {
+  --background: #fcfcfd;
+  --foreground: #09090b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --border: #e4e4e7;
+  --input: #ffffff;
+  --ring: rgba(79, 70, 229, 0.12);
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --secondary: #18181b;
+  --secondary-foreground: #ffffff;
+  --accent: #6366f1;
+  --accent-foreground: #ffffff;
+  --chart-grid: #e4e4e7;
 }
 
 body {
@@ -71,29 +119,122 @@ body {
   color: var(--foreground);
 }
 
+/* Custom grid/dot backdrop pattern for dashboards */
+.bg-dot-pattern {
+  background-image: radial-gradient(rgba(9, 9, 11, 0.04) 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+.dark .bg-dot-pattern {
+  background-image: radial-gradient(rgba(244, 244, 245, 0.02) 1.2px, transparent 1.2px);
+}
+
 /* Smooth transitions for interactive elements */
 input,
 button,
 select,
 textarea {
-  transition: all 0.2s ease;
+  transition: all 0.15s ease-out;
 }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--muted);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--muted-foreground);
-  border-radius: 4px;
+  background: var(--border);
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--foreground);
+  background: var(--muted-foreground);
 }
+
+/* Intercept and override Tailwind hardcoded light colors in Dark Mode */
+.dark .bg-white {
+  background-color: var(--background) !important;
+}
+
+.dark .bg-slate-50,
+.dark .bg-slate-100,
+.dark .bg-slate-50\/50,
+.dark .bg-slate-50\/70 {
+  background-color: var(--muted) !important;
+}
+
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-slate-400 {
+  border-color: var(--border) !important;
+}
+
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-slate-700,
+.dark .text-slate-600 {
+  color: var(--foreground) !important;
+}
+
+.dark .text-slate-500,
+.dark .text-slate-400 {
+  color: var(--muted-foreground) !important;
+}
+
+.dark .hover\:bg-slate-50\/70:hover,
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-zinc-50:hover {
+  background-color: var(--muted) !important;
+}
+
+.dark .focus\:bg-white:focus {
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
+}
+
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--border) !important;
+}
+
+.dark .border-l-slate-200 {
+  border-left-color: var(--border) !important;
+}
+
+.dark .border-t-slate-100 {
+  border-top-color: var(--border) !important;
+}
+
+/* Remap generic blue colors to premium Indigo primary in Dark Mode */
+.dark .bg-blue-600 {
+  background-color: var(--primary) !important;
+}
+
+.dark .text-blue-600 {
+  color: var(--primary) !important;
+}
+
+.dark .hover\:text-blue-600:hover,
+.dark .hover\:text-blue-700:hover {
+  color: var(--primary) !important;
+  opacity: 0.9;
+}
+
+.dark .hover\:bg-blue-700:hover {
+  background-color: var(--primary) !important;
+  filter: brightness(0.95);
+}
+
+.dark .shadow-sm,
+.dark .shadow-xs,
+.dark .shadow-md,
+.dark .shadow-lg,
+.dark .shadow-2xl {
+  box-shadow: none !important;
+}
+
