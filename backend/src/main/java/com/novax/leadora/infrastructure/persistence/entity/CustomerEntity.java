@@ -46,9 +46,8 @@ public class CustomerEntity extends BaseEntity {
     @JoinColumn(name = "assigned_user_id")
     private UserEntity assignedUser;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "lead_id")
-    private LeadEntity lead;
+    @Column(name = "lead_id")
+    private UUID leadId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)

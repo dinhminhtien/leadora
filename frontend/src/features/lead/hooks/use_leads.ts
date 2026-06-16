@@ -5,6 +5,7 @@ import {
   leadService,
   type CreateLeadPayload,
   type UpdateLeadPayload,
+  type ConvertLeadPayload,
   type LeadListParams,
 } from "@/services/lead_service";
 
@@ -37,6 +38,17 @@ export function useUpdateLead(leadId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: UpdateLeadPayload) => leadService.update(leadId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads", leadId] });
+    },
+  });
+}
+
+export function useConvertLead(leadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ConvertLeadPayload) => leadService.convert(leadId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
       queryClient.invalidateQueries({ queryKey: ["leads", leadId] });
