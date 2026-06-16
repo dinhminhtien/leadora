@@ -6,10 +6,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { mockDb, type UserAccess } from "@/shared/mock/mockData";
+export type UserAccess = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  lastLogin: string;
+  status: "active" | "inactive";
+};
 
 export function IdentityAccessScreen() {
-  const [members, setMembers] = useState<UserAccess[]>(mockDb.users);
+  const [members, setMembers] = useState<UserAccess[]>([]);
   const [search, setSearch] = useState("");
 
   const filteredMembers = useMemo(() => {

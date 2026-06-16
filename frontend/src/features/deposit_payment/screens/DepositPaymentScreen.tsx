@@ -6,10 +6,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { mockDb, type DepositPayment } from "@/shared/mock/mockData";
+export type DepositPayment = {
+  id: string;
+  paymentNo: string;
+  guestName: string;
+  amount: number;
+  date: string;
+  method: string;
+  status: "pending" | "paid";
+};
 
 export function DepositPaymentScreen() {
-  const [payments, setPayments] = useState<DepositPayment[]>(mockDb.deposits);
+  const [payments, setPayments] = useState<DepositPayment[]>([]);
   const [search, setSearch] = useState("");
 
   const filteredPayments = useMemo(() => {

@@ -23,7 +23,6 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
-import { mockDb } from "@/shared/mock/mockData";
 import Link from "next/link";
 import { useLeads, useCreateLead } from "@/features/lead/hooks/use_leads";
 
@@ -32,8 +31,7 @@ export function LeadListScreen() {
   const createLeadMutation = useCreateLead();
 
   const leads = useMemo(() => {
-    const dbLeads = leadsResponse?.data ?? [];
-    return dbLeads.length > 0 ? dbLeads : (mockDb.leads as any[]);
+    return leadsResponse?.data ?? [];
   }, [leadsResponse]);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -67,7 +65,7 @@ export function LeadListScreen() {
         leadName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         leadContact.toLowerCase().includes(searchTerm.toLowerCase()) ||
         leadCompany.toLowerCase().includes(searchTerm.toLowerCase());
-      
+
       const matchesStatus = statusFilter === "all" || leadStatus === statusFilter;
       const matchesSource = sourceFilter === "all" || leadSource === sourceFilter;
 
@@ -186,7 +184,7 @@ export function LeadListScreen() {
                 className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
               />
             </div>
-            
+
             {/* Status Selector */}
             <div className="w-full md:w-44 flex items-center gap-1.5">
               <span className="text-[10px] text-slate-400 font-bold shrink-0">Status:</span>
@@ -267,10 +265,10 @@ export function LeadListScreen() {
                         lead.status === "qualified"
                           ? "success"
                           : lead.status === "new"
-                          ? "primary"
-                          : lead.status === "contacted"
-                          ? "warning"
-                          : "danger"
+                            ? "primary"
+                            : lead.status === "contacted"
+                              ? "warning"
+                              : "danger"
                       }
                       size="sm"
                       className="font-bold text-[10px] uppercase"

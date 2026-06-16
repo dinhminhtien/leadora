@@ -6,10 +6,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { mockDb, type CustomerProfile } from "@/shared/mock/mockData";
+export type CustomerProfile = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  company: string;
+  lastInteractionDate: string;
+  totalDealValue: number;
+  notes: string;
+};
 
 export function CustomerProfileListScreen() {
-  const [contacts, setContacts] = useState<CustomerProfile[]>(mockDb.contacts);
+  const [contacts, setContacts] = useState<CustomerProfile[]>([]);
   const [search, setSearch] = useState("");
 
   const filteredContacts = useMemo(() => {

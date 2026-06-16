@@ -1,10 +1,19 @@
 import { apiClient, type ApiResponse } from "@/services/api_client";
 import type { ListQuery } from "@/shared/types/api";
 
-export type Lead = Record<string, unknown> & {
+export type Lead = {
   id: string;
   name?: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+  company?: string;
+  source?: string;
   status?: string;
+  value?: number | string;
+  notes?: string;
+  owner?: string;
+  createdAt?: string;
 };
 
 export type LeadPayload = Record<string, unknown>;
