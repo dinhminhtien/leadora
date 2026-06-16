@@ -24,7 +24,8 @@ export function handleAuthMiddleware(
   user: User | null,
 ): NextResponse | undefined {
   const { pathname } = request.nextUrl;
-  const isAuthenticated = process.env.NODE_ENV === "development" ? true : Boolean(user);// Restore production auth checks
+  // DEV bypass: skip auth for demo
+  const isAuthenticated = process.env.NODE_ENV === "development" ? true : Boolean(user);
 
   // Authenticated user visiting login → redirect to dashboard
   if (isAuthenticated && pathname === ROUTE_PATHS.login) {

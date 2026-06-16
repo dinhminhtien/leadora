@@ -4,6 +4,8 @@ import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_c
 
 export type LeadStatus = "NEW" | "CONTACTED" | "QUALIFIED" | "CONVERTED" | "LOST";
 
+export type CustomerType = "INDIVIDUAL" | "CORPORATE";
+
 export type Lead = {
   leadId: string;
   fullName: string;
@@ -14,6 +16,7 @@ export type Lead = {
   status: LeadStatus;
   notes: string | null;
   convertedAt: string | null;
+  customerId: string | null;
   assignedUserId: string | null;
   assignedUserName: string | null;
   createdById: string | null;
@@ -43,10 +46,29 @@ export type UpdateLeadPayload = {
   assignedUserId?: string;
 };
 
+export type ConvertLeadPayload = {
+  customerType: CustomerType;
+  fullName: string;
+  email?: string;
+  phone?: string;
+  companyName?: string;
+  taxCode?: string;
+  address?: string;
+};
+
+export type ConvertLeadResponse = {
+  customerId: string;
+  lead: Lead;
+};
+
 export type LeadListParams = {
   search?: string;
   status?: string;
   source?: string;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  dateFrom?: string;
+  dateTo?: string;
   page?: number;
   size?: number;
 };
@@ -73,6 +95,11 @@ export const leadService = {
 
   async update(id: string, payload: UpdateLeadPayload): Promise<ApiResponse<Lead>> {
     const { data } = await apiClient.put<ApiResponse<Lead>>(`${ENDPOINT}/${id}`, payload);
+    return data;
+  },
+
+  async convert(id: string, payload: ConvertLeadPayload): Promise<ApiResponse<ConvertLeadResponse>> {
+    const { data } = await apiClient.post<ApiResponse<ConvertLeadResponse>>(`${ENDPOINT}/${id}/convert`, payload);
     return data;
   },
 };

@@ -23,6 +23,7 @@ public class LeadResponse {
     private LeadStatus status;
     private String notes;
     private OffsetDateTime convertedAt;
+    private UUID customerId;
 
     private UUID assignedUserId;
     private String assignedUserName;
@@ -44,6 +45,7 @@ public class LeadResponse {
                 .status(entity.getStatus())
                 .notes(entity.getNotes())
                 .convertedAt(entity.getConvertedAt())
+                .customerId(entity.getCustomer() != null ? entity.getCustomer().getCustomerId() : null)
                 .assignedUserId(entity.getAssignedUser() != null ? entity.getAssignedUser().getUserId() : null)
                 .assignedUserName(entity.getAssignedUser() != null ? entity.getAssignedUser().getFullName() : null)
                 .createdById(entity.getCreatedBy() != null ? entity.getCreatedBy().getUserId() : null)

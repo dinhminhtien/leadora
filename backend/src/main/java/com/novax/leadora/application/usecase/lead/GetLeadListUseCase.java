@@ -12,15 +12,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.Set;
+
 @Service
 @RequiredArgsConstructor
 public class GetLeadListUseCase {
 
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("createdAt", "fullName", "status");
+
     private final LeadRepository leadRepository;
 
     @Transactional(readOnly = true)
-    public Page<LeadResponse> execute(String search, String status, String source, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+    public Page<LeadResponse> execute(String search, String status, String source,
+                                      String sortBy, String sortDir, int page, int size) {
+        String sortField = ALLOWED_SORT_FIELDS.contains(sortBy) ? sortBy : "createdAt";
+        Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
 
         // Pass "" (not null) so Hibernate 6 binds as varchar instead of bytea
         String searchParam = StringUtils.hasText(search) ? search.trim() : "";
