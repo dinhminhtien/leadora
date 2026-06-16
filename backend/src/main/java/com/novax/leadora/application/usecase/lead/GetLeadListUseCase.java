@@ -22,14 +22,15 @@ public class GetLeadListUseCase {
     public Page<LeadResponse> execute(String search, String status, String source, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-        String searchParam = StringUtils.hasText(search) ? search.trim() : null;
+        // Pass "" (not null) so Hibernate 6 binds as varchar instead of bytea
+        String searchParam = StringUtils.hasText(search) ? search.trim() : "";
         LeadStatus statusParam = null;
         if (StringUtils.hasText(status)) {
             try {
                 statusParam = LeadStatus.valueOf(status.toUpperCase());
             } catch (IllegalArgumentException ignored) {}
         }
-        String sourceParam = StringUtils.hasText(source) ? source.trim() : null;
+        String sourceParam = StringUtils.hasText(source) ? source.trim() : "";
 
         return leadRepository.searchLeads(searchParam, statusParam, sourceParam, pageable)
                 .map(LeadResponse::from);

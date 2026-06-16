@@ -21,10 +21,19 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { mockDb, type FollowUpTask } from "@/shared/mock/mockData";
+export type FollowUpTask = {
+  id: string;
+  title: string;
+  description: string;
+  dueDate: string;
+  priority: "high" | "medium" | "low";
+  status: "pending" | "completed" | "overdue";
+  linkedEntityName: string;
+  assignee: string;
+};
 
 export function FollowUpTaskListScreen() {
-  const [tasks, setTasks] = useState<FollowUpTask[]>(mockDb.tasks);
+  const [tasks, setTasks] = useState<FollowUpTask[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "today" | "upcoming" | "overdue" | "completed">("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("all");

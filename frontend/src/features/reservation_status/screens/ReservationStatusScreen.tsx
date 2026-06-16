@@ -6,10 +6,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { mockDb, type ReservationStatus } from "@/shared/mock/mockData";
+export type ReservationStatus = {
+  id: string;
+  guestName: string;
+  reservationNo: string;
+  roomType: string;
+  createdDate: string;
+  channel: string;
+  status: string;
+};
 
 export function ReservationStatusScreen() {
-  const [reservations, setReservations] = useState<ReservationStatus[]>(mockDb.reservations);
+  const [reservations, setReservations] = useState<ReservationStatus[]>([]);
   const [search, setSearch] = useState("");
 
   const filteredReservations = useMemo(() => {

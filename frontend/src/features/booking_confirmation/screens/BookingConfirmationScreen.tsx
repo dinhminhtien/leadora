@@ -6,10 +6,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { mockDb, type BookingConfirmation } from "@/shared/mock/mockData";
+export type BookingConfirmation = {
+  id: string;
+  bookingNo: string;
+  guestName: string;
+  roomType: string;
+  checkIn: string;
+  checkOut: string;
+  amount: number;
+  status: string;
+};
 
 export function BookingConfirmationScreen() {
-  const [bookings, setBookings] = useState<BookingConfirmation[]>(mockDb.bookings);
+  const [bookings, setBookings] = useState<BookingConfirmation[]>([]);
   const [search, setSearch] = useState("");
 
   const filteredBookings = useMemo(() => {

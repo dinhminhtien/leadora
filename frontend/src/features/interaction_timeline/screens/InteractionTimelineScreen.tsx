@@ -5,10 +5,17 @@ import { Phone, Mail, Calendar, FileText, Search, Plus, Filter, MessageSquare, C
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { mockDb, type InteractionTimeline } from "@/shared/mock/mockData";
+export type InteractionTimeline = {
+  id: string;
+  type: "call" | "email" | "meeting" | "note";
+  date: string;
+  description: string;
+  agentName: string;
+  linkedName: string;
+};
 
 export function InteractionTimelineScreen() {
-  const [interactions, setInteractions] = useState<InteractionTimeline[]>(mockDb.interactions);
+  const [interactions, setInteractions] = useState<InteractionTimeline[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
 

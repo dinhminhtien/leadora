@@ -17,10 +17,19 @@ import {
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { mockDb, type Deal } from "@/shared/mock/mockData";
+export type Deal = {
+  id: string;
+  title: string;
+  contactName: string;
+  value: number;
+  probability: number;
+  stage: "Inquiry" | "Site Visit" | "Proposal" | "Negotiation" | "Contract" | "Confirmed";
+  owner: string;
+  status: "active" | "won" | "lost";
+};
 
 export function SalesPipelineScreen() {
-  const [deals, setDeals] = useState<Deal[]>(mockDb.deals.filter(d => d.status === "active"));
+  const [deals, setDeals] = useState<Deal[]>([]);
   const [ownerFilter, setOwnerFilter] = useState("all");
 
   const stages: Deal["stage"][] = [

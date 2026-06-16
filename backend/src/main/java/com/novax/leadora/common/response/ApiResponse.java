@@ -1,35 +1,45 @@
 package com.novax.leadora.common.response;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.Getter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
 
-@Getter
-@JsonInclude(JsonInclude.Include.NON_NULL)
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ApiResponse<T> {
-
-    private final boolean success;
-    private final String message;
-    private final T data;
-    private final String timestamp;
-
-    private ApiResponse(boolean success, String message, T data) {
-        this.success = success;
-        this.message = message;
-        this.data = data;
-        this.timestamp = OffsetDateTime.now().toString();
-    }
+    private boolean success;
+    private String message;
+    private T data;
+    private String timestamp;
 
     public static <T> ApiResponse<T> success(T data) {
-        return new ApiResponse<>(true, null, data);
+        return ApiResponse.<T>builder()
+                .success(true)
+                .message("Success")
+                .data(data)
+                .timestamp(OffsetDateTime.now().toString())
+                .build();
     }
 
-    public static <T> ApiResponse<T> success(String message, T data) {
-        return new ApiResponse<>(true, message, data);
+    public static <T> ApiResponse<T> success(T data, String message) {
+        return ApiResponse.<T>builder()
+                .success(true)
+                .message(message)
+                .data(data)
+                .timestamp(OffsetDateTime.now().toString())
+                .build();
     }
 
     public static <T> ApiResponse<T> error(String message) {
-        return new ApiResponse<>(false, message, null);
+        return ApiResponse.<T>builder()
+                .success(false)
+                .message(message)
+                .timestamp(OffsetDateTime.now().toString())
+                .build();
     }
 }

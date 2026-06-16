@@ -32,7 +32,7 @@ public class LeadController {
     public ResponseEntity<ApiResponse<LeadResponse>> createLead(@Valid @RequestBody CreateLeadRequest request) {
         LeadResponse lead = createLeadUseCase.execute(request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Lead created successfully", lead));
+                .body(ApiResponse.success(lead, "Lead created successfully"));
     }
 
     /** UC-8.2 — View Lead List */
@@ -62,6 +62,6 @@ public class LeadController {
             @Valid @RequestBody UpdateLeadRequest request
     ) {
         LeadResponse lead = updateLeadUseCase.execute(leadId, request);
-        return ResponseEntity.ok(ApiResponse.success("Lead updated successfully", lead));
+        return ResponseEntity.ok(ApiResponse.success(lead, "Lead updated successfully"));
     }
 }

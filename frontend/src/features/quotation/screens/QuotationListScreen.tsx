@@ -6,10 +6,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { mockDb, type Quotation } from "@/shared/mock/mockData";
+export type Quotation = {
+  id: string;
+  quoteNo: string;
+  contactName: string;
+  dealName: string;
+  amount: number;
+  expiryDate: string;
+  status: "draft" | "sent" | "accepted" | "expired";
+};
 
 export function QuotationListScreen() {
-  const [quotes, setQuotes] = useState<Quotation[]>(mockDb.quotations);
+  const [quotes, setQuotes] = useState<Quotation[]>([]);
   const [search, setSearch] = useState("");
 
   const filteredQuotes = useMemo(() => {

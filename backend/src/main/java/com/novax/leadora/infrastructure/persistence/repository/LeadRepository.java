@@ -24,19 +24,19 @@ public interface LeadRepository extends JpaRepository<LeadEntity, UUID> {
     @EntityGraph(attributePaths = {"assignedUser", "createdBy"})
     @Query(value = """
         SELECT l FROM LeadEntity l
-        WHERE (:search IS NULL OR LOWER(l.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
+        WHERE (:search = '' OR LOWER(l.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
                OR LOWER(l.email) LIKE LOWER(CONCAT('%', :search, '%'))
                OR LOWER(l.companyName) LIKE LOWER(CONCAT('%', :search, '%')))
           AND (:status IS NULL OR l.status = :status)
-          AND (:source IS NULL OR l.source = :source)
+          AND (:source = '' OR l.source = :source)
         """,
         countQuery = """
         SELECT COUNT(l) FROM LeadEntity l
-        WHERE (:search IS NULL OR LOWER(l.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
+        WHERE (:search = '' OR LOWER(l.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
                OR LOWER(l.email) LIKE LOWER(CONCAT('%', :search, '%'))
                OR LOWER(l.companyName) LIKE LOWER(CONCAT('%', :search, '%')))
           AND (:status IS NULL OR l.status = :status)
-          AND (:source IS NULL OR l.source = :source)
+          AND (:source = '' OR l.source = :source)
         """)
     Page<LeadEntity> searchLeads(
             @Param("search") String search,
