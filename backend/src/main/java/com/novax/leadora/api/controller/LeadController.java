@@ -1,8 +1,11 @@
 package com.novax.leadora.api.controller;
 
+import com.novax.leadora.api.dto.request.ConvertLeadRequest;
 import com.novax.leadora.api.dto.request.CreateLeadRequest;
 import com.novax.leadora.api.dto.request.UpdateLeadRequest;
+import com.novax.leadora.api.dto.response.ConvertLeadResponse;
 import com.novax.leadora.api.dto.response.LeadResponse;
+import com.novax.leadora.application.usecase.lead.ConvertLeadUseCase;
 import com.novax.leadora.application.usecase.lead.CreateLeadUseCase;
 import com.novax.leadora.application.usecase.lead.GetLeadDetailUseCase;
 import com.novax.leadora.application.usecase.lead.GetLeadListUseCase;
@@ -26,6 +29,7 @@ public class LeadController {
     private final GetLeadListUseCase getLeadListUseCase;
     private final GetLeadDetailUseCase getLeadDetailUseCase;
     private final UpdateLeadUseCase updateLeadUseCase;
+    private final ConvertLeadUseCase convertLeadUseCase;
 
     /** UC-8.1 — Create Lead */
     @PostMapping
@@ -41,10 +45,12 @@ public class LeadController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String source,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "10") int size
     ) {
-        Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, page, size);
+        Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, sortBy, sortDir, page, size);
         return ResponseEntity.ok(ApiResponse.success(leads));
     }
 
@@ -63,5 +69,15 @@ public class LeadController {
     ) {
         LeadResponse lead = updateLeadUseCase.execute(leadId, request);
         return ResponseEntity.ok(ApiResponse.success(lead, "Lead updated successfully"));
+    }
+
+    /** UC-8.5 — Convert Lead to Customer */
+    @PostMapping("/{leadId}/convert")
+    public ResponseEntity<ApiResponse<ConvertLeadResponse>> convertLead(
+            @PathVariable UUID leadId,
+            @Valid @RequestBody ConvertLeadRequest request
+    ) {
+        ConvertLeadResponse response = convertLeadUseCase.execute(leadId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "Lead converted to customer successfully"));
     }
 }
