@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Download, Search, Receipt, Calendar, User, Plus, Check, X, RefreshCw, AlertTriangle } from "lucide-react";
@@ -415,7 +415,7 @@ export function BookingConfirmationScreen() {
                       <TableCell className="py-3.5 px-4 text-xs text-muted-foreground">{b.checkInDate}</TableCell>
                       <TableCell className="py-3.5 px-4 text-xs text-muted-foreground">{b.checkOutDate}</TableCell>
                       <TableCell className="py-3.5 px-4 text-xs font-black text-foreground">
-                        ${b.totalAmount.toLocaleString()}
+                        ${b.totalAmount.toLocaleString('en-US')}
                       </TableCell>
                       <TableCell className="py-3.5 px-4">
                         <Badge variant={getBadgeVariant(b.status)} className="font-bold text-[9px] uppercase">

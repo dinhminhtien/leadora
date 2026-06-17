@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useMemo } from "react";
 import {
@@ -137,11 +137,11 @@ export function SalesPipelineScreen() {
         </div>
         <div className="text-center md:text-left md:border-r border-slate-100 last:border-0 px-4">
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Total Pipeline Value</span>
-          <span className="text-lg font-bold text-slate-800 block mt-1">${pipelineStats.totalValue.toLocaleString()}</span>
+          <span className="text-lg font-bold text-slate-800 block mt-1">${pipelineStats.totalValue.toLocaleString('en-US')}</span>
         </div>
         <div className="text-center md:text-left px-4">
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Weighted Revenue Forecast</span>
-          <span className="text-lg font-bold text-blue-600 block mt-1">${pipelineStats.weightedValue.toLocaleString()}</span>
+          <span className="text-lg font-bold text-blue-600 block mt-1">${pipelineStats.weightedValue.toLocaleString('en-US')}</span>
         </div>
       </div>
 
@@ -165,7 +165,7 @@ export function SalesPipelineScreen() {
                   </Badge>
                 </div>
                 <div className="text-[10px] font-bold text-slate-400 mt-1">
-                  ${stageTotalVal.toLocaleString()}
+                  ${stageTotalVal.toLocaleString('en-US')}
                 </div>
               </div>
 
@@ -184,7 +184,7 @@ export function SalesPipelineScreen() {
                             {deal.title}
                           </h4>
                           <div className="text-xs font-black text-slate-800 mt-1">
-                            ${deal.value.toLocaleString()}
+                            ${deal.value.toLocaleString('en-US')}
                           </div>
                         </div>
 
