@@ -48,8 +48,9 @@ export function ResetPasswordScreen() {
     try {
       await supabaseAuthService.updatePassword(data.password);
       setIsSuccess(true);
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to update password. Reset token might have expired.");
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Failed to update password. Reset token might have expired.";
+      setError(errorMsg);
     } finally {
       setIsLoading(false);
     }

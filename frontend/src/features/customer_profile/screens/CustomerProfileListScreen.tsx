@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useMemo } from "react";
 import { Search, Users, Mail, Phone, Building2, UserPlus, FileText } from "lucide-react";
@@ -90,7 +90,7 @@ export function CustomerProfileListScreen() {
                   <TableCell className="py-3 px-4 text-xs text-slate-600">{contact.company}</TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-500">{contact.lastInteractionDate}</TableCell>
                   <TableCell className="py-3 px-4 text-xs font-bold text-slate-800">
-                    ${contact.totalDealValue.toLocaleString()}
+                    ${contact.totalDealValue.toLocaleString('en-US')}
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-400 italic truncate max-w-xs">
                     {contact.notes}

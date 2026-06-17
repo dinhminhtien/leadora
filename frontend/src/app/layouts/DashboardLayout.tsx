@@ -67,12 +67,14 @@ const navigationGroups: NavGroup[] = [
       { href: ROUTE_PATHS.leads, label: "Leads", Icon: Handshake },
       { href: ROUTE_PATHS.salesPipeline, label: "Pipeline Board", Icon: ChartNoAxesCombined },
       { href: ROUTE_PATHS.deals, label: "Deals List", Icon: BriefcaseBusiness },
+      { href: ROUTE_PATHS.quotations, label: "Quotations", Icon: ReceiptText },
+      { href: ROUTE_PATHS.pendingApprovals, label: "Pending Approvals", Icon: ShieldCheck },
     ],
   },
   {
     title: "Activities & Tasks",
     items: [
-      { href: ROUTE_PATHS.followUpTasks, label: "Tasks", Icon: CalendarCheck },
+      { href: ROUTE_PATHS.manageFollowUpTasks, label: "Tasks", Icon: CalendarCheck },
       { href: ROUTE_PATHS.reminders, label: "Reminders", Icon: ClipboardCheck },
       { href: ROUTE_PATHS.interactionTimeline, label: "Timeline", Icon: Clock },
     ],
@@ -118,13 +120,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     <div className="min-h-screen bg-background text-foreground flex">
       {/* Sidebar navigation: Fully Adaptive light/dark theme */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 flex flex-col border-r border-zinc-200 dark:border-zinc-900 bg-zinc-50 dark:bg-zinc-950 text-zinc-500 dark:text-zinc-400 transition-all duration-300 ${
-          sidebarOpen ? "w-64" : "w-16"
-        }`}
+        className={`fixed inset-y-0 left-0 z-30 flex flex-col border-r border-zinc-200 dark:border-zinc-900 bg-zinc-50 dark:bg-zinc-950 text-zinc-500 dark:text-zinc-400 transition-all duration-300 ${sidebarOpen ? "w-64" : "w-16"
+          }`}
       >
         {/* Brand/Logo Header */}
-        <div className="flex h-16 items-center justify-between px-4 border-b border-zinc-200 dark:border-zinc-900 bg-zinc-100/40 dark:bg-zinc-950">
-          <div className="flex items-center gap-3 overflow-hidden">
+        <div className={`relative flex h-16 items-center border-b border-zinc-200 dark:border-zinc-900 bg-zinc-100/40 dark:bg-zinc-950 ${sidebarOpen ? "justify-between px-4" : "justify-center px-0"}`}>
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className={`flex items-center ${sidebarOpen ? "gap-3 px-3" : "w-full h-full justify-center px-0"} rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 transition`}
+            title={sidebarOpen ? "Collapse Menu" : "Expand Menu"}
+          >
             <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-white font-bold shrink-0 shadow-lg shadow-primary/20">
               L
             </div>
@@ -134,11 +140,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <span className="text-[9px] text-zinc-400 dark:text-zinc-500 font-semibold tracking-widest uppercase">Hotel CRM</span>
               </div>
             )}
-          </div>
+          </button>
           {sidebarOpen && (
             <button
+              type="button"
               onClick={toggleSidebar}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200 hover:bg-zinc-200/50 dark:hover:bg-zinc-900 transition cursor-pointer"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white shadow-sm text-zinc-600 hover:text-zinc-900 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100 transition cursor-pointer"
               title="Collapse Menu"
             >
               <ChevronLeft className="size-4" />
@@ -161,11 +168,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   <Link
                     key={href}
                     href={href}
-                    className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all relative ${
-                      isActive
+                    className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all relative ${isActive
                         ? "bg-zinc-200/60 text-zinc-900 border border-zinc-300/40 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-850 shadow-xs"
                         : "hover:bg-zinc-200/30 hover:text-zinc-900 dark:hover:bg-zinc-900/50 dark:hover:text-zinc-200 text-zinc-500 dark:text-zinc-400"
-                    }`}
+                      }`}
                     title={label}
                   >
                     {isActive && (
@@ -208,9 +214,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Main Content Area */}
       <div
-        className={`flex-1 flex flex-col transition-all duration-300 ${
-          sidebarOpen ? "pl-64" : "pl-16"
-        }`}
+        className={`flex-1 flex flex-col transition-all duration-300 ${sidebarOpen ? "pl-64" : "pl-16"
+          }`}
       >
         {/* Top Header */}
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background/80 backdrop-blur-md px-6 shadow-xs">
@@ -256,7 +261,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               >
                 Quick Add
               </Button>
-              
+
               {isQuickAddOpen && (
                 <>
                   <div className="fixed inset-0 z-20" onClick={() => setIsQuickAddOpen(false)} />
