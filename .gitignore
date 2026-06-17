@@ -70,3 +70,8 @@ replay_pid*
 *CLAUDE.md
 *CODING_GUIDELINES.md
 *MILESTONES.md
+
+# Dev/agent scratch & error logs
+*.err
+.codex-*
+demo_screenshot.mjs
