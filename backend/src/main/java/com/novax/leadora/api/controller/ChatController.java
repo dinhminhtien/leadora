@@ -1,6 +1,7 @@
 package com.novax.leadora.api.controller;
 
 import com.novax.leadora.api.dto.request.CreateChatSessionRequest;
+import com.novax.leadora.api.dto.request.RenameChatSessionRequest;
 import com.novax.leadora.api.dto.request.SendChatMessageRequest;
 import com.novax.leadora.api.dto.response.ChatMessageResponse;
 import com.novax.leadora.api.dto.response.ChatSessionResponse;
@@ -9,6 +10,7 @@ import com.novax.leadora.application.usecase.chat.CreateChatSessionUseCase;
 import com.novax.leadora.application.usecase.chat.DeleteChatSessionUseCase;
 import com.novax.leadora.application.usecase.chat.GetChatMessagesUseCase;
 import com.novax.leadora.application.usecase.chat.GetChatSessionsUseCase;
+import com.novax.leadora.application.usecase.chat.RenameChatSessionUseCase;
 import com.novax.leadora.application.usecase.chat.SendChatMessageUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import com.novax.leadora.common.security.CurrentUserProvider;
@@ -39,6 +41,7 @@ public class ChatController {
     private final GetChatSessionsUseCase getChatSessionsUseCase;
     private final GetChatMessagesUseCase getChatMessagesUseCase;
     private final SendChatMessageUseCase sendChatMessageUseCase;
+    private final RenameChatSessionUseCase renameChatSessionUseCase;
     private final DeleteChatSessionUseCase deleteChatSessionUseCase;
 
     /** Create New Chat Session. */
@@ -80,6 +83,18 @@ public class ChatController {
         SendMessageResponse response =
                 sendChatMessageUseCase.execute(sessionId, user, request.getContent());
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /** Rename Chat Session. */
+    @PutMapping("/sessions/{sessionId}")
+    public ResponseEntity<ApiResponse<ChatSessionResponse>> renameSession(
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody RenameChatSessionRequest request) {
+        UserEntity user = currentUserProvider.resolve(userId);
+        ChatSessionResponse session =
+                renameChatSessionUseCase.execute(sessionId, user, request.getTitle());
+        return ResponseEntity.ok(ApiResponse.success(session, "Chat session renamed"));
     }
 
     /** Delete Chat Session (soft delete). */

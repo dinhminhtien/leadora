@@ -8,6 +8,7 @@ import {
   User,
   Plus,
   Trash2,
+  Pencil,
   FileText,
   Upload,
   Loader2,
@@ -31,6 +32,7 @@ import {
   useCreateChatSession,
   useDeleteChatSession,
   useDeleteDocument,
+  useRenameChatSession,
   useSendChatMessage,
   useUploadDocument,
 } from "@/features/ai_assistant/hooks/use_chat_sessions";
@@ -56,6 +58,7 @@ export function AiAssistantScreen() {
   const messagesQuery = useChatMessages(selectedSessionId);
   const createSession = useCreateChatSession();
   const sendMessage = useSendChatMessage();
+  const renameSession = useRenameChatSession();
   const deleteSession = useDeleteChatSession();
 
   const documentsQuery = useCompanyDocuments();
@@ -122,6 +125,13 @@ export function AiAssistantScreen() {
     if (sessionId === selectedSessionId) clearSelectedSession();
   };
 
+  const handleRenameSession = async (sessionId: string, currentTitle?: string) => {
+    const next = window.prompt("Đổi tên cuộc trò chuyện:", currentTitle ?? "");
+    const title = next?.trim();
+    if (!title || title === currentTitle) return;
+    await renameSession.mutateAsync({ sessionId, title });
+  };
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -183,16 +193,28 @@ export function AiAssistantScreen() {
                   <MessageSquare className="size-3.5 shrink-0" />
                   <span className="truncate">{s.title || "Cuộc trò chuyện"}</span>
                 </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteSession(s.sessionId);
-                  }}
-                  className="ml-1 shrink-0 text-slate-300 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
-                  title="Xoá cuộc trò chuyện"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
+                <span className="ml-1 flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRenameSession(s.sessionId, s.title);
+                    }}
+                    className="text-slate-300 transition hover:text-blue-500"
+                    title="Đổi tên"
+                  >
+                    <Pencil className="size-3.5" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteSession(s.sessionId);
+                    }}
+                    className="text-slate-300 transition hover:text-red-500"
+                    title="Xoá cuộc trò chuyện"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </span>
               </div>
             ))}
           </div>

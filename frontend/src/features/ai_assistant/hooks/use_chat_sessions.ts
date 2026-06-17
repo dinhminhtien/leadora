@@ -55,6 +55,17 @@ export function useSendChatMessage() {
   });
 }
 
+export function useRenameChatSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId, title }: { sessionId: string; title: string }) =>
+      chatAssistantService.renameSession(sessionId, title),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: SESSIONS_KEY });
+    },
+  });
+}
+
 export function useDeleteChatSession() {
   const queryClient = useQueryClient();
   return useMutation({

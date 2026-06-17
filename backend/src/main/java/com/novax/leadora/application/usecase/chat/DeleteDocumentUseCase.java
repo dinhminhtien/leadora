@@ -21,7 +21,7 @@ public class DeleteDocumentUseCase {
     @Transactional
     public void execute(UUID documentId) {
         AiDocumentEntity doc = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Document not found: " + documentId));
+                .orElseThrow(() -> new ResourceNotFoundException("Document", documentId));
 
         ragService.deleteDocument(documentId); // remove chunks from the vector store
         documentRepository.delete(doc);

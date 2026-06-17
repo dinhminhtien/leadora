@@ -23,19 +23,21 @@ import java.util.List;
 public class ChatLlmService {
 
     private static final String SYSTEM_PROMPT = """
-            Bạn là "Trợ lý nội bộ Leadora" — trợ lý cho nhân viên kinh doanh của một CRM ngành khách sạn.
+            You are "Leadora Internal Assistant", a helper for sales staff of a hospitality CRM.
 
-            NGUYÊN TẮC BẮT BUỘC:
-            1. CHỈ ĐỌC: Tuyệt đối KHÔNG tạo, sửa, xóa, gửi, duyệt, từ chối, xác nhận hay thực hiện bất kỳ
-               hành động thay đổi dữ liệu nào. Nếu người dùng yêu cầu, hãy từ chối lịch sự và gợi ý họ thao tác
-               trực tiếp trên màn hình nghiệp vụ tương ứng.
-            2. CHỈ NGHIỆP VỤ: Chỉ trả lời câu hỏi liên quan đến dữ liệu bán hàng/CRM (lead, khách hàng, deal,
-               công việc, doanh số, SLA, báo giá, booking...) và tài liệu/chính sách của công ty. Nếu câu hỏi
-               nằm ngoài phạm vi (toán học, lập trình, đời sống, giải trí...), hãy từ chối lịch sự.
-            3. CHỈ DÙNG DỮ LIỆU ĐƯỢC CUNG CẤP: Chỉ dựa vào phần "DỮ LIỆU THAM CHIẾU" bên dưới (nếu có).
-               Không suy đoán hay bịa số liệu. Nếu không có dữ liệu phù hợp, hãy nói rõ là không tìm thấy
-               thông tin được phép truy cập cho yêu cầu này.
-            4. Trả lời NGẮN GỌN, bằng tiếng Việt, có thể dùng gạch đầu dòng hoặc **in đậm** khi phù hợp.
+            CORE RULES (always follow):
+            1. READ-ONLY: Never create, edit, delete, send, approve, reject, confirm, or perform any
+               data-changing action. If asked to, politely decline and suggest doing it on the relevant
+               screen. You only look up and summarise data.
+            2. BUSINESS SCOPE ONLY: Only answer questions about sales/CRM data (leads, customers, deals,
+               tasks, revenue, SLA, quotations, bookings...) and company documents/policies. Politely
+               decline anything off-topic (math, programming, general life/entertainment...).
+            3. GROUND IN PROVIDED DATA: Base answers only on the "REFERENCE DATA" section below (if any)
+               and the conversation so far. Do not invent or guess figures. If no relevant data is
+               available, say clearly that you found no information you are allowed to access.
+            4. LANGUAGE: Reply in the SAME language as the user's latest message — Vietnamese if they
+               write Vietnamese, English if they write English.
+            5. STYLE: Be concise. Use bullet points or **bold** when it helps readability.
             """;
 
     private final ChatClient chatClient;
@@ -65,16 +67,35 @@ public class ChatLlmService {
 
         String systemText = SYSTEM_PROMPT;
         if (StringUtils.hasText(referenceBlock)) {
-            systemText = systemText + "\n\n=== DỮ LIỆU THAM CHIẾU (chỉ dùng phần này) ===\n" + referenceBlock;
+            systemText = systemText + "\n\n=== REFERENCE DATA (use only this) ===\n" + referenceBlock;
         } else {
-            systemText = systemText + "\n\n(Không có dữ liệu tham chiếu nào được truy xuất cho yêu cầu này.)";
+            systemText = systemText + "\n\n(No reference data was retrieved for this request.)";
         }
 
-        return chatClient.prompt()
+        String content = chatClient.prompt()
                 .system(systemText)
                 .messages(priorMessages)
                 .user(userMessage)
                 .call()
                 .content();
+
+        return stripReasoning(content);
+    }
+
+    /**
+     * Removes the chain-of-thought block that reasoning models (e.g. qwen3) emit, so the user
+     * only sees the final answer. Harmless for models that don't produce {@code <think>} tags.
+     */
+    static String stripReasoning(String content) {
+        if (content == null) {
+            return "";
+        }
+        String cleaned = content.replaceAll("(?is)<think>.*?</think>", "").trim();
+        // Defensive: an unclosed <think> (truncated output) — drop everything up to the tag.
+        int open = cleaned.toLowerCase().indexOf("<think>");
+        if (open >= 0) {
+            cleaned = cleaned.substring(0, open).trim();
+        }
+        return cleaned;
     }
 }

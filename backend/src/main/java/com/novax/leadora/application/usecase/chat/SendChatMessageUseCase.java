@@ -68,8 +68,13 @@ public class SendChatMessageUseCase {
         // Persist the user turn.
         AiChatMessageEntity userMessage = saveMessage(session, ChatRole.USER, content, null);
 
-        // [1] Guardrail.
-        IntentResult intent = intentClassifier.classify(content);
+        // [1] Guardrail (context-aware: inherits the prior turn's data scope for follow-ups).
+        String lastIntentName = history.stream()
+                .filter(m -> m.getRole() == ChatRole.ASSISTANT && m.getIntentMatched() != null)
+                .reduce((first, second) -> second) // last assistant turn
+                .map(AiChatMessageEntity::getIntentMatched)
+                .orElse(null);
+        IntentResult intent = intentClassifier.classify(content, lastIntentName);
         if (intent.blocked()) {
             AiChatMessageEntity blockedReply =
                     saveMessage(session, ChatRole.ASSISTANT, intent.blockMessage(), intent.intent().name());
@@ -115,10 +120,10 @@ public class SendChatMessageUseCase {
 
     private AiChatSessionEntity loadOwnedActiveSession(UUID sessionId, UserEntity user) {
         AiChatSessionEntity session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Chat session not found: " + sessionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Chat session", sessionId));
         if (session.getStatus() == ChatSessionStatus.DELETED
                 || !session.getUser().getUserId().equals(user.getUserId())) {
-            throw new ResourceNotFoundException("Chat session not found: " + sessionId);
+            throw new ResourceNotFoundException("Chat session", sessionId);
         }
         return session;
     }

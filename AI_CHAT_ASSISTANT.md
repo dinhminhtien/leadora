@@ -9,8 +9,11 @@ tổng hợp số liệu toàn đội, và hỏi đáp theo tài liệu công ty
 
 ## Use cases đã làm
 - Create New Chat Session · View Chat Session List · Continue Existing Chat Session
-- Query Assigned Sales CRM Data · Query Team Sales CRM Summary · Delete Chat Session
+- Query Assigned Sales CRM Data · Query Team Sales CRM Summary · Rename / Delete Chat Session
 - (Tùy chọn) Upload/List/Delete tài liệu công ty cho RAG
+
+**Song ngữ:** hỏi tiếng Việt → trả lời tiếng Việt; hỏi tiếng Anh → trả lời tiếng Anh
+(LLM bám theo ngôn ngữ câu hỏi; thông báo guardrail cũng tự chọn VI/EN).
 
 ## Kiến trúc — hybrid (phân loại ý định ở backend rồi prefetch dữ liệu)
 ```
@@ -20,7 +23,7 @@ User → IntentClassifier (rule-based)
         ├─ TEAM_SUMMARY          → CrmContextService.teamSummary()
         ├─ DOC_QUERY             → RagService.retrieveContext(query)          (pgvector)
         └─ GENERAL_BUSINESS      → RAG + dữ liệu của user
-     → ChatLlmService (Ollama, system prompt chỉ-đọc) → lưu ai_chat_messages
+     → ChatLlmService (Gemini, system prompt chỉ-đọc) → lưu ai_chat_messages
 ```
 
 ### File chính
@@ -41,6 +44,7 @@ POST   /api/v1/chat/sessions                 tạo session   (body: { title? })
 GET    /api/v1/chat/sessions                 danh sách session
 GET    /api/v1/chat/sessions/{id}/messages   lịch sử tin nhắn
 POST   /api/v1/chat/sessions/{id}/messages   gửi tin       (body: { content })
+PUT    /api/v1/chat/sessions/{id}            đổi tên session (body: { title })
 DELETE /api/v1/chat/sessions/{id}            xoá (soft) session
 POST   /api/v1/chat/documents                upload tài liệu (multipart: file, title?)
 GET    /api/v1/chat/documents                danh sách tài liệu
@@ -50,25 +54,31 @@ Header tùy chọn `X-User-Id: <users.user_id>` để chỉ định người dù
 
 ## Cài đặt & chạy
 
-### 1. Ollama (LLM + embedding) — local, miễn phí
-```powershell
-# Cài Ollama: https://ollama.com/download
-ollama pull qwen2.5:3b   # model chat (đổi qua OLLAMA_CHAT_MODEL)
-ollama pull bge-m3       # model embedding 1024 chiều (đổi qua OLLAMA_EMBEDDING_MODEL)
-ollama serve             # chạy ở http://localhost:11434
-```
-Máy yếu có thể dùng `qwen2.5:1.5b`. Nếu đổi embedding model khác 1024 chiều, sửa
-`AI_EMBEDDING_DIMENSIONS` trong `.env` cho khớp (và xoá/tạo lại bảng vector store).
+### 1. Google Gemini API (chat + embedding, KHÔNG cần AI local)
+Lấy API key miễn phí ở https://aistudio.google.com/apikey → đặt vào `.env` (`GEMINI_API_KEY`).
+- Chat: `gemini-2.5-flash` (rẻ, nhanh; đổi sang `gemini-2.5-flash-lite` rẻ hơn, hoặc `gemini-2.5-pro` mạnh hơn).
+- Embedding: `text-embedding-004` (**768 chiều**).
 
-### 2. `.env` (đã thêm sẵn các key)
+Cả chat lẫn RAG đều chạy qua Gemini cloud — **không cần cài/chạy Ollama hay model local nào**.
+
+### 2. `.env` — DUY NHẤT một file ở gốc repo: `leadora/.env`
+Backend đọc qua `optional:file:../.env` (chạy từ `leadora/backend/`); frontend đọc qua
+`next.config.ts` (`../.env`). Không còn `.env` trong `backend/` hay `frontend/.env.local`.
 ```
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_CHAT_MODEL=qwen2.5:3b
-OLLAMA_EMBEDDING_MODEL=bge-m3
-AI_EMBEDDING_DIMENSIONS=1024
+GEMINI_API_KEY=...                # BẮT BUỘC
+GEMINI_CHAT_MODEL=gemini-2.5-flash
+GEMINI_EMBEDDING_MODEL=text-embedding-004
+AI_EMBEDDING_DIMENSIONS=768
 AI_VECTORSTORE_INIT_SCHEMA=true
 AI_CHAT_DEV_USER_ID=        # để trống = dùng user đầu tiên trong DB
 ```
+
+> ⚠️ **Đổi từ embedding cũ (1024) sang Gemini (768):** số chiều vector thay đổi. Spring AI
+> KHÔNG tự sửa bảng cũ, nên chạy 1 lần trên Supabase để nó tạo lại đúng 768 chiều:
+> ```sql
+> DROP TABLE IF EXISTS public.leadora_vector_store;
+> ```
+> (Chỉ cần nếu trước đó đã từng upload tài liệu RAG với model embedding khác.)
 
 ### 3. Database
 - `SPRING_JPA_DDL_AUTO=update` → Hibernate tự tạo bảng `ai_documents`.
@@ -78,11 +88,11 @@ AI_CHAT_DEV_USER_ID=        # để trống = dùng user đầu tiên trong DB
 
 ### 4. Chạy
 ```powershell
-cd backend  ; .\mvnw.cmd spring-boot:run     # API :8085  (khởi động được kể cả khi Ollama tắt)
+cd backend  ; .\mvnw.cmd spring-boot:run     # API :8085
 cd frontend ; npm run dev                    # web :3000 → /ai-assistant
 ```
-Backend **không** fail khi Ollama tắt (không auto-pull lúc boot); chỉ lúc gửi tin mà Ollama
-không chạy thì trợ lý trả về thông báo lỗi thân thiện (MSG-31).
+Toàn bộ chat + RAG chạy qua Gemini cloud — không cần Ollama/model local. Lỗi gọi API
+(thiếu key, hết quota...) sẽ trả về thông báo thân thiện (MSG-31) thay vì làm vỡ hội thoại.
 
 ## Thử nhanh guardrail
 - "Xóa lead giúp tôi" / "Cập nhật deal X thành WON" → bị chặn (đề nghị thao tác trên màn hình).

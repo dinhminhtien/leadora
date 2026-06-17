@@ -71,6 +71,14 @@ export const chatAssistantService = {
     return data;
   },
 
+  async renameSession(sessionId: string, title: string) {
+    const { data } = await apiClient.put<ApiResponse<ChatSession>>(
+      `${SESSIONS_ENDPOINT}/${sessionId}`,
+      { title },
+    );
+    return data;
+  },
+
   async deleteSession(sessionId: string) {
     const { data } = await apiClient.delete<ApiResponse<null>>(
       `${SESSIONS_ENDPOINT}/${sessionId}`,

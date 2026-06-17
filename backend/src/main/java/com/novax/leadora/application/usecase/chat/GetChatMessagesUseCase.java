@@ -25,12 +25,12 @@ public class GetChatMessagesUseCase {
     @Transactional(readOnly = true)
     public List<ChatMessageResponse> execute(UUID sessionId, UserEntity user) {
         AiChatSessionEntity session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Chat session not found: " + sessionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Chat session", sessionId));
 
         if (session.getStatus() == ChatSessionStatus.DELETED
                 || !session.getUser().getUserId().equals(user.getUserId())) {
             // Hide existence of sessions the caller does not own.
-            throw new ResourceNotFoundException("Chat session not found: " + sessionId);
+            throw new ResourceNotFoundException("Chat session", sessionId);
         }
 
         return messageRepository.findBySession_SessionIdOrderByCreatedAtAsc(sessionId)

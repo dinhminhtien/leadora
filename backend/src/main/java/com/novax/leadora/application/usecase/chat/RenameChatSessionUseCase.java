@@ -1,5 +1,6 @@
 package com.novax.leadora.application.usecase.chat;
 
+import com.novax.leadora.api.dto.response.ChatSessionResponse;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.AiChatSessionEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
@@ -11,25 +12,24 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
-/** UC — Delete Chat Session (soft delete: status → DELETED, keeps the audit trail). */
+/** UC — Rename Chat Session. */
 @Service
 @RequiredArgsConstructor
-public class DeleteChatSessionUseCase {
+public class RenameChatSessionUseCase {
 
     private final AiChatSessionRepository sessionRepository;
 
     @Transactional
-    public void execute(UUID sessionId, UserEntity user) {
+    public ChatSessionResponse execute(UUID sessionId, UserEntity user, String title) {
         AiChatSessionEntity session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Chat session", sessionId));
 
-        if (!session.getUser().getUserId().equals(user.getUserId())) {
+        if (session.getStatus() == ChatSessionStatus.DELETED
+                || !session.getUser().getUserId().equals(user.getUserId())) {
             throw new ResourceNotFoundException("Chat session", sessionId);
         }
 
-        if (session.getStatus() != ChatSessionStatus.DELETED) {
-            session.setStatus(ChatSessionStatus.DELETED);
-            sessionRepository.save(session);
-        }
+        session.setTitle(title.trim());
+        return ChatSessionResponse.from(sessionRepository.save(session));
     }
 }

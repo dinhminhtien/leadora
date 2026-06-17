@@ -10,10 +10,12 @@ import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -32,6 +34,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CrmContextService {
 
+    private static final int MAX_LEADS = 25;
     private static final int MAX_DEALS = 15;
     private static final int MAX_TASKS = 10;
     private static final int MAX_REPS = 20;
@@ -40,21 +43,49 @@ public class CrmContextService {
     private final DealRepository dealRepository;
     private final TaskRepository taskRepository;
 
-    /** Facts about the records assigned to a single user. */
+    /**
+     * Top-privilege mode: login/RBAC isn't wired yet and the assistant is granted full access,
+     * so "my data" questions see ALL records (not just one arbitrary fallback user). Set
+     * {@code AI_CHAT_TOP_PRIVILEGE=false} to scope strictly to the acting user once login lands.
+     */
+    @Value("${AI_CHAT_TOP_PRIVILEGE:true}")
+    private boolean topPrivilege;
+
+    /** Facts about leads/deals/tasks the user may view (all records in top-privilege mode). */
     public String assignedContext(UserEntity user) {
         UUID userId = user.getUserId();
-        List<LeadEntity> leads = leadRepository.findByAssignedUser_UserId(userId);
-        List<DealEntity> deals = dealRepository.findByAssignedUser_UserId(userId);
-        List<TaskEntity> tasks = taskRepository.findByAssignedUser_UserId(userId);
+        List<LeadEntity> leads = topPrivilege
+                ? leadRepository.findAll() : leadRepository.findByAssignedUser_UserId(userId);
+        List<DealEntity> deals = topPrivilege
+                ? dealRepository.findAll() : dealRepository.findByAssignedUser_UserId(userId);
+        List<TaskEntity> tasks = topPrivilege
+                ? taskRepository.findAll() : taskRepository.findByAssignedUser_UserId(userId);
 
         StringBuilder sb = new StringBuilder();
-        sb.append("== Dữ liệu CRM được giao cho ").append(user.getFullName()).append(" ==\n");
+        sb.append(topPrivilege
+                ? "== Dữ liệu CRM (chế độ toàn quyền — chưa bật phân quyền) ==\n"
+                : "== Dữ liệu CRM được giao cho " + user.getFullName() + " ==\n");
 
-        // Leads
+        // Leads — counts by status + an actual listing so the assistant can enumerate them.
         Map<Object, Long> leadByStatus = leads.stream()
                 .collect(Collectors.groupingBy(LeadEntity::getStatus, Collectors.counting()));
         sb.append("Leads: tổng ").append(leads.size())
                 .append(" ").append(leadByStatus).append("\n");
+        if (!leads.isEmpty()) {
+            sb.append("Danh sách lead (mới nhất trước, tối đa ").append(MAX_LEADS).append("):\n");
+            leads.stream()
+                    .sorted(Comparator.comparing(LeadEntity::getCreatedAt,
+                            Comparator.nullsFirst(Comparator.naturalOrder())).reversed())
+                    .limit(MAX_LEADS)
+                    .forEach(l -> sb.append("  - \"").append(l.getFullName())
+                            .append("\" | ").append(l.getStatus())
+                            .append(" | công ty: ").append(nullToDash(l.getCompanyName()))
+                            .append(" | email: ").append(nullToDash(l.getEmail()))
+                            .append(" | nguồn: ").append(nullToDash(l.getSource()))
+                            .append(assigneeSuffix(l))
+                            .append(" | tạo lúc: ").append(l.getCreatedAt())
+                            .append("\n"));
+        }
 
         // Deals
         long openDeals = deals.stream().filter(d -> d.getStatus() == DealStatus.OPEN).count();
@@ -154,6 +185,15 @@ public class CrmContextService {
 
     private String repLabel(UserEntity u) {
         return u.getFullName() != null ? u.getFullName() : u.getUserId().toString();
+    }
+
+    private String nullToDash(String s) {
+        return (s == null || s.isBlank()) ? "-" : s;
+    }
+
+    private String assigneeSuffix(LeadEntity lead) {
+        UserEntity assignee = lead.getAssignedUser();
+        return assignee != null ? " | phụ trách: " + repLabel(assignee) : " | phụ trách: (chưa giao)";
     }
 
     private boolean isOverdue(TaskEntity t, LocalDate today) {

@@ -1,6 +1,5 @@
 package com.novax.leadora.common.security;
 
-import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -51,7 +50,7 @@ public class CurrentUserProvider {
 
         return userRepository.findAll(PageRequest.of(0, 1)).stream()
                 .findFirst()
-                .orElseThrow(() -> new ResourceNotFoundException(
+                .orElseThrow(() -> new IllegalStateException(
                         "No user available to act as the chat assistant actor. "
                                 + "Seed a user or set AI_CHAT_DEV_USER_ID."));
     }

@@ -32,11 +32,26 @@ public class IntentClassifier {
             "chinh sua", "cap nhat", "update", "sua ", "edit", "modify",
             "thay doi", "doi ", "huy", "cancel", "luu lai");
 
-    // Phrases that signal the user wants to READ/see data (defuses ambiguous verbs like "cap nhat").
-    private static final List<String> READ_INTENT = List.of(
-            "cho toi biet", "cho toi", "cho minh", "liet ke", "danh sach", "xem", "thong tin",
-            "tinh hinh", "bao nhieu", "co nhung", "tom tat", "tong hop", "bao cao", "thong ke",
-            "how many", "list", "show", "what", "which", "summary", "report", "tell me", "tinh trang");
+    // Imperative markers — a request only counts as a mutation command when phrased like an order.
+    private static final List<String> COMMAND_MARKERS = List.of(
+            "hay ", "giup toi", "giup minh", "giup em", "lam on", "vui long",
+            "please", "can you", "could you");
+
+    // Question / read markers — if present, the verb is part of a question, not a command
+    // ("lead nào được tạo cuối cùng?", "ai đã xóa..."). Deliberately excludes the bare "cho toi"
+    // because that also appears in real commands ("xóa ... cho tôi").
+    private static final List<String> QUESTION_READ_MARKERS = List.of(
+            "?", "cho toi biet", "cho toi xem", "cho minh biet", "cho biet", "liet ke", "danh sach",
+            "bao nhieu", "la ai", "la gi", "nao ", "khi nao", "the nao", "ngay tao", "luc nao",
+            "ai tao", "ai them", "nguoi tao", "tinh hinh", "tom tat", "tong hop", "thong ke", "bao cao",
+            "how many", "list", "show", "what", "which", "who", "when", "summary", "report", "tell me");
+
+    // Verbs that, when a message STARTS with them, indicate an imperative command.
+    private static final List<String> START_VERBS = List.of(
+            "xoa", "delete", "remove", "drop", "huy",
+            "tao ", "them ", "create", "add ", "insert", "sua ", "chinh sua", "cap nhat", "update",
+            "edit", "modify", "gui ", "send", "duyet", "phe duyet", "approve", "tu choi", "reject",
+            "xac nhan", "confirm", "gan ", "assign", "doi ", "thay doi", "change");
 
     private static final List<String> CRM_OBJECTS = List.of(
             "lead", "khach hang", "khach", "deal", "co hoi", "giao dich", "thuong vu",
@@ -77,7 +92,7 @@ public class IntentClassifier {
             "dao ham", "tich phan", "can bac", "math", "calculate", "solve",
             "viet code", "lap trinh", "thuat toan", "code giup", "debug",
             "dich giup", "translate", "thoi tiet", "weather", "nau an", "cong thuc nau",
-            "lam tho", "ke chuyen", "ke mot", "joke", "cuoi", "bong da", "ty so", "game",
+            "lam tho", "ke chuyen", "ke mot cau chuyen", "joke", "bong da", "ty so", "game",
             "ai la ai trong phim", "nghia la gi tieng");
 
     private static final List<String> GREETINGS = List.of(
@@ -85,24 +100,41 @@ public class IntentClassifier {
             "giup gi", "help", "huong dan su dung", "ban giup");
 
     public IntentResult classify(String rawMessage) {
+        return classify(rawMessage, null);
+    }
+
+    /**
+     * @param lastIntentName the {@code intentMatched} of the previous assistant turn (nullable).
+     *                       Lets ambiguous follow-ups ("ai được thêm cuối cùng?") continue the
+     *                       ongoing business conversation instead of being treated as off-topic.
+     */
+    public IntentResult classify(String rawMessage, String lastIntentName) {
         String text = normalize(rawMessage);
+        boolean vi = isVietnamese(rawMessage);
 
         // [1] Read-only guardrail (BR-35) — highest priority.
         if (isMutation(text)) {
-            return IntentResult.blocked(ChatIntent.MUTATION_BLOCKED, GuardrailMessages.MUTATION_REFUSAL);
+            return IntentResult.blocked(ChatIntent.MUTATION_BLOCKED, GuardrailMessages.mutationRefusal(vi));
         }
 
         boolean hasBusiness = containsAny(text, BUSINESS_KEYWORDS);
 
-        // [2] Off-topic guardrail — only when there is no business signal at all.
+        // [2] Off-topic / continuation handling — only when there is no business signal at all.
         if (!hasBusiness) {
+            // A clear off-topic signal (math, code, weather...) is refused even mid-conversation.
+            if (containsAny(text, OFF_TOPIC_SIGNALS)) {
+                return IntentResult.blocked(ChatIntent.OFF_TOPIC, GuardrailMessages.offTopicRefusal(vi));
+            }
             if (containsAny(text, GREETINGS)) {
                 return IntentResult.of(ChatIntent.GENERAL_BUSINESS);
             }
-            if (containsAny(text, OFF_TOPIC_SIGNALS)) {
-                return IntentResult.blocked(ChatIntent.OFF_TOPIC, GuardrailMessages.OFF_TOPIC_REFUSAL);
+            // Ambiguous follow-up inside a business conversation → keep the prior data scope so
+            // the LLM still receives the relevant CRM/RAG context to resolve the reference.
+            ChatIntent inherited = dataIntentOrNull(lastIntentName);
+            if (inherited != null) {
+                return IntentResult.of(inherited);
             }
-            // Ambiguous & non-business → let the LLM answer under a strict system prompt.
+            // First-turn ambiguous & non-business → let the LLM answer under a strict system prompt.
             return IntentResult.of(ChatIntent.GENERAL_BUSINESS);
         }
 
@@ -119,21 +151,79 @@ public class IntentClassifier {
         return IntentResult.of(ChatIntent.GENERAL_BUSINESS);
     }
 
-    private boolean isMutation(String text) {
-        if (containsAny(text, HARD_MUTATION_VERBS)) {
-            return true;
+    /** Returns the intent to continue if {@code name} is a data/RAG intent, else null. */
+    private ChatIntent dataIntentOrNull(String name) {
+        if (name == null) {
+            return null;
         }
+        try {
+            ChatIntent prev = ChatIntent.valueOf(name);
+            return switch (prev) {
+                case ASSIGNED_DATA, TEAM_SUMMARY, DOC_QUERY, GENERAL_BUSINESS -> prev;
+                default -> null;
+            };
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    /**
+     * A turn is a blocked mutation only when it is phrased as a COMMAND, not a question.
+     *
+     * <p>This is deliberately conservative: the assistant is architecturally read-only (it has no
+     * tool to write data), so a missed command still gets refused by the LLM system prompt. The
+     * expensive failure is the opposite — blocking a legitimate question that merely reuses a verb
+     * ("lead nào được <b>tạo</b> cuối cùng?", "ai đã <b>xóa</b> lead X?"). So we require an
+     * imperative phrasing and the absence of question/read markers.
+     */
+    private boolean isMutation(String text) {
+        boolean hasHardVerb = containsAny(text, HARD_MUTATION_VERBS);
+        boolean hasSoftVerbOnObject = false;
         for (String verb : SOFT_MUTATION_VERBS) {
             if (text.contains(verb) && containsAny(text, CRM_OBJECTS)) {
-                // "cap nhat / update / sua / doi / change / huy" are ambiguous with read requests
-                // ("cập nhật cho tôi tình hình deal"). If the turn clearly asks to view data, don't block.
-                boolean ambiguousVerb = verb.startsWith("cap nhat") || verb.startsWith("update")
-                        || verb.startsWith("sua") || verb.startsWith("doi") || verb.startsWith("thay doi")
-                        || verb.startsWith("huy") || verb.startsWith("cancel") || verb.startsWith("modify")
-                        || verb.startsWith("edit");
-                if (ambiguousVerb && containsAny(text, READ_INTENT)) {
-                    continue;
-                }
+                hasSoftVerbOnObject = true;
+                break;
+            }
+        }
+        if (!hasHardVerb && !hasSoftVerbOnObject) {
+            return false;
+        }
+
+        boolean imperative = containsAny(text, COMMAND_MARKERS) || startsWithVerb(text);
+        boolean questionOrRead = containsAny(text, QUESTION_READ_MARKERS);
+        return imperative && !questionOrRead;
+    }
+
+    /** True when the message begins with a mutation verb (imperative form). */
+    private boolean startsWithVerb(String wrappedText) {
+        for (String verb : START_VERBS) {
+            if (wrappedText.startsWith(" " + verb)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Heuristic language detection for picking the canned-message language. Returns Vietnamese when
+     * the raw text has Vietnamese diacritics or common Vietnamese function words; English otherwise.
+     */
+    static boolean isVietnamese(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return true;
+        }
+        String lower = raw.toLowerCase();
+        if (lower.matches("(?s).*[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ].*")) {
+            return true;
+        }
+        String wrapped = " " + lower.replaceAll("\\s+", " ").trim() + " ";
+        String[] viWords = {
+                " toi ", " ban ", " cua ", " cho ", " xem ", " khong ", " nguoi ", " duoc ",
+                " danh sach ", " giup ", " la ", " va ", " nhung ", " bao nhieu ", " cuoi cung ",
+                " hay ", " gium ", " minh ", " nao ", " bao cao ", " khach "
+        };
+        for (String w : viWords) {
+            if (wrapped.contains(w)) {
                 return true;
             }
         }

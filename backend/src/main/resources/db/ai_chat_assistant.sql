@@ -24,8 +24,12 @@ CREATE TABLE IF NOT EXISTS ai_documents (
 
 -- ----------------------------------------------------------------------------
 -- Vector store (normally created automatically by Spring AI). Provided for the
--- manual path. Dimension 1024 matches the bge-m3 embedding model — change it if
--- you use a different OLLAMA_EMBEDDING_MODEL (and AI_EMBEDDING_DIMENSIONS).
+-- manual path. Dimension 768 matches the Gemini `text-embedding-004` model — change
+-- it if you use a different GEMINI_EMBEDDING_MODEL (and AI_EMBEDDING_DIMENSIONS).
+--
+-- ⚠️ If you switched embedding models, the dimension changed. Spring AI will NOT
+--    alter an existing table, so drop it once and let it be recreated:
+--        DROP TABLE IF EXISTS public.leadora_vector_store;
 -- ----------------------------------------------------------------------------
 -- CREATE EXTENSION IF NOT EXISTS hstore;
 -- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -33,7 +37,7 @@ CREATE TABLE IF NOT EXISTS ai_documents (
 --     id        UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
 --     content   TEXT,
 --     metadata  JSON,
---     embedding VECTOR(1024)
+--     embedding VECTOR(768)
 -- );
 -- CREATE INDEX IF NOT EXISTS leadora_vector_store_hnsw_idx
 --     ON public.leadora_vector_store USING HNSW (embedding vector_cosine_ops);

@@ -18,14 +18,12 @@ spring:
   # block below is commented out). Their auto-configurations fail fast on missing
   # credentials / unavailable services, so exclude them while AI is disabled.
   # Remove the relevant entry when you enable that integration.
-  # AI chat assistant (feature/ai_internal) is enabled via Ollama + pgvector.
-  # The remaining exclusions are for integrations we are NOT using yet (Google GenAI,
-  # JDBC chat-memory — we persist messages ourselves in ai_chat_messages, Elasticsearch, Redis).
+  # AI chat assistant (feature/ai_internal): chat + embeddings BOTH via Google Gemini API (no local AI).
+  # Provider is selected with spring.ai.model.chat / spring.ai.model.embedding below, so the
+  # Ollama and Anthropic auto-configs back off cleanly (no Ollama needs to run). Only non-model
+  # integrations we don't use are excluded here (JDBC chat-memory, Elasticsearch, Redis vector stores).
   autoconfigure:
     exclude:
-      - org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration
-      - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiEmbeddingConnectionAutoConfiguration
-      - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiTextEmbeddingAutoConfiguration
       - org.springframework.ai.model.chat.memory.repository.jdbc.autoconfigure.JdbcChatMemoryRepositoryAutoConfiguration
       - org.springframework.ai.vectorstore.elasticsearch.autoconfigure.ElasticsearchVectorStoreAutoConfiguration
       - org.springframework.ai.vectorstore.redis.autoconfigure.RedisVectorStoreAutoConfiguration
@@ -34,7 +32,8 @@ spring:
     compose:
       enabled: false
 
-  # Import environment variables from the root .env file if present
+  # Single shared .env lives at the repo root (leadora/.env). Run the backend from
+  # leadora/backend/ so ../.env resolves to it. optional: missing file → use defaults below.
   config:
     import:
       - optional:file:../.env[.properties]
@@ -78,28 +77,32 @@ spring:
 
 
   # Spring AI configuration — Internal Sales Chat Assistant (feature/ai_internal)
-  # Runtime: local Ollama (chat + embeddings) + pgvector store for RAG.
+  # Runtime: Google Gemini API for BOTH chat and embeddings (no local AI) + pgvector store for RAG.
   ai:
-    ollama:
-      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-      # Do NOT auto-pull models at boot — the app must start even when Ollama is down.
-      # Pull manually:  ollama pull qwen2.5:3b   &&   ollama pull bge-m3
-      init:
-        pull-model-strategy: never
-      chat:
-        options:
-          model: ${OLLAMA_CHAT_MODEL:qwen2.5:3b}
-          temperature: ${OLLAMA_CHAT_TEMPERATURE:0.2}
-      embedding:
-        options:
-          model: ${OLLAMA_EMBEDDING_MODEL:bge-m3}
+    # Select Gemini as the active provider so Ollama/Anthropic auto-configs back off.
+    model:
+      chat: google-genai
+      embedding: google-genai
+    google:
+      genai:
+        # Gemini Developer API: just an API key (no project-id/location → not Vertex).
+        api-key: ${GEMINI_API_KEY:}
+        chat:
+          options:
+            # Cheap + fast, good for CRM Q&A. Other options: gemini-2.5-flash-lite, gemini-2.5-pro.
+            model: ${GEMINI_CHAT_MODEL:gemini-2.5-flash}
+            temperature: ${GEMINI_CHAT_TEMPERATURE:0.2}
+        embedding:
+          text:
+            options:
+              model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}   # 768 dimensions
     vectorstore:
       pgvector:
         # Creates the `vector` extension, the table and an HNSW index on first run.
         initialize-schema: ${AI_VECTORSTORE_INIT_SCHEMA:true}
         table-name: leadora_vector_store
         schema-name: public
-        dimensions: ${AI_EMBEDDING_DIMENSIONS:1024}   # bge-m3 → 1024
+        dimensions: ${AI_EMBEDDING_DIMENSIONS:768}   # text-embedding-004 → 768
         index-type: HNSW
         distance-type: COSINE_DISTANCE
 
