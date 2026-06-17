@@ -1,56 +1,173 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useMemo } from "react";
-import { FileSpreadsheet, Search, CheckCircle2, Calendar } from "lucide-react";
+import Link from "next/link";
+import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Clock, XCircle, RotateCcw, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-export type Quotation = {
+import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { SendQuotationModal } from "@/features/quotation/components/SendQuotationModal";
+import { RecordResponseModal } from "@/features/quotation/components/RecordResponseModal";
+import { ConvertToBookingModal } from "@/features/quotation/components/ConvertToBookingModal";
+import { ExpireCloseModal } from "@/features/quotation/components/ExpireCloseModal";
+import type { Quotation } from "@/services/quotation_service";
+export type { Quotation } from "@/services/quotation_service";
+
+type ClosureLog = {
   id: string;
+  quotationId: string;
   quoteNo: string;
   contactName: string;
-  dealName: string;
-  amount: number;
-  expiryDate: string;
-  status: "draft" | "sent" | "accepted" | "expired";
+  action: "expired" | "closed";
+  reason: string;
+  closedAt: string;
+  closedBy: string;
+  previousStatus: string;
 };
 
 export function QuotationListScreen() {
   const [quotes, setQuotes] = useState<Quotation[]>([]);
+  const [closureLogs, setClosureLogs] = useState<ClosureLog[]>([]);
   const [search, setSearch] = useState("");
+  const [sendTarget, setSendTarget] = useState<Quotation | null>(null);
+  const [responseTarget, setResponseTarget] = useState<Quotation | null>(null);
+  const [convertTarget, setConvertTarget] = useState<Quotation | null>(null);
+  const [closeTarget, setCloseTarget] = useState<Quotation | null>(null);
+  const [autoExpireResult, setAutoExpireResult] = useState<number | null>(null);
+  const [showClosureLog, setShowClosureLog] = useState(false);
 
-  const filteredQuotes = useMemo(() => {
-    return quotes.filter(
-      q =>
-        q.quoteNo.toLowerCase().includes(search.toLowerCase()) ||
-        q.contactName.toLowerCase().includes(search.toLowerCase()) ||
-        q.dealName.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [quotes, search]);
+  const filteredQuotes = useMemo(
+    () =>
+      quotes.filter(
+        (q) =>
+          q.quoteNo.toLowerCase().includes(search.toLowerCase()) ||
+          q.contactName.toLowerCase().includes(search.toLowerCase()) ||
+          q.dealName.toLowerCase().includes(search.toLowerCase())
+      ),
+    [quotes, search]
+  );
 
-  const handleAction = (id: string, action: string) => {
-    if (action === "approve") {
-      setQuotes(prev =>
-        prev.map(q => (q.id === id ? { ...q, status: "accepted" as const } : q))
-      );
-      alert("Quotation status updated to Accepted. Opportunity moved to Contract stage.");
-    } else {
-      alert(`Action '${action}' triggered for Quote ${id}.`);
+  const handleSent = (_quotationId: string) => {
+    setQuotes(prev => prev.map(q => q.id === _quotationId ? { ...q, status: "sent" as const } : q));
+    setSendTarget(null);
+  };
+
+  const handleResponseRecorded = (_quotationId: string) => {
+    setQuotes(prev => prev.map(q => q.id === _quotationId ? { ...q, status: "interested" as const } : q));
+    setResponseTarget(null);
+  };
+
+  const handleConverted = (_quotationId: string, _bookingNo: string) => {
+    setQuotes(prev => prev.map(q => q.id === _quotationId ? { ...q, status: "converted" as const } : q));
+    setConvertTarget(null);
+  };
+
+  const handleClosed = (_quotationId: string) => {
+    const target = quotes.find(q => q.id === _quotationId);
+    if (target) {
+      setClosureLogs(prev => [{
+        id: `CL-${_quotationId}`,
+        quotationId: _quotationId,
+        quoteNo: target.quoteNo,
+        contactName: target.contactName,
+        action: "closed",
+        reason: "Manually closed",
+        closedAt: new Date().toISOString().split("T")[0],
+        closedBy: "Agent",
+        previousStatus: target.status,
+      }, ...prev]);
     }
+    setQuotes(prev => prev.map(q => q.id === _quotationId ? { ...q, status: "closed" as const } : q));
+    setCloseTarget(null);
+  };
+
+  const runAutoExpire = () => {
+    const today = new Date().toISOString().split("T")[0];
+    const eligibleStatuses: Quotation["status"][] = ["draft", "sent", "pending_approval", "interested", "pending_revision"];
+    const toExpire = quotes.filter(q => eligibleStatuses.includes(q.status) && q.expiryDate < today);
+    if (toExpire.length > 0) {
+      setClosureLogs(prev => [
+        ...toExpire.map(q => ({
+          id: `CL-auto-${q.id}`,
+          quotationId: q.id,
+          quoteNo: q.quoteNo,
+          contactName: q.contactName,
+          action: "expired" as const,
+          reason: "Validity period exceeded — auto-expired by system",
+          closedAt: today,
+          closedBy: "System (Auto)",
+          previousStatus: q.status,
+        })),
+        ...prev,
+      ]);
+      setQuotes(prev => prev.map(q =>
+        eligibleStatuses.includes(q.status) && q.expiryDate < today ? { ...q, status: "expired" as const } : q
+      ));
+    }
+    setAutoExpireResult(toExpire.length);
+    setTimeout(() => setAutoExpireResult(null), 4000);
+  };
+
+  const statusBadgeVariant = (status: Quotation["status"]) => {
+    if (status === "accepted" || status === "approved" || status === "converted") return "success";
+    if (status === "sent") return "primary";
+    if (status === "expired" || status === "rejected" || status === "closed") return "danger";
+    if (status === "pending_approval") return "warning";
+    if (status === "pending_revision" || status === "interested") return "info";
+    return "default";
+  };
+
+  const statusLabel = (status: Quotation["status"]) => {
+    if (status === "pending_approval") return "Pending Approval";
+    if (status === "pending_revision") return "Needs Revision";
+    if (status === "interested") return "Interested";
+    if (status === "converted") return "Converted";
+    if (status === "closed") return "Closed";
+    return status;
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-start gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Quotes & Price Proposals</h1>
-          <p className="text-xs text-slate-400">Generate, customize, and issue lodging room block or banquet buffet quotations</p>
+          <h1 className="text-xl font-bold text-slate-800">Quotes &amp; Price Proposals</h1>
+          <p className="text-xs text-slate-400">
+            Generate, customize, and issue lodging room block or banquet buffet quotations
+          </p>
         </div>
-        <Badge variant="primary" className="text-xs px-2.5 font-bold uppercase bg-blue-100 text-blue-800">
-          Template Desk Active
-        </Badge>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runAutoExpire}
+            leftIcon={<TimerOff className="size-3.5" />}
+            className="text-xs border-slate-200 text-slate-600 hover:bg-slate-50"
+          >
+            Auto-Expire Overdue
+          </Button>
+          <Link href={ROUTE_PATHS.quotationCreate}>
+            <Button variant="primary" size="sm" leftIcon={<Plus className="size-3.5" />} className="text-xs font-bold">
+              New Quotation
+            </Button>
+          </Link>
+        </div>
       </div>
+
+      {/* Auto-expire result banner */}
+      {autoExpireResult !== null && (
+        <div className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border ${
+          autoExpireResult > 0
+            ? "bg-amber-50 border-amber-200 text-amber-700"
+            : "bg-slate-50 border-slate-200 text-slate-500"
+        }`}>
+          <TimerOff className="size-3.5 shrink-0" />
+          {autoExpireResult > 0
+            ? `${autoExpireResult} overdue quotation${autoExpireResult !== 1 ? "s" : ""} marked as Expired. Linked reminders resolved.`
+            : "No overdue quotations found — all validity periods are current."}
+        </div>
+      )}
 
       <Card className="border-slate-100 shadow-sm bg-white">
         <CardContent className="py-3 px-4">
@@ -60,7 +177,7 @@ export function QuotationListScreen() {
               type="text"
               placeholder="Search quote reference #, client name..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
             />
           </div>
@@ -69,23 +186,23 @@ export function QuotationListScreen() {
 
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
         <Table>
-          <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
+          <TableHeader className="bg-slate-50 border-b border-slate-100">
             <TableRow hoverable={false}>
               <TableHead className="font-semibold text-xs text-slate-500">Quote Reference</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Client Name</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Linked Deal</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Total Price Estimate</TableHead>
+              <TableHead className="font-semibold text-xs text-slate-500">Total</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Valid Until</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Status</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500 text-center">Desk Quick Actions</TableHead>
+              <TableHead className="font-semibold text-xs text-slate-500 text-center">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredQuotes.length > 0 ? (
-              filteredQuotes.map(q => (
+              filteredQuotes.map((q) => (
                 <TableRow key={q.id} className="hover:bg-slate-50/70 border-b border-slate-100 transition">
-                  <TableCell className="py-3 px-4 text-xs font-bold text-slate-800">
-                    <span className="flex items-center gap-1.5 text-blue-600">
+                  <TableCell className="py-3 px-4 text-xs font-bold text-blue-600">
+                    <span className="flex items-center gap-1.5">
                       <FileSpreadsheet className="size-3.5 text-slate-400" />
                       {q.quoteNo}
                     </span>
@@ -93,7 +210,7 @@ export function QuotationListScreen() {
                   <TableCell className="py-3 px-4 text-xs font-bold text-slate-700">{q.contactName}</TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-600 font-semibold">{q.dealName}</TableCell>
                   <TableCell className="py-3 px-4 text-xs font-black text-slate-800">
-                    ${q.amount.toLocaleString()}
+                    ${q.amount.toLocaleString('en-US')}
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-500 font-semibold">
                     <span className="flex items-center gap-1">
@@ -102,48 +219,195 @@ export function QuotationListScreen() {
                     </span>
                   </TableCell>
                   <TableCell className="py-3 px-4">
-                    <Badge
-                      variant={
-                        q.status === "accepted"
-                          ? "success"
-                          : q.status === "sent"
-                          ? "primary"
-                          : q.status === "expired"
-                          ? "danger"
-                          : "default"
-                      }
-                      size="sm"
-                      className="font-bold text-[9px] uppercase"
-                    >
-                      {q.status}
+                    <Badge variant={statusBadgeVariant(q.status)} size="sm" className="font-bold text-[9px] uppercase">
+                      {statusLabel(q.status)}
                     </Badge>
                   </TableCell>
                   <TableCell className="py-3 px-4 text-center">
-                    {q.status === "sent" ? (
-                      <div className="flex justify-center items-center gap-1.5">
+                    {q.status === "approved" ? (
+                      // UC-14.4: Send to Customer button
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => setSendTarget(q)}
+                        leftIcon={<Send className="size-3" />}
+                        className="px-2.5 py-1 text-[10px] font-bold"
+                      >
+                        Send to Customer
+                      </Button>
+                    ) : q.status === "sent" ? (
+                      <div className="flex justify-center items-center gap-1.5 flex-wrap">
                         <Button
-                          variant="success"
+                          variant="primary"
                           size="sm"
-                          onClick={() => handleAction(q.id, "approve")}
-                          className="px-2.5 py-1 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                          onClick={() => setResponseTarget(q)}
+                          leftIcon={<MessageSquare className="size-3" />}
+                          className="px-2.5 py-1 text-[10px] font-bold"
                         >
-                          Mark Approved
+                          Record Response
                         </Button>
+                        <Link href={ROUTE_PATHS.quotationRevise(q.id)}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            leftIcon={<GitBranch className="size-3" />}
+                            className="px-2.5 py-1 text-[10px] border-slate-200 text-slate-600 hover:bg-slate-50"
+                          >
+                            Revise
+                          </Button>
+                        </Link>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleAction(q.id, "resend")}
-                          className="px-2.5 py-1 text-[10px] border-slate-200 text-slate-600 hover:bg-slate-50"
+                          onClick={() => setCloseTarget(q)}
+                          title="Close quotation"
+                          className="px-1.5 py-1 text-[10px] border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
                         >
-                          Resend
+                          <Archive className="size-3" />
                         </Button>
                       </div>
                     ) : q.status === "accepted" ? (
+                      // UC-14.7: Convert to Booking
+                      <Button
+                        variant="success"
+                        size="sm"
+                        onClick={() => setConvertTarget(q)}
+                        leftIcon={<Building2 className="size-3" />}
+                        className="px-2.5 py-1 text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        Convert to Booking
+                      </Button>
+                    ) : q.status === "converted" ? (
                       <span className="text-[10px] text-emerald-600 font-bold flex items-center justify-center gap-1">
-                        <CheckCircle2 className="size-3.5" /> Approved
+                        <CheckCircle2 className="size-3.5" /> Converted
+                      </span>
+                    ) : q.status === "rejected" ? (
+                      <div className="flex flex-col items-center gap-1.5">
+                        <span className="text-[10px] text-red-500 font-bold flex items-center justify-center gap-1">
+                          <XCircle className="size-3.5" /> Rejected
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <Link href={ROUTE_PATHS.quotationRevise(q.id)}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              leftIcon={<GitBranch className="size-3" />}
+                              className="px-2 py-0.5 text-[9px] border-slate-200 text-slate-500 hover:bg-slate-50"
+                            >
+                              Revise
+                            </Button>
+                          </Link>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCloseTarget(q)}
+                            title="Close quotation"
+                            className="px-1.5 py-0.5 text-[9px] border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
+                          >
+                            <Archive className="size-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : q.status === "pending_approval" ? (
+                      <div className="flex justify-center items-center gap-1.5">
+                        <span className="text-[10px] text-amber-600 font-bold flex items-center gap-1">
+                          <Clock className="size-3.5" /> Awaiting Manager
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCloseTarget(q)}
+                          title="Close quotation"
+                          className="px-1.5 py-1 text-[10px] border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
+                        >
+                          <Archive className="size-3" />
+                        </Button>
+                      </div>
+                    ) : q.status === "pending_revision" ? (
+                      <div className="flex justify-center items-center gap-1.5">
+                        <Link href={ROUTE_PATHS.quotationRevise(q.id)}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            leftIcon={<RotateCcw className="size-3" />}
+                            className="px-2.5 py-1 text-[10px] border-blue-200 text-blue-600 hover:bg-blue-50"
+                          >
+                            Revise
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCloseTarget(q)}
+                          title="Close quotation"
+                          className="px-1.5 py-1 text-[10px] border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
+                        >
+                          <Archive className="size-3" />
+                        </Button>
+                      </div>
+                    ) : q.status === "draft" ? (
+                      <div className="flex justify-center items-center gap-1.5">
+                        <Link href={ROUTE_PATHS.quotationRevise(q.id)}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            leftIcon={<GitBranch className="size-3" />}
+                            className="px-2.5 py-1 text-[10px] border-slate-200 text-slate-600 hover:bg-slate-50"
+                          >
+                            Revise
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCloseTarget(q)}
+                          title="Close quotation"
+                          className="px-1.5 py-1 text-[10px] border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
+                        >
+                          <Archive className="size-3" />
+                        </Button>
+                      </div>
+                    ) : q.status === "interested" ? (
+                      <div className="flex justify-center items-center gap-1.5 flex-wrap">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setResponseTarget(q)}
+                          leftIcon={<Sparkles className="size-3" />}
+                          className="px-2.5 py-1 text-[10px] border-blue-200 text-blue-600 hover:bg-blue-50 font-bold"
+                        >
+                          Update Response
+                        </Button>
+                        <Link href={ROUTE_PATHS.quotationRevise(q.id)}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            leftIcon={<GitBranch className="size-3" />}
+                            className="px-2.5 py-1 text-[10px] border-slate-200 text-slate-600 hover:bg-slate-50"
+                          >
+                            Revise
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCloseTarget(q)}
+                          title="Close quotation"
+                          className="px-1.5 py-1 text-[10px] border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
+                        >
+                          <Archive className="size-3" />
+                        </Button>
+                      </div>
+                    ) : q.status === "expired" ? (
+                      <span className="text-[10px] text-red-400 font-semibold flex items-center justify-center gap-1">
+                        <TimerOff className="size-3.5" /> Expired
+                      </span>
+                    ) : q.status === "closed" ? (
+                      <span className="text-[10px] text-slate-400 font-semibold flex items-center justify-center gap-1">
+                        <Archive className="size-3.5" /> Closed
                       </span>
                     ) : (
-                      <span className="text-[10px] text-slate-400 italic">No action</span>
+                      <span className="text-[10px] text-slate-400 italic">—</span>
                     )}
                   </TableCell>
                 </TableRow>
@@ -158,6 +422,108 @@ export function QuotationListScreen() {
           </TableBody>
         </Table>
       </div>
+
+      {/* UC-14.4: Send Quotation Modal */}
+      {sendTarget && (
+        <SendQuotationModal
+          quote={sendTarget}
+          onClose={() => setSendTarget(null)}
+          onSent={handleSent}
+        />
+      )}
+
+      {/* UC-14.6: Record Customer Response Modal */}
+      {responseTarget && (
+        <RecordResponseModal
+          quote={responseTarget}
+          onClose={() => setResponseTarget(null)}
+          onRecorded={handleResponseRecorded}
+        />
+      )}
+
+      {/* UC-14.7: Convert to Booking Modal */}
+      {convertTarget && (
+        <ConvertToBookingModal
+          quote={convertTarget}
+          onClose={() => setConvertTarget(null)}
+          onConverted={handleConverted}
+        />
+      )}
+
+      {/* UC-14.8: Expire / Close Modal */}
+      {closeTarget && (
+        <ExpireCloseModal
+          quote={closeTarget}
+          onClose={() => setCloseTarget(null)}
+          onClosed={handleClosed}
+        />
+      )}
+
+      {/* UC-14.8: Closure & Expiry Audit Log */}
+      <Card className="border-slate-100 shadow-sm bg-white">
+        <CardHeader>
+          <button
+            type="button"
+            onClick={() => setShowClosureLog((v) => !v)}
+            className="flex items-center justify-between w-full"
+          >
+            <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
+              <Archive className="size-4 text-slate-400" />
+              Closure &amp; Expiry Audit Log
+              <span className="text-[10px] font-normal text-slate-400">
+                ({closureLogs.length} entr{closureLogs.length !== 1 ? "ies" : "y"})
+              </span>
+            </CardTitle>
+            {showClosureLog ? (
+              <ChevronUp className="size-4 text-slate-400" />
+            ) : (
+              <ChevronDown className="size-4 text-slate-400" />
+            )}
+          </button>
+        </CardHeader>
+        {showClosureLog && (
+          <CardContent className="pt-0">
+            {closureLogs.length === 0 ? (
+              <p className="text-xs text-slate-400 italic py-2">No closures or expirations recorded yet.</p>
+            ) : (
+              <Table>
+                <TableHeader className="bg-slate-50">
+                  <TableRow hoverable={false}>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">Quote</TableHead>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">Client</TableHead>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">Action</TableHead>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">Prev. Status</TableHead>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">Date</TableHead>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">By</TableHead>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">Reason</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...closureLogs].reverse().map((log) => (
+                    <TableRow key={log.id} className="border-b border-slate-100">
+                      <TableCell className="py-2 text-xs font-bold text-blue-600">{log.quoteNo}</TableCell>
+                      <TableCell className="py-2 text-xs text-slate-700">{log.contactName}</TableCell>
+                      <TableCell className="py-2">
+                        <Badge
+                          variant={log.action === "expired" ? "warning" : "default"}
+                          size="sm"
+                          className="font-bold text-[9px] uppercase"
+                        >
+                          {log.action}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="py-2 text-xs text-slate-500 capitalize">{log.previousStatus.replace("_", " ")}</TableCell>
+                      <TableCell className="py-2 text-xs text-slate-500">{log.closedAt}</TableCell>
+                      <TableCell className="py-2 text-xs text-slate-500">{log.closedBy}</TableCell>
+                      <TableCell className="py-2 text-xs text-slate-400 max-w-[160px] truncate">{log.reason}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        )}
+      </Card>
     </div>
   );
 }

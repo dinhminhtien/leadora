@@ -4,6 +4,10 @@ import { handleAuthMiddleware } from "@/app/middleware/auth_middleware";
 import { updateSupabaseSession } from "@/services/supabase/middleware";
 
 export async function proxy(request: NextRequest) {
+  if (process.env.NODE_ENV === "development") {
+    return undefined;
+  }
+
   // 1. Refresh Supabase session cookies on every request
   const { user, supabaseResponse } = await updateSupabaseSession(request);
 
