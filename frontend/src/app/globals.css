@@ -12,23 +12,61 @@
   --input: #ffffff;
   --ring: rgba(79, 70, 229, 0.12);
   
-  /* Brand Colors */
-  --primary: #4f46e5;
-  --primary-foreground: #ffffff;
+  /* Brand Colors — Leadora Design System */
+  --primary: #185FA5;           /* Blue 600 — CRM & Sales */
+  --primary-foreground: #E6F1FB;
   --secondary: #18181b;
   --secondary-foreground: #ffffff;
-  --accent: #6366f1;
+  --accent: #1D9E75;            /* Teal 400 — Reservation accent */
   --accent-foreground: #ffffff;
-  
-  /* Status Colors */
-  --success: #10b981;
-  --success-foreground: #ffffff;
-  --warning: #f59e0b;
-  --warning-foreground: #ffffff;
-  --danger: #f43f5e;
-  --danger-foreground: #ffffff;
-  --info: #0ea5e9;
-  --info-foreground: #ffffff;
+
+  /* Status Colors — Leadora DS */
+  --success: #3B6D11;           /* Green 600 */
+  --success-foreground: #EAF3DE;
+  --warning: #BA7517;           /* Amber 600 */
+  --warning-foreground: #FAEEDA;
+  --danger: #A32D2D;            /* Red 600 */
+  --danger-foreground: #FCEBEB;
+  --info: #534AB7;              /* Purple 600 — System & AI */
+  --info-foreground: #EEEDFE;
+
+  /* Leadora Full Color Ramps */
+  --ds-blue-50: #E6F1FB;
+  --ds-blue-200: #85B7EB;
+  --ds-blue-400: #378ADD;
+  --ds-blue-600: #185FA5;
+  --ds-blue-800: #0C447C;
+  --ds-blue-900: #042C53;
+
+  --ds-teal-50: #E1F5EE;
+  --ds-teal-400: #1D9E75;
+  --ds-teal-600: #0F6E56;
+  --ds-teal-800: #085041;
+
+  --ds-amber-50: #FAEEDA;
+  --ds-amber-400: #EF9F27;
+  --ds-amber-600: #BA7517;
+  --ds-amber-800: #854F0B;
+
+  --ds-red-50: #FCEBEB;
+  --ds-red-400: #E24B4A;
+  --ds-red-600: #A32D2D;
+  --ds-red-800: #791F1F;
+
+  --ds-green-50: #EAF3DE;
+  --ds-green-400: #639922;
+  --ds-green-600: #3B6D11;
+  --ds-green-800: #27500A;
+
+  --ds-purple-50: #EEEDFE;
+  --ds-purple-400: #7F77DD;
+  --ds-purple-600: #534AB7;
+  --ds-purple-800: #3C3489;
+
+  --ds-gray-50: #F1EFE8;
+  --ds-gray-400: #888780;
+  --ds-gray-600: #5F5E5A;
+  --ds-gray-800: #444441;
   
   /* Chart Colors */
   --chart-1: #4f46e5;
@@ -70,11 +108,11 @@
     --border: #27272a;
     --input: #09090b;
     --ring: rgba(99, 102, 241, 0.2);
-    --primary: #6366f1;
-    --primary-foreground: #ffffff;
+    --primary: #378ADD;           /* Blue 400 — lighter for dark bg */
+    --primary-foreground: #E6F1FB;
     --secondary: #27272a;
     --secondary-foreground: #ffffff;
-    --accent: #818cf8;
+    --accent: #5DCAA5;            /* Teal 400 — lighter for dark bg */
     --accent-foreground: #09090b;
     --chart-grid: #27272a;
   }
@@ -87,12 +125,12 @@
   --muted-foreground: #a1a1aa;
   --border: #27272a;
   --input: #09090b;
-  --ring: rgba(99, 102, 241, 0.2);
-  --primary: #6366f1;
-  --primary-foreground: #ffffff;
+  --ring: rgba(55, 138, 221, 0.2);
+  --primary: #378ADD;
+  --primary-foreground: #E6F1FB;
   --secondary: #27272a;
   --secondary-foreground: #ffffff;
-  --accent: #818cf8;
+  --accent: #5DCAA5;
   --accent-foreground: #09090b;
   --chart-grid: #27272a;
 }
@@ -104,12 +142,12 @@
   --muted-foreground: #71717a;
   --border: #e4e4e7;
   --input: #ffffff;
-  --ring: rgba(79, 70, 229, 0.12);
-  --primary: #4f46e5;
-  --primary-foreground: #ffffff;
+  --ring: rgba(24, 95, 165, 0.12);
+  --primary: #185FA5;
+  --primary-foreground: #E6F1FB;
   --secondary: #18181b;
   --secondary-foreground: #ffffff;
-  --accent: #6366f1;
+  --accent: #1D9E75;
   --accent-foreground: #ffffff;
   --chart-grid: #e4e4e7;
 }
@@ -210,7 +248,7 @@ textarea {
   border-top-color: var(--border) !important;
 }
 
-/* Remap generic blue colors to premium Indigo primary in Dark Mode */
+/* In dark mode, remap blue-600/700 to DS Blue 400 (#378ADD) for readability */
 .dark .bg-blue-600 {
   background-color: var(--primary) !important;
 }
@@ -229,6 +267,11 @@ textarea {
   background-color: var(--primary) !important;
   filter: brightness(0.95);
 }
+
+/* DS color utility classes */
+.ds-primary { color: #185FA5; }
+.ds-bg-primary { background-color: #185FA5; }
+.ds-bg-primary-light { background-color: #E6F1FB; }
 
 .dark .shadow-sm,
 .dark .shadow-xs,
