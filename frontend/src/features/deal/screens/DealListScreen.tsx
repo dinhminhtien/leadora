@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useMemo, useEffect } from "react";
 import {
@@ -217,11 +217,11 @@ export function DealListScreen() {
         </div>
         <div className="border-r border-slate-100 last:border-0 px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">Pipeline Value</p>
-          <p className="text-lg font-bold text-slate-800 mt-1">${stats.activeValue.toLocaleString()}</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">${stats.activeValue.toLocaleString('en-US')}</p>
         </div>
         <div className="border-r border-slate-100 last:border-0 px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">Won Revenue</p>
-          <p className="text-lg font-bold text-slate-800 mt-1">${stats.wonValue.toLocaleString()}</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">${stats.wonValue.toLocaleString('en-US')}</p>
         </div>
         <div className="px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">Win Ratio (Closed)</p>
@@ -317,7 +317,7 @@ export function DealListScreen() {
                     </div>
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs font-bold text-slate-800">
-                    ${deal.value.toLocaleString()}
+                    ${deal.value.toLocaleString('en-US')}
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-500 font-medium">
                     <div className="flex items-center gap-1">
