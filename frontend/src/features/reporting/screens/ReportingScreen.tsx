@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { BarChart2, FileText, Download, Printer, AlertCircle, CheckCircle2, ClipboardList } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
@@ -8,7 +8,21 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { mockDb, type Quotation, type ReportLog } from "@/shared/mock/mockData";
+import { quotationService, type Quotation } from "@/services/quotation_service";
+
+export interface ReportLog {
+  id: string;
+  generatedBy: string;
+  role: string;
+  generatedAt: string;
+  filters: {
+    dateFrom: string;
+    dateTo: string;
+    roomType?: string;
+    discountThreshold: number;
+  };
+  resultCount: number;
+}
 
 // ── Analytics Tab ────────────────────────────────────────────────────────────
 
@@ -173,23 +187,55 @@ function DiscountReportTab() {
     roomType: "",
     discountThreshold: "10",
   });
+  const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [reportData, setReportData] = useState<Quotation[] | null>(null);
   const [auditMsg, setAuditMsg] = useState("");
+  const [logsCount, setLogsCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const loadQuotations = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await quotationService.getList();
+        if (active) {
+          setQuotations(response.data || []);
+        }
+      } catch (err: any) {
+        console.error("Failed to fetch quotations:", err);
+        if (active) {
+          setError("Failed to load quotations from server.");
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+    loadQuotations();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleGenerate = () => {
     const threshold = parseFloat(filters.discountThreshold) || 0;
-    const results = mockDb.quotations.filter((q) => {
+    const results = quotations.filter((q) => {
       const disc = q.discountPercent ?? 0;
+      const sentDate = (q as any).sentDate || q.expiryDate || "";
       const inRange =
-        (!filters.dateFrom || q.sentDate >= filters.dateFrom) &&
-        (!filters.dateTo || q.sentDate <= filters.dateTo);
+        (!filters.dateFrom || sentDate >= filters.dateFrom) &&
+        (!filters.dateTo || sentDate <= filters.dateTo);
       const matchesRoom = !filters.roomType || q.roomType === filters.roomType;
       return disc > threshold && inRange && matchesRoom;
     });
 
     const now = new Date();
     const logEntry: ReportLog = {
-      id: `RPT-${mockDb.reportLogs.length + 1}`,
+      id: `RPT-${logsCount + 1}`,
       generatedBy: "Sarah Connor",
       role: "SALES",
       generatedAt: now.toISOString(),
@@ -201,7 +247,7 @@ function DiscountReportTab() {
       },
       resultCount: results.length,
     };
-    mockDb.reportLogs.push(logEntry);
+    setLogsCount(prev => prev + 1);
 
     setReportData(results);
     setAuditMsg(
@@ -212,17 +258,20 @@ function DiscountReportTab() {
   const handleExportCSV = () => {
     if (!reportData) return;
     const headers = ["Quote No", "Contact Name", "Room Type", "Discount %", "Subtotal", "Discount Amt", "Total", "Status", "Date Issued"];
-    const rows = reportData.map((q) => [
-      q.quoteNo,
-      q.contactName,
-      q.roomType ?? "N/A",
-      `${q.discountPercent ?? 0}%`,
-      `$${(q.subtotal ?? 0).toFixed(2)}`,
-      `$${(q.discountAmount ?? 0).toFixed(2)}`,
-      `$${q.amount.toFixed(2)}`,
-      q.status,
-      q.sentDate,
-    ]);
+    const rows = reportData.map((q) => {
+      const sentDate = (q as any).sentDate || q.expiryDate || "";
+      return [
+        q.quoteNo,
+        q.contactName,
+        q.roomType ?? "N/A",
+        `${q.discountPercent ?? 0}%`,
+        `$${(q.subtotal ?? 0).toFixed(2)}`,
+        `$${(q.discountAmount ?? 0).toFixed(2)}`,
+        `$${q.amount.toFixed(2)}`,
+        q.status,
+        sentDate,
+      ];
+    });
     const csv = "﻿" + [headers, ...rows].map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -407,7 +456,7 @@ function DiscountReportTab() {
                           {q.status === "pending_approval" ? "Pending" : q.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="py-3 px-4 text-xs text-slate-400">{q.sentDate}</TableCell>
+                      <TableCell className="py-3 px-4 text-xs text-slate-400">{(q as any).sentDate || q.expiryDate || "—"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

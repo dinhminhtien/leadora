@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useMemo } from "react";
 import {
@@ -434,7 +434,7 @@ export function PendingApprovalsScreen() {
                     <TableCell className="py-3 px-4 text-xs text-right font-black text-slate-800">
                       ${q.amount.toLocaleString('en-US')}
                     </TableCell>
-                    <TableCell className="py-3 px-4 text-xs text-slate-400">{q.sentDate}</TableCell>
+                    <TableCell className="py-3 px-4 text-xs text-slate-400">{(q as any).sentDate || q.expiryDate || "—"}</TableCell>
                     <TableCell className="py-3 px-4 text-center">
                       <Button
                         variant="outline"
