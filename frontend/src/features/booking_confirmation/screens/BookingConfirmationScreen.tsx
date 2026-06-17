@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Download, Search, Receipt, Calendar, User, Plus, Check, X, RefreshCw, AlertTriangle } from "lucide-react";
@@ -72,7 +72,7 @@ export function BookingConfirmationScreen() {
       if (res.success && res.data?.content) {
         setBookings(res.data.content);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setErrorMsg("Failed to load booking list from live server.");
     } finally {
@@ -102,11 +102,14 @@ export function BookingConfirmationScreen() {
 
   // React hook to load tab-specific data
   useEffect(() => {
-    if (activeTab === "queue") {
-      loadBookings();
-    } else if (activeTab === "form" || activeTab === "checker") {
-      loadFormData();
-    }
+    const timer = setTimeout(() => {
+      if (activeTab === "queue") {
+        loadBookings();
+      } else if (activeTab === "form" || activeTab === "checker") {
+        loadFormData();
+      }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [activeTab, statusFilter]);
 
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -142,8 +145,9 @@ export function BookingConfirmationScreen() {
         setShowDetailModal(false);
         loadBookings();
       }
-    } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to approve booking request.");
+    } catch (err) {
+      const axiosError = err as { response?: { data?: { message?: string } } };
+      alert(axiosError.response?.data?.message || "Failed to approve booking request.");
     } finally {
       setActionLoading(false);
     }
@@ -173,8 +177,9 @@ export function BookingConfirmationScreen() {
         setRejectionReason("");
         loadBookings();
       }
-    } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to reject booking request.");
+    } catch (err) {
+      const axiosError = err as { response?: { data?: { message?: string } } };
+      alert(axiosError.response?.data?.message || "Failed to reject booking request.");
     } finally {
       setActionLoading(false);
     }
@@ -204,8 +209,9 @@ export function BookingConfirmationScreen() {
       if (res.success && res.data) {
         setAvailabilities(res.data);
       }
-    } catch (err: any) {
-      setAvailError(err.response?.data?.message || "Failed to check room availability.");
+    } catch (err) {
+      const axiosError = err as { response?: { data?: { message?: string } } };
+      setAvailError(axiosError.response?.data?.message || "Failed to check room availability.");
     } finally {
       setLoadingAvail(false);
     }
@@ -264,8 +270,9 @@ export function BookingConfirmationScreen() {
         setFormNights(1);
         setFormSpecialRequests("");
       }
-    } catch (err: any) {
-      setFormError(err.response?.data?.message || "Failed to submit booking request. Verify stay dates or room type availability.");
+    } catch (err) {
+      const axiosError = err as { response?: { data?: { message?: string } } };
+      setFormError(axiosError.response?.data?.message || "Failed to submit booking request. Verify stay dates or room type availability.");
     } finally {
       setSubmittingBooking(false);
     }
@@ -589,7 +596,7 @@ export function BookingConfirmationScreen() {
                 >
                   <option value="">-- Choose Quotation Ref --</option>
                   {quotations.map(q => (
-                    <option key={q.id} value={q.id}>{String(q.code || q.id).substring(0, 8)}... (Status: {q.status})</option>
+                    <option key={q.id} value={q.id}>{String(q.quoteNo || q.id).substring(0, 8)}... (Status: {q.status})</option>
                   ))}
                 </Select>
               </div>
@@ -747,7 +754,7 @@ export function BookingConfirmationScreen() {
                 <div className="border-t border-border pt-4">
                   <span className="text-[10px] uppercase font-bold text-muted-foreground block tracking-wider mb-1">Special Requests</span>
                   <p className="bg-muted/40 p-3 rounded-xl border border-border text-xs text-foreground italic">
-                    "{selectedBooking.specialRequests}"
+                    &quot;{selectedBooking.specialRequests}&quot;
                   </p>
                 </div>
               )}

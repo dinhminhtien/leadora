@@ -51,8 +51,9 @@ export function LoginScreen() {
         password: data.password,
       });
       router.push(nextPath);
-    } catch (err: any) {
-      setError(err?.message ?? "Invalid email or password");
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Invalid email or password";
+      setError(errorMsg);
     } finally {
       setIsLoading(false);
     }
@@ -63,8 +64,9 @@ export function LoginScreen() {
     setError(null);
     try {
       await supabaseAuthService.signInWithGoogle(nextPath);
-    } catch (err: any) {
-      setError(err?.message ?? "Google authentication failed");
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Google authentication failed";
+      setError(errorMsg);
       setIsGoogleLoading(false);
     }
   };

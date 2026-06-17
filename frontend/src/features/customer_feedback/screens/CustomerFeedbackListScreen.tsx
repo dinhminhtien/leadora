@@ -112,7 +112,7 @@ export function CustomerFeedbackListScreen() {
                     </div>
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-600 font-medium italic max-w-sm leading-relaxed">
-                    "{f.comment}"
+                    &quot;{f.comment}&quot;
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-400">{f.date}</TableCell>
                   <TableCell className="py-3 px-4">

@@ -35,7 +35,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
               <span>Direct Sales Optimization</span>
             </div>
             <h2 className="text-3xl font-extrabold tracking-tight leading-tight text-zinc-900 dark:text-white">
-              Elevate your hotel's sales performance.
+              Elevate your hotel&apos;s sales performance.
             </h2>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
               A unified workspace to streamline guest handovers, automate booking pipelines, monitor SLA records, and boost revenue.

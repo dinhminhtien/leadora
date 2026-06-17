@@ -204,7 +204,7 @@ function DiscountReportTab() {
         if (active) {
           setQuotations(response.data || []);
         }
-      } catch (err: any) {
+      } catch (err) {
         console.error("Failed to fetch quotations:", err);
         if (active) {
           setError("Failed to load quotations from server.");
@@ -225,7 +225,7 @@ function DiscountReportTab() {
     const threshold = parseFloat(filters.discountThreshold) || 0;
     const results = quotations.filter((q) => {
       const disc = q.discountPercent ?? 0;
-      const sentDate = (q as any).sentDate || q.expiryDate || "";
+      const sentDate = (q as { sentDate?: string }).sentDate || q.expiryDate || "";
       const inRange =
         (!filters.dateFrom || sentDate >= filters.dateFrom) &&
         (!filters.dateTo || sentDate <= filters.dateTo);
@@ -259,7 +259,7 @@ function DiscountReportTab() {
     if (!reportData) return;
     const headers = ["Quote No", "Contact Name", "Room Type", "Discount %", "Subtotal", "Discount Amt", "Total", "Status", "Date Issued"];
     const rows = reportData.map((q) => {
-      const sentDate = (q as any).sentDate || q.expiryDate || "";
+      const sentDate = (q as { sentDate?: string }).sentDate || q.expiryDate || "";
       return [
         q.quoteNo,
         q.contactName,
@@ -456,7 +456,7 @@ function DiscountReportTab() {
                           {q.status === "pending_approval" ? "Pending" : q.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="py-3 px-4 text-xs text-slate-400">{(q as any).sentDate || q.expiryDate || "—"}</TableCell>
+                      <TableCell className="py-3 px-4 text-xs text-slate-400">{(q as { sentDate?: string }).sentDate || q.expiryDate || "—"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
