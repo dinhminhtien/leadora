@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useMemo } from "react";
 import { Download, Search, Receipt } from "lucide-react";
@@ -90,7 +90,7 @@ export function BookingConfirmationScreen() {
                   <TableCell className="py-3 px-4 text-xs text-slate-500">{booking.checkIn}</TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-500">{booking.checkOut}</TableCell>
                   <TableCell className="py-3 px-4 text-xs font-black text-slate-800">
-                    ${booking.amount.toLocaleString()}
+                    ${booking.amount.toLocaleString('en-US')}
                   </TableCell>
                   <TableCell className="py-3 px-4">
                     <Badge variant={booking.status === "confirmed" ? "success" : "warning"} size="sm" className="font-bold text-[9px] uppercase">
