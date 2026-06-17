@@ -67,6 +67,8 @@ const navigationGroups: NavGroup[] = [
       { href: ROUTE_PATHS.leads, label: "Leads", Icon: Handshake },
       { href: ROUTE_PATHS.salesPipeline, label: "Pipeline Board", Icon: ChartNoAxesCombined },
       { href: ROUTE_PATHS.deals, label: "Deals List", Icon: BriefcaseBusiness },
+      { href: ROUTE_PATHS.quotations, label: "Quotations", Icon: ReceiptText },
+      { href: ROUTE_PATHS.pendingApprovals, label: "Pending Approvals", Icon: ShieldCheck },
     ],
   },
   {

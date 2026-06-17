@@ -321,9 +321,12 @@ function ConvertModal({
               {convertMutation.isError && (
                 <div className="flex items-center gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-600">
                   <ServerCrash className="size-3.5 shrink-0" />
-                  {(convertMutation.error as any)?.response?.status >= 500
-                    ? "Sever lỗi vui lòng liên hệ Admin"
-                    : (convertMutation.error as any)?.response?.data?.message || "Chuyển đổi thất bại. Vui lòng thử lại."}
+                  {(() => {
+                    const err = convertMutation.error as { response?: { status?: number; data?: { message?: string } } } | null;
+                    return (err?.response?.status ?? 0) >= 500
+                      ? "Sever lỗi vui lòng liên hệ Admin"
+                      : err?.response?.data?.message || "Chuyển đổi thất bại. Vui lòng thử lại.";
+                  })()}
                 </div>
               )}
             </form>
@@ -428,11 +431,12 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
     setEditServerErr("");
     updateMutation.mutate(editForm, {
       onSuccess: () => setEditOpen(false),
-      onError: (err: any) => {
-        if (err?.response?.status >= 500) {
+      onError: (err) => {
+        const error = err as { response?: { status?: number; data?: { message?: string } } };
+        if (error.response?.status && error.response.status >= 500) {
           setEditServerErr("Sever lỗi vui lòng liên hệ Admin");
         } else {
-          setEditServerErr(err?.response?.data?.message || "Cập nhật thất bại. Vui lòng thử lại.");
+          setEditServerErr(error.response?.data?.message || "Cập nhật thất bại. Vui lòng thử lại.");
         }
       },
     });
@@ -748,7 +752,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
                       </option>
                     ))}
                   </select>
-                  <p className="text-[10px] text-slate-400">Trạng thái "Converted" chỉ được tự động set khi chuyển đổi thành khách hàng.</p>
+                  <p className="text-[10px] text-slate-400">Trạng thái &quot;Converted&quot; chỉ được tự động set khi chuyển đổi thành khách hàng.</p>
                 </div>
               </div>
 

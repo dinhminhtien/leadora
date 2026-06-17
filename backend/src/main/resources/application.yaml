@@ -14,10 +14,6 @@ spring:
       max-file-size: ${AI_MAX_UPLOAD_SIZE:20MB}
       max-request-size: ${AI_MAX_UPLOAD_SIZE:20MB}
 
-  # Spring AI starters are on the classpath but not yet configured (the `ai:`
-  # block below is commented out). Their auto-configurations fail fast on missing
-  # credentials / unavailable services, so exclude them while AI is disabled.
-  # Remove the relevant entry when you enable that integration.
   # AI chat assistant (feature/ai_internal): chat + embeddings BOTH via Google Gemini API (no local AI).
   # Provider is selected with spring.ai.model.chat / spring.ai.model.embedding below, so the
   # Ollama and Anthropic auto-configs back off cleanly (no Ollama needs to run). Only non-model
@@ -32,10 +28,13 @@ spring:
     compose:
       enabled: false
 
-  # Single shared .env lives at the repo root (leadora/.env). Run the backend from
-  # leadora/backend/ so ../.env resolves to it. optional: missing file → use defaults below.
+  # Canonical single shared .env is at the repo root (leadora/.env) → read via ../.env
+  # when running from leadora/backend/. The bare .env (backend-local) is an optional
+  # fallback; both are optional so a missing one is skipped. The last match wins, so
+  # the repo-root file (../.env) takes precedence.
   config:
     import:
+      - optional:file:.env[.properties]
       - optional:file:../.env[.properties]
 
   # Database configuration (Supabase PostgreSQL / local PostgreSQL)
