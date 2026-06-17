@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useMemo, useEffect } from "react";
 import {
@@ -64,7 +64,7 @@ export function DealListScreen() {
       try {
         const response = await dealService.getList();
         if (response && response.success && response.data) {
-          setDeals(response.data as any[] as Deal[]);
+          setDeals(response.data as Deal[]);
         }
       } catch (err) {
         console.error("Failed to fetch deals from API", err);
@@ -130,7 +130,7 @@ export function DealListScreen() {
       if (response && response.success && response.data) {
         setDeals(prev =>
           prev.map(deal =>
-            deal.id === dealId ? (response.data as any as Deal) : deal
+            deal.id === dealId ? (response.data as Deal) : deal
           )
         );
       } else {
@@ -165,7 +165,7 @@ export function DealListScreen() {
     try {
       const response = await dealService.create(payload);
       if (response && response.success && response.data) {
-        setDeals(prev => [response.data as any as Deal, ...prev]);
+        setDeals(prev => [response.data as Deal, ...prev]);
         setIsNewDealDrawerOpen(false);
         // Reset Form
         setNewDeal({
@@ -464,7 +464,7 @@ export function DealListScreen() {
                   <label className="text-xs font-semibold text-slate-600">Initial Sales Stage</label>
                   <Select
                     value={newDeal.stage}
-                    onChange={e => setNewDeal({ ...newDeal, stage: e.target.value as any })}
+                    onChange={e => setNewDeal({ ...newDeal, stage: e.target.value as Deal["stage"] })}
                     className="py-1.5"
                   >
                     <option value="Inquiry">Inquiry</option>

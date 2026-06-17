@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import {
@@ -415,7 +415,7 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
 
           {/* Test hint */}
           <p className="text-[10px] text-slate-300 text-center italic">
-            Dev tip: Use an email containing ".fail" to trigger the E4 delivery failure scenario.
+            Dev tip: Use an email containing &quot;.fail&quot; to trigger the E4 delivery failure scenario.
           </p>
 
           {/* Action Buttons */}

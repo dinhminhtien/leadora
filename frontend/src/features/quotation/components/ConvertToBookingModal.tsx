@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useMemo } from "react";
 import {
@@ -85,10 +85,8 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
   const [e4Error, setE4Error] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ bookingNo: string } | null>(null);
 
-  const bookingNo = useMemo(
-    () => `BK-2026-${String(Math.floor(Math.random() * 1000) + 8891).padStart(4, "0")}`,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+  const [bookingNo] = useState(
+    () => `BK-2026-${String(Math.floor(Math.random() * 1000) + 8891).padStart(4, "0")}`
   );
 
   const availability = useMemo(() => {

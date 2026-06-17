@@ -8,8 +8,8 @@ import {
   ArrowUp, ArrowDown, ChevronDown, Maximize2, Minimize2, ServerCrash,
 } from "lucide-react";
 import Link from "next/link";
+import type { LeadStatus, CreateLeadPayload, Lead } from "@/services/lead_service";
 import { useLeads, useCreateLead } from "@/features/lead/hooks/use_leads";
-import type { LeadStatus, CreateLeadPayload } from "@/services/lead_service";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -109,11 +109,12 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
     setErrors({});
     createMutation.mutate(form, {
       onSuccess: onClose,
-      onError: (err: any) => {
-        if (err?.response?.status >= 500) {
+      onError: (err) => {
+        const error = err as { response?: { status?: number; data?: { message?: string } } };
+        if (error.response?.status && error.response.status >= 500) {
           setServerError("Sever lỗi vui lòng liên hệ Admin");
         } else {
-          setServerError(err?.response?.data?.message || "Tạo lead thất bại. Vui lòng thử lại.");
+          setServerError(error.response?.data?.message || "Tạo lead thất bại. Vui lòng thử lại.");
         }
       },
     });
@@ -218,7 +219,7 @@ function LeadTable({
   isLoading, isError, leads, totalPages, totalElements, page, onPageChange, onClearFilters, hasFilters,
 }: {
   isLoading: boolean; isError: boolean;
-  leads: any[]; totalPages: number; totalElements: number;
+  leads: Lead[]; totalPages: number; totalElements: number;
   page: number; onPageChange: (p: number) => void;
   onClearFilters: () => void; hasFilters: boolean;
 }) {
