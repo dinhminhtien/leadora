@@ -75,3 +75,6 @@ replay_pid*
 *.err
 .codex-*
 demo_screenshot.mjs
+
+# Claude Code: share skills, but keep personal/local settings out of git
+.claude/settings.local.json
