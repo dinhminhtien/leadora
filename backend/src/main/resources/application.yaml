@@ -92,6 +92,9 @@ spring:
             model: ${GEMINI_CHAT_MODEL:gemini-2.5-flash}
             temperature: ${GEMINI_CHAT_TEMPERATURE:0.2}
         embedding:
+          # The embedding connection does NOT inherit the top-level api-key — set it here too,
+          # otherwise it falls back to Vertex mode and demands a project-id.
+          api-key: ${GEMINI_API_KEY:}
           text:
             options:
               model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}   # 768 dimensions
