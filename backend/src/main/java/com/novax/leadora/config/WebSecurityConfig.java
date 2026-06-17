@@ -40,7 +40,9 @@ public class WebSecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of("http://localhost:3000"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        // X-User-Id: temporary actor identity used by the AI chat assistant while
+        // server-side JWT auth is not yet wired (login feature still in progress).
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-User-Id"));
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true);
 

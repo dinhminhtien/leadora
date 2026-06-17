@@ -8,20 +8,25 @@ spring:
   main:
     allow-bean-definition-overriding: true
 
+  # Company-document uploads for the RAG knowledge base can exceed the 1MB default.
+  servlet:
+    multipart:
+      max-file-size: ${AI_MAX_UPLOAD_SIZE:20MB}
+      max-request-size: ${AI_MAX_UPLOAD_SIZE:20MB}
+
   # Spring AI starters are on the classpath but not yet configured (the `ai:`
   # block below is commented out). Their auto-configurations fail fast on missing
   # credentials / unavailable services, so exclude them while AI is disabled.
   # Remove the relevant entry when you enable that integration.
+  # AI chat assistant (feature/ai_internal) is enabled via Ollama + pgvector.
+  # The remaining exclusions are for integrations we are NOT using yet (Google GenAI,
+  # JDBC chat-memory — we persist messages ourselves in ai_chat_messages, Elasticsearch, Redis).
   autoconfigure:
     exclude:
       - org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration
       - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiEmbeddingConnectionAutoConfiguration
       - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiTextEmbeddingAutoConfiguration
-      - org.springframework.ai.model.ollama.autoconfigure.OllamaApiAutoConfiguration
-      - org.springframework.ai.model.ollama.autoconfigure.OllamaChatAutoConfiguration
-      - org.springframework.ai.model.ollama.autoconfigure.OllamaEmbeddingAutoConfiguration
       - org.springframework.ai.model.chat.memory.repository.jdbc.autoconfigure.JdbcChatMemoryRepositoryAutoConfiguration
-      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
       - org.springframework.ai.vectorstore.elasticsearch.autoconfigure.ElasticsearchVectorStoreAutoConfiguration
       - org.springframework.ai.vectorstore.redis.autoconfigure.RedisVectorStoreAutoConfiguration
 
@@ -72,29 +77,31 @@ spring:
   # not RS256 (asymmetric JWK), so the default Spring auto-configuration does not apply.
 
 
-  # # Spring AI configuration
-  # ai:
-  #   google:
-  #     genai:
-  #       api-key: ${GOOGLE_GENAI_API_KEY:}
-  #       project-id: ${GOOGLE_GENAI_PROJECT_ID:dummy-project}
-  #       location: ${GOOGLE_GENAI_LOCATION:us-central1}
-  #       embedding:
-  #         project-id: ${GOOGLE_GENAI_PROJECT_ID:dummy-project}
-  #         location: ${GOOGLE_GENAI_LOCATION:us-central1}
-  #       chat:
-  #         options:
-  #           model: gemini-3.5-flash
-  #   ollama:
-  #     base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-  #     chat:
-  #       options:
-  #         model: ${OLLAMA_MODEL:qwen}
-  #   vectorstore:
-  #     pgvector:
-  #       database-name: ${SPRING_DATASOURCE_USERNAME:postgres}
-  #       table-name: leadora_vector_store
-  #       dimensions: 1536
+  # Spring AI configuration — Internal Sales Chat Assistant (feature/ai_internal)
+  # Runtime: local Ollama (chat + embeddings) + pgvector store for RAG.
+  ai:
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      # Do NOT auto-pull models at boot — the app must start even when Ollama is down.
+      # Pull manually:  ollama pull qwen2.5:3b   &&   ollama pull bge-m3
+      init:
+        pull-model-strategy: never
+      chat:
+        options:
+          model: ${OLLAMA_CHAT_MODEL:qwen2.5:3b}
+          temperature: ${OLLAMA_CHAT_TEMPERATURE:0.2}
+      embedding:
+        options:
+          model: ${OLLAMA_EMBEDDING_MODEL:bge-m3}
+    vectorstore:
+      pgvector:
+        # Creates the `vector` extension, the table and an HNSW index on first run.
+        initialize-schema: ${AI_VECTORSTORE_INIT_SCHEMA:true}
+        table-name: leadora_vector_store
+        schema-name: public
+        dimensions: ${AI_EMBEDDING_DIMENSIONS:1024}   # bge-m3 → 1024
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
 
 logging:
   level:
