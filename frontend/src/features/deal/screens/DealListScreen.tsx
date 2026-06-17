@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -21,6 +21,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { dealService } from "@/services/deal_service";
+
 export type Deal = {
   id: string;
   title: string;
@@ -56,12 +58,29 @@ export function DealListScreen() {
     expectedClose: ""
   });
 
+  // Load deals on component mount
+  useEffect(() => {
+    const fetchDeals = async () => {
+      try {
+        const response = await dealService.getList();
+        if (response && response.success && response.data) {
+          setDeals(response.data as any[] as Deal[]);
+        }
+      } catch (err) {
+        console.error("Failed to fetch deals from API", err);
+      }
+    };
+    fetchDeals();
+  }, []);
+
   // Filter Logic
   const filteredDeals = useMemo(() => {
     return deals.filter(deal => {
+      const titleLower = deal.title ? deal.title.toLowerCase() : "";
+      const contactLower = deal.contactName ? deal.contactName.toLowerCase() : "";
       const matchesSearch =
-        deal.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        deal.contactName.toLowerCase().includes(searchTerm.toLowerCase());
+        titleLower.includes(searchTerm.toLowerCase()) ||
+        contactLower.includes(searchTerm.toLowerCase());
       
       const matchesStage = stageFilter === "all" || deal.stage === stageFilter;
       const matchesStatus = statusFilter === "all" || deal.status === statusFilter;
@@ -73,9 +92,9 @@ export function DealListScreen() {
   // Statistics
   const stats = useMemo(() => {
     const activeDeals = deals.filter(d => d.status === "active");
-    const activeVal = activeDeals.reduce((sum, d) => sum + d.value, 0);
+    const activeVal = activeDeals.reduce((sum, d) => sum + (d.value || 0), 0);
     const wonDeals = deals.filter(d => d.status === "won");
-    const wonVal = wonDeals.reduce((sum, d) => sum + d.value, 0);
+    const wonVal = wonDeals.reduce((sum, d) => sum + (d.value || 0), 0);
     const totalWins = wonDeals.length;
     const totalClosed = deals.filter(d => d.status !== "active").length;
     const winRate = totalClosed > 0 ? (totalWins / totalClosed) * 100 : 0;
@@ -89,58 +108,84 @@ export function DealListScreen() {
   }, [deals]);
 
   // Handle Close Status change (Won/Lost)
-  const handleUpdateStatus = (dealId: string, newStatus: Deal["status"]) => {
-    setDeals(prev =>
-      prev.map(deal =>
-        deal.id === dealId
-          ? {
-              ...deal,
-              status: newStatus,
-              probability: newStatus === "won" ? 100 : 0,
-              stage: newStatus === "won" ? "Confirmed" : deal.stage
-            }
-          : deal
-      )
-    );
+  const handleUpdateStatus = async (dealId: string, newStatus: Deal["status"]) => {
+    const dealToUpdate = deals.find(d => d.id === dealId);
+    if (!dealToUpdate) return;
+
+    const updatedStage = newStatus === "won" ? "Confirmed" : dealToUpdate.stage;
+    const payload = {
+      title: dealToUpdate.title,
+      contactName: dealToUpdate.contactName,
+      email: dealToUpdate.email || "",
+      phone: dealToUpdate.phone || "",
+      value: dealToUpdate.value,
+      stage: updatedStage,
+      status: newStatus,
+      expectedClose: dealToUpdate.expectedClose,
+      owner: dealToUpdate.owner
+    };
+
+    try {
+      const response = await dealService.update(dealId, payload);
+      if (response && response.success && response.data) {
+        setDeals(prev =>
+          prev.map(deal =>
+            deal.id === dealId ? (response.data as any as Deal) : deal
+          )
+        );
+      } else {
+        alert("Failed to update status: " + (response?.message || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Error updating status", err);
+      alert("An error occurred while updating status. Please try again.");
+    }
   };
 
   // Form Submit
-  const handleCreateDeal = (e: React.FormEvent) => {
+  const handleCreateDeal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDeal.title || !newDeal.contactName) {
       alert("Please enter both Deal title and Primary Contact name.");
       return;
     }
 
-    const created: Deal = {
-      id: `D-${200 + deals.length + 1}`,
+    const payload = {
       title: newDeal.title,
       contactName: newDeal.contactName,
-      email: newDeal.email || "n/a",
-      phone: newDeal.phone || "n/a",
+      email: newDeal.email || "",
+      phone: newDeal.phone || "",
       stage: newDeal.stage,
       value: Number(newDeal.value) || 0,
-      probability: Number(newDeal.probability) || 50,
-      owner: newDeal.owner,
       expectedClose: newDeal.expectedClose || new Date().toISOString().split("T")[0],
       status: "active",
-      createdAt: new Date().toISOString().split("T")[0]
+      owner: newDeal.owner
     };
 
-    setDeals([created, ...deals]);
-    setIsNewDealDrawerOpen(false);
-    // Reset Form
-    setNewDeal({
-      title: "",
-      contactName: "",
-      email: "",
-      phone: "",
-      stage: "Inquiry",
-      value: "",
-      probability: "50",
-      owner: "John Doe",
-      expectedClose: ""
-    });
+    try {
+      const response = await dealService.create(payload);
+      if (response && response.success && response.data) {
+        setDeals(prev => [response.data as any as Deal, ...prev]);
+        setIsNewDealDrawerOpen(false);
+        // Reset Form
+        setNewDeal({
+          title: "",
+          contactName: "",
+          email: "",
+          phone: "",
+          stage: "Inquiry",
+          value: "",
+          probability: "50",
+          owner: "John Doe",
+          expectedClose: ""
+        });
+      } else {
+        alert("Failed to create deal: " + (response?.message || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Error creating deal", err);
+      alert("An error occurred while creating the deal. Please try again.");
+    }
   };
 
   return (

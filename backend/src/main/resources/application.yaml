@@ -32,7 +32,7 @@ spring:
   # Import environment variables from the root .env file if present
   config:
     import:
-      - optional:file:../.env[.properties]
+      - optional:file:.env[.properties]
 
   # Database configuration (Supabase PostgreSQL / local PostgreSQL)
   datasource:
@@ -52,6 +52,9 @@ spring:
         jdbc:
           lob:
             non_contextual_creation: true
+        # pgbouncer compatibility — must explicitly set dialect when disabling JDBC metadata access
+        boot:
+          allow_jdbc_metadata_access: false
 
   # # Redis Configuration for caching and HTTP session management
   # data:
