@@ -677,7 +677,7 @@ export function BookingConfirmationScreen() {
                   Autocalculated Total (UnitPrice * Qty * Nights):
                 </div>
                 <div className="text-base font-black text-foreground">
-                  ${computedFormAmount.toLocaleString()}
+                  ${computedFormAmount.toLocaleString("en-US")}
                 </div>
               </div>
 
@@ -790,7 +790,7 @@ export function BookingConfirmationScreen() {
                           <TableCell className="py-2.5 px-3 text-xs">{d.quantity}</TableCell>
                           <TableCell className="py-2.5 px-3 text-xs">{d.nights}</TableCell>
                           <TableCell className="py-2.5 px-3 text-xs">${d.unitPrice}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs font-black text-right">${d.lineTotal.toLocaleString()}</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs font-black text-right">${d.lineTotal.toLocaleString("en-US")}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -802,7 +802,7 @@ export function BookingConfirmationScreen() {
             {/* Modal Footer */}
             <div className="p-4 border-t border-border bg-muted/40 flex flex-col md:flex-row gap-3 justify-between items-center">
               <div className="text-sm font-semibold text-foreground">
-                Total amount: <span className="text-lg font-black text-primary">${selectedBooking.totalAmount.toLocaleString()}</span>
+                Total amount: <span className="text-lg font-black text-primary">${selectedBooking.totalAmount.toLocaleString("en-US")}</span>
               </div>
 
               <div className="flex gap-2">
@@ -839,7 +839,7 @@ export function BookingConfirmationScreen() {
 
       {/* Reject Modal */}
       {showRejectModal && selectedBooking && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-background rounded-2xl border border-border shadow-2xl max-w-md w-full p-6 space-y-4">
             <div>
               <h3 className="text-base font-bold text-foreground">Reject booking confirmation</h3>

@@ -32,7 +32,7 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID> {
               AND (:priority IS NULL OR t.priority = :priority)
               AND (:assignedUserId IS NULL OR t.assignedUser.userId = :assignedUserId)
               AND (:overdue = false OR (t.dueDate < CURRENT_DATE
-                   AND t.status <> com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus.DONE
+                   AND t.status <> com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus.COMPLETED
                    AND t.status <> com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus.CANCELLED))
             """,
             countQuery = """
@@ -43,7 +43,7 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID> {
               AND (:priority IS NULL OR t.priority = :priority)
               AND (:assignedUserId IS NULL OR t.assignedUser.userId = :assignedUserId)
               AND (:overdue = false OR (t.dueDate < CURRENT_DATE
-                   AND t.status <> com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus.DONE
+                   AND t.status <> com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus.COMPLETED
                    AND t.status <> com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus.CANCELLED))
             """)
     Page<TaskEntity> searchTasks(

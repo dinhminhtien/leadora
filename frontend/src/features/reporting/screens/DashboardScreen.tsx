@@ -190,7 +190,7 @@ export function DashboardScreen() {
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Deals Pipeline</p>
                 <h3 className="text-2xl font-bold text-foreground mt-1.5">
-                  ${activeDealsValue.toLocaleString()}
+                  ${activeDealsValue.toLocaleString("en-US")}
                 </h3>
                 <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-0.5 mt-1.5">
                   <TrendingUp className="size-3" /> 5 active bookings
@@ -269,7 +269,7 @@ export function DashboardScreen() {
                   <div className="flex justify-between items-center text-xs">
                     <span className="font-semibold text-foreground/80">{stage.stage}</span>
                     <span className="text-muted-foreground text-[10px]">
-                      {stage.count} deal ({((stage.value / 104500) * 100).toFixed(0)}%) • <strong className="text-foreground/90">${stage.value.toLocaleString()}</strong>
+                      {stage.count} deal ({((stage.value / 104500) * 100).toFixed(0)}%) • <strong className="text-foreground/90">${stage.value.toLocaleString("en-US")}</strong>
                     </span>
                   </div>
                   <div className="w-full bg-muted rounded-lg h-3 overflow-hidden flex">

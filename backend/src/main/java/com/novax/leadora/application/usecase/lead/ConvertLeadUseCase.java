@@ -7,6 +7,7 @@ import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
@@ -39,7 +40,7 @@ public class ConvertLeadUseCase {
         // 3. BR-07: status must be QUALIFIED
         if (lead.getStatus() != LeadStatus.QUALIFIED) {
             throw new IllegalStateException(
-                    "Lead must be QUALIFIED before conversion (BR-07). Current status: " + lead.getStatus()
+                    "Lead must be QUALIFIED before conversion. Current status: " + lead.getStatus()
             );
         }
 
@@ -60,9 +61,12 @@ public class ConvertLeadUseCase {
 
         CustomerEntity savedCustomer = customerRepository.save(customer);
 
-        // 5. Mark lead as converted (BR-08: lead record is preserved, not deleted)
+        // 5. Mark lead as converted (BR-08: lead record is preserved, not deleted).
+        //    Sync the lead's corporate flag with the type chosen at conversion time,
+        //    so leads.is_corporate reflects the final individual/organization decision.
         lead.setStatus(LeadStatus.CONVERTED);
         lead.setConvertedAt(OffsetDateTime.now());
+        lead.setIsCorporate(request.getCustomerType() == CustomerType.CORPORATE);
         lead.setCustomer(savedCustomer);
 
         LeadEntity savedLead = leadRepository.save(lead);

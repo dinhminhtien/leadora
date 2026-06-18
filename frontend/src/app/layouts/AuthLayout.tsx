@@ -93,7 +93,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
       {/* Right panel - Auth Forms */}
       <div className="flex flex-col justify-center items-center px-6 py-12 lg:px-16 bg-background relative">
         {/* Glow for mobile viewport */}
-        <div className="lg:hidden absolute top-0 left-0 w-full h-[30%] bg-gradient-to-b from-primary/5 to-transparent pointer-events-none" />
+        <div className="lg:hidden absolute top-0 left-0 w-full h-[30%] bg-linear-to-b from-primary/5 to-transparent pointer-events-none" />
 
         {/* Theme Toggle Button */}
         <div className="absolute top-6 right-6 z-20">
