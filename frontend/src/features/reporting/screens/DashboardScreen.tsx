@@ -368,10 +368,10 @@ export function DashboardScreen() {
                   >
                     <CheckCircle2
                       className={`size-4.5 transition-all ${task.status === "completed"
-                          ? "text-emerald-500 fill-emerald-500/20"
-                          : task.status === "overdue"
-                            ? "text-danger"
-                            : "text-zinc-300 dark:text-zinc-700"
+                        ? "text-emerald-500 fill-emerald-500/20"
+                        : task.status === "overdue"
+                          ? "text-danger"
+                          : "text-zinc-300 dark:text-zinc-700"
                         }`}
                     />
                   </button>
@@ -389,10 +389,10 @@ export function DashboardScreen() {
                       </span>
                       <span
                         className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${task.priority === "high"
-                            ? "bg-danger/10 text-danger border-danger/10"
-                            : task.priority === "medium"
-                              ? "bg-amber-500/10 text-amber-500 border-amber-500/10"
-                              : "bg-zinc-500/10 text-zinc-500 border-zinc-500/10"
+                          ? "bg-danger/10 text-danger border-danger/10"
+                          : task.priority === "medium"
+                            ? "bg-amber-500/10 text-amber-500 border-amber-500/10"
+                            : "bg-zinc-500/10 text-zinc-500 border-zinc-500/10"
                           }`}
                       >
                         {task.priority.toUpperCase()}
