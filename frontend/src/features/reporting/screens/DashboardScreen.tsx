@@ -143,7 +143,7 @@ export function DashboardScreen() {
       <div className="relative overflow-hidden bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 text-zinc-800 dark:text-zinc-100 shadow-xs">
         <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-primary/5 dark:bg-primary/10 blur-[80px] pointer-events-none" />
         <div className="absolute -bottom-20 -left-20 w-60 h-60 rounded-full bg-emerald-500/5 blur-[80px] pointer-events-none" />
-        
+
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 dark:bg-primary/20 border border-primary/20 dark:border-primary/30 text-[10px] font-bold text-primary dark:text-primary-foreground tracking-wider uppercase mb-3">
@@ -300,22 +300,22 @@ export function DashboardScreen() {
                 <svg className="w-full h-full" viewBox="0 0 500 120" preserveAspectRatio="none">
                   <defs>
                     <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.15"/>
-                      <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.0"/>
+                      <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.15" />
+                      <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.0" />
                     </linearGradient>
                   </defs>
-                  
+
                   {/* Grid Lines */}
                   <line x1="0" y1="30" x2="500" y2="30" stroke="var(--chart-grid)" strokeWidth="1" />
                   <line x1="0" y1="60" x2="500" y2="60" stroke="var(--chart-grid)" strokeWidth="1" />
                   <line x1="0" y1="90" x2="500" y2="90" stroke="var(--chart-grid)" strokeWidth="1" />
-                  
+
                   {/* Area path */}
                   <path
                     d="M 0 100 Q 100 85, 200 45 T 400 30 L 500 10 L 500 120 L 0 120 Z"
                     fill="url(#chartGrad)"
                   />
-                  
+
                   {/* Forecast Line */}
                   <path
                     d="M 0 100 Q 100 85, 200 45 T 400 30 L 500 10"
@@ -367,20 +367,18 @@ export function DashboardScreen() {
                     className="mt-0.5 shrink-0 focus:outline-none cursor-pointer"
                   >
                     <CheckCircle2
-                      className={`size-4.5 transition-all ${
-                        task.status === "completed"
+                      className={`size-4.5 transition-all ${task.status === "completed"
                           ? "text-emerald-500 fill-emerald-500/20"
                           : task.status === "overdue"
-                          ? "text-danger"
-                          : "text-zinc-300 dark:text-zinc-700"
-                      }`}
+                            ? "text-danger"
+                            : "text-zinc-300 dark:text-zinc-700"
+                        }`}
                     />
                   </button>
                   <div className="flex-1 min-w-0">
                     <p
-                      className={`text-xs font-bold text-foreground/90 truncate ${
-                        task.status === "completed" ? "line-through text-muted-foreground/60 font-normal" : ""
-                      }`}
+                      className={`text-xs font-bold text-foreground/90 truncate ${task.status === "completed" ? "line-through text-muted-foreground/60 font-normal" : ""
+                        }`}
                     >
                       {task.title}
                     </p>
@@ -390,13 +388,12 @@ export function DashboardScreen() {
                         {task.linkedEntityName}
                       </span>
                       <span
-                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
-                          task.priority === "high"
+                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${task.priority === "high"
                             ? "bg-danger/10 text-danger border-danger/10"
                             : task.priority === "medium"
-                            ? "bg-amber-500/10 text-amber-500 border-amber-500/10"
-                            : "bg-zinc-500/10 text-zinc-500 border-zinc-500/10"
-                        }`}
+                              ? "bg-amber-500/10 text-amber-500 border-amber-500/10"
+                              : "bg-zinc-500/10 text-zinc-500 border-zinc-500/10"
+                          }`}
                       >
                         {task.priority.toUpperCase()}
                       </span>
@@ -429,7 +426,7 @@ export function DashboardScreen() {
                     {interaction.type === "meeting" && <Calendar className="size-3.5 text-indigo-500" />}
                     {interaction.type === "note" && <FileText className="size-3.5 text-amber-500" />}
                   </span>
-                  
+
                   <div>
                     <div className="flex justify-between items-center text-xs">
                       <p className="font-bold text-foreground/90">
@@ -441,7 +438,7 @@ export function DashboardScreen() {
                     <p className="text-xs text-muted-foreground mt-1">{interaction.description}</p>
                     <div className="flex items-center gap-1.5 mt-2">
                       <span className="size-4 rounded-full bg-primary/20 text-primary border border-primary/25 text-[8px] font-bold flex items-center justify-center">
-                        {interaction.agentName.slice(0,2).toUpperCase()}
+                        {interaction.agentName.slice(0, 2).toUpperCase()}
                       </span>
                       <span className="text-[10px] text-muted-foreground">by {interaction.agentName}</span>
                     </div>

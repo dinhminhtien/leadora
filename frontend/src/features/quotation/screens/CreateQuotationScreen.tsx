@@ -1,29 +1,27 @@
-﻿"use client";
+"use client";
 
 import React, { useMemo } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, AlertCircle, CheckCircle2, Calculator } from "lucide-react";
+import { ArrowLeft, AlertCircle, CheckCircle2, Calculator, User, Mail, Phone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { useCreateQuotation, useDealsForQuotation, type DealOption } from "@/features/quotation/hooks/use_quotations";
 
 const schema = z
   .object({
-    contactName: z.string().min(1, "Required"),
-    email: z.string().min(1, "Required").email("Invalid email address"),
-    phone: z.string().min(1, "Required"),
-    dealName: z.string().min(1, "Required"),
+    dealId: z.string().min(1, "Select a deal"),
     roomType: z.string().min(1, "Select a room type"),
     checkInDate: z.string().min(1, "Required"),
     checkOutDate: z.string().min(1, "Required"),
     numberOfRooms: z.coerce.number().min(1, "At least 1 room"),
-    pricePerNight: z.coerce.number().min(1, "Must be greater than 0"),
+    pricePerNight: z.coerce.number().min(0.01, "Must be greater than 0"),
     discountPercent: z.coerce.number().min(0, "Cannot be negative").max(100, "Cannot exceed 100%"),
     paymentPolicy: z.string().min(1, "Select a payment policy"),
     validUntil: z.string().min(1, "Required"),
@@ -39,7 +37,15 @@ const schema = z
 
 type FormValues = z.infer<typeof schema>;
 
-const ROOM_TYPES = ["Deluxe Suite", "Superior Room", "Standard Queen", "Executive Suite", "Ocean View Room", "Banquet Hall", "Grand Ballroom Suite"];
+const ROOM_TYPES = [
+  "Deluxe Suite",
+  "Superior Room",
+  "Standard Queen",
+  "Executive Suite",
+  "Ocean View Room",
+  "Banquet Hall",
+  "Grand Ballroom Suite",
+];
 
 const PAYMENT_POLICIES: { value: string; label: string }[] = [
   { value: "full_upfront", label: "Full Payment Upfront" },
@@ -58,6 +64,8 @@ function FieldLabel({ children, required }: { children: React.ReactNode; require
 
 export function CreateQuotationScreen() {
   const router = useRouter();
+  const createQuotation = useCreateQuotation();
+  const { data: deals = [], isLoading: dealsLoading } = useDealsForQuotation();
 
   const {
     register,
@@ -65,7 +73,6 @@ export function CreateQuotationScreen() {
     watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    // Zod v4 coerce types cause input/output mismatch with RHF resolver typing
     resolver: zodResolver(schema) as unknown as Resolver<FormValues>,
     defaultValues: {
       numberOfRooms: 1,
@@ -74,13 +81,20 @@ export function CreateQuotationScreen() {
     },
   });
 
-  const [checkInDate, checkOutDate, numberOfRooms, pricePerNight, discountPercent] = watch([
+  const [dealId, checkInDate, checkOutDate, numberOfRooms, pricePerNight, discountPercent] = watch([
+    "dealId",
     "checkInDate",
     "checkOutDate",
     "numberOfRooms",
     "pricePerNight",
     "discountPercent",
   ]);
+
+  // Auto-fill customer info from selected deal
+  const selectedDeal: DealOption | undefined = useMemo(
+    () => deals.find((d) => d.id === dealId),
+    [deals, dealId]
+  );
 
   const pricing = useMemo(() => {
     const inDate = checkInDate ? new Date(checkInDate) : null;
@@ -100,17 +114,19 @@ export function CreateQuotationScreen() {
 
   const requiresApproval = (discountPercent || 0) > 10;
 
-  const onSubmit = (data: FormValues) => {
-    const inDate = new Date(data.checkInDate);
-    const outDate = new Date(data.checkOutDate);
-    const nights = Math.max(
-      1,
-      Math.floor((outDate.getTime() - inDate.getTime()) / (1000 * 60 * 60 * 24))
-    );
-    const subtotal = data.pricePerNight * nights * data.numberOfRooms;
-    const discountAmount = Math.round(subtotal * data.discountPercent) / 100;
-    const totalAmount = subtotal - discountAmount;
-
+  const onSubmit = async (data: FormValues) => {
+    await createQuotation.mutateAsync({
+      dealId: data.dealId,
+      roomType: data.roomType,
+      checkInDate: data.checkInDate,
+      checkOutDate: data.checkOutDate,
+      numberOfRooms: data.numberOfRooms,
+      pricePerNight: data.pricePerNight,
+      discountPercent: data.discountPercent,
+      paymentPolicy: data.paymentPolicy,
+      validUntil: data.validUntil,
+      notes: data.notes,
+    });
     router.push(ROUTE_PATHS.quotations);
   };
 
@@ -135,55 +151,64 @@ export function CreateQuotationScreen() {
         </p>
       </div>
 
+      {createQuotation.isError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-600">
+          <AlertCircle className="size-4 shrink-0" />
+          Failed to create quotation. Please try again.
+        </div>
+      )}
+
       <form onSubmit={handleSubmit(onSubmit)}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
           {/* Left: form sections */}
           <div className="lg:col-span-2 space-y-5">
 
-            {/* Section 1: Customer Info */}
+            {/* Section 1: Deal Selection */}
             <Card className="border-slate-100 shadow-sm bg-white">
               <CardHeader>
-                <CardTitle className="text-sm font-bold text-slate-700">Customer Information</CardTitle>
+                <CardTitle className="text-sm font-bold text-slate-700">Deal & Customer</CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <CardContent className="space-y-4">
                 <div>
-                  <FieldLabel required>Contact Name</FieldLabel>
-                  <Input
-                    {...register("contactName")}
-                    placeholder="e.g. Emily Miller"
-                    error={errors.contactName?.message}
-                  />
+                  <FieldLabel required>Select Deal</FieldLabel>
+                  <Select
+                    {...register("dealId")}
+                    error={errors.dealId?.message}
+                    disabled={dealsLoading}
+                  >
+                    <option value="">
+                      {dealsLoading ? "Loading deals..." : "-- Select a deal --"}
+                    </option>
+                    {deals.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.title}
+                      </option>
+                    ))}
+                  </Select>
                 </div>
-                <div>
-                  <FieldLabel required>Email Address</FieldLabel>
-                  <Input
-                    {...register("email")}
-                    type="email"
-                    placeholder="e.g. emily@example.com"
-                    error={errors.email?.message}
-                  />
-                </div>
-                <div>
-                  <FieldLabel required>Phone Number</FieldLabel>
-                  <Input
-                    {...register("phone")}
-                    placeholder="e.g. +1 555-0100"
-                    error={errors.phone?.message}
-                  />
-                </div>
-                <div>
-                  <FieldLabel required>Deal / Event Name</FieldLabel>
-                  <Input
-                    {...register("dealName")}
-                    placeholder="e.g. Miller Wedding Booking"
-                    error={errors.dealName?.message}
-                  />
-                </div>
+
+                {/* Auto-filled customer info */}
+                {selectedDeal && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg bg-slate-50 border border-slate-100 p-3">
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <User className="size-3.5 text-slate-400 shrink-0" />
+                      <span className="font-semibold truncate">{selectedDeal.contactName || "—"}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <Mail className="size-3.5 text-slate-400 shrink-0" />
+                      <span className="truncate">{selectedDeal.email || "—"}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <Phone className="size-3.5 text-slate-400 shrink-0" />
+                      <span className="truncate">{selectedDeal.phone || "—"}</span>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            {/* Section 2: Booking Details */}
+            {/* Section 2: Room Booking Details */}
             <Card className="border-slate-100 shadow-sm bg-white">
               <CardHeader>
                 <CardTitle className="text-sm font-bold text-slate-700">Room Booking Details</CardTitle>
@@ -229,7 +254,10 @@ export function CreateQuotationScreen() {
                 <div className="flex items-end">
                   {pricing.nights > 0 && (
                     <span className="text-xs text-slate-500 font-semibold pb-2">
-                      Duration: <strong className="text-slate-800">{pricing.nights} night{pricing.nights !== 1 ? "s" : ""}</strong>
+                      Duration:{" "}
+                      <strong className="text-slate-800">
+                        {pricing.nights} night{pricing.nights !== 1 ? "s" : ""}
+                      </strong>
                     </span>
                   )}
                 </div>
@@ -334,23 +362,23 @@ export function CreateQuotationScreen() {
                   <div className="flex justify-between text-slate-500">
                     <span>Rate/Night</span>
                     <span className="font-semibold text-slate-700">
-                      ${(pricePerNight || 0).toLocaleString('en-US')}
+                      ${(pricePerNight || 0).toLocaleString("en-US")}
                     </span>
                   </div>
                   <div className="border-t border-slate-100 pt-2 flex justify-between text-slate-600">
                     <span>Subtotal</span>
-                    <span className="font-bold">${pricing.subtotal.toLocaleString('en-US')}</span>
+                    <span className="font-bold">${pricing.subtotal.toLocaleString("en-US")}</span>
                   </div>
                   {pricing.discountAmount > 0 && (
                     <div className="flex justify-between text-amber-600">
                       <span>Discount ({discountPercent || 0}%)</span>
-                      <span className="font-bold">-${pricing.discountAmount.toLocaleString('en-US')}</span>
+                      <span className="font-bold">-${pricing.discountAmount.toLocaleString("en-US")}</span>
                     </div>
                   )}
                   <div className="border-t border-slate-200 pt-2 flex justify-between text-slate-800">
                     <span className="font-bold text-sm">Total</span>
                     <span className="font-black text-sm text-blue-700">
-                      ${pricing.total.toLocaleString('en-US')}
+                      ${pricing.total.toLocaleString("en-US")}
                     </span>
                   </div>
                 </div>
@@ -358,11 +386,19 @@ export function CreateQuotationScreen() {
                 <div className="pt-2">
                   <p className="text-[10px] text-slate-400 font-semibold mb-1.5">Quote Status after Save:</p>
                   {requiresApproval ? (
-                    <Badge variant="warning" size="sm" className="font-bold text-[10px] uppercase w-full justify-center py-1">
+                    <Badge
+                      variant="warning"
+                      size="sm"
+                      className="font-bold text-[10px] uppercase w-full justify-center py-1"
+                    >
                       Pending Manager Approval
                     </Badge>
                   ) : (
-                    <Badge variant="default" size="sm" className="font-bold text-[10px] uppercase w-full justify-center py-1 bg-slate-100 text-slate-600">
+                    <Badge
+                      variant="default"
+                      size="sm"
+                      className="font-bold text-[10px] uppercase w-full justify-center py-1 bg-slate-100 text-slate-600"
+                    >
                       Draft
                     </Badge>
                   )}
@@ -373,7 +409,7 @@ export function CreateQuotationScreen() {
                     type="submit"
                     variant="primary"
                     className="w-full text-xs font-bold"
-                    isLoading={isSubmitting}
+                    isLoading={isSubmitting || createQuotation.isPending}
                     leftIcon={<CheckCircle2 className="size-3.5" />}
                   >
                     {requiresApproval ? "Submit for Approval" : "Save as Draft"}
