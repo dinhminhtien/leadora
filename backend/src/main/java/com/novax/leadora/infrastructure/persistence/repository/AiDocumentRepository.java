@@ -15,4 +15,7 @@ public interface AiDocumentRepository extends JpaRepository<AiDocumentEntity, UU
     @EntityGraph(attributePaths = {"uploadedBy"})
     @Query("SELECT d FROM AiDocumentEntity d ORDER BY d.createdAt DESC")
     List<AiDocumentEntity> findAllWithUploader();
+
+    /** Existing documents sharing a title — used to replace an old version on re-upload. */
+    List<AiDocumentEntity> findByTitleIgnoreCase(String title);
 }
