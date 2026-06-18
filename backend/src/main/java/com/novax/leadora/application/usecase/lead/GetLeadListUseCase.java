@@ -23,7 +23,7 @@ public class GetLeadListUseCase {
     private final LeadRepository leadRepository;
 
     @Transactional(readOnly = true)
-    public Page<LeadResponse> execute(String search, String status, String source,
+    public Page<LeadResponse> execute(String search, String status, String source, Boolean isCorporate,
                                       String sortBy, String sortDir, int page, int size) {
         String sortField = ALLOWED_SORT_FIELDS.contains(sortBy) ? sortBy : "createdAt";
         Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
@@ -39,7 +39,7 @@ public class GetLeadListUseCase {
         }
         String sourceParam = StringUtils.hasText(source) ? source.trim() : "";
 
-        return leadRepository.searchLeads(searchParam, statusParam, sourceParam, pageable)
+        return leadRepository.searchLeads(searchParam, statusParam, sourceParam, isCorporate, pageable)
                 .map(LeadResponse::from);
     }
 }

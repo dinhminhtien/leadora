@@ -12,6 +12,7 @@ export type Lead = {
   email: string | null;
   phone: string | null;
   companyName: string | null;
+  isCorporate: boolean;
   source: string | null;
   status: LeadStatus;
   notes: string | null;
@@ -30,6 +31,7 @@ export type CreateLeadPayload = {
   email?: string;
   phone?: string;
   companyName?: string;
+  isCorporate?: boolean;
   source?: string;
   notes?: string;
   assignedUserId?: string;
@@ -40,6 +42,7 @@ export type UpdateLeadPayload = {
   email?: string;
   phone?: string;
   companyName?: string;
+  isCorporate?: boolean;
   source?: string;
   status?: LeadStatus;
   notes?: string;
@@ -65,6 +68,7 @@ export type LeadListParams = {
   search?: string;
   status?: string;
   source?: string;
+  isCorporate?: boolean;
   sortBy?: string;
   sortDir?: "asc" | "desc";
   dateFrom?: string;

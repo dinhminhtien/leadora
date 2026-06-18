@@ -29,6 +29,7 @@ public interface LeadRepository extends JpaRepository<LeadEntity, UUID> {
                OR LOWER(l.companyName) LIKE LOWER(CONCAT('%', :search, '%')))
           AND (:status IS NULL OR l.status = :status)
           AND (:source = '' OR l.source = :source)
+          AND (:isCorporate IS NULL OR l.isCorporate = :isCorporate)
         """,
         countQuery = """
         SELECT COUNT(l) FROM LeadEntity l
@@ -37,11 +38,13 @@ public interface LeadRepository extends JpaRepository<LeadEntity, UUID> {
                OR LOWER(l.companyName) LIKE LOWER(CONCAT('%', :search, '%')))
           AND (:status IS NULL OR l.status = :status)
           AND (:source = '' OR l.source = :source)
+          AND (:isCorporate IS NULL OR l.isCorporate = :isCorporate)
         """)
     Page<LeadEntity> searchLeads(
             @Param("search") String search,
             @Param("status") LeadStatus status,
             @Param("source") String source,
+            @Param("isCorporate") Boolean isCorporate,
             Pageable pageable
     );
 

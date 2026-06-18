@@ -39,7 +39,7 @@ public class ConvertLeadUseCase {
         // 3. BR-07: status must be QUALIFIED
         if (lead.getStatus() != LeadStatus.QUALIFIED) {
             throw new IllegalStateException(
-                    "Lead must be QUALIFIED before conversion (BR-07). Current status: " + lead.getStatus()
+                    "Lead must be QUALIFIED before conversion. Current status: " + lead.getStatus()
             );
         }
 

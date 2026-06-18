@@ -36,6 +36,11 @@ public class LeadEntity extends BaseEntity {
     @Column(name = "company_name", length = 255)
     private String companyName;
 
+    /** false = individual customer, true = corporate / organization. */
+    @Builder.Default
+    @Column(name = "is_corporate", nullable = false, columnDefinition = "boolean default false")
+    private Boolean isCorporate = false;
+
     @Column(name = "source", length = 100)
     private String source;
 
