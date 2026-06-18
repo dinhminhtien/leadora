@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import type { Quotation } from "@/services/quotation_service";
+import { useConvertToBooking } from "@/features/quotation/hooks/use_quotations";
+import { useAuthStore } from "@/stores/auth_store";
 
 interface ConvertToBookingModalProps {
   quote: Quotation;
@@ -33,6 +35,7 @@ function ReviewField({
   required,
   onChange,
   type = "text",
+  disabled,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -40,6 +43,7 @@ function ReviewField({
   required?: boolean;
   onChange: (v: string) => void;
   type?: string;
+  disabled?: boolean;
 }) {
   const isMissing = required && !value.trim();
 
@@ -62,8 +66,11 @@ function ReviewField({
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
           className={`w-full rounded-lg border px-3 py-1.5 text-xs text-slate-800 focus:outline-none transition ${
-            isMissing
+            disabled
+              ? "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
+              : isMissing
               ? "border-amber-300 bg-amber-50 focus:border-amber-500 placeholder:text-amber-400"
               : "border-slate-200 bg-slate-50 focus:border-blue-500 focus:bg-white"
           }`}
@@ -75,19 +82,21 @@ function ReviewField({
 }
 
 export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertToBookingModalProps) {
+  const { user } = useAuthStore();
+  const convertToBooking = useConvertToBooking();
+
   const [contactName, setContactName] = useState(quote.contactName);
   const [email, setEmail] = useState(quote.email ?? "");
   const [phone, setPhone] = useState(quote.phone ?? "");
   const [roomType, setRoomType] = useState(quote.roomType ?? "");
   const [checkInDate, setCheckInDate] = useState(quote.checkInDate ?? "");
   const [checkOutDate, setCheckOutDate] = useState(quote.checkOutDate ?? "");
+  const [specialRequests, setSpecialRequests] = useState("");
+
   const [e3Error, setE3Error] = useState<string | null>(null);
   const [e4Error, setE4Error] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ bookingNo: string } | null>(null);
-
-  const [bookingNo] = useState(
-    () => `BK-2026-${String(Math.floor(Math.random() * 1000) + 8891).padStart(4, "0")}`
-  );
 
   const availability = useMemo(() => {
     if (!roomType || !checkInDate || !checkOutDate) return null;
@@ -97,18 +106,20 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
     return { available: true };
   }, [roomType, checkInDate, checkOutDate]);
 
-  // Pricing
   const nights = useMemo(() => {
     if (!checkInDate || !checkOutDate) return 0;
     const diff = new Date(checkOutDate).getTime() - new Date(checkInDate).getTime();
     return diff > 0 ? Math.floor(diff / (1000 * 60 * 60 * 24)) : 0;
   }, [checkInDate, checkOutDate]);
 
-  const handleConvert = () => {
+  const hasMissingFields = !email || !phone || !roomType || !checkInDate || !checkOutDate;
+
+  const handleConvert = async () => {
     setE3Error(null);
     setE4Error(null);
+    setApiError(null);
 
-    // E4: missing required fields
+    // E4: missing required fields (BR-23)
     const missing: string[] = [];
     if (!contactName.trim()) missing.push("Contact Name");
     if (!email.trim()) missing.push("Email");
@@ -118,22 +129,38 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
     if (!checkOutDate.trim()) missing.push("Check-Out Date");
 
     if (missing.length > 0) {
-      setE4Error(
-        `Incomplete customer/booking details — please fill in: ${missing.join(", ")}.`
-      );
+      setE4Error(`Incomplete customer/booking details — please fill in: ${missing.join(", ")}.`);
       return;
     }
 
-    // E3: room conflict
     if (availability && !availability.available) {
-      setE3Error(
-        `"${roomType}" is already confirmed (${(availability as { available: false; bookingNo: string }).bookingNo}) for overlapping dates. Adjust the dates or room type before converting.`
-      );
+      setE3Error(`"${roomType}" is no longer available for the selected dates. Adjust dates or room type.`);
       return;
     }
 
-    setSuccess({ bookingNo });
-    setTimeout(() => onConverted(quote.id, bookingNo), 1400);
+    try {
+      const result = await convertToBooking.mutateAsync({
+        id: quote.id,
+        payload: {
+          contactName,
+          email,
+          phone,
+          roomType,
+          checkInDate,
+          checkOutDate,
+          specialRequests: specialRequests.trim() || undefined,
+          convertedByName: user?.name ?? user?.email ?? "Staff",
+          convertedByRole: user?.roles?.[0] ?? "SALES_STAFF",
+        },
+      });
+
+      const bookingCode = result.data?.bookingCode ?? "BK-UNKNOWN";
+      setSuccess({ bookingNo: bookingCode });
+      setTimeout(() => onConverted(quote.id, bookingCode), 1400);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to convert quotation. Please try again.";
+      setApiError(msg);
+    }
   };
 
   return (
@@ -150,7 +177,7 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
             <div>
               <h2 className="text-sm font-bold text-slate-800">Convert to Booking</h2>
               <p className="text-[10px] text-slate-400 mt-0.5">
-                {quote.quoteNo} · {quote.contactName} · ${quote.amount.toLocaleString('en-US')}
+                {quote.quoteNo} · {quote.contactName} · ${quote.amount.toLocaleString("en-US")}
               </p>
             </div>
           </div>
@@ -163,7 +190,6 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
         </div>
 
         {success ? (
-          /* Success state */
           <div className="py-10 flex flex-col items-center gap-4 px-6">
             <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
               <CheckCircle2 className="size-7 text-emerald-500" />
@@ -195,8 +221,8 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
               </span>
             </div>
 
-            {/* E4: pre-scan for missing fields */}
-            {(!email || !phone || !roomType || !checkInDate || !checkOutDate) && (
+            {/* E4 pre-scan warning */}
+            {hasMissingFields && (
               <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
                 <AlertCircle className="size-3.5 text-amber-500 mt-0.5 shrink-0" />
                 <p className="text-[10px] font-semibold text-amber-700">
@@ -272,22 +298,31 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
                   />
                 </div>
 
+                {/* Special requests */}
+                <div className="flex items-start gap-3">
+                  <div className="mt-2.5 shrink-0 text-slate-400">
+                    <ShieldCheck className="size-3.5" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
+                      Special Requests <span className="text-slate-300">(optional)</span>
+                    </label>
+                    <textarea
+                      value={specialRequests}
+                      onChange={(e) => setSpecialRequests(e.target.value)}
+                      rows={2}
+                      placeholder="Any special arrangements or notes for Reservation Staff..."
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white resize-none transition"
+                    />
+                  </div>
+                </div>
+
                 {/* Availability indicator */}
                 {availability && (
-                  <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
-                    availability.available
-                      ? "border-emerald-200 bg-emerald-50"
-                      : "border-red-200 bg-red-50"
-                  }`}>
-                    {availability.available ? (
-                      <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />
-                    ) : (
-                      <XCircle className="size-3.5 text-red-500 shrink-0" />
-                    )}
-                    <span className={`text-[10px] font-semibold ${availability.available ? "text-emerald-700" : "text-red-600"}`}>
-                      {availability.available
-                        ? "Room type is available for selected dates"
-                        : `[E3] Conflict with booking ${(availability as { available: false; bookingNo: string }).bookingNo}`}
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                    <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />
+                    <span className="text-[10px] font-semibold text-emerald-700">
+                      Room type is available for selected dates
                     </span>
                   </div>
                 )}
@@ -306,7 +341,7 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
                   <Hash className="size-3 shrink-0" />
                   <span>Reference</span>
                 </div>
-                <span className="font-bold text-slate-800">{bookingNo}</span>
+                <span className="font-semibold text-slate-500 italic text-[10px]">Generated on confirm</span>
 
                 <div className="flex items-center gap-1.5 text-slate-500">
                   <CalendarDays className="size-3 shrink-0" />
@@ -320,7 +355,7 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
                   <DollarSign className="size-3 shrink-0" />
                   <span>Amount</span>
                 </div>
-                <span className="font-black text-emerald-700">${quote.amount.toLocaleString('en-US')}</span>
+                <span className="font-black text-emerald-700">${quote.amount.toLocaleString("en-US")}</span>
 
                 <div className="flex items-center gap-1.5 text-slate-500">
                   <CheckCircle2 className="size-3 shrink-0" />
@@ -346,6 +381,12 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
                 <p className="text-[10px] font-semibold text-red-600">[E3] {e3Error}</p>
               </div>
             )}
+            {apiError && (
+              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                <AlertCircle className="size-3.5 text-red-500 mt-0.5 shrink-0" />
+                <p className="text-[10px] font-semibold text-red-600">{apiError}</p>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex gap-2 pt-1">
@@ -353,6 +394,7 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
                 variant="primary"
                 className="flex-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-700"
                 onClick={handleConvert}
+                isLoading={convertToBooking.isPending}
                 leftIcon={<Building2 className="size-3.5" />}
               >
                 Confirm &amp; Convert to Booking
@@ -361,6 +403,7 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
                 variant="outline"
                 className="text-xs border-slate-200 text-slate-600 px-4"
                 onClick={onClose}
+                disabled={convertToBooking.isPending}
               >
                 Cancel
               </Button>
