@@ -3,53 +3,76 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Search, Plus, X, Handshake, Users, TrendingUp, Percent,
-  Mail, Phone, Building2, ArrowUpRight, ChevronLeft, ChevronRight,
+  Phone, Building2, User, ArrowUpRight, ChevronLeft, ChevronRight,
   Loader2, AlertCircle, SlidersHorizontal, CalendarDays, ArrowUpDown,
-  ArrowUp, ArrowDown, ChevronDown, Maximize2, Minimize2, ServerCrash,
+  ArrowUp, ArrowDown, ArrowDownWideNarrow, ChevronDown, Maximize2, Minimize2, ServerCrash,
 } from "lucide-react";
 import Link from "next/link";
-import type { LeadStatus, CreateLeadPayload, Lead } from "@/services/lead_service";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { useLeads, useCreateLead } from "@/features/lead/hooks/use_leads";
+import type { LeadStatus, CreateLeadPayload } from "@/services/lead_service";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<LeadStatus, { label: string; dot: string; badge: string }> = {
   NEW:       { label: "New",       dot: "bg-sky-400",     badge: "bg-sky-50 text-sky-700 ring-sky-200" },
   CONTACTED: { label: "Contacted", dot: "bg-amber-400",   badge: "bg-amber-50 text-amber-700 ring-amber-200" },
-  QUALIFIED: { label: "Qualified", dot: "bg-emerald-400", badge: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
-  CONVERTED: { label: "Converted", dot: "bg-violet-400",  badge: "bg-violet-50 text-violet-700 ring-violet-200" },
+  QUALIFIED: { label: "Qualified", dot: "bg-teal-400",    badge: "bg-teal-50 text-teal-700 ring-teal-200" },
+  CONVERTED: { label: "Converted", dot: "bg-emerald-500", badge: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
   LOST:      { label: "Lost",      dot: "bg-rose-400",    badge: "bg-rose-50 text-rose-700 ring-rose-200" },
 };
 
 const SOURCE_OPTIONS = ["Website Inquiry", "Referral", "Social Media", "Cold Call", "Walk-in", "Event"];
 
 const SORT_OPTIONS = [
-  { value: "createdAt_desc", label: "Mới nhất",     icon: ArrowDown },
-  { value: "createdAt_asc",  label: "Cũ nhất",      icon: ArrowUp },
-  { value: "fullName_asc",   label: "Tên A → Z",    icon: ArrowUpDown },
-  { value: "fullName_desc",  label: "Tên Z → A",    icon: ArrowUpDown },
+  { value: "status_desc",    label: "Status",      icon: ArrowDownWideNarrow },
+  { value: "createdAt_desc", label: "Newest",      icon: ArrowDown },
+  { value: "createdAt_asc",  label: "Oldest",      icon: ArrowUp },
+  { value: "fullName_asc",   label: "Name A → Z",  icon: ArrowUpDown },
+  { value: "fullName_desc",  label: "Name Z → A",  icon: ArrowUpDown },
 ];
 
 const EMPTY_FORM: CreateLeadPayload = {
-  fullName: "", email: "", phone: "", companyName: "", source: "Website Inquiry", notes: "",
+  fullName: "", email: "", phone: "", companyName: "", address: "", isCorporate: false, source: "Website Inquiry", notes: "",
 };
+
+// Lead type (individual vs corporate/organization) — `isCorporate` boolean on the lead.
+const TYPE_OPTIONS = [
+  { value: "individual", label: "Individual", isCorporate: false },
+  { value: "corporate",  label: "Organization", isCorporate: true },
+] as const;
+
+// Segmented toggle shown at the top-right of the list (All / Individual / Organization).
+const TYPE_SEGMENTS: { value: string; label: string; icon?: React.ElementType }[] = [
+  { value: "",           label: "All" },
+  { value: "individual", label: "Individual",   icon: User },
+  { value: "corporate",  label: "Organization", icon: Building2 },
+];
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
-type FormErrors = { fullName?: string; email?: string; phone?: string };
+type FormErrors = { fullName?: string; email?: string; phone?: string; companyName?: string };
 
 function validateForm(f: CreateLeadPayload): FormErrors {
   const err: FormErrors = {};
   if (!f.fullName.trim()) {
-    err.fullName = "Họ tên không được để trống";
+    err.fullName = "Full name is required";
   } else if (/\d/.test(f.fullName)) {
-    err.fullName = "Họ tên không được chứa số";
+    err.fullName = "Full name cannot contain numbers";
   }
   if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) {
-    err.email = "Email không đúng định dạng (phải có @)";
+    err.email = "Invalid email format (must contain @)";
   }
   if (f.phone && !/^\d{10,11}$/.test(f.phone.replace(/\s/g, ""))) {
-    err.phone = "Số điện thoại phải là 10–11 chữ số";
+    err.phone = "Phone number must be 10–11 digits";
+  }
+  // Organization leads must name the company; individuals don't need one.
+  if (f.isCorporate && !f.companyName?.trim()) {
+    err.companyName = "Company name is required for an organization";
   }
   return err;
 }
@@ -82,6 +105,22 @@ function FieldError({ msg }: { msg?: string }) {
   return <p className="mt-1 text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{msg}</p>;
 }
 
+// Missing/null information in the list is surfaced in red as "Unknown".
+function Unknown() {
+  return <span className="text-rose-500 italic font-medium">Unknown</span>;
+}
+
+// Caps a value at a fixed pixel width and clips the overflow with a CSS ellipsis ("…"),
+// so even a long unbroken string (e.g. "wwwwwww…") can never push the table columns out
+// of alignment — character count is irrelevant, only rendered width. Full value in tooltip.
+function Truncate({ text, width = 150, className = "" }: { text: string; width?: number; className?: string }) {
+  return (
+    <span title={text} className={`block truncate ${className}`} style={{ maxWidth: width }}>
+      {text}
+    </span>
+  );
+}
+
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
     <span className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200">
@@ -109,12 +148,11 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
     setErrors({});
     createMutation.mutate(form, {
       onSuccess: onClose,
-      onError: (err) => {
-        const error = err as { response?: { status?: number; data?: { message?: string } } };
-        if (error.response?.status && error.response.status >= 500) {
-          setServerError("Sever lỗi vui lòng liên hệ Admin");
+      onError: (err: any) => {
+        if (err?.response?.status >= 500) {
+          setServerError("Server error — please contact your Admin.");
         } else {
-          setServerError(error.response?.data?.message || "Tạo lead thất bại. Vui lòng thử lại.");
+          setServerError(err?.response?.data?.message || "Failed to create lead. Please try again.");
         }
       },
     });
@@ -127,18 +165,24 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40" onClick={onClose} />
-      <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col animate-in slide-in-from-right-4 duration-300">
-        <div className="flex items-center justify-between px-6 py-5 border-b bg-linear-to-r from-blue-600 to-indigo-600">
+      <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40 transition-opacity" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl border-l border-slate-200 flex flex-col animate-in slide-in-from-right duration-300">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
-            <h2 className="text-base font-bold text-white">Lead mới</h2>
-            <p className="text-blue-200 text-xs mt-0.5">Nhập thông tin khách hàng tiềm năng</p>
+            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <Plus className="size-4.5 text-blue-600" />
+              Add New Lead
+            </h3>
+            <p className="text-[10px] text-slate-400 mt-0.5">Capture a new potential customer</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-full text-blue-200 hover:bg-white/20 transition">
-            <X className="size-4" />
+          <button onClick={onClose}
+            className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+            <X className="size-4.5" />
           </button>
         </div>
 
+        {/* Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
           {serverError && (
             <div className="flex items-center gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-600">
@@ -146,69 +190,96 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          <div>
-            <label className="text-xs font-semibold text-slate-700">Họ và tên <span className="text-rose-500">*</span></label>
-            <input placeholder="VD: Nguyễn Văn An" value={form.fullName}
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600">Full Name *</label>
+            <Input placeholder="e.g. John Smith" value={form.fullName}
               onChange={e => field("fullName", e.target.value)}
-              className={`mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                ${errors.fullName ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-            <FieldError msg={errors.fullName} />
+              error={errors.fullName}
+              className="py-1.5 text-xs" />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-slate-700">Email</label>
-              <input type="text" placeholder="example@gmail.com" value={form.email}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-600">Email</label>
+              <Input type="text" placeholder="example@gmail.com" value={form.email}
                 onChange={e => field("email", e.target.value)}
-                className={`mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                  ${errors.email ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-              <FieldError msg={errors.email} />
+                error={errors.email}
+                className="py-1.5 text-xs" />
             </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-700">Số điện thoại</label>
-              <input placeholder="0901234567" value={form.phone}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-600">Phone Number</label>
+              <Input placeholder="0901234567" value={form.phone}
                 onChange={e => field("phone", e.target.value)}
-                className={`mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                  ${errors.phone ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-              <FieldError msg={errors.phone} />
+                error={errors.phone}
+                className="py-1.5 text-xs" />
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-slate-700">Công ty / Tổ chức</label>
-            <input placeholder="VD: TechCorp Inc." value={form.companyName}
-              onChange={e => field("companyName", e.target.value)}
-              className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-slate-700">Nguồn tiếp cận</label>
-            <select value={form.source} onChange={e => field("source", e.target.value)}
-              className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600">Source Channel</label>
+            <Select value={form.source} onChange={e => field("source", e.target.value)} className="py-1.5">
               {SOURCE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            </Select>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-slate-700">Ghi chú</label>
-            <textarea rows={3} placeholder="Mô tả nhu cầu, sự kiện, số phòng…" value={form.notes}
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600">Address</label>
+            <Input placeholder="e.g. 12 Nguyen Hue, District 1, HCMC" value={form.address}
+              onChange={e => field("address", e.target.value)}
+              className="py-1.5 text-xs" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600">Notes</label>
+            <textarea rows={3} placeholder="Describe the requirement, event, room count…" value={form.notes}
               onChange={e => field("notes", e.target.value)}
-              className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition resize-none" />
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 px-3.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition resize-none" />
+          </div>
+
+          {/* Customer Type sits at the very bottom; choosing Organization reveals a required company field. */}
+          <div className="space-y-1.5 pt-1 border-t border-slate-100">
+            <label className="text-xs font-semibold text-slate-600 pt-2 block">Customer Type</label>
+            <div className="grid grid-cols-2 gap-2">
+              {TYPE_OPTIONS.map(t => {
+                const selected = form.isCorporate === t.isCorporate;
+                const Icon = t.isCorporate ? Building2 : User;
+                return (
+                  <button key={t.value} type="button"
+                    onClick={() => setForm(f => ({ ...f, isCorporate: t.isCorporate, ...(t.isCorporate ? {} : { companyName: "" }) }))}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-semibold transition
+                      ${selected
+                        ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm"
+                        : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
+                    <Icon className={`size-4 ${selected ? "text-blue-600" : "text-slate-400"}`} />
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {form.isCorporate && (
+            <div className="space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+              <label className="text-xs font-semibold text-slate-600">Company / Organization *</label>
+              <Input placeholder="e.g. TechCorp Inc." value={form.companyName}
+                onChange={e => field("companyName", e.target.value)}
+                error={errors.companyName}
+                className="py-1.5 text-xs" />
+            </div>
+          )}
+
+          <div className="pt-4 flex gap-3 border-t border-slate-100">
+            <Button type="submit" variant="primary" isLoading={createMutation.isPending}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-xs font-semibold">
+              Create Lead
+            </Button>
+            <Button type="button" variant="outline" onClick={onClose}
+              className="w-full border-slate-200 text-xs text-slate-600">
+              Cancel
+            </Button>
           </div>
         </form>
-
-        <div className="flex gap-3 px-6 py-4 border-t bg-slate-50">
-          <button type="button" onClick={onClose}
-            className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition">
-            Huỷ
-          </button>
-          <button onClick={handleSubmit} disabled={createMutation.isPending}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 transition active:scale-95">
-            {createMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-            Tạo Lead
-          </button>
-        </div>
-      </aside>
+      </div>
     </>
   );
 }
@@ -219,30 +290,30 @@ function LeadTable({
   isLoading, isError, leads, totalPages, totalElements, page, onPageChange, onClearFilters, hasFilters,
 }: {
   isLoading: boolean; isError: boolean;
-  leads: Lead[]; totalPages: number; totalElements: number;
+  leads: any[]; totalPages: number; totalElements: number;
   page: number; onPageChange: (p: number) => void;
   onClearFilters: () => void; hasFilters: boolean;
 }) {
   if (isLoading) return (
     <div className="flex items-center justify-center py-20 gap-2 text-slate-400">
-      <Loader2 className="size-5 animate-spin" /> Đang tải…
+      <Loader2 className="size-5 animate-spin" /> Loading…
     </div>
   );
 
   if (isError) return (
     <div className="flex flex-col items-center justify-center py-20 gap-2 text-rose-500">
       <ServerCrash className="size-8 mb-1" />
-      <p className="text-sm font-semibold">Sever lỗi vui lòng liên hệ Admin</p>
+      <p className="text-sm font-semibold">Server error — please contact your Admin.</p>
     </div>
   );
 
   if (leads.length === 0) return (
     <div className="flex flex-col items-center justify-center py-20 text-slate-400">
       <Handshake className="size-10 mb-3 opacity-30" />
-      <p className="text-sm font-medium">Không tìm thấy kết quả</p>
+      <p className="text-sm font-medium">No results found</p>
       {hasFilters && (
         <button onClick={onClearFilters} className="mt-2 text-xs text-blue-500 hover:underline">
-          Xoá bộ lọc
+          Clear filters
         </button>
       )}
     </div>
@@ -253,90 +324,98 @@ function LeadTable({
 
   return (
     <>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 border-b border-slate-100 sticky top-0">
-            <tr>
-              {[
-                { label: "#", w: "w-10" },
-                { label: "Tên / Liên hệ", w: "" },
-                { label: "Công ty", w: "" },
-                { label: "Số điện thoại", w: "" },
-                { label: "Nguồn", w: "" },
-                { label: "Phụ trách", w: "" },
-                { label: "Trạng thái", w: "" },
-                { label: "Ngày tạo", w: "" },
-                { label: "", w: "w-8" },
-              ].map(h => (
-                <th key={h.label} className={`px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap ${h.w}`}>
-                  {h.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {leads.map((lead, idx) => (
-              <tr key={lead.leadId}
-                className={`group border-b border-slate-50 hover:bg-blue-50/40 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/30"}`}>
-                <td className="px-4 py-3 text-xs text-slate-400 font-mono">
-                  {page * 10 + idx + 1}
-                </td>
-                <td className="px-4 py-3">
-                  <Link href={`/leads/${lead.leadId}`}
-                    className="font-semibold text-sm text-slate-800 hover:text-blue-600 transition-colors line-clamp-1 group-hover:underline decoration-blue-300 underline-offset-2">
-                    {lead.fullName}
-                  </Link>
-                  {lead.email && <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{lead.email}</p>}
-                </td>
-                <td className="px-4 py-3">
-                  <span className="flex items-center gap-1.5 text-xs text-slate-600">
-                    {lead.companyName
-                      ? <><Building2 className="size-3.5 text-slate-300 shrink-0" />{lead.companyName}</>
-                      : <span className="text-slate-300 italic">—</span>}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  {lead.phone
-                    ? <a href={`tel:${lead.phone}`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-blue-600">
-                        <Phone className="size-3 text-slate-300" />{lead.phone}
-                      </a>
-                    : <span className="text-slate-300 text-xs italic">—</span>}
-                </td>
-                <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
-                  {lead.source ?? <span className="text-slate-300 italic">—</span>}
-                </td>
-                <td className="px-4 py-3">
-                  {lead.assignedUserName
-                    ? <div className="flex items-center gap-2"><Avatar name={lead.assignedUserName} /><span className="text-xs text-slate-600 truncate max-w-[80px]">{lead.assignedUserName}</span></div>
-                    : <span className="text-xs text-slate-300 italic">Chưa phân công</span>}
-                </td>
-                <td className="px-4 py-3"><StatusBadge status={lead.status} /></td>
-                <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
-                  {lead.createdAt ? new Date(lead.createdAt).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—"}
-                </td>
-                <td className="px-4 py-3">
-                  <Link href={`/leads/${lead.leadId}`}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity hover:text-blue-800">
-                    <ArrowUpRight className="size-3.5" />
-                  </Link>
-                </td>
-              </tr>
+      <Table>
+        <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
+          <TableRow hoverable={false}>
+            {[
+              { label: "#", w: "w-10" },
+              { label: "Name / Contact", w: "" },
+              { label: "Type / Company", w: "" },
+              { label: "Phone", w: "" },
+              { label: "Address", w: "" },
+              { label: "Source", w: "" },
+              { label: "Owner", w: "" },
+              { label: "Status", w: "" },
+              { label: "Created", w: "" },
+              { label: "", w: "w-8" },
+            ].map((h, i) => (
+              <TableHead key={h.label || `col-${i}`} className={`py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap ${h.w}`}>
+                {h.label}
+              </TableHead>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {leads.map((lead, idx) => (
+            <TableRow key={lead.leadId}
+              className="group hover:bg-blue-50/40 transition-colors border-b border-slate-100">
+              <TableCell className="py-3 px-4 text-xs text-slate-400 font-mono border-b-0">
+                {page * 10 + idx + 1}
+              </TableCell>
+              <TableCell className="py-3 px-4 border-b-0">
+                <Link href={`/leads/${lead.leadId}`}
+                  className="block group-hover:underline decoration-blue-300 underline-offset-2">
+                  <Truncate text={lead.fullName} width={130}
+                    className="font-semibold text-sm text-slate-800 group-hover:text-blue-600 transition-colors" />
+                </Link>
+                <div className="text-[11px] mt-0.5">
+                  {lead.email ? <Truncate text={lead.email} width={130} className="text-slate-400" /> : <Unknown />}
+                </div>
+              </TableCell>
+              <TableCell className="py-3 px-4 border-b-0">
+                <span className="flex items-center gap-1.5 text-xs text-slate-600" title={lead.isCorporate ? "Organization" : "Individual"}>
+                  {lead.isCorporate
+                    ? <Building2 className="size-3.5 text-slate-400 shrink-0" />
+                    : <User className="size-3.5 text-slate-400 shrink-0" />}
+                  {lead.isCorporate
+                    ? (lead.companyName ? lead.companyName : <Unknown />)
+                    : <span className="text-slate-400">Individual</span>}
+                </span>
+              </TableCell>
+              <TableCell className="py-3 px-4 border-b-0">
+                {lead.phone
+                  ? <a href={`tel:${lead.phone}`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-blue-600">
+                      <Phone className="size-3 text-slate-300 shrink-0" />{lead.phone}
+                    </a>
+                  : <span className="text-xs"><Unknown /></span>}
+              </TableCell>
+              <TableCell className="py-3 px-4 text-xs text-slate-500 border-b-0">
+                {lead.address ? <Truncate text={lead.address} width={120} /> : <Unknown />}
+              </TableCell>
+              <TableCell className="py-3 px-4 text-xs text-slate-500 whitespace-nowrap border-b-0">
+                {lead.source ?? <Unknown />}
+              </TableCell>
+              <TableCell className="py-3 px-4 border-b-0">
+                {lead.assignedUserName
+                  ? <div className="flex items-center gap-2"><Avatar name={lead.assignedUserName} /><Truncate text={lead.assignedUserName} width={90} className="text-xs text-slate-600" /></div>
+                  : <span className="text-xs text-slate-300 italic">Unassigned</span>}
+              </TableCell>
+              <TableCell className="py-3 px-4 border-b-0"><StatusBadge status={lead.status} /></TableCell>
+              <TableCell className="py-3 px-4 text-xs text-slate-400 whitespace-nowrap border-b-0">
+                {lead.createdAt ? new Date(lead.createdAt).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+              </TableCell>
+              <TableCell className="py-3 px-4 border-b-0">
+                <Link href={`/leads/${lead.leadId}`}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity hover:text-blue-800">
+                  <ArrowUpRight className="size-3.5" />
+                </Link>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
 
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50/50">
           <p className="text-xs text-slate-500">
-            Trang <strong>{page + 1}</strong> / <strong>{totalPages}</strong>
-            <span className="text-slate-400 ml-2">· {totalElements} kết quả</span>
+            Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong>
+            <span className="text-slate-400 ml-2">· {totalElements} results</span>
           </p>
           <div className="flex items-center gap-1">
             <button onClick={() => onPageChange(Math.max(0, page - 1))} disabled={page === 0}
               className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">
-              <ChevronLeft className="size-3.5" /> Trước
+              <ChevronLeft className="size-3.5" /> Prev
             </button>
             {pageNumbers.map(p => (
               <button key={p} onClick={() => onPageChange(p)}
@@ -347,7 +426,7 @@ function LeadTable({
             ))}
             <button onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1}
               className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">
-              Sau <ChevronRight className="size-3.5" />
+              Next <ChevronRight className="size-3.5" />
             </button>
           </div>
         </div>
@@ -363,9 +442,10 @@ export function LeadListScreen() {
   const [search,      setSearch]      = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
+  const [typeFilter,  setTypeFilter]  = useState("");
   const [dateFrom,    setDateFrom]    = useState("");
   const [dateTo,      setDateTo]      = useState("");
-  const [sortOption,  setSortOption]  = useState("createdAt_desc");
+  const [sortOption,  setSortOption]  = useState("status_desc");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [page,        setPage]        = useState(0);
@@ -402,6 +482,7 @@ export function LeadListScreen() {
     search:   search        || undefined,
     status:   statusFilter  || undefined,
     source:   sourceFilter  || undefined,
+    isCorporate: typeFilter === "" ? undefined : typeFilter === "corporate",
     sortBy,
     sortDir,
     dateFrom: dateFrom      || undefined,
@@ -417,12 +498,14 @@ export function LeadListScreen() {
 
   const qualified     = leads.filter(l => l.status === "QUALIFIED").length;
   const active        = leads.filter(l => l.status !== "LOST" && l.status !== "CONVERTED").length;
+  const qualifyRate   = `${((qualified / (leads.length || 1)) * 100).toFixed(1)}%`;
 
+  // Type now has its own always-visible segmented toggle, so it is excluded from the advanced-filter badge.
   const activeFilterCount = [statusFilter, sourceFilter, dateFrom, dateTo].filter(Boolean).length;
   const hasFilters    = activeFilterCount > 0 || !!search;
 
   const clearAll = () => {
-    setStatusFilter(""); setSourceFilter(""); setDateFrom(""); setDateTo("");
+    setStatusFilter(""); setSourceFilter(""); setTypeFilter(""); setDateFrom(""); setDateTo("");
     setSearchInput(""); setSearch(""); setPage(0);
   };
 
@@ -430,7 +513,7 @@ export function LeadListScreen() {
 
   // ── Filter bar (reused in both normal + fullscreen) ──────────────────────
   const filterBar = (
-    <div className="bg-white border-b border-slate-100">
+    <div className="bg-white">
       <div className="flex flex-wrap items-center gap-2.5 px-4 py-3">
         {/* Search */}
         <div className="relative flex-1 min-w-[180px] max-w-xs">
@@ -441,7 +524,7 @@ export function LeadListScreen() {
               <X className="size-3" />
             </button>
           )}
-          <input type="text" placeholder="Tìm tên, công ty, email…" value={searchInput}
+          <input type="text" placeholder="Search name, company, email…" value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
             className="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:outline-none transition" />
         </div>
@@ -449,7 +532,7 @@ export function LeadListScreen() {
         {/* Status */}
         <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); resetPage(); }}
           className="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:outline-none text-slate-700 cursor-pointer">
-          <option value="">Tất cả trạng thái</option>
+          <option value="">All statuses</option>
           {(Object.keys(STATUS_CONFIG) as LeadStatus[]).map(s => (
             <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
           ))}
@@ -458,7 +541,7 @@ export function LeadListScreen() {
         {/* Source */}
         <select value={sourceFilter} onChange={e => { setSourceFilter(e.target.value); resetPage(); }}
           className="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:outline-none text-slate-700 cursor-pointer">
-          <option value="">Tất cả nguồn</option>
+          <option value="">All sources</option>
           {SOURCE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
@@ -493,7 +576,7 @@ export function LeadListScreen() {
               ? "border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100"
               : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-white"}`}>
           <SlidersHorizontal className="size-3.5" />
-          Bộ lọc
+          Filters
           {activeFilterCount > 0 && (
             <span className="flex items-center justify-center size-4 rounded-full bg-blue-600 text-white text-[9px] font-extrabold">
               {activeFilterCount}
@@ -501,9 +584,28 @@ export function LeadListScreen() {
           )}
         </button>
 
-        <span className="ml-auto text-xs text-slate-400 hidden sm:block">
-          {isLoading ? "Đang tải…" : `${totalElements} kết quả`}
-        </span>
+        {/* Right side: entry count + Individual/Organization segmented toggle */}
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs text-slate-400 hidden lg:block">
+            {isLoading ? "Loading…" : <>Showing <strong className="text-slate-700">{leads.length}</strong> of {totalElements}</>}
+          </span>
+          <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+            {TYPE_SEGMENTS.map(seg => {
+              const active = typeFilter === seg.value;
+              return (
+                <button key={seg.value || "all"} type="button" title={seg.label}
+                  onClick={() => { setTypeFilter(seg.value); resetPage(); }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition
+                    ${active
+                      ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200"
+                      : "text-slate-500 hover:text-slate-700"}`}>
+                  {seg.icon && <seg.icon className="size-3.5" />}
+                  <span className={seg.icon ? "hidden sm:inline" : ""}>{seg.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Advanced panel */}
@@ -512,7 +614,7 @@ export function LeadListScreen() {
           <div className="flex items-end gap-2">
             <div>
               <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                <CalendarDays className="size-3" /> Từ ngày
+                <CalendarDays className="size-3" /> From date
               </label>
               <input type="date" value={dateFrom}
                 onChange={e => { setDateFrom(e.target.value); resetPage(); }}
@@ -521,7 +623,7 @@ export function LeadListScreen() {
             <span className="text-slate-400 text-xs pb-2.5">→</span>
             <div>
               <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                <CalendarDays className="size-3" /> Đến ngày
+                <CalendarDays className="size-3" /> To date
               </label>
               <input type="date" value={dateTo}
                 onChange={e => { setDateTo(e.target.value); resetPage(); }}
@@ -531,7 +633,7 @@ export function LeadListScreen() {
           {hasFilters && (
             <button type="button" onClick={clearAll}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition">
-              <X className="size-3" /> Xoá tất cả
+              <X className="size-3" /> Clear all
             </button>
           )}
         </div>
@@ -540,11 +642,11 @@ export function LeadListScreen() {
       {/* Active chips */}
       {(statusFilter || sourceFilter || dateFrom || dateTo) && (
         <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Đang lọc:</span>
-          {statusFilter && <FilterChip label={`Trạng thái: ${STATUS_CONFIG[statusFilter as LeadStatus]?.label}`} onRemove={() => { setStatusFilter(""); resetPage(); }} />}
-          {sourceFilter && <FilterChip label={`Nguồn: ${sourceFilter}`} onRemove={() => { setSourceFilter(""); resetPage(); }} />}
-          {dateFrom && <FilterChip label={`Từ: ${new Date(dateFrom).toLocaleDateString("vi-VN")}`} onRemove={() => { setDateFrom(""); resetPage(); }} />}
-          {dateTo   && <FilterChip label={`Đến: ${new Date(dateTo).toLocaleDateString("vi-VN")}`}   onRemove={() => { setDateTo("");   resetPage(); }} />}
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Filtering:</span>
+          {statusFilter && <FilterChip label={`Status: ${STATUS_CONFIG[statusFilter as LeadStatus]?.label}`} onRemove={() => { setStatusFilter(""); resetPage(); }} />}
+          {sourceFilter && <FilterChip label={`Source: ${sourceFilter}`} onRemove={() => { setSourceFilter(""); resetPage(); }} />}
+          {dateFrom && <FilterChip label={`From: ${new Date(dateFrom).toLocaleDateString("en-US")}`} onRemove={() => { setDateFrom(""); resetPage(); }} />}
+          {dateTo   && <FilterChip label={`To: ${new Date(dateTo).toLocaleDateString("en-US")}`}   onRemove={() => { setDateTo("");   resetPage(); }} />}
         </div>
       )}
     </div>
@@ -557,24 +659,26 @@ export function LeadListScreen() {
         {/* Compact header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white shrink-0">
           <div className="flex items-center gap-3">
-            <span className="font-bold text-slate-800 text-sm">Danh sách Leads</span>
-            <span className="text-xs text-slate-400">{totalElements} kết quả</span>
+            <span className="font-bold text-slate-800 text-sm">Leads Register</span>
+            <span className="text-xs text-slate-400">{totalElements} results</span>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setDrawer(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition active:scale-95">
-              <Plus className="size-3.5" /> Lead mới
-            </button>
-            <button onClick={() => setFullScreen(false)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition"
-              title="Thoát toàn màn hình (Esc)">
-              <Minimize2 className="size-3.5" /> Thu nhỏ
-            </button>
+            <Button variant="primary" size="sm" onClick={() => setDrawer(true)}
+              leftIcon={<Plus className="size-3.5" />}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold">
+              New Lead
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setFullScreen(false)}
+              leftIcon={<Minimize2 className="size-3.5" />}
+              className="border-slate-200 text-slate-600 text-xs"
+              title="Exit fullscreen (Esc)">
+              Collapse
+            </Button>
           </div>
         </div>
 
         {/* Filter bar */}
-        <div className="shrink-0">{filterBar}</div>
+        <div className="shrink-0 border-b border-slate-100">{filterBar}</div>
 
         {/* Table — scrollable */}
         <div className="flex-1 overflow-auto">
@@ -593,52 +697,61 @@ export function LeadListScreen() {
 
   // ── Normal view ───────────────────────────────────────────────────────────
   return (
-    <div className="min-h-full space-y-5">
+    <div className="space-y-6">
 
-      {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-linear-to-br from-blue-600 via-blue-700 to-indigo-800 p-6 shadow-lg">
-        <div className="absolute inset-0 opacity-10"
-          style={{ backgroundImage: "radial-gradient(circle at 70% 50%, white 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
-        <div className="relative flex flex-col sm:flex-row justify-between sm:items-start gap-4">
-          <div>
-            <p className="text-blue-200 text-xs font-semibold uppercase tracking-widest mb-1">Leadora CRM</p>
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">Quản lý Leads</h1>
-            <p className="text-blue-200 text-sm mt-1">Theo dõi và chuyển đổi khách hàng tiềm năng</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setFullScreen(true)}
-              className="flex items-center gap-2 bg-white/10 border border-white/30 text-white font-semibold text-xs px-3 py-2 rounded-xl hover:bg-white/20 transition"
-              title="Xem toàn màn hình">
-              <Maximize2 className="size-3.5" /> Toàn màn hình
-            </button>
-            <button onClick={() => setDrawer(true)}
-              className="flex items-center gap-2 bg-white text-blue-700 font-bold text-sm px-4 py-2.5 rounded-xl shadow-md hover:bg-blue-50 transition active:scale-95 shrink-0">
-              <Plus className="size-4" /> Lead mới
-            </button>
-          </div>
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">Leads Register</h1>
+          <p className="text-xs text-slate-400">Track and convert potential customers into bookings</p>
         </div>
-
-        {/* KPI */}
-        <div className="relative mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { icon: Handshake,  label: "Tổng Leads",    value: totalElements,                                           color: "text-blue-200" },
-            { icon: Users,      label: "Đang theo dõi", value: active,                                                  color: "text-emerald-300" },
-            { icon: TrendingUp, label: "Đã Qualified",  value: qualified,                                               color: "text-amber-300" },
-            { icon: Percent,    label: "Tỉ lệ Qualify", value: `${((qualified / (leads.length || 1)) * 100).toFixed(0)}%`, color: "text-violet-300" },
-          ].map(({ icon: Icon, label, value, color }) => (
-            <div key={label} className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/20">
-              <Icon className={`size-4 ${color} mb-2`} />
-              <p className="text-white font-extrabold text-xl leading-none">{value}</p>
-              <p className="text-blue-200 text-[11px] font-medium mt-0.5">{label}</p>
-            </div>
-          ))}
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setFullScreen(true)}
+            leftIcon={<Maximize2 className="size-3.5" />}
+            className="border-slate-200 text-slate-600 text-xs font-semibold"
+            title="View fullscreen">
+            Fullscreen
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => setDrawer(true)}
+            leftIcon={<Plus className="size-3.5" />}
+            className="bg-blue-600 hover:bg-blue-700 font-semibold text-xs text-white">
+            New Lead
+          </Button>
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        {filterBar}
+      {/* Stats summary cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+        <div className="border-r border-slate-100 last:border-0 pr-4">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1">
+            <Handshake className="size-3 text-slate-400" /> Total Leads
+          </p>
+          <p className="text-lg font-bold text-slate-800 mt-1">{totalElements} Leads</p>
+        </div>
+        <div className="border-r border-slate-100 last:border-0 px-4">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1">
+            <Users className="size-3 text-slate-400" /> Active
+          </p>
+          <p className="text-lg font-bold text-slate-800 mt-1">{active}</p>
+        </div>
+        <div className="border-r border-slate-100 last:border-0 px-4">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1">
+            <TrendingUp className="size-3 text-slate-400" /> Qualified
+          </p>
+          <p className="text-lg font-bold text-slate-800 mt-1">{qualified}</p>
+        </div>
+        <div className="px-4">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1">
+            <Percent className="size-3 text-slate-400" /> Qualify Rate
+          </p>
+          <p className="text-lg font-bold text-slate-800 mt-1">{qualifyRate}</p>
+        </div>
       </div>
+
+      {/* Filter bar — no overflow-hidden here, or it clips the Sort dropdown menu */}
+      <Card className="border-slate-100 shadow-sm p-0">
+        <CardContent>{filterBar}</CardContent>
+      </Card>
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
