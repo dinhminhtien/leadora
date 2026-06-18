@@ -13,13 +13,14 @@ interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   size?: "sm" | "md";
 }
 
+// Leadora Design System — Badge token spec (PDF §5)
 const variantStyles: Record<BadgeVariant, string> = {
-  default: "bg-muted text-muted-foreground",
-  success: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  warning: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
-  danger: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  info: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200",
-  primary: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  default:  "bg-[#F1EFE8] text-[#444441] dark:bg-zinc-800 dark:text-zinc-300",
+  primary:  "bg-[#E6F1FB] text-[#0C447C] dark:bg-[#0C2840] dark:text-[#85B7EB]",
+  success:  "bg-[#EAF3DE] text-[#27500A] dark:bg-[#173404] dark:text-[#97C459]",
+  warning:  "bg-[#FAEEDA] text-[#633806] dark:bg-[#412402] dark:text-[#EF9F27]",
+  danger:   "bg-[#FCEBEB] text-[#791F1F] dark:bg-[#501313] dark:text-[#F09595]",
+  info:     "bg-[#EEEDFE] text-[#3C3489] dark:bg-[#1E1A50] dark:text-[#7F77DD]",
 };
 
 export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(

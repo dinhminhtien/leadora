@@ -32,8 +32,7 @@ spring:
   # Import environment variables from the root .env file if present
   config:
     import:
-      - optional:file:.env[.properties]
-      - optional:file:../.env[.properties]
+    - optional:file:../.env[.properties]
 
   # Database configuration (Supabase PostgreSQL / local PostgreSQL)
   datasource:

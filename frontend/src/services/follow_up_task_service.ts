@@ -2,7 +2,7 @@ import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_c
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type TaskStatus = "OPEN" | "IN_PROGRESS" | "DONE" | "CANCELLED";
+export type TaskStatus = "OPEN" | "IN_PROGRESS" | "WAITING_CUSTOMER" | "COMPLETED" | "CANCELLED";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 
 export type Task = {
@@ -23,6 +23,7 @@ export type Task = {
   customerName: string | null;
   dealId: string | null;
   dealName: string | null;
+  contactName?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -44,6 +45,7 @@ export type CreateTaskPayload = {
   leadId?: string;
   customerId?: string;
   dealId?: string;
+  contactName?: string; // Primary contact name
 };
 
 export type UpdateTaskPayload = {

@@ -1,10 +1,12 @@
 import { apiClient, type ApiResponse } from "@/services/api_client";
 import type { ListQuery } from "@/shared/types/api";
 
-export type CustomerProfile = Record<string, unknown> & {
+export type CustomerProfile = {
   id: string;
   name?: string;
   email?: string;
+  phone?: string;
+  company?: string;
 };
 
 export type CustomerProfilePayload = Record<string, unknown>;
