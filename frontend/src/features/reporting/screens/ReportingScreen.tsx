@@ -1,14 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { BarChart2, FileText, Download, Printer, AlertCircle, CheckCircle2, ClipboardList } from "lucide-react";
+import React, { useState } from "react";
+import { BarChart2, FileText, Download, Printer, AlertCircle, CheckCircle2, ClipboardList, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { quotationService, type Quotation } from "@/services/quotation_service";
+import type { Quotation } from "@/services/quotation_service";
+import { useQuotationsForReport, useSaveReportLog } from "@/features/reporting/hooks/use_reporting";
+import { useAuthStore } from "@/stores/auth_store";
 
 export interface ReportLog {
   id: string;
@@ -187,72 +189,54 @@ function DiscountReportTab() {
     roomType: "",
     discountThreshold: "10",
   });
-  const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [reportData, setReportData] = useState<Quotation[] | null>(null);
   const [auditMsg, setAuditMsg] = useState("");
-  const [logsCount, setLogsCount] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    const loadQuotations = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await quotationService.getList();
-        if (active) {
-          setQuotations(response.data || []);
-        }
-      } catch (err) {
-        console.error("Failed to fetch quotations:", err);
-        if (active) {
-          setError("Failed to load quotations from server.");
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    };
-    loadQuotations();
-    return () => {
-      active = false;
-    };
-  }, []);
+  const { data: quotations = [], isLoading, isError } = useQuotationsForReport();
+  const saveReportLog = useSaveReportLog();
+  const currentUser = useAuthStore((s) => s.user);
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     const threshold = parseFloat(filters.discountThreshold) || 0;
     const results = quotations.filter((q) => {
       const disc = q.discountPercent ?? 0;
-      const sentDate = (q as { sentDate?: string }).sentDate || q.expiryDate || "";
+      const issueDate = q.validUntil ?? q.expiryDate ?? "";
       const inRange =
-        (!filters.dateFrom || sentDate >= filters.dateFrom) &&
-        (!filters.dateTo || sentDate <= filters.dateTo);
+        (!filters.dateFrom || issueDate >= filters.dateFrom) &&
+        (!filters.dateTo || issueDate <= filters.dateTo);
       const matchesRoom = !filters.roomType || q.roomType === filters.roomType;
       return disc > threshold && inRange && matchesRoom;
     });
 
-    const now = new Date();
-    const logEntry: ReportLog = {
-      id: `RPT-${logsCount + 1}`,
-      generatedBy: "Sarah Connor",
-      role: "SALES",
-      generatedAt: now.toISOString(),
-      filters: {
-        dateFrom: filters.dateFrom,
-        dateTo: filters.dateTo,
-        roomType: filters.roomType || undefined,
-        discountThreshold: threshold,
-      },
-      resultCount: results.length,
-    };
-    setLogsCount(prev => prev + 1);
-
     setReportData(results);
-    setAuditMsg(
-      `Report generated at ${now.toLocaleTimeString()} — ${results.length} quote(s) found. Audit log saved. Manager notified (SALES role).`
-    );
+
+    // POST-3: persist audit log to backend (BR-37: actor, role, action, result, timestamp)
+    const actorName = currentUser?.name ?? currentUser?.email ?? "Unknown";
+    const actorRole = currentUser?.roles?.[0] ?? "UNKNOWN";
+    try {
+      const saved = await saveReportLog.mutateAsync({
+        generatedByName: actorName,
+        generatedByRole: actorRole,
+        filterDateFrom: filters.dateFrom || undefined,
+        filterDateTo: filters.dateTo || undefined,
+        filterRoomType: filters.roomType || undefined,
+        filterDiscountThreshold: threshold,
+        resultCount: results.length,
+        action: "GENERATE_DISCOUNT_REPORT",
+        result: results.length > 0 ? "SUCCESS" : "NO_DATA",
+        reason: `Discount threshold: ${threshold}%, Date range: ${filters.dateFrom} → ${filters.dateTo}`,
+      });
+      const ts = saved.data?.generatedAt
+        ? new Date(saved.data.generatedAt).toLocaleTimeString()
+        : new Date().toLocaleTimeString();
+      setAuditMsg(
+        `Report generated at ${ts} by ${actorName} (${actorRole}) — ${results.length} quote(s) found. Log #${saved.data?.logId?.toString().slice(0, 8).toUpperCase() ?? "?"} saved.`
+      );
+    } catch {
+      setAuditMsg(
+        `Report generated — ${results.length} quote(s) found. (Audit log could not be saved.)`
+      );
+    }
   };
 
   const handleExportCSV = () => {
@@ -348,16 +332,26 @@ function DiscountReportTab() {
               />
             </div>
           </div>
-          <div className="mt-4">
+          <div className="mt-4 flex items-center gap-3">
             <Button
               variant="primary"
               size="sm"
               onClick={handleGenerate}
-              leftIcon={<ClipboardList className="size-3.5" />}
+              disabled={isLoading || saveReportLog.isPending}
+              leftIcon={
+                isLoading || saveReportLog.isPending
+                  ? <Loader2 className="size-3.5 animate-spin" />
+                  : <ClipboardList className="size-3.5" />
+              }
               className="text-xs font-bold"
             >
-              Generate Report
+              {isLoading ? "Loading data..." : saveReportLog.isPending ? "Saving log..." : "Generate Report"}
             </Button>
+            {isError && (
+              <span className="text-xs text-red-500 font-semibold flex items-center gap-1">
+                <AlertCircle className="size-3.5" /> Failed to load quotations
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>

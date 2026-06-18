@@ -17,6 +17,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import type { Quotation } from "@/services/quotation_service";
+import { usePendingApprovals, useProcessApproval } from "@/features/quotation/hooks/use_quotation_approval";
+import { useAuthStore } from "@/stores/auth_store";
 
 type ApprovalHistory = {
   id: string;
@@ -44,10 +46,12 @@ function ApprovalModal({
   quote,
   onClose,
   onDecide,
+  isPending,
 }: {
   quote: Quotation;
   onClose: () => void;
   onDecide: (decision: Decision, notes: string) => void;
+  isPending?: boolean;
 }) {
   const [notes, setNotes] = useState("");
   const [fieldError, setFieldError] = useState("");
@@ -232,25 +236,27 @@ function ApprovalModal({
             <Button
               variant="success"
               onClick={() => handleDecide("approved")}
-              disabled={isDataMissing}
+              disabled={isDataMissing || isPending}
               leftIcon={<CheckCircle2 className="size-3.5" />}
               className="flex-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Approve
+              {isPending ? "Processing..." : "Approve"}
             </Button>
             <Button
               variant="outline"
               onClick={() => handleDecide("pending_revision")}
+              disabled={isPending}
               leftIcon={<RotateCcw className="size-3.5" />}
-              className="flex-1 text-xs font-bold border-amber-300 text-amber-700 hover:bg-amber-50"
+              className="flex-1 text-xs font-bold border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-40"
             >
               Request Changes
             </Button>
             <Button
               variant="danger"
               onClick={() => handleDecide("rejected")}
+              disabled={isPending}
               leftIcon={<XCircle className="size-3.5" />}
-              className="flex-1 text-xs font-bold"
+              className="flex-1 text-xs font-bold disabled:opacity-40"
             >
               Reject
             </Button>
@@ -264,7 +270,10 @@ function ApprovalModal({
 // ── Main Screen ────────────────────────────────────────────────────────────
 
 export function PendingApprovalsScreen() {
-  const [pending, setPending] = useState<Quotation[]>([]);
+  const { data: pending = [], isLoading } = usePendingApprovals();
+  const processApproval = useProcessApproval();
+  const currentUser = useAuthStore((s) => s.user);
+
   const [history, setHistory] = useState<ApprovalHistory[]>([]);
   const [selectedQuote, setSelectedQuote] = useState<Quotation | null>(null);
   const [search, setSearch] = useState("");
@@ -286,7 +295,6 @@ export function PendingApprovalsScreen() {
     const current = pending.find((q) => q.id === quote.id);
     if (!current || current.status !== "pending_approval") {
       setE3Error(`Quotation ${quote.quoteNo} has already been processed.`);
-      setPending(prev => prev.filter((q) => q.status === "pending_approval"));
       return;
     }
     setE3Error("");
@@ -294,36 +302,57 @@ export function PendingApprovalsScreen() {
     setSelectedQuote(quote);
   };
 
-  const handleDecide = (decision: Decision, notes: string) => {
+  const handleDecide = async (decision: Decision, notes: string) => {
     if (!selectedQuote) return;
 
-    const current = pending.find((q) => q.id === selectedQuote.id);
-    if (!current || current.status !== "pending_approval") {
-      setE3Error(`Quotation ${selectedQuote.quoteNo} was already processed by another manager.`);
-      setSelectedQuote(null);
-      setPending(prev => prev.filter((q) => q.status === "pending_approval"));
-      return;
-    }
-
-    const historyEntry: ApprovalHistory = {
-      id: `APH-${history.length + 1}`,
-      quotationId: selectedQuote.id,
-      quoteNo: selectedQuote.quoteNo,
-      decision,
-      decidedBy: "John Doe",
-      role: "MANAGER",
-      decidedAt: new Date().toISOString(),
-      notes,
-      previousStatus: "pending_approval",
+    const actionMap: Record<Decision, "APPROVE" | "REJECT" | "REQUEST_CHANGES"> = {
+      approved: "APPROVE",
+      rejected: "REJECT",
+      pending_revision: "REQUEST_CHANGES",
     };
 
-    setPending((prev) => prev.filter((q) => q.id !== selectedQuote.id));
-    setHistory((prev) => [historyEntry, ...prev]);
-    setSelectedQuote(null);
+    const managerName = currentUser?.name ?? currentUser?.email ?? "Manager";
+    const managerRole = currentUser?.roles?.[0] ?? "MANAGER";
 
-    const decisionBadge =
-      decision === "approved" ? "Approved" : decision === "rejected" ? "Rejected" : "Sent back for revision";
-    setSuccessMsg(`${selectedQuote.quoteNo} — ${decisionBadge} successfully. Sales Staff has been notified.`);
+    try {
+      await processApproval.mutateAsync({
+        id: selectedQuote.id,
+        payload: {
+          action: actionMap[decision],
+          managerName,
+          managerRole,
+          notes: notes || undefined,
+        },
+      });
+
+      const historyEntry: ApprovalHistory = {
+        id: `APH-${Date.now()}`,
+        quotationId: selectedQuote.id,
+        quoteNo: selectedQuote.quoteNo,
+        decision,
+        decidedBy: managerName,
+        role: managerRole,
+        decidedAt: new Date().toISOString(),
+        notes,
+        previousStatus: "pending_approval",
+      };
+
+      setHistory((prev) => [historyEntry, ...prev]);
+      setSelectedQuote(null);
+
+      const decisionBadge =
+        decision === "approved" ? "Approved" : decision === "rejected" ? "Rejected" : "Sent back for revision";
+      setSuccessMsg(`${selectedQuote.quoteNo} — ${decisionBadge} successfully. Sales Staff has been notified.`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("PENDING_APPROVAL") || msg.includes("already") || msg.includes("no longer")) {
+        // E3: Already processed by another manager
+        setE3Error(`Quotation ${selectedQuote.quoteNo} was already processed by another manager.`);
+      } else {
+        setE3Error(`Failed to process quotation: ${msg}`);
+      }
+      setSelectedQuote(null);
+    }
   };
 
   return (
@@ -383,7 +412,9 @@ export function PendingApprovalsScreen() {
             />
           </div>
 
-          {filtered.length === 0 ? (
+          {isLoading ? (
+            <div className="py-14 text-center text-xs text-slate-400">Loading pending approvals...</div>
+          ) : filtered.length === 0 ? (
             <div className="py-14 text-center">
               <ClipboardCheck className="size-10 text-emerald-300 mx-auto mb-2.5" />
               <p className="text-sm font-semibold text-slate-400">
@@ -526,6 +557,7 @@ export function PendingApprovalsScreen() {
           quote={selectedQuote}
           onClose={() => setSelectedQuote(null)}
           onDecide={handleDecide}
+          isPending={processApproval.isPending}
         />
       )}
     </div>
