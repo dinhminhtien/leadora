@@ -32,7 +32,7 @@ public class QuotationEntity extends BaseEntity {
     private CustomerEntity customer;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by", nullable = false)
+    @JoinColumn(name = "created_by")
     private UserEntity createdBy;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -41,6 +41,18 @@ public class QuotationEntity extends BaseEntity {
 
     @Column(name = "version", nullable = false)
     private Integer version;
+
+    @Column(name = "room_type", length = 255)
+    private String roomType;
+
+    @Column(name = "check_in_date")
+    private LocalDate checkInDate;
+
+    @Column(name = "check_out_date")
+    private LocalDate checkOutDate;
+
+    @Column(name = "payment_policy", length = 100)
+    private String paymentPolicy;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
@@ -67,6 +79,13 @@ public class QuotationEntity extends BaseEntity {
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
+
+    // BR-22: revision lineage
+    @Column(name = "parent_quotation_id")
+    private UUID parentQuotationId;
+
+    @Column(name = "change_reason", columnDefinition = "TEXT")
+    private String changeReason;
 
     @Column(name = "sent_at")
     private OffsetDateTime sentAt;

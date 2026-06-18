@@ -28,7 +28,7 @@ public class QuotationDetailEntity {
     private QuotationEntity quotation;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "product_id", nullable = false)
+    @JoinColumn(name = "product_id")
     private ProductServiceEntity productService;
 
     @Column(name = "description", columnDefinition = "TEXT")

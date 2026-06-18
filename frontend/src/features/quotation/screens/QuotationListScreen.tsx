@@ -14,6 +14,8 @@ import { ConvertToBookingModal } from "@/features/quotation/components/ConvertTo
 import { ExpireCloseModal } from "@/features/quotation/components/ExpireCloseModal";
 import type { Quotation } from "@/services/quotation_service";
 export type { Quotation } from "@/services/quotation_service";
+import { useQuotations, useExpireOverdue } from "@/features/quotation/hooks/use_quotations";
+import { useAuthStore } from "@/stores/auth_store";
 
 type ClosureLog = {
   id: string;
@@ -28,7 +30,17 @@ type ClosureLog = {
 };
 
 export function QuotationListScreen() {
-  const [quotes, setQuotes] = useState<Quotation[]>([]);
+  const { data: serverQuotes = [], isLoading } = useQuotations();
+  const { user } = useAuthStore();
+  const expireOverdue = useExpireOverdue();
+  const [localStatusMap, setLocalStatusMap] = useState<Record<string, Quotation["status"]>>({});
+  const quotes = useMemo(
+    () => serverQuotes.map(q => ({
+      ...q,
+      status: (q.id in localStatusMap ? localStatusMap[q.id] : q.status) as Quotation["status"],
+    })),
+    [serverQuotes, localStatusMap]
+  );
   const [closureLogs, setClosureLogs] = useState<ClosureLog[]>([]);
   const [search, setSearch] = useState("");
   const [sendTarget, setSendTarget] = useState<Quotation | null>(null);
@@ -50,21 +62,21 @@ export function QuotationListScreen() {
   );
 
   const handleSent = (_quotationId: string) => {
-    setQuotes(prev => prev.map(q => q.id === _quotationId ? { ...q, status: "sent" as const } : q));
+    setLocalStatusMap(prev => ({ ...prev, [_quotationId]: "sent" }));
     setSendTarget(null);
   };
 
-  const handleResponseRecorded = (_quotationId: string) => {
-    setQuotes(prev => prev.map(q => q.id === _quotationId ? { ...q, status: "interested" as const } : q));
+  const handleResponseRecorded = (_quotationId: string, newStatus: Quotation["status"]) => {
+    setLocalStatusMap(prev => ({ ...prev, [_quotationId]: newStatus }));
     setResponseTarget(null);
   };
 
   const handleConverted = (_quotationId: string, _bookingNo: string) => {
-    setQuotes(prev => prev.map(q => q.id === _quotationId ? { ...q, status: "converted" as const } : q));
+    setLocalStatusMap(prev => ({ ...prev, [_quotationId]: "converted" }));
     setConvertTarget(null);
   };
 
-  const handleClosed = (_quotationId: string) => {
+  const handleClosed = (_quotationId: string, reason: string) => {
     const target = quotes.find(q => q.id === _quotationId);
     if (target) {
       setClosureLogs(prev => [{
@@ -73,40 +85,50 @@ export function QuotationListScreen() {
         quoteNo: target.quoteNo,
         contactName: target.contactName,
         action: "closed",
-        reason: "Manually closed",
+        reason,
         closedAt: new Date().toISOString().split("T")[0],
-        closedBy: "Agent",
+        closedBy: user?.name ?? user?.email ?? "Staff",
         previousStatus: target.status,
       }, ...prev]);
     }
-    setQuotes(prev => prev.map(q => q.id === _quotationId ? { ...q, status: "closed" as const } : q));
+    setLocalStatusMap(prev => ({ ...prev, [_quotationId]: "closed" }));
     setCloseTarget(null);
   };
 
-  const runAutoExpire = () => {
-    const today = new Date().toISOString().split("T")[0];
-    const eligibleStatuses: Quotation["status"][] = ["draft", "sent", "pending_approval", "interested", "pending_revision"];
-    const toExpire = quotes.filter(q => eligibleStatuses.includes(q.status) && q.expiryDate < today);
-    if (toExpire.length > 0) {
-      setClosureLogs(prev => [
-        ...toExpire.map(q => ({
-          id: `CL-auto-${q.id}`,
-          quotationId: q.id,
-          quoteNo: q.quoteNo,
-          contactName: q.contactName,
-          action: "expired" as const,
-          reason: "Validity period exceeded — auto-expired by system",
-          closedAt: today,
-          closedBy: "System (Auto)",
-          previousStatus: q.status,
-        })),
-        ...prev,
-      ]);
-      setQuotes(prev => prev.map(q =>
-        eligibleStatuses.includes(q.status) && q.expiryDate < today ? { ...q, status: "expired" as const } : q
-      ));
+  const runAutoExpire = async () => {
+    try {
+      const res = await expireOverdue.mutateAsync({
+        expiredByName: user?.name ?? user?.email ?? "System (Auto)",
+        expiredByRole: user?.roles?.[0] ?? "SALES_STAFF",
+      });
+      const { expiredCount = 0, expiredIds = [] } = res.data ?? {};
+      if (expiredCount > 0) {
+        const today = new Date().toISOString().split("T")[0];
+        setClosureLogs(prev => [
+          ...expiredIds.map((id: string) => {
+            const q = quotes.find(qt => qt.id === id);
+            return {
+              id: `CL-auto-${id}`,
+              quotationId: id,
+              quoteNo: q?.quoteNo ?? "—",
+              contactName: q?.contactName ?? "—",
+              action: "expired" as const,
+              reason: "Validity period exceeded — auto-expired by system",
+              closedAt: today,
+              closedBy: user?.name ?? "System (Auto)",
+              previousStatus: q?.status ?? "unknown",
+            };
+          }),
+          ...prev,
+        ]);
+        const updates: Record<string, Quotation["status"]> = {};
+        expiredIds.forEach((id: string) => { updates[id] = "expired"; });
+        setLocalStatusMap(prev => ({ ...prev, ...updates }));
+      }
+      setAutoExpireResult(expiredCount);
+    } catch {
+      setAutoExpireResult(0);
     }
-    setAutoExpireResult(toExpire.length);
     setTimeout(() => setAutoExpireResult(null), 4000);
   };
 
@@ -142,6 +164,7 @@ export function QuotationListScreen() {
             variant="outline"
             size="sm"
             onClick={runAutoExpire}
+            isLoading={expireOverdue.isPending}
             leftIcon={<TimerOff className="size-3.5" />}
             className="text-xs border-slate-200 text-slate-600 hover:bg-slate-50"
           >
@@ -198,7 +221,13 @@ export function QuotationListScreen() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredQuotes.length > 0 ? (
+            {isLoading ? (
+              <TableRow hoverable={false}>
+                <TableCell colSpan={7} className="py-8 text-center text-slate-400 text-xs">
+                  Loading quotations...
+                </TableCell>
+              </TableRow>
+            ) : filteredQuotes.length > 0 ? (
               filteredQuotes.map((q) => (
                 <TableRow key={q.id} className="hover:bg-slate-50/70 border-b border-slate-100 transition">
                   <TableCell className="py-3 px-4 text-xs font-bold text-blue-600">
