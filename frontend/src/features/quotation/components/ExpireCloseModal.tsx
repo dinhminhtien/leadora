@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import {
@@ -13,11 +13,13 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import type { Quotation } from "@/services/quotation_service";
+import { useCloseQuotation } from "@/features/quotation/hooks/use_quotations";
+import { useAuthStore } from "@/stores/auth_store";
 
 interface ExpireCloseModalProps {
   quote: Quotation;
   onClose: () => void;
-  onClosed: (quotationId: string) => void;
+  onClosed: (quotationId: string, reason: string) => void;
 }
 
 const CLOSE_REASONS = [
@@ -50,25 +52,32 @@ const STATUS_LABEL: Partial<Record<Quotation["status"], string>> = {
 };
 
 export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalProps) {
+  const { user } = useAuthStore();
+  const closeQuotation = useCloseQuotation();
+
   const [reason, setReason] = useState("");
   const [customNotes, setCustomNotes] = useState("");
   const [simulateFailure, setSimulateFailure] = useState(false);
+  const [failureTriggered, setFailureTriggered] = useState(false);
   const [e3Error, setE3Error] = useState<string | null>(null);
   const [e4Error, setE4Error] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
 
   const isEligible = CLOSEABLE_STATUSES.includes(quote.status);
   const isAlreadyConverted = quote.status === "converted";
 
-  const handleClose = () => {
+  const handleClose = async () => {
     setE3Error(null);
     setE4Error(null);
+    setApiError(null);
 
     // E3: already converted
     if (isAlreadyConverted || !isEligible) {
       setE3Error(
-        `Quotation ${quote.quoteNo} has already been ${quote.status === "converted" ? "converted to a booking" : `closed (${quote.status})`} and cannot be closed again.`
+        `Quotation ${quote.quoteNo} has already been ${
+          quote.status === "converted" ? "converted to a booking" : `closed (${quote.status})`
+        } and cannot be closed again.`
       );
       return;
     }
@@ -79,17 +88,35 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
       return;
     }
 
-    // E4: simulated system failure (up to 1 retry for demo)
-    if (simulateFailure && retryCount === 0) {
-      setRetryCount(1);
+    // E4: simulated system failure — first attempt only
+    if (simulateFailure && !failureTriggered) {
+      setFailureTriggered(true);
       setE4Error(
         "[E4] System failure occurred while updating quotation status. The record has not been changed. Please retry the operation."
       );
       return;
     }
 
-    setSuccess(true);
-    setTimeout(() => onClosed(quote.id), 1200);
+    const finalReason = reason === "Other (see notes)" && customNotes.trim()
+      ? customNotes.trim()
+      : reason;
+
+    try {
+      await closeQuotation.mutateAsync({
+        id: quote.id,
+        payload: {
+          reason: finalReason,
+          notes: customNotes.trim() || undefined,
+          closedByName: user?.name ?? user?.email ?? "Staff",
+          closedByRole: user?.roles?.[0] ?? "SALES_STAFF",
+        },
+      });
+      setSuccess(true);
+      setTimeout(() => onClosed(quote.id, finalReason), 1200);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to close quotation. Please try again.";
+      setApiError(msg);
+    }
   };
 
   return (
@@ -140,7 +167,7 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
                 <Badge variant="default" size="sm" className="font-bold text-[9px] bg-slate-200 text-slate-600">
                   {STATUS_LABEL[quote.status] ?? quote.status}
                 </Badge>
-                <p className="text-xs font-black text-slate-700">${quote.amount.toLocaleString('en-US')}</p>
+                <p className="text-xs font-black text-slate-700">${quote.amount.toLocaleString("en-US")}</p>
               </div>
             </div>
 
@@ -150,8 +177,7 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
                 <XCircle className="size-3.5 text-red-500 mt-0.5 shrink-0" />
                 <p className="text-[10px] font-semibold text-red-600">
                   [E3] This quotation cannot be closed — it has already been{" "}
-                  <strong>{quote.status}</strong>. Return to the list and select a different
-                  quotation.
+                  <strong>{quote.status}</strong>. Return to the list and select a different quotation.
                 </p>
               </div>
             )}
@@ -198,7 +224,7 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
                   </div>
                 )}
 
-                {/* E4 simulation */}
+                {/* E4 simulation toggle */}
                 <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
                   <input
                     type="checkbox"
@@ -217,9 +243,9 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
                     <ShieldAlert className="size-3.5 text-orange-500 mt-0.5 shrink-0" />
                     <div className="flex-1">
                       <p className="text-[10px] font-semibold text-orange-700">{e4Error}</p>
-                      {retryCount > 0 && (
+                      {failureTriggered && (
                         <button
-                          onClick={() => { setE4Error(null); setSimulateFailure(false); }}
+                          onClick={() => setE4Error(null)}
                           className="mt-1 flex items-center gap-1 text-[10px] font-bold text-orange-600 hover:text-orange-800"
                         >
                           <RefreshCw className="size-2.5" /> Retry now
@@ -234,12 +260,19 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
                     <p className="text-[10px] font-semibold text-red-600">{e3Error}</p>
                   </div>
                 )}
+                {apiError && (
+                  <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                    <AlertCircle className="size-3.5 text-red-500 mt-0.5 shrink-0" />
+                    <p className="text-[10px] font-semibold text-red-600">{apiError}</p>
+                  </div>
+                )}
 
                 <div className="flex gap-2 pt-1">
                   <Button
                     variant="outline"
                     className="flex-1 text-xs font-bold border-red-200 text-red-600 hover:bg-red-50"
                     onClick={handleClose}
+                    isLoading={closeQuotation.isPending}
                     leftIcon={<Archive className="size-3.5" />}
                   >
                     Confirm Close
@@ -248,6 +281,7 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
                     variant="outline"
                     className="flex-1 text-xs border-slate-200 text-slate-600"
                     onClick={onClose}
+                    disabled={closeQuotation.isPending}
                   >
                     Cancel
                   </Button>

@@ -45,12 +45,13 @@ public class LeadController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String source,
+            @RequestParam(required = false) Boolean isCorporate,
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
-        Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, sortBy, sortDir, page, size);
+        Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, isCorporate, sortBy, sortDir, page, size);
         return ResponseEntity.ok(ApiResponse.success(leads));
     }
 

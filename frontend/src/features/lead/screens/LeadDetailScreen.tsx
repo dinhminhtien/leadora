@@ -5,12 +5,12 @@ import {
   ChevronLeft, Mail, Phone, Building2, User, Calendar,
   FileText, Clock, MessageSquare, Sparkles, CheckCircle2,
   Circle, Edit3, X, Loader2, Save, AlertCircle, UserPlus,
-  ArrowRight, MapPin, Receipt, ShieldCheck, ShieldAlert,
-  BadgeCheck, Building, CheckCheck, ServerCrash,
+  ArrowRight, ShieldCheck, ShieldAlert,
+  BadgeCheck, Building, ServerCrash,
 } from "lucide-react";
 import Link from "next/link";
 import { useLeadDetail, useUpdateLead, useConvertLead } from "@/features/lead/hooks/use_leads";
-import type { Lead, LeadStatus, UpdateLeadPayload, ConvertLeadPayload, CustomerType } from "@/services/lead_service";
+import type { Lead, LeadStatus, UpdateLeadPayload, CustomerType } from "@/services/lead_service";
 
 // ── Status pipeline config ────────────────────────────────────────────────────
 
@@ -24,10 +24,35 @@ const PIPELINE: { status: LeadStatus; label: string }[] = [
 const STATUS_BADGE: Record<LeadStatus, string> = {
   NEW:       "bg-sky-50 text-sky-700 ring-sky-200",
   CONTACTED: "bg-amber-50 text-amber-700 ring-amber-200",
-  QUALIFIED: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  CONVERTED: "bg-violet-50 text-violet-700 ring-violet-200",
+  QUALIFIED: "bg-teal-50 text-teal-700 ring-teal-200",
+  CONVERTED: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   LOST:      "bg-rose-50 text-rose-700 ring-rose-200",
 };
+
+const STATUS_LABEL: Record<LeadStatus, string> = {
+  NEW: "New", CONTACTED: "Contacted", QUALIFIED: "Qualified", CONVERTED: "Converted", LOST: "Lost",
+};
+
+// One-directional flow: New → Contacted → Qualified. No skipping, no going back.
+// "Converted" is reached only through the conversion flow, never via the status dropdown.
+const NEXT_STATUS: Record<LeadStatus, LeadStatus | null> = {
+  NEW:       "CONTACTED",
+  CONTACTED: "QUALIFIED",
+  QUALIFIED: null,
+  CONVERTED: null,
+  LOST:      null,
+};
+
+// Allowed status choices when editing: the current stage, the single next stage,
+// and Lost (an active lead can always be marked Lost). Converted is locked.
+function allowedStatusOptions(current: LeadStatus): LeadStatus[] {
+  if (current === "CONVERTED") return ["CONVERTED"];
+  const opts: LeadStatus[] = [current];
+  const next = NEXT_STATUS[current];
+  if (next) opts.push(next);
+  if (current !== "LOST") opts.push("LOST");
+  return opts;
+}
 
 const SOURCE_OPTIONS = [
   "Website Inquiry", "Referral", "Social Media", "Cold Call", "Walk-in", "Event",
@@ -74,37 +99,6 @@ function LogIcon({ type }: { type: string }) {
   );
 }
 
-// ── Convert Modal — Step 1: customer type ─────────────────────────────────────
-
-function CustomerTypeCard({
-  type, icon: Icon, title, description, selected, onSelect,
-}: {
-  type: CustomerType; icon: React.ElementType; title: string; description: string;
-  selected: boolean; onSelect: () => void;
-}) {
-  return (
-    <button type="button" onClick={onSelect}
-      className={`group relative w-full rounded-2xl border-2 p-5 text-left transition-all duration-200
-        ${selected
-          ? "border-emerald-500 bg-emerald-50 shadow-md shadow-emerald-100"
-          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"}`}>
-      <div className="flex items-start gap-4">
-        <span className={`flex items-center justify-center size-12 rounded-xl transition-all duration-200
-          ${selected ? "bg-emerald-500 text-white shadow-lg shadow-emerald-200" : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"}`}>
-          <Icon className="size-6" />
-        </span>
-        <div className="flex-1">
-          <p className={`font-bold text-sm transition-colors ${selected ? "text-emerald-700" : "text-slate-800"}`}>{title}</p>
-          <p className={`text-xs mt-1 leading-relaxed ${selected ? "text-emerald-600" : "text-slate-500"}`}>{description}</p>
-        </div>
-        {selected && (
-          <CheckCheck className="size-5 text-emerald-500 shrink-0 mt-0.5" />
-        )}
-      </div>
-    </button>
-  );
-}
-
 // ── Convert Modal ─────────────────────────────────────────────────────────────
 
 function ConvertModal({
@@ -113,26 +107,25 @@ function ConvertModal({
   lead: Lead; onClose: () => void;
 }) {
   const convertMutation = useConvertLead(lead.leadId);
-  const [step, setStep] = useState<1 | 2>(1);
   const [done, setDone] = useState(false);
 
-  const [customerType, setCustomerType] = useState<CustomerType>("INDIVIDUAL");
-  const [form, setForm] = useState<Omit<ConvertLeadPayload, "customerType">>({
-    fullName:    lead.fullName,
-    email:       lead.email       ?? "",
-    phone:       lead.phone       ?? "",
-    companyName: lead.companyName ?? "",
-    taxCode:     "",
-    address:     "",
-  });
-
   const isQualified = lead.status === "QUALIFIED";
+  const isCorporate = lead.isCorporate;
+  const customerType: CustomerType = isCorporate ? "CORPORATE" : "INDIVIDUAL";
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.fullName.trim()) return;
+  // Confirmation only — every detail already lives on the lead (captured at create/edit time).
+  const handleConfirm = () => {
+    if (!isQualified) return;
     convertMutation.mutate(
-      { customerType, ...form },
+      {
+        customerType,
+        fullName:    lead.fullName,
+        email:       lead.email ?? "",
+        phone:       lead.phone ?? "",
+        companyName: lead.companyName ?? "",
+        taxCode:     "",
+        address:     lead.address ?? "",
+      },
       {
         onSuccess: () => setDone(true),
         onError: () => {},
@@ -148,14 +141,14 @@ function ConvertModal({
           <div className="mx-auto mb-6 flex items-center justify-center size-20 rounded-full bg-emerald-100">
             <BadgeCheck className="size-10 text-emerald-500" />
           </div>
-          <h2 className="text-xl font-extrabold text-slate-800 mb-2">Chuyển đổi thành công!</h2>
+          <h2 className="text-xl font-extrabold text-slate-800 mb-2">Conversion successful!</h2>
           <p className="text-sm text-slate-500 mb-2">
-            <strong className="text-slate-700">{form.fullName}</strong> đã được tạo thành hồ sơ khách hàng chính thức.
+            <strong className="text-slate-700">{lead.fullName}</strong> has been created as an official customer profile.
           </p>
-          <p className="text-xs text-slate-400 mb-8">Thông tin lead gốc vẫn được lưu lại để phục vụ tra cứu lịch sử.</p>
+          <p className="text-xs text-slate-400 mb-8">The original lead record is retained for historical lookup.</p>
           <button onClick={onClose}
             className="w-full py-3 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition active:scale-95">
-            Hoàn thành
+            Done
           </button>
         </div>
       </div>
@@ -165,200 +158,117 @@ function ConvertModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
 
         {/* Header */}
-        <div className="relative bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 px-6 py-5">
+        <div className="relative shrink-0 bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 px-5 py-4">
           <div className="absolute inset-0 opacity-10"
             style={{ backgroundImage: "radial-gradient(circle at 80% 50%, white 1px, transparent 1px)", backgroundSize: "20px 20px" }} />
           <div className="relative flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <UserPlus className="size-4 text-emerald-200" />
-                <span className="text-emerald-200 text-xs font-semibold uppercase tracking-widest">Chuyển đổi thành Khách hàng</span>
+                <span className="text-emerald-200 text-xs font-semibold uppercase tracking-widest">Convert to Customer</span>
               </div>
               <h2 className="text-lg font-extrabold text-white">{lead.fullName}</h2>
-              <p className="text-emerald-200 text-xs mt-0.5">Tạo hồ sơ khách hàng chính thức từ lead này</p>
+              <p className="text-emerald-200 text-xs mt-0.5">Create an official customer profile from this lead</p>
             </div>
             <button onClick={onClose}
               className="p-1.5 rounded-full text-emerald-200 hover:bg-white/20 transition shrink-0">
               <X className="size-4" />
             </button>
           </div>
-
-          {/* Step indicator */}
-          <div className="relative mt-5 flex items-center gap-3">
-            {[1, 2].map((s) => (
-              <React.Fragment key={s}>
-                <div className="flex items-center gap-2">
-                  <span className={`flex items-center justify-center size-6 rounded-full text-xs font-bold transition-all
-                    ${step === s ? "bg-white text-emerald-600 shadow" : step > s ? "bg-emerald-400 text-white" : "bg-white/20 text-white/60"}`}>
-                    {step > s ? <CheckCircle2 className="size-3.5" /> : s}
-                  </span>
-                  <span className={`text-xs font-semibold ${step === s ? "text-white" : "text-emerald-300"}`}>
-                    {s === 1 ? "Loại khách hàng" : "Thông tin khách hàng"}
-                  </span>
-                </div>
-                {s < 2 && (
-                  <div className="flex-1 h-px bg-white/20 rounded-full">
-                    <div className={`h-full bg-white/60 rounded-full transition-all duration-500 ${step > 1 ? "w-full" : "w-0"}`} />
-                  </div>
-                )}
-              </React.Fragment>
-            ))}
-          </div>
         </div>
 
         {/* Body */}
-        <div className="p-6">
+        <div className="p-5 flex-1 overflow-y-auto">
 
-          {/* Điều kiện chuyển đổi */}
+          {/* Conversion eligibility */}
           {isQualified ? (
-            <div className="flex items-center gap-3 px-4 py-3 mb-5 bg-emerald-50 border border-emerald-200 rounded-xl">
+            <div className="flex items-center gap-3 px-4 py-2.5 mb-4 bg-emerald-50 border border-emerald-200 rounded-xl">
               <ShieldCheck className="size-4 text-emerald-500 shrink-0" />
               <p className="text-xs text-emerald-700 font-medium">
-                Lead đã đủ điều kiện — bạn có thể chuyển đổi thành khách hàng ngay bây giờ.
+                This lead is qualified — you can convert it into a customer right now.
               </p>
             </div>
           ) : (
             <div className="flex items-start gap-3 px-4 py-3 mb-5 bg-amber-50 border border-amber-200 rounded-xl">
               <ShieldAlert className="size-4 text-amber-500 shrink-0 mt-0.5" />
               <div>
-                <p className="text-xs font-semibold text-amber-700">Chưa đủ điều kiện chuyển đổi</p>
+                <p className="text-xs font-semibold text-amber-700">Not yet eligible for conversion</p>
                 <p className="text-xs text-amber-600 mt-0.5">
-                  Lead đang ở trạng thái <strong>{lead.status}</strong>. Cần đạt trạng thái{" "}
-                  <strong>Qualified</strong> trước khi chuyển đổi, hoặc liên hệ Sales Manager để được duyệt ngoại lệ.
+                  This lead is currently <strong>{lead.status}</strong>. It must reach the{" "}
+                  <strong>Qualified</strong> status before conversion, or contact a Sales Manager for an exception approval.
                 </p>
               </div>
             </div>
           )}
 
-          {/* ── Step 1: Customer type ────────────────────────────────────────── */}
-          {step === 1 && (
-            <div className="space-y-3">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
-                Khách hàng này là ai?
-              </p>
-              <CustomerTypeCard
-                type="INDIVIDUAL" icon={User} selected={customerType === "INDIVIDUAL"}
-                title="Khách cá nhân"
-                description="Khách du lịch cá nhân, đặt phòng riêng lẻ hoặc không thuộc tổ chức."
-                onSelect={() => setCustomerType("INDIVIDUAL")}
-              />
-              <CustomerTypeCard
-                type="CORPORATE" icon={Building} selected={customerType === "CORPORATE"}
-                title="Doanh nghiệp / Tổ chức"
-                description="Công ty, tổ chức hoặc doanh nghiệp đặt phòng cho nhóm hoặc sự kiện."
-                onSelect={() => setCustomerType("CORPORATE")}
-              />
+          {/* Read-only summary — nothing to fill in, just confirm the details already on the lead */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-200 bg-white">
+              <span className={`flex items-center justify-center size-8 rounded-lg ${isCorporate ? "bg-violet-100 text-violet-600" : "bg-blue-100 text-blue-600"}`}>
+                {isCorporate ? <Building className="size-4" /> : <User className="size-4" />}
+              </span>
+              <div>
+                <p className="text-sm font-bold text-slate-800">{isCorporate ? "Organization" : "Individual"}</p>
+                <p className="text-[11px] text-slate-400">Customer type inherited from this lead</p>
+              </div>
             </div>
-          )}
-
-          {/* ── Step 2: Customer info ────────────────────────────────────────── */}
-          {step === 2 && (
-            <form id="convert-form" onSubmit={handleSubmit} className="space-y-4">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
-                Thông tin khách hàng
-              </p>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Họ và tên <span className="text-rose-500">*</span></label>
-                <input required value={form.fullName}
-                  onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
-                  className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100 transition bg-slate-50 focus:bg-white" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                    <Mail className="size-3 text-slate-400" /> Email
-                  </label>
-                  <input type="email" value={form.email}
-                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100 transition bg-slate-50 focus:bg-white" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                    <Phone className="size-3 text-slate-400" /> Phone
-                  </label>
-                  <input value={form.phone}
-                    onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100 transition bg-slate-50 focus:bg-white" />
-                </div>
-              </div>
-
-              {customerType === "CORPORATE" && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Building2 className="size-3 text-slate-400" /> Tên công ty <span className="text-rose-500">*</span>
-                    </label>
-                    <input required value={form.companyName}
-                      onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))}
-                      className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100 transition bg-slate-50 focus:bg-white" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Receipt className="size-3 text-slate-400" /> Tax Code
-                    </label>
-                    <input value={form.taxCode}
-                      onChange={e => setForm(f => ({ ...f, taxCode: e.target.value }))}
-                      className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100 transition bg-slate-50 focus:bg-white" />
-                  </div>
+            <dl className="divide-y divide-slate-100">
+              {isCorporate && (
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Company</dt>
+                  <dd className="text-sm text-slate-700 font-medium text-right">
+                    {lead.companyName || <span className="text-rose-500 italic">Unknown</span>}
+                  </dd>
                 </div>
               )}
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                  <MapPin className="size-3 text-slate-400" /> Địa chỉ
-                </label>
-                <input value={form.address}
-                  onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
-                  placeholder="Số nhà, đường, quận, thành phố…"
-                  className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100 transition bg-slate-50 focus:bg-white" />
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Email</dt>
+                <dd className="text-sm text-slate-700 font-medium text-right">
+                  {lead.email || <span className="text-rose-500 italic">Unknown</span>}
+                </dd>
               </div>
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Phone</dt>
+                <dd className="text-sm text-slate-700 font-medium text-right">
+                  {lead.phone || <span className="text-rose-500 italic">Unknown</span>}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Address</dt>
+                <dd className="text-sm text-slate-700 font-medium text-right max-w-[60%]">
+                  {lead.address || <span className="text-rose-500 italic">Unknown</span>}
+                </dd>
+              </div>
+            </dl>
+          </div>
 
-              {convertMutation.isError && (
-                <div className="flex items-center gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-600">
-                  <ServerCrash className="size-3.5 shrink-0" />
-                  {(convertMutation.error as any)?.response?.status >= 500
-                    ? "Sever lỗi vui lòng liên hệ Admin"
-                    : (convertMutation.error as any)?.response?.data?.message || "Chuyển đổi thất bại. Vui lòng thử lại."}
-                </div>
-              )}
-            </form>
+          {convertMutation.isError && (
+            <div className="flex items-center gap-2 px-3 py-2.5 mt-5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-600">
+              <ServerCrash className="size-3.5 shrink-0" />
+              {(convertMutation.error as any)?.response?.status >= 500
+                ? "Server error — please contact your Admin."
+                : (convertMutation.error as any)?.response?.data?.message || "Conversion failed. Please try again."}
+            </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/80">
-          {step === 1 ? (
-            <>
-              <button type="button" onClick={onClose}
-                className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition">
-                Huỷ
-              </button>
-              <button type="button" onClick={() => setStep(2)}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition active:scale-95">
-                Tiếp theo <ArrowRight className="size-4" />
-              </button>
-            </>
-          ) : (
-            <>
-              <button type="button" onClick={() => setStep(1)}
-                className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition">
-                <ChevronLeft className="size-4" /> Quay lại
-              </button>
-              <button type="submit" form="convert-form"
-                disabled={convertMutation.isPending || !form.fullName.trim()}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-60 transition active:scale-95">
-                {convertMutation.isPending
-                  ? <Loader2 className="size-4 animate-spin" />
-                  : <BadgeCheck className="size-4" />}
-                {convertMutation.isPending ? "Đang xử lý…" : "Xác nhận chuyển đổi"}
-              </button>
-            </>
-          )}
+        <div className="flex gap-3 px-5 py-3.5 border-t border-slate-100 bg-slate-50/80 shrink-0">
+          <button type="button" onClick={onClose}
+            className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition">
+            Cancel
+          </button>
+          <button type="button" onClick={handleConfirm}
+            disabled={convertMutation.isPending || !isQualified}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition active:scale-95">
+            {convertMutation.isPending
+              ? <Loader2 className="size-4 animate-spin" />
+              : <BadgeCheck className="size-4" />}
+            {convertMutation.isPending ? "Processing…" : "Confirm Conversion"}
+          </button>
         </div>
       </div>
     </div>
@@ -373,7 +283,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
 
   const [editOpen, setEditOpen]       = useState(false);
   const [editForm, setEditForm]       = useState<UpdateLeadPayload>({});
-  const [editErrors, setEditErrors]   = useState<{ fullName?: string; email?: string; phone?: string }>({});
+  const [editErrors, setEditErrors]   = useState<{ fullName?: string; email?: string; phone?: string; companyName?: string }>({});
   const [editServerErr, setEditServerErr] = useState("");
   const [convertOpen, setConvertOpen] = useState(false);
   const [logs, setLogs]               = useState<LogEntry[]>(MOCK_LOGS);
@@ -397,7 +307,8 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
   const openEdit = () => {
     setEditForm({
       fullName: lead.fullName, email: lead.email ?? "", phone: lead.phone ?? "",
-      companyName: lead.companyName ?? "", source: lead.source ?? "", notes: lead.notes ?? "",
+      companyName: lead.companyName ?? "", address: lead.address ?? "", isCorporate: lead.isCorporate,
+      source: lead.source ?? "", notes: lead.notes ?? "",
       status: lead.status,
     });
     setEditErrors({});
@@ -408,15 +319,18 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
   const validateEdit = (): boolean => {
     const errs: typeof editErrors = {};
     if (!editForm.fullName?.trim()) {
-      errs.fullName = "Họ tên không được để trống";
+      errs.fullName = "Full name is required";
     } else if (/\d/.test(editForm.fullName)) {
-      errs.fullName = "Họ tên không được chứa số";
+      errs.fullName = "Full name cannot contain numbers";
     }
     if (editForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.email)) {
-      errs.email = "Email không đúng định dạng (phải có @)";
+      errs.email = "Invalid email format (must contain @)";
     }
     if (editForm.phone && !/^\d{10,11}$/.test((editForm.phone ?? "").replace(/\s/g, ""))) {
-      errs.phone = "Số điện thoại phải là 10–11 chữ số";
+      errs.phone = "Phone number must be 10–11 digits";
+    }
+    if (editForm.isCorporate && !editForm.companyName?.trim()) {
+      errs.companyName = "Company name is required for an organization";
     }
     setEditErrors(errs);
     return Object.keys(errs).length === 0;
@@ -430,9 +344,9 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
       onSuccess: () => setEditOpen(false),
       onError: (err: any) => {
         if (err?.response?.status >= 500) {
-          setEditServerErr("Sever lỗi vui lòng liên hệ Admin");
+          setEditServerErr("Server error — please contact your Admin.");
         } else {
-          setEditServerErr(err?.response?.data?.message || "Cập nhật thất bại. Vui lòng thử lại.");
+          setEditServerErr(err?.response?.data?.message || "Update failed. Please try again.");
         }
       },
     });
@@ -485,8 +399,8 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
             </button>
           )}
           {isConverted && (
-            <div className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-xl">
-              <BadgeCheck className="size-4 text-violet-500" /> Converted
+            <div className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl">
+              <BadgeCheck className="size-4 text-emerald-500" /> Converted
             </div>
           )}
           <button onClick={openEdit}
@@ -567,6 +481,9 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
               {lead.companyName && (
                 <InfoRow icon={Building2} label="Company"><span>{lead.companyName}</span></InfoRow>
               )}
+              <InfoRow icon={lead.isCorporate ? Building : User} label="Customer Type">
+                {lead.isCorporate ? "Organization" : "Individual"}
+              </InfoRow>
               <InfoRow icon={User} label="Assigned To">
                 {lead.assignedUserName ?? <span className="text-slate-400 italic text-xs">Unassigned</span>}
               </InfoRow>
@@ -670,17 +587,20 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
       {editOpen && (
         <>
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40" onClick={() => setEditOpen(false)} />
-          <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col
-            animate-in slide-in-from-right-4 duration-300 ease-out">
+          <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl border-l border-slate-200 flex flex-col
+            animate-in slide-in-from-right duration-300 ease-out">
 
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-slate-700 to-slate-800">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div>
-                <h2 className="text-base font-bold text-white">Edit Lead</h2>
-                <p className="text-slate-300 text-xs mt-0.5">Update contact info and stage</p>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <Edit3 className="size-4.5 text-blue-600" />
+                  Edit Lead
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">Update contact info and stage</p>
               </div>
               <button onClick={() => setEditOpen(false)}
-                className="p-1.5 rounded-full text-slate-300 hover:bg-white/20 transition">
-                <X className="size-4" />
+                className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+                <X className="size-4.5" />
               </button>
             </div>
 
@@ -693,7 +613,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
               )}
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Họ và tên <span className="text-rose-500">*</span></label>
+                <label className="text-xs font-semibold text-slate-700">Full Name <span className="text-rose-500">*</span></label>
                 <input value={editForm.fullName ?? ""}
                   onChange={e => { setEditForm(f => ({ ...f, fullName: e.target.value })); setEditErrors(er => ({ ...er, fullName: undefined })); }}
                   className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
@@ -711,7 +631,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
                   {editErrors.email && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.email}</p>}
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Số điện thoại</label>
+                  <label className="text-xs font-semibold text-slate-700">Phone Number</label>
                   <input value={editForm.phone ?? ""}
                     onChange={e => { setEditForm(f => ({ ...f, phone: e.target.value })); setEditErrors(er => ({ ...er, phone: undefined })); }}
                     className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
@@ -721,54 +641,91 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Công ty</label>
-                <input value={editForm.companyName ?? ""}
-                  onChange={e => setEditForm(f => ({ ...f, companyName: e.target.value }))}
+                <label className="text-xs font-semibold text-slate-700">Address</label>
+                <input value={editForm.address ?? ""}
+                  onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))}
+                  placeholder="e.g. 12 Nguyen Hue, District 1, HCMC"
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Nguồn tiếp cận</label>
+                  <label className="text-xs font-semibold text-slate-700">Source Channel</label>
                   <select value={editForm.source ?? ""}
                     onChange={e => setEditForm(f => ({ ...f, source: e.target.value }))}
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer">
-                    <option value="">— Chọn —</option>
+                    <option value="">— Select —</option>
                     {SOURCE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Trạng thái</label>
+                  <label className="text-xs font-semibold text-slate-700">Status</label>
                   <select value={editForm.status ?? ""}
+                    disabled={isConverted}
                     onChange={e => setEditForm(f => ({ ...f, status: e.target.value as LeadStatus }))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer">
-                    {(["NEW","CONTACTED","QUALIFIED","LOST"] as LeadStatus[]).map(s => (
-                      <option key={s} value={s}>
-                        {s === "NEW" ? "New" : s === "CONTACTED" ? "Contacted" : s === "QUALIFIED" ? "Qualified" : "Lost"}
-                      </option>
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed">
+                    {allowedStatusOptions(lead.status).map(s => (
+                      <option key={s} value={s}>{STATUS_LABEL[s]}</option>
                     ))}
                   </select>
-                  <p className="text-[10px] text-slate-400">Trạng thái "Converted" chỉ được tự động set khi chuyển đổi thành khách hàng.</p>
+                  <p className="text-[10px] text-slate-400">
+                    {isConverted
+                      ? "This lead has been converted to a customer — its status is locked."
+                      : "Status only moves forward (New → Contacted → Qualified). “Converted” is set automatically during conversion."}
+                  </p>
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Ghi chú</label>
+                <label className="text-xs font-semibold text-slate-700">Notes</label>
                 <textarea rows={4} value={editForm.notes ?? ""}
                   onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition resize-none" />
               </div>
+
+              {/* Customer Type at the bottom; Organization reveals a required company field. */}
+              <div className="space-y-1.5 pt-1 border-t border-slate-100">
+                <label className="text-xs font-semibold text-slate-700 pt-3 block">Customer Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([["individual", false, User], ["corporate", true, Building]] as const).map(([val, corp, Icon]) => {
+                    const selected = !!editForm.isCorporate === corp;
+                    return (
+                      <button key={val} type="button"
+                        onClick={() => setEditForm(f => ({ ...f, isCorporate: corp, ...(corp ? {} : { companyName: "" }) }))}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition
+                          ${selected
+                            ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm"
+                            : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
+                        <Icon className={`size-4 ${selected ? "text-blue-600" : "text-slate-400"}`} />
+                        {corp ? "Organization" : "Individual"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {editForm.isCorporate && (
+                <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <label className="text-xs font-semibold text-slate-700">Company / Organization <span className="text-rose-500">*</span></label>
+                  <input value={editForm.companyName ?? ""}
+                    onChange={e => { setEditForm(f => ({ ...f, companyName: e.target.value })); setEditErrors(er => ({ ...er, companyName: undefined })); }}
+                    placeholder="e.g. TechCorp Inc."
+                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
+                      ${editErrors.companyName ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
+                  {editErrors.companyName && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.companyName}</p>}
+                </div>
+              )}
             </form>
 
             <div className="flex gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
               <button type="button" onClick={() => setEditOpen(false)}
                 className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition">
-                Huỷ
+                Cancel
               </button>
               <button onClick={handleSave} disabled={updateMutation.isPending}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 transition active:scale-95">
                 {updateMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                Lưu thay đổi
+                Save Changes
               </button>
             </div>
           </aside>

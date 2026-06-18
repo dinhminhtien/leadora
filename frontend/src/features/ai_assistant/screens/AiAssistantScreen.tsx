@@ -12,6 +12,15 @@ type Message = {
   timestamp: string;
 };
 
+function createMessage(sender: "user" | "copilot", text: string): Message {
+  return {
+    id: `${sender === "user" ? "u" : "c"}-${Date.now()}`,
+    sender,
+    text,
+    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  };
+}
+
 export function AiAssistantScreen() {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -28,12 +37,7 @@ export function AiAssistantScreen() {
     if (!queryText.trim()) return;
 
     // User Message
-    const userMsg: Message = {
-      id: `u-${Date.now()}`,
-      sender: "user",
-      text: queryText,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
+    const userMsg = createMessage("user", queryText);
 
     setMessages(prev => [...prev, userMsg]);
     if (!textToSend) setInputVal("");
@@ -60,12 +64,7 @@ Leadora Sales Team`;
         aiText = "We currently have **1 active warning** regarding response speed. The SLA compliance rate is at **91.8%**, which is well above our system target threshold of 90.0%.";
       }
 
-      const copilotMsg: Message = {
-        id: `c-${Date.now()}`,
-        sender: "copilot",
-        text: aiText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
+      const copilotMsg = createMessage("copilot", aiText);
       setMessages(prev => [...prev, copilotMsg]);
     }, 800);
   };

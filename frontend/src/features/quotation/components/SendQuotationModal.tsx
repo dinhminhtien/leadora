@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import {
@@ -20,6 +20,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import type { Quotation } from "@/services/quotation_service";
+import { useSendQuotation } from "@/features/quotation/hooks/use_quotations";
+import { useAuthStore } from "@/stores/auth_store";
 
 type SendMethod = "email" | "whatsapp" | "pdf";
 
@@ -134,7 +136,9 @@ export interface SendQuotationModalProps {
 }
 
 export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModalProps) {
-  const version = 1;
+  const version = quote.version ?? 1;
+  const sendQuotation = useSendQuotation();
+  const currentUser = useAuthStore((s) => s.user);
 
   const [method, setMethod] = useState<SendMethod>("email");
   const [recipientName, setRecipientName] = useState(quote.contactName);
@@ -178,9 +182,8 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
     if (!validate()) return;
 
     setIsSending(true);
-    await new Promise((r) => setTimeout(r, 700));
 
-    // PDF: trigger download
+    // PDF: trigger download first (client-side only)
     if (method === "pdf") {
       try {
         const html = generateQuotationHTML(quote, recipientName, personalMessage);
@@ -196,12 +199,31 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
       }
     }
 
+    // E4: Simulate delivery failure (email containing ".fail" / WhatsApp 0000000)
     const result = simulateDelivery(method, recipientEmail, recipientPhone);
-
-    // E4: Delivery failure
     if (!result.success) {
       setIsSending(false);
       setE4Error(`${result.reason} The failure has been logged. Please verify the contact details or choose a different delivery method.`);
+      return;
+    }
+
+    // POST to backend: update status to SENT, record send log (BR-37)
+    try {
+      await sendQuotation.mutateAsync({
+        id: quote.id,
+        payload: {
+          sendMethod: method.toUpperCase() as "EMAIL" | "WHATSAPP" | "PDF",
+          recipientName,
+          recipientEmail: recipientEmail || undefined,
+          recipientPhone: recipientPhone || undefined,
+          sentByName: currentUser?.name ?? currentUser?.email ?? "Staff",
+          sentByRole: currentUser?.roles?.[0] ?? "SALES",
+          personalMessage: personalMessage || undefined,
+        },
+      });
+    } catch {
+      setIsSending(false);
+      setE4Error("Failed to update quotation status. Please try again.");
       return;
     }
 
@@ -415,7 +437,7 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
 
           {/* Test hint */}
           <p className="text-[10px] text-slate-300 text-center italic">
-            Dev tip: Use an email containing ".fail" to trigger the E4 delivery failure scenario.
+            Dev tip: Use an email containing &quot;.fail&quot; to trigger the E4 delivery failure scenario.
           </p>
 
           {/* Action Buttons */}

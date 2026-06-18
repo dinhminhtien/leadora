@@ -10,6 +10,7 @@ export const ROUTE_PATHS = {
   leadDetail: (id: string) => `/leads/${id}`,
   customerProfiles: "/customer-profiles",
   followUpTasks: "/follow-up-tasks",
+  manageFollowUpTasks: "/manage-follow-up-tasks",
   salesPipeline: "/sales-pipeline",
   deals: "/deals",
   interactionTimeline: "/interaction-timeline",

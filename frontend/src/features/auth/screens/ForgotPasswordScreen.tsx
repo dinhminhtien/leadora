@@ -41,8 +41,9 @@ export function ForgotPasswordScreen() {
     try {
       await supabaseAuthService.resetPasswordForEmail(data.email);
       setIsSuccess(true);
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to send password recovery email");
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Failed to send password recovery email";
+      setError(errorMsg);
     } finally {
       setIsLoading(false);
     }
