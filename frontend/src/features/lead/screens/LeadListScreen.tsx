@@ -129,7 +129,7 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
     <>
       <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40" onClick={onClose} />
       <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col animate-in slide-in-from-right-4 duration-300">
-        <div className="flex items-center justify-between px-6 py-5 border-b bg-gradient-to-r from-blue-600 to-indigo-600">
+        <div className="flex items-center justify-between px-6 py-5 border-b bg-linear-to-r from-blue-600 to-indigo-600">
           <div>
             <h2 className="text-base font-bold text-white">Lead mới</h2>
             <p className="text-blue-200 text-xs mt-0.5">Nhập thông tin khách hàng tiềm năng</p>
@@ -596,7 +596,7 @@ export function LeadListScreen() {
     <div className="min-h-full space-y-5">
 
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 p-6 shadow-lg">
+      <div className="relative overflow-hidden rounded-2xl bg-linear-to-br from-blue-600 via-blue-700 to-indigo-800 p-6 shadow-lg">
         <div className="absolute inset-0 opacity-10"
           style={{ backgroundImage: "radial-gradient(circle at 70% 50%, white 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
         <div className="relative flex flex-col sm:flex-row justify-between sm:items-start gap-4">

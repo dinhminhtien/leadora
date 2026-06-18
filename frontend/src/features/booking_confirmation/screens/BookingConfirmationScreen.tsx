@@ -839,7 +839,7 @@ export function BookingConfirmationScreen() {
 
       {/* Reject Modal */}
       {showRejectModal && selectedBooking && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-background rounded-2xl border border-border shadow-2xl max-w-md w-full p-6 space-y-4">
             <div>
               <h3 className="text-base font-bold text-foreground">Reject booking confirmation</h3>
