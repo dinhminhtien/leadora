@@ -91,13 +91,21 @@ spring:
             # Cheap + fast, good for CRM Q&A. Other options: gemini-2.5-flash-lite, gemini-2.5-pro.
             model: ${GEMINI_CHAT_MODEL:gemini-2.5-flash}
             temperature: ${GEMINI_CHAT_TEMPERATURE:0.2}
+            # Latency control: 0 disables the model's "thinking" tokens (big speed win on Gemini 2.5).
+            # NOTE: Gemini 3.x (e.g. gemini-3.5-flash) may IGNORE this — it uses thinkingLevel (3-Pro only),
+            # so on 3.x the reliable speed lever is the model: set GEMINI_CHAT_MODEL=gemini-2.5-flash.
+            thinking-budget: ${GEMINI_THINKING_BUDGET:0}
         embedding:
           # The embedding connection does NOT inherit the top-level api-key — set it here too,
           # otherwise it falls back to Vertex mode and demands a project-id.
           api-key: ${GEMINI_API_KEY:}
           text:
             options:
-              model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}   # 768 dimensions
+              # This API key serves gemini-embedding-001 (text-embedding-004 → 404 here).
+              # gemini-embedding-001 defaults to 3072 dims; pin to 768 (outputDimensionality)
+              # to match the pgvector table below.
+              model: ${GEMINI_EMBEDDING_MODEL:gemini-embedding-001}
+              dimensions: ${AI_EMBEDDING_DIMENSIONS:768}
     vectorstore:
       pgvector:
         # Creates the `vector` extension, the table and an HNSW index on first run.

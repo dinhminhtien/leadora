@@ -36,9 +36,23 @@ public class ChatLlmService {
                and the conversation so far. Do not invent or guess figures. If no relevant data is
                available, say clearly that you found no information you are allowed to access.
             4. LANGUAGE: Reply in the SAME language as the user's latest message — Vietnamese if they
-               write Vietnamese, English if they write English.
-            5. STYLE: Be concise. Use bullet points or **bold** when it helps readability.
+               write Vietnamese, English if they write English. The REFERENCE DATA section may be in
+               Vietnamese regardless of the question; still answer in the user's language and translate
+               any field labels/values as needed.
+            5. STYLE: Be concise and well-structured for a chat UI that renders Markdown.
+               - Use a **Markdown table** when showing multiple records or comparisons
+                 (e.g. several leads/deals/tasks with fields like name, status, value).
+               - Use short bullet lists for plain enumerations, and **bold** only for key
+                 figures/labels — do NOT wrap whole sentences or every word in asterisks.
+               - A few relevant symbols/emoji (✅ ⚠️ 📊 →) are welcome to aid scanning; stay professional.
             """;
+
+    /**
+     * Cap on how many prior turns are replayed to the model. Sending the whole transcript every
+     * turn makes input tokens (and latency) grow without bound; the last few turns are enough
+     * conversational context for follow-ups. Tune via the constant if needed.
+     */
+    private static final int MAX_HISTORY_MESSAGES = 10;
 
     private final ChatClient chatClient;
 
@@ -56,7 +70,9 @@ public class ChatLlmService {
     public String generate(String referenceBlock, List<AiChatMessageEntity> history, String userMessage) {
         List<Message> priorMessages = new ArrayList<>();
         if (history != null) {
-            for (AiChatMessageEntity m : history) {
+            // Only replay the most recent turns — keeps the prompt (and latency) bounded.
+            int from = Math.max(0, history.size() - MAX_HISTORY_MESSAGES);
+            for (AiChatMessageEntity m : history.subList(from, history.size())) {
                 if (m.getRole() == ChatRole.USER) {
                     priorMessages.add(new UserMessage(m.getContent()));
                 } else if (m.getRole() == ChatRole.ASSISTANT) {

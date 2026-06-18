@@ -199,7 +199,7 @@ public class CrmContextService {
     private boolean isOverdue(TaskEntity t, LocalDate today) {
         return t.getDueDate() != null
                 && t.getDueDate().isBefore(today)
-                && t.getStatus() != TaskStatus.DONE
+                && t.getStatus() != TaskStatus.COMPLETED
                 && t.getStatus() != TaskStatus.CANCELLED;
     }
 }

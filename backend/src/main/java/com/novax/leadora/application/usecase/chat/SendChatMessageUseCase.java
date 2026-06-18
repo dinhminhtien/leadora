@@ -85,16 +85,18 @@ public class SendChatMessageUseCase {
         // [2] Prefetch scoped context.
         String referenceBlock = buildReferenceBlock(intent.intent(), user, content);
 
-        // [3] Generate (best-effort: a failed/unavailable LLM degrades to a friendly message).
+        // [3] Generate (best-effort: a failed/unavailable LLM degrades to a friendly message,
+        // in the same language as the question).
+        boolean vi = IntentClassifier.isVietnamese(content);
         String reply;
         try {
             reply = chatLlmService.generate(referenceBlock, history, content);
             if (!StringUtils.hasText(reply)) {
-                reply = GuardrailMessages.NO_DATA;
+                reply = GuardrailMessages.noData(vi);
             }
         } catch (Exception ex) {
             log.error("LLM generation failed for session {}: {}", sessionId, ex.getMessage(), ex);
-            reply = GuardrailMessages.SYSTEM_ERROR;
+            reply = GuardrailMessages.systemError(vi);
         }
 
         AiChatMessageEntity assistantMessage =

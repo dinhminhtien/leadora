@@ -27,10 +27,16 @@ public final class GuardrailMessages {
                     + "documents. This question is outside my scope.";
 
     /** MSG-30 — no authorized data matched the request. */
-    public static final String NO_DATA = "No authorized information was found for your request.";
+    public static final String NO_DATA_VI =
+            "Không tìm thấy thông tin nào bạn được phép truy cập cho yêu cầu này.";
+    public static final String NO_DATA_EN =
+            "No authorized information was found for your request.";
 
-    /** MSG-31 — generic system error (e.g. the LLM is unreachable). */
-    public static final String SYSTEM_ERROR = "An unexpected error occurred. Please try again later.";
+    /** MSG-31 — generic system error (e.g. the LLM is unreachable / out of quota). */
+    public static final String SYSTEM_ERROR_VI =
+            "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại sau.";
+    public static final String SYSTEM_ERROR_EN =
+            "An unexpected error occurred. Please try again later.";
 
     public static String mutationRefusal(boolean vietnamese) {
         return vietnamese ? MUTATION_REFUSAL_VI : MUTATION_REFUSAL_EN;
@@ -38,5 +44,13 @@ public final class GuardrailMessages {
 
     public static String offTopicRefusal(boolean vietnamese) {
         return vietnamese ? OFF_TOPIC_REFUSAL_VI : OFF_TOPIC_REFUSAL_EN;
+    }
+
+    public static String noData(boolean vietnamese) {
+        return vietnamese ? NO_DATA_VI : NO_DATA_EN;
+    }
+
+    public static String systemError(boolean vietnamese) {
+        return vietnamese ? SYSTEM_ERROR_VI : SYSTEM_ERROR_EN;
     }
 }

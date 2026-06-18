@@ -208,7 +208,7 @@ public class IntentClassifier {
      * Heuristic language detection for picking the canned-message language. Returns Vietnamese when
      * the raw text has Vietnamese diacritics or common Vietnamese function words; English otherwise.
      */
-    static boolean isVietnamese(String raw) {
+    public static boolean isVietnamese(String raw) {
         if (raw == null || raw.isBlank()) {
             return true;
         }

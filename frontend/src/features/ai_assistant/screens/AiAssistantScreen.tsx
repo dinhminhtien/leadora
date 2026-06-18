@@ -36,6 +36,9 @@ import {
   useSendChatMessage,
   useUploadDocument,
 } from "@/features/ai_assistant/hooks/use_chat_sessions";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { Components } from "react-markdown";
 
 const SUGGESTIONS = [
   "Tôi có bao nhiêu deal đang mở?",
@@ -69,6 +72,8 @@ export function AiAssistantScreen() {
   const [pendingUserText, setPendingUserText] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+  // messageId of the assistant reply that should play the typewriter effect (once, on arrival).
+  const [animateId, setAnimateId] = useState<string | null>(null);
 
   const sessions = sessionsQuery.data?.data ?? [];
   const messages: ChatMessage[] = useMemo(
@@ -84,9 +89,13 @@ export function AiAssistantScreen() {
     }
   }, [selectedSessionId, sessions, setSelectedSessionId]);
 
+  const scrollToBottom = () => {
+    feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight });
+  };
+
   // Keep the feed scrolled to the latest message.
   useEffect(() => {
-    feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight });
+    scrollToBottom();
   }, [messages, pendingUserText, sendMessage.isPending]);
 
   const ensureSession = async (): Promise<string | null> => {
@@ -107,7 +116,10 @@ export function AiAssistantScreen() {
     setInputVal("");
     setPendingUserText(text);
     try {
-      await sendMessage.mutateAsync({ sessionId, content: text });
+      const res = await sendMessage.mutateAsync({ sessionId, content: text });
+      // Play the typewriter effect only for this freshly received assistant reply.
+      const newId = res.data?.assistantMessage?.messageId;
+      if (newId) setAnimateId(newId);
     } finally {
       setPendingUserText(null);
     }
@@ -237,7 +249,12 @@ export function AiAssistantScreen() {
             )}
 
             {messages.map((msg) => (
-              <MessageBubble key={msg.messageId} message={msg} />
+              <MessageBubble
+                key={msg.messageId}
+                message={msg}
+                animate={msg.role === "ASSISTANT" && msg.messageId === animateId}
+                onType={scrollToBottom}
+              />
             ))}
 
             {/* Optimistic user bubble while awaiting the reply */}
@@ -343,18 +360,27 @@ export function AiAssistantScreen() {
                 {documents.map((doc) => (
                   <div
                     key={doc.documentId}
-                    className="group flex items-center justify-between rounded-md border border-slate-100 px-2 py-1.5 text-[10px] text-slate-600"
+                    className="flex items-center justify-between rounded-md border border-slate-100 px-2 py-1.5 text-[10px] text-slate-600"
                   >
                     <span className="truncate" title={doc.title}>
                       {doc.title}{" "}
-                      <span className="text-slate-300">({doc.chunkCount})</span>
+                      <span className="text-slate-300">({doc.chunkCount} chunk)</span>
                     </span>
                     <button
-                      onClick={() => deleteDocument.mutate(doc.documentId)}
-                      className="ml-1 shrink-0 text-slate-300 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
-                      title="Xoá tài liệu"
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Xoá tài liệu "${doc.title}"?\nToàn bộ ${doc.chunkCount} chunk của nó sẽ bị xoá khỏi bộ nhớ chat (không thể hoàn tác).`,
+                          )
+                        ) {
+                          deleteDocument.mutate(doc.documentId);
+                        }
+                      }}
+                      disabled={deleteDocument.isPending}
+                      className="ml-1 flex shrink-0 items-center text-slate-400 transition hover:text-red-500 disabled:opacity-40"
+                      title="Xoá tài liệu (xoá luôn toàn bộ chunk khỏi bộ nhớ chat)"
                     >
-                      <Trash2 className="size-3" />
+                      <Trash2 className="size-3.5" />
                     </button>
                   </div>
                 ))}
@@ -367,20 +393,114 @@ export function AiAssistantScreen() {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
-  const blocked =
-    message.intentMatched === "MUTATION_BLOCKED" ||
-    message.intentMatched === "OFF_TOPIC";
-  return (
-    <RawBubble
-      role={message.role}
-      text={message.content}
-      timestamp={formatTime(message.createdAt)}
-      blocked={blocked}
+/** Markdown element → Tailwind styling (readable chat answers without a typography plugin). */
+const MD_COMPONENTS: Components = {
+  p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+  ul: ({ node, ...props }) => (
+    <ul className="mb-2 list-disc space-y-1 pl-4 marker:text-slate-400 last:mb-0" {...props} />
+  ),
+  ol: ({ node, ...props }) => (
+    <ol className="mb-2 list-decimal space-y-1 pl-4 marker:text-slate-400 last:mb-0" {...props} />
+  ),
+  li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
+  strong: ({ node, ...props }) => (
+    <strong className="font-semibold text-slate-900" {...props} />
+  ),
+  em: ({ node, ...props }) => <em className="italic" {...props} />,
+  a: ({ node, ...props }) => (
+    <a className="text-blue-600 underline" target="_blank" rel="noreferrer" {...props} />
+  ),
+  code: ({ node, ...props }) => (
+    <code className="rounded bg-slate-200/70 px-1 py-0.5 font-mono text-[11px]" {...props} />
+  ),
+  h1: ({ node, ...props }) => <h3 className="mb-1 mt-2 text-sm font-bold first:mt-0" {...props} />,
+  h2: ({ node, ...props }) => <h3 className="mb-1 mt-2 text-sm font-bold first:mt-0" {...props} />,
+  h3: ({ node, ...props }) => (
+    <h3 className="mb-1 mt-2 text-[13px] font-bold first:mt-0" {...props} />
+  ),
+  blockquote: ({ node, ...props }) => (
+    <blockquote className="my-1 border-l-2 border-slate-300 pl-2 italic text-slate-500" {...props} />
+  ),
+  hr: ({ node, ...props }) => <hr className="my-2 border-slate-200" {...props} />,
+  table: ({ node, ...props }) => (
+    <div className="my-2 overflow-x-auto">
+      <table className="w-full border-collapse text-[11px]" {...props} />
+    </div>
+  ),
+  thead: ({ node, ...props }) => <thead className="bg-slate-100" {...props} />,
+  th: ({ node, ...props }) => (
+    <th
+      className="border border-slate-200 px-2 py-1 text-left font-semibold text-slate-700"
+      {...props}
     />
+  ),
+  td: ({ node, ...props }) => (
+    <td className="border border-slate-200 px-2 py-1 align-top" {...props} />
+  ),
+};
+
+/** Renders assistant text as GitHub-flavoured Markdown (bold, lists, tables, code…). */
+function ChatMarkdown({ text }: { text: string }) {
+  return (
+    <div className="break-words">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+        {text}
+      </ReactMarkdown>
+    </div>
   );
 }
 
+/** Reveals the reply progressively (typewriter), then leaves it as rendered Markdown. */
+function Typewriter({ text, onType }: { text: string; onType?: () => void }) {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    setShown(0);
+    if (!text) return;
+    const step = Math.max(2, Math.ceil(text.length / 100)); // ~100 ticks → snappy reveal
+    let i = 0;
+    const id = window.setInterval(() => {
+      i = Math.min(text.length, i + step);
+      setShown(i);
+      onType?.();
+      if (i >= text.length) window.clearInterval(id);
+    }, 18);
+    return () => window.clearInterval(id);
+    // onType only scrolls; excluding it avoids restarting the animation on each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+  return <ChatMarkdown text={text.slice(0, shown)} />;
+}
+
+function MessageBubble({
+  message,
+  animate,
+  onType,
+}: {
+  message: ChatMessage;
+  animate?: boolean;
+  onType?: () => void;
+}) {
+  const isUser = message.role === "USER";
+  const blocked =
+    message.intentMatched === "MUTATION_BLOCKED" ||
+    message.intentMatched === "OFF_TOPIC";
+  const timestamp = formatTime(message.createdAt);
+
+  if (isUser) {
+    return <RawBubble role="USER" text={message.content} timestamp={timestamp} />;
+  }
+  return (
+    <BubbleShell role="ASSISTANT" blocked={blocked} timestamp={timestamp}>
+      {animate ? (
+        <Typewriter text={message.content} onType={onType} />
+      ) : (
+        <ChatMarkdown text={message.content} />
+      )}
+    </BubbleShell>
+  );
+}
+
+/** Plain-text bubble (user messages / optimistic echo). */
 function RawBubble({
   role,
   text,
@@ -391,6 +511,25 @@ function RawBubble({
   text: string;
   timestamp?: string;
   blocked?: boolean;
+}) {
+  return (
+    <BubbleShell role={role} blocked={blocked} timestamp={timestamp}>
+      <div className="whitespace-pre-line">{text}</div>
+    </BubbleShell>
+  );
+}
+
+/** Shared avatar + bubble container + timestamp chrome. */
+function BubbleShell({
+  role,
+  blocked,
+  timestamp,
+  children,
+}: {
+  role: "USER" | "ASSISTANT";
+  blocked?: boolean;
+  timestamp?: string;
+  children: React.ReactNode;
 }) {
   const isUser = role === "USER";
   return (
@@ -416,9 +555,9 @@ function RawBubble({
           <Bot className="size-4" />
         )}
       </div>
-      <div className="space-y-1">
+      <div className="min-w-0 space-y-1">
         <div
-          className={`whitespace-pre-line rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
+          className={`rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
             isUser
               ? "bg-blue-600 font-medium text-white"
               : blocked
@@ -426,7 +565,7 @@ function RawBubble({
                 : "border border-slate-100 bg-slate-50 text-slate-700"
           }`}
         >
-          {text}
+          {children}
         </div>
         {timestamp && (
           <div
