@@ -6,7 +6,7 @@ import {
   FileText, Clock, MessageSquare, Sparkles, CheckCircle2,
   Circle, Edit3, X, Loader2, Save, AlertCircle, UserPlus,
   ArrowRight, ShieldCheck, ShieldAlert,
-  BadgeCheck, Building, CheckCheck, ServerCrash,
+  BadgeCheck, Building, ServerCrash,
 } from "lucide-react";
 import Link from "next/link";
 import { useLeadDetail, useUpdateLead, useConvertLead } from "@/features/lead/hooks/use_leads";
@@ -99,37 +99,6 @@ function LogIcon({ type }: { type: string }) {
   );
 }
 
-// ── Convert Modal — Step 1: customer type ─────────────────────────────────────
-
-function CustomerTypeCard({
-  type, icon: Icon, title, description, selected, onSelect,
-}: {
-  type: CustomerType; icon: React.ElementType; title: string; description: string;
-  selected: boolean; onSelect: () => void;
-}) {
-  return (
-    <button type="button" onClick={onSelect}
-      className={`group relative w-full rounded-2xl border-2 p-5 text-left transition-all duration-200
-        ${selected
-          ? "border-emerald-500 bg-emerald-50 shadow-md shadow-emerald-100"
-          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"}`}>
-      <div className="flex items-start gap-4">
-        <span className={`flex items-center justify-center size-12 rounded-xl transition-all duration-200
-          ${selected ? "bg-emerald-500 text-white shadow-lg shadow-emerald-200" : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"}`}>
-          <Icon className="size-6" />
-        </span>
-        <div className="flex-1">
-          <p className={`font-bold text-sm transition-colors ${selected ? "text-emerald-700" : "text-slate-800"}`}>{title}</p>
-          <p className={`text-xs mt-1 leading-relaxed ${selected ? "text-emerald-600" : "text-slate-500"}`}>{description}</p>
-        </div>
-        {selected && (
-          <CheckCheck className="size-5 text-emerald-500 shrink-0 mt-0.5" />
-        )}
-      </div>
-    </button>
-  );
-}
-
 // ── Convert Modal ─────────────────────────────────────────────────────────────
 
 function ConvertModal({
@@ -139,23 +108,23 @@ function ConvertModal({
 }) {
   const convertMutation = useConvertLead(lead.leadId);
   const [done, setDone] = useState(false);
-  // Seed the type from the lead's own classification — the customer is created to match.
-  const [customerType, setCustomerType] = useState<CustomerType>(lead.isCorporate ? "CORPORATE" : "INDIVIDUAL");
 
   const isQualified = lead.status === "QUALIFIED";
+  const isCorporate = lead.isCorporate;
+  const customerType: CustomerType = isCorporate ? "CORPORATE" : "INDIVIDUAL";
 
+  // Confirmation only — every detail already lives on the lead (captured at create/edit time).
   const handleConfirm = () => {
     if (!isQualified) return;
-    // Create the customer directly from the lead's existing data — no extra info form.
     convertMutation.mutate(
       {
         customerType,
         fullName:    lead.fullName,
-        email:       lead.email       ?? "",
-        phone:       lead.phone       ?? "",
+        email:       lead.email ?? "",
+        phone:       lead.phone ?? "",
         companyName: lead.companyName ?? "",
         taxCode:     "",
-        address:     "",
+        address:     lead.address ?? "",
       },
       {
         onSuccess: () => setDone(true),
@@ -189,10 +158,10 @@ function ConvertModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
 
         {/* Header */}
-        <div className="relative bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 px-6 py-5">
+        <div className="relative shrink-0 bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 px-5 py-4">
           <div className="absolute inset-0 opacity-10"
             style={{ backgroundImage: "radial-gradient(circle at 80% 50%, white 1px, transparent 1px)", backgroundSize: "20px 20px" }} />
           <div className="relative flex items-start justify-between gap-4">
@@ -212,11 +181,11 @@ function ConvertModal({
         </div>
 
         {/* Body */}
-        <div className="p-6">
+        <div className="p-5 flex-1 overflow-y-auto">
 
           {/* Conversion eligibility */}
           {isQualified ? (
-            <div className="flex items-center gap-3 px-4 py-3 mb-5 bg-emerald-50 border border-emerald-200 rounded-xl">
+            <div className="flex items-center gap-3 px-4 py-2.5 mb-4 bg-emerald-50 border border-emerald-200 rounded-xl">
               <ShieldCheck className="size-4 text-emerald-500 shrink-0" />
               <p className="text-xs text-emerald-700 font-medium">
                 This lead is qualified — you can convert it into a customer right now.
@@ -235,23 +204,45 @@ function ConvertModal({
             </div>
           )}
 
-          {/* Customer type — the only choice; the customer is created straight from the lead's data */}
-          <div className="space-y-3">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
-              Who is this customer?
-            </p>
-            <CustomerTypeCard
-              type="INDIVIDUAL" icon={User} selected={customerType === "INDIVIDUAL"}
-              title="Individual"
-              description="A solo traveler booking on their own, not affiliated with an organization."
-              onSelect={() => setCustomerType("INDIVIDUAL")}
-            />
-            <CustomerTypeCard
-              type="CORPORATE" icon={Building} selected={customerType === "CORPORATE"}
-              title="Corporate / Organization"
-              description="A company or organization booking for a group or an event."
-              onSelect={() => setCustomerType("CORPORATE")}
-            />
+          {/* Read-only summary — nothing to fill in, just confirm the details already on the lead */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-200 bg-white">
+              <span className={`flex items-center justify-center size-8 rounded-lg ${isCorporate ? "bg-violet-100 text-violet-600" : "bg-blue-100 text-blue-600"}`}>
+                {isCorporate ? <Building className="size-4" /> : <User className="size-4" />}
+              </span>
+              <div>
+                <p className="text-sm font-bold text-slate-800">{isCorporate ? "Organization" : "Individual"}</p>
+                <p className="text-[11px] text-slate-400">Customer type inherited from this lead</p>
+              </div>
+            </div>
+            <dl className="divide-y divide-slate-100">
+              {isCorporate && (
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Company</dt>
+                  <dd className="text-sm text-slate-700 font-medium text-right">
+                    {lead.companyName || <span className="text-rose-500 italic">Unknown</span>}
+                  </dd>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Email</dt>
+                <dd className="text-sm text-slate-700 font-medium text-right">
+                  {lead.email || <span className="text-rose-500 italic">Unknown</span>}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Phone</dt>
+                <dd className="text-sm text-slate-700 font-medium text-right">
+                  {lead.phone || <span className="text-rose-500 italic">Unknown</span>}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Address</dt>
+                <dd className="text-sm text-slate-700 font-medium text-right max-w-[60%]">
+                  {lead.address || <span className="text-rose-500 italic">Unknown</span>}
+                </dd>
+              </div>
+            </dl>
           </div>
 
           {convertMutation.isError && (
@@ -265,7 +256,7 @@ function ConvertModal({
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/80">
+        <div className="flex gap-3 px-5 py-3.5 border-t border-slate-100 bg-slate-50/80 shrink-0">
           <button type="button" onClick={onClose}
             className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition">
             Cancel
@@ -292,7 +283,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
 
   const [editOpen, setEditOpen]       = useState(false);
   const [editForm, setEditForm]       = useState<UpdateLeadPayload>({});
-  const [editErrors, setEditErrors]   = useState<{ fullName?: string; email?: string; phone?: string }>({});
+  const [editErrors, setEditErrors]   = useState<{ fullName?: string; email?: string; phone?: string; companyName?: string }>({});
   const [editServerErr, setEditServerErr] = useState("");
   const [convertOpen, setConvertOpen] = useState(false);
   const [logs, setLogs]               = useState<LogEntry[]>(MOCK_LOGS);
@@ -316,7 +307,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
   const openEdit = () => {
     setEditForm({
       fullName: lead.fullName, email: lead.email ?? "", phone: lead.phone ?? "",
-      companyName: lead.companyName ?? "", isCorporate: lead.isCorporate,
+      companyName: lead.companyName ?? "", address: lead.address ?? "", isCorporate: lead.isCorporate,
       source: lead.source ?? "", notes: lead.notes ?? "",
       status: lead.status,
     });
@@ -337,6 +328,9 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
     }
     if (editForm.phone && !/^\d{10,11}$/.test((editForm.phone ?? "").replace(/\s/g, ""))) {
       errs.phone = "Phone number must be 10–11 digits";
+    }
+    if (editForm.isCorporate && !editForm.companyName?.trim()) {
+      errs.companyName = "Company name is required for an organization";
     }
     setEditErrors(errs);
     return Object.keys(errs).length === 0;
@@ -647,19 +641,10 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Customer Type</label>
-                <select value={editForm.isCorporate ? "corporate" : "individual"}
-                  onChange={e => setEditForm(f => ({ ...f, isCorporate: e.target.value === "corporate" }))}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer">
-                  <option value="individual">Individual</option>
-                  <option value="corporate">Organization</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Company</label>
-                <input value={editForm.companyName ?? ""}
-                  onChange={e => setEditForm(f => ({ ...f, companyName: e.target.value }))}
+                <label className="text-xs font-semibold text-slate-700">Address</label>
+                <input value={editForm.address ?? ""}
+                  onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))}
+                  placeholder="e.g. 12 Nguyen Hue, District 1, HCMC"
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
               </div>
 
@@ -697,6 +682,39 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
                   onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition resize-none" />
               </div>
+
+              {/* Customer Type at the bottom; Organization reveals a required company field. */}
+              <div className="space-y-1.5 pt-1 border-t border-slate-100">
+                <label className="text-xs font-semibold text-slate-700 pt-3 block">Customer Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([["individual", false, User], ["corporate", true, Building]] as const).map(([val, corp, Icon]) => {
+                    const selected = !!editForm.isCorporate === corp;
+                    return (
+                      <button key={val} type="button"
+                        onClick={() => setEditForm(f => ({ ...f, isCorporate: corp, ...(corp ? {} : { companyName: "" }) }))}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition
+                          ${selected
+                            ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm"
+                            : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
+                        <Icon className={`size-4 ${selected ? "text-blue-600" : "text-slate-400"}`} />
+                        {corp ? "Organization" : "Individual"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {editForm.isCorporate && (
+                <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <label className="text-xs font-semibold text-slate-700">Company / Organization <span className="text-rose-500">*</span></label>
+                  <input value={editForm.companyName ?? ""}
+                    onChange={e => { setEditForm(f => ({ ...f, companyName: e.target.value })); setEditErrors(er => ({ ...er, companyName: undefined })); }}
+                    placeholder="e.g. TechCorp Inc."
+                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
+                      ${editErrors.companyName ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
+                  {editErrors.companyName && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.companyName}</p>}
+                </div>
+              )}
             </form>
 
             <div className="flex gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">

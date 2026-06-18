@@ -26,6 +26,8 @@ public class CreateLeadRequest {
     @Size(max = 255)
     private String companyName;
 
+    private String address;
+
     /** false = individual, true = corporate / organization. Defaults to individual when omitted. */
     private Boolean isCorporate;
 

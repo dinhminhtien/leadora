@@ -41,6 +41,9 @@ public class UpdateLeadUseCase {
         if (request.getCompanyName() != null) {
             lead.setCompanyName(request.getCompanyName());
         }
+        if (request.getAddress() != null) {
+            lead.setAddress(request.getAddress());
+        }
         if (request.getIsCorporate() != null) {
             lead.setIsCorporate(request.getIsCorporate());
         }

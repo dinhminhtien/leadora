@@ -25,9 +25,7 @@ public class GetLeadListUseCase {
     @Transactional(readOnly = true)
     public Page<LeadResponse> execute(String search, String status, String source, Boolean isCorporate,
                                       String sortBy, String sortDir, int page, int size) {
-        String sortField = ALLOWED_SORT_FIELDS.contains(sortBy) ? sortBy : "createdAt";
-        Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
+        boolean asc = "asc".equalsIgnoreCase(sortDir);
 
         // Pass "" (not null) so Hibernate 6 binds as varchar instead of bytea
         String searchParam = StringUtils.hasText(search) ? search.trim() : "";
@@ -38,6 +36,18 @@ public class GetLeadListUseCase {
             } catch (IllegalArgumentException ignored) {}
         }
         String sourceParam = StringUtils.hasText(source) ? source.trim() : "";
+
+        // "status" sorts by pipeline priority (Converted → … → New), not alphabetically.
+        // Always high→low — the only ordering the UI offers for status.
+        if ("status".equals(sortBy)) {
+            Pageable pageable = PageRequest.of(page, size);
+            return leadRepository.searchLeadsByStatusPriority(searchParam, statusParam, sourceParam, isCorporate, pageable)
+                    .map(LeadResponse::from);
+        }
+
+        String sortField = ALLOWED_SORT_FIELDS.contains(sortBy) ? sortBy : "createdAt";
+        Sort.Direction direction = asc ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
 
         return leadRepository.searchLeads(searchParam, statusParam, sourceParam, isCorporate, pageable)
                 .map(LeadResponse::from);

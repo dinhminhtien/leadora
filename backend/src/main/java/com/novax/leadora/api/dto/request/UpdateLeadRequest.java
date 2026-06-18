@@ -25,6 +25,8 @@ public class UpdateLeadRequest {
     @Size(max = 255)
     private String companyName;
 
+    private String address;
+
     /** false = individual, true = corporate / organization. */
     private Boolean isCorporate;
 

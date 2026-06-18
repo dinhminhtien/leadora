@@ -5,7 +5,7 @@ import {
   Search, Plus, X, Handshake, Users, TrendingUp, Percent,
   Phone, Building2, User, ArrowUpRight, ChevronLeft, ChevronRight,
   Loader2, AlertCircle, SlidersHorizontal, CalendarDays, ArrowUpDown,
-  ArrowUp, ArrowDown, ChevronDown, Maximize2, Minimize2, ServerCrash,
+  ArrowUp, ArrowDown, ArrowDownWideNarrow, ChevronDown, Maximize2, Minimize2, ServerCrash,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -29,6 +29,7 @@ const STATUS_CONFIG: Record<LeadStatus, { label: string; dot: string; badge: str
 const SOURCE_OPTIONS = ["Website Inquiry", "Referral", "Social Media", "Cold Call", "Walk-in", "Event"];
 
 const SORT_OPTIONS = [
+  { value: "status_desc",    label: "Status",      icon: ArrowDownWideNarrow },
   { value: "createdAt_desc", label: "Newest",      icon: ArrowDown },
   { value: "createdAt_asc",  label: "Oldest",      icon: ArrowUp },
   { value: "fullName_asc",   label: "Name A → Z",  icon: ArrowUpDown },
@@ -36,7 +37,7 @@ const SORT_OPTIONS = [
 ];
 
 const EMPTY_FORM: CreateLeadPayload = {
-  fullName: "", email: "", phone: "", companyName: "", isCorporate: false, source: "Website Inquiry", notes: "",
+  fullName: "", email: "", phone: "", companyName: "", address: "", isCorporate: false, source: "Website Inquiry", notes: "",
 };
 
 // Lead type (individual vs corporate/organization) — `isCorporate` boolean on the lead.
@@ -45,9 +46,16 @@ const TYPE_OPTIONS = [
   { value: "corporate",  label: "Organization", isCorporate: true },
 ] as const;
 
+// Segmented toggle shown at the top-right of the list (All / Individual / Organization).
+const TYPE_SEGMENTS: { value: string; label: string; icon?: React.ElementType }[] = [
+  { value: "",           label: "All" },
+  { value: "individual", label: "Individual",   icon: User },
+  { value: "corporate",  label: "Organization", icon: Building2 },
+];
+
 // ── Validation ────────────────────────────────────────────────────────────────
 
-type FormErrors = { fullName?: string; email?: string; phone?: string };
+type FormErrors = { fullName?: string; email?: string; phone?: string; companyName?: string };
 
 function validateForm(f: CreateLeadPayload): FormErrors {
   const err: FormErrors = {};
@@ -61,6 +69,10 @@ function validateForm(f: CreateLeadPayload): FormErrors {
   }
   if (f.phone && !/^\d{10,11}$/.test(f.phone.replace(/\s/g, ""))) {
     err.phone = "Phone number must be 10–11 digits";
+  }
+  // Organization leads must name the company; individuals don't need one.
+  if (f.isCorporate && !f.companyName?.trim()) {
+    err.companyName = "Company name is required for an organization";
   }
   return err;
 }
@@ -91,6 +103,22 @@ function StatusBadge({ status }: { status: LeadStatus }) {
 function FieldError({ msg }: { msg?: string }) {
   if (!msg) return null;
   return <p className="mt-1 text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{msg}</p>;
+}
+
+// Missing/null information in the list is surfaced in red as "Unknown".
+function Unknown() {
+  return <span className="text-rose-500 italic font-medium">Unknown</span>;
+}
+
+// Caps a value at a fixed pixel width and clips the overflow with a CSS ellipsis ("…"),
+// so even a long unbroken string (e.g. "wwwwwww…") can never push the table columns out
+// of alignment — character count is irrelevant, only rendered width. Full value in tooltip.
+function Truncate({ text, width = 150, className = "" }: { text: string; width?: number; className?: string }) {
+  return (
+    <span title={text} className={`block truncate ${className}`} style={{ maxWidth: width }}>
+      {text}
+    </span>
+  );
 }
 
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
@@ -188,26 +216,17 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-600">Customer Type</label>
-            <Select value={form.isCorporate ? "corporate" : "individual"}
-              onChange={e => setForm(f => ({ ...f, isCorporate: e.target.value === "corporate" }))}
-              className="py-1.5">
-              {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </Select>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-600">Company / Organization</label>
-            <Input placeholder="e.g. TechCorp Inc." value={form.companyName}
-              onChange={e => field("companyName", e.target.value)}
-              className="py-1.5 text-xs" />
-          </div>
-
-          <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-600">Source Channel</label>
             <Select value={form.source} onChange={e => field("source", e.target.value)} className="py-1.5">
               {SOURCE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </Select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600">Address</label>
+            <Input placeholder="e.g. 12 Nguyen Hue, District 1, HCMC" value={form.address}
+              onChange={e => field("address", e.target.value)}
+              className="py-1.5 text-xs" />
           </div>
 
           <div className="space-y-1">
@@ -216,6 +235,38 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
               onChange={e => field("notes", e.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 px-3.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition resize-none" />
           </div>
+
+          {/* Customer Type sits at the very bottom; choosing Organization reveals a required company field. */}
+          <div className="space-y-1.5 pt-1 border-t border-slate-100">
+            <label className="text-xs font-semibold text-slate-600 pt-2 block">Customer Type</label>
+            <div className="grid grid-cols-2 gap-2">
+              {TYPE_OPTIONS.map(t => {
+                const selected = form.isCorporate === t.isCorporate;
+                const Icon = t.isCorporate ? Building2 : User;
+                return (
+                  <button key={t.value} type="button"
+                    onClick={() => setForm(f => ({ ...f, isCorporate: t.isCorporate, ...(t.isCorporate ? {} : { companyName: "" }) }))}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-semibold transition
+                      ${selected
+                        ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm"
+                        : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
+                    <Icon className={`size-4 ${selected ? "text-blue-600" : "text-slate-400"}`} />
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {form.isCorporate && (
+            <div className="space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+              <label className="text-xs font-semibold text-slate-600">Company / Organization *</label>
+              <Input placeholder="e.g. TechCorp Inc." value={form.companyName}
+                onChange={e => field("companyName", e.target.value)}
+                error={errors.companyName}
+                className="py-1.5 text-xs" />
+            </div>
+          )}
 
           <div className="pt-4 flex gap-3 border-t border-slate-100">
             <Button type="submit" variant="primary" isLoading={createMutation.isPending}
@@ -281,6 +332,7 @@ function LeadTable({
               { label: "Name / Contact", w: "" },
               { label: "Type / Company", w: "" },
               { label: "Phone", w: "" },
+              { label: "Address", w: "" },
               { label: "Source", w: "" },
               { label: "Owner", w: "" },
               { label: "Status", w: "" },
@@ -302,34 +354,40 @@ function LeadTable({
               </TableCell>
               <TableCell className="py-3 px-4 border-b-0">
                 <Link href={`/leads/${lead.leadId}`}
-                  className="font-semibold text-sm text-slate-800 hover:text-blue-600 transition-colors line-clamp-1 group-hover:underline decoration-blue-300 underline-offset-2">
-                  {lead.fullName}
+                  className="block group-hover:underline decoration-blue-300 underline-offset-2">
+                  <Truncate text={lead.fullName} width={130}
+                    className="font-semibold text-sm text-slate-800 group-hover:text-blue-600 transition-colors" />
                 </Link>
-                {lead.email && <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{lead.email}</p>}
+                <div className="text-[11px] mt-0.5">
+                  {lead.email ? <Truncate text={lead.email} width={130} className="text-slate-400" /> : <Unknown />}
+                </div>
               </TableCell>
               <TableCell className="py-3 px-4 border-b-0">
                 <span className="flex items-center gap-1.5 text-xs text-slate-600" title={lead.isCorporate ? "Organization" : "Individual"}>
                   {lead.isCorporate
                     ? <Building2 className="size-3.5 text-slate-400 shrink-0" />
                     : <User className="size-3.5 text-slate-400 shrink-0" />}
-                  {lead.companyName
-                    ? lead.companyName
-                    : <span className="text-slate-300 italic">{lead.isCorporate ? "Organization" : "Individual"}</span>}
+                  {lead.isCorporate
+                    ? (lead.companyName ? lead.companyName : <Unknown />)
+                    : <span className="text-slate-400">Individual</span>}
                 </span>
               </TableCell>
               <TableCell className="py-3 px-4 border-b-0">
                 {lead.phone
                   ? <a href={`tel:${lead.phone}`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-blue-600">
-                      <Phone className="size-3 text-slate-300" />{lead.phone}
+                      <Phone className="size-3 text-slate-300 shrink-0" />{lead.phone}
                     </a>
-                  : <span className="text-slate-300 text-xs italic">—</span>}
+                  : <span className="text-xs"><Unknown /></span>}
+              </TableCell>
+              <TableCell className="py-3 px-4 text-xs text-slate-500 border-b-0">
+                {lead.address ? <Truncate text={lead.address} width={120} /> : <Unknown />}
               </TableCell>
               <TableCell className="py-3 px-4 text-xs text-slate-500 whitespace-nowrap border-b-0">
-                {lead.source ?? <span className="text-slate-300 italic">—</span>}
+                {lead.source ?? <Unknown />}
               </TableCell>
               <TableCell className="py-3 px-4 border-b-0">
                 {lead.assignedUserName
-                  ? <div className="flex items-center gap-2"><Avatar name={lead.assignedUserName} /><span className="text-xs text-slate-600 truncate max-w-[80px]">{lead.assignedUserName}</span></div>
+                  ? <div className="flex items-center gap-2"><Avatar name={lead.assignedUserName} /><Truncate text={lead.assignedUserName} width={90} className="text-xs text-slate-600" /></div>
                   : <span className="text-xs text-slate-300 italic">Unassigned</span>}
               </TableCell>
               <TableCell className="py-3 px-4 border-b-0"><StatusBadge status={lead.status} /></TableCell>
@@ -387,7 +445,7 @@ export function LeadListScreen() {
   const [typeFilter,  setTypeFilter]  = useState("");
   const [dateFrom,    setDateFrom]    = useState("");
   const [dateTo,      setDateTo]      = useState("");
-  const [sortOption,  setSortOption]  = useState("createdAt_desc");
+  const [sortOption,  setSortOption]  = useState("status_desc");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [page,        setPage]        = useState(0);
@@ -442,7 +500,8 @@ export function LeadListScreen() {
   const active        = leads.filter(l => l.status !== "LOST" && l.status !== "CONVERTED").length;
   const qualifyRate   = `${((qualified / (leads.length || 1)) * 100).toFixed(1)}%`;
 
-  const activeFilterCount = [statusFilter, sourceFilter, typeFilter, dateFrom, dateTo].filter(Boolean).length;
+  // Type now has its own always-visible segmented toggle, so it is excluded from the advanced-filter badge.
+  const activeFilterCount = [statusFilter, sourceFilter, dateFrom, dateTo].filter(Boolean).length;
   const hasFilters    = activeFilterCount > 0 || !!search;
 
   const clearAll = () => {
@@ -486,13 +545,6 @@ export function LeadListScreen() {
           {SOURCE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
-        {/* Type (individual / organization) */}
-        <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); resetPage(); }}
-          className="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:outline-none text-slate-700 cursor-pointer">
-          <option value="">All types</option>
-          {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-        </select>
-
         {/* Sort */}
         <div className="relative" ref={sortRef}>
           <button type="button" onClick={() => setShowSortMenu(v => !v)}
@@ -532,9 +584,28 @@ export function LeadListScreen() {
           )}
         </button>
 
-        <span className="ml-auto text-xs text-slate-400 hidden sm:block">
-          {isLoading ? "Loading…" : <>Showing <strong className="text-slate-700">{leads.length}</strong> of {totalElements} entries</>}
-        </span>
+        {/* Right side: entry count + Individual/Organization segmented toggle */}
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs text-slate-400 hidden lg:block">
+            {isLoading ? "Loading…" : <>Showing <strong className="text-slate-700">{leads.length}</strong> of {totalElements}</>}
+          </span>
+          <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+            {TYPE_SEGMENTS.map(seg => {
+              const active = typeFilter === seg.value;
+              return (
+                <button key={seg.value || "all"} type="button" title={seg.label}
+                  onClick={() => { setTypeFilter(seg.value); resetPage(); }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition
+                    ${active
+                      ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200"
+                      : "text-slate-500 hover:text-slate-700"}`}>
+                  {seg.icon && <seg.icon className="size-3.5" />}
+                  <span className={seg.icon ? "hidden sm:inline" : ""}>{seg.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Advanced panel */}
@@ -569,12 +640,11 @@ export function LeadListScreen() {
       )}
 
       {/* Active chips */}
-      {(statusFilter || sourceFilter || typeFilter || dateFrom || dateTo) && (
+      {(statusFilter || sourceFilter || dateFrom || dateTo) && (
         <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Filtering:</span>
           {statusFilter && <FilterChip label={`Status: ${STATUS_CONFIG[statusFilter as LeadStatus]?.label}`} onRemove={() => { setStatusFilter(""); resetPage(); }} />}
           {sourceFilter && <FilterChip label={`Source: ${sourceFilter}`} onRemove={() => { setSourceFilter(""); resetPage(); }} />}
-          {typeFilter   && <FilterChip label={`Type: ${TYPE_OPTIONS.find(t => t.value === typeFilter)?.label}`} onRemove={() => { setTypeFilter(""); resetPage(); }} />}
           {dateFrom && <FilterChip label={`From: ${new Date(dateFrom).toLocaleDateString("en-US")}`} onRemove={() => { setDateFrom(""); resetPage(); }} />}
           {dateTo   && <FilterChip label={`To: ${new Date(dateTo).toLocaleDateString("en-US")}`}   onRemove={() => { setDateTo("");   resetPage(); }} />}
         </div>
@@ -678,8 +748,8 @@ export function LeadListScreen() {
         </div>
       </div>
 
-      {/* Filter bar */}
-      <Card className="border-slate-100 shadow-sm p-0 overflow-hidden">
+      {/* Filter bar — no overflow-hidden here, or it clips the Sort dropdown menu */}
+      <Card className="border-slate-100 shadow-sm p-0">
         <CardContent>{filterBar}</CardContent>
       </Card>
 

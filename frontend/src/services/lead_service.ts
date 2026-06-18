@@ -12,6 +12,7 @@ export type Lead = {
   email: string | null;
   phone: string | null;
   companyName: string | null;
+  address: string | null;
   isCorporate: boolean;
   source: string | null;
   status: LeadStatus;
@@ -31,6 +32,7 @@ export type CreateLeadPayload = {
   email?: string;
   phone?: string;
   companyName?: string;
+  address?: string;
   isCorporate?: boolean;
   source?: string;
   notes?: string;
@@ -42,6 +44,7 @@ export type UpdateLeadPayload = {
   email?: string;
   phone?: string;
   companyName?: string;
+  address?: string;
   isCorporate?: boolean;
   source?: string;
   status?: LeadStatus;
