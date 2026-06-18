@@ -19,6 +19,8 @@ public class LeadResponse {
     private String email;
     private String phone;
     private String companyName;
+    private String address;
+    private Boolean isCorporate;
     private String source;
     private LeadStatus status;
     private String notes;
@@ -41,6 +43,8 @@ public class LeadResponse {
                 .email(entity.getEmail())
                 .phone(entity.getPhone())
                 .companyName(entity.getCompanyName())
+                .address(entity.getAddress())
+                .isCorporate(entity.getIsCorporate())
                 .source(entity.getSource())
                 .status(entity.getStatus())
                 .notes(entity.getNotes())
