@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useMemo } from "react";
 import { CreditCard, CheckCircle2, Search, Landmark } from "lucide-react";
@@ -88,7 +88,7 @@ export function DepositPaymentScreen() {
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs font-bold text-slate-700">{p.guestName}</TableCell>
                   <TableCell className="py-3 px-4 text-xs font-black text-slate-800">
-                    ${p.amount.toLocaleString()}
+                    ${p.amount.toLocaleString('en-US')}
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-500">{p.date}</TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-600 font-semibold uppercase">

@@ -1,10 +1,27 @@
 import { apiClient, type ApiResponse } from "@/services/api_client";
 import type { ListQuery } from "@/shared/types/api";
 
-export type Quotation = Record<string, unknown> & {
+export type Quotation = {
   id: string;
-  code?: string;
-  status?: string;
+  quoteNo: string;
+  contactName: string;
+  dealName: string;
+  amount: number;
+  expiryDate: string;
+  status: "draft" | "sent" | "accepted" | "expired" | "pending_approval" | "pending_revision" | "interested" | "converted" | "closed" | "rejected" | "approved";
+  email?: string;
+  phone?: string;
+  roomType?: string;
+  numberOfRooms?: number;
+  checkInDate?: string;
+  checkOutDate?: string;
+  paymentPolicy?: string;
+  pricePerNight?: number;
+  subtotal?: number;
+  discountPercent?: number;
+  discountAmount?: number;
+  notes?: string;
+  version?: number;
 };
 
 export type QuotationPayload = Record<string, unknown>;

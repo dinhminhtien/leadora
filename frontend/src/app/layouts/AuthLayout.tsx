@@ -35,7 +35,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
               <span>Direct Sales Optimization</span>
             </div>
             <h2 className="text-3xl font-extrabold tracking-tight leading-tight text-zinc-900 dark:text-white">
-              Elevate your hotel's sales performance.
+              Elevate your hotel&apos;s sales performance.
             </h2>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
               A unified workspace to streamline guest handovers, automate booking pipelines, monitor SLA records, and boost revenue.
@@ -93,7 +93,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
       {/* Right panel - Auth Forms */}
       <div className="flex flex-col justify-center items-center px-6 py-12 lg:px-16 bg-background relative">
         {/* Glow for mobile viewport */}
-        <div className="lg:hidden absolute top-0 left-0 w-full h-[30%] bg-gradient-to-b from-primary/5 to-transparent pointer-events-none" />
+        <div className="lg:hidden absolute top-0 left-0 w-full h-[30%] bg-linear-to-b from-primary/5 to-transparent pointer-events-none" />
 
         {/* Theme Toggle Button */}
         <div className="absolute top-6 right-6 z-20">

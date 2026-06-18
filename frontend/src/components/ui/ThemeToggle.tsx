@@ -14,7 +14,8 @@ export function ThemeToggle({ className = "" }: ThemeToggleProps) {
 
   // Avoid hydration mismatch
   useEffect(() => {
-    setMounted(true);
+    const handle = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(handle);
   }, []);
 
   if (!mounted) {
