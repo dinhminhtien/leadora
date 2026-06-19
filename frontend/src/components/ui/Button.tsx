@@ -76,7 +76,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         disabled={disabled || isLoading}
-        className={`inline-flex items-center justify-center gap-1.5 font-medium whitespace-nowrap transition-all duration-150 ease-out hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 cursor-pointer ${variantStyles[variant]} ${sizeStyles[size]} ${className || ""}`}
+        className={`inline-flex items-center justify-center gap-1.5 font-medium whitespace-nowrap transition-all duration-150 ease-out hover:-translate-y-px active:translate-y-0 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 cursor-pointer ${variantStyles[variant]} ${sizeStyles[size]} ${className || ""}`}
         {...props}
       >
         {leftIcon && !isLoading && (

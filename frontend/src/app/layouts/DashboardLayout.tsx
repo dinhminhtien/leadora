@@ -175,7 +175,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     title={label}
                   >
                     {isActive && (
-                      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4.5 bg-primary rounded-r" />
+                      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4.5 bg-primary rounded-r-xl" />
                     )}
                     <Icon className={`size-4 shrink-0 ${isActive ? "text-primary" : "text-zinc-400 dark:text-zinc-500"}`} />
                     {sidebarOpen && <span className="truncate">{label}</span>}
