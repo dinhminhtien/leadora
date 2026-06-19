@@ -65,4 +65,5 @@ jobs:
           --platform managed \
           --service-account ${{ env.SERVICE_ACCOUNT }} \
           --update-env-vars "GEMINI_PROJECT_ID=${{ env.PROJECT_ID }},GEMINI_LOCATION=asia-southeast1" \
+          --remove-env-vars "GOOGLE_GENAI_API_KEY,GEMINI_API_KEY" \
           --allow-unauthenticated
