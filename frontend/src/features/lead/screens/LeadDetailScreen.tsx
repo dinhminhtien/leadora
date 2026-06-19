@@ -161,7 +161,7 @@ function ConvertModal({
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
 
         {/* Header */}
-        <div className="relative shrink-0 bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 px-5 py-4">
+        <div className="relative shrink-0 bg-linear-to-br from-emerald-500 via-emerald-600 to-teal-700 px-5 py-4">
           <div className="absolute inset-0 opacity-10"
             style={{ backgroundImage: "radial-gradient(circle at 80% 50%, white 1px, transparent 1px)", backgroundSize: "20px 20px" }} />
           <div className="relative flex items-start justify-between gap-4">
@@ -458,7 +458,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
 
           {/* Profile card */}
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="bg-gradient-to-br from-slate-700 to-slate-800 px-4 py-5 flex items-center gap-3">
+            <div className="bg-linear-to-br from-slate-700 to-slate-800 px-4 py-5 flex items-center gap-3">
               <span className="flex items-center justify-center size-12 rounded-full bg-white/10 text-white font-extrabold text-lg">
                 {lead.fullName.split(" ").map(p => p[0]).slice(0, 2).join("")}
               </span>

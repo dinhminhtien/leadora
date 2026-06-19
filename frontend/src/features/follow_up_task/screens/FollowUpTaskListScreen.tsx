@@ -220,7 +220,7 @@ function ConvertToDealDrawer({
       <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40" onClick={onClose} />
       <div className="fixed inset-y-0 right-0 w-full max-w-2xl bg-white shadow-2xl border-l border-slate-200 z-50 flex flex-col animate-in slide-in-from-right duration-300">
         {/* Header */}
-        <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-white shrink-0">
+        <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 bg-linear-to-r from-emerald-50 to-white shrink-0">
           <div>
             <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
               <ArrowUpRight className="size-5 text-emerald-600" />
@@ -672,7 +672,7 @@ function TaskDetailDrawer({
 
               {/* Convert CTA banner */}
               {canConvert && (
-                <div className="p-4 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 flex items-center justify-between gap-4">
+                <div className="p-4 rounded-xl border border-emerald-200 bg-linear-to-r from-emerald-50 to-teal-50 flex items-center justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-emerald-800 flex items-center gap-1.5">
                       <Zap className="size-4" />Ready to close this task?
