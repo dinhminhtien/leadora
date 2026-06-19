@@ -19,6 +19,7 @@ public class WebSecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .csrf(csrf -> csrf.disable())
             // All endpoints are open for now — JWT role enforcement will be added in a later phase.
             // NOTE: oauth2ResourceServer is intentionally removed.
             // Supabase signs access tokens with RS256 (asymmetric). Spring's default JWK decoder
@@ -37,11 +38,14 @@ public class WebSecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(List.of(
-            "http://localhost:3000",
+            "http://localhost:*",
+            "http://127.0.0.1:*",
             "https://*.vercel.app"
         ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        // X-User-Id: temporary actor identity used by the AI chat assistant while
+        // server-side JWT auth is not yet wired (login feature still in progress).
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-User-Id"));
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true);
 
