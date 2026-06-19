@@ -70,3 +70,14 @@ replay_pid*
 *CLAUDE.md
 *CODING_GUIDELINES.md
 *MILESTONES.md
+# All Markdown docs are local-only / managed outside git (new .md files are ignored;
+# already-tracked .md like README.md remain tracked until explicitly `git rm --cached`).
+*.md
+
+# Dev/agent scratch & error logs
+*.err
+.codex-*
+demo_screenshot.mjs
+
+# Claude Code: share skills, but keep personal/local settings out of git
+.claude/settings.local.json
