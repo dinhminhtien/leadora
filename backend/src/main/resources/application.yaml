@@ -86,9 +86,10 @@ spring:
       embedding: google-genai
     google:
       genai:
+        vertex-ai: ${GEMINI_USE_VERTEX:true}
         # Vertex AI mode: Uses project-id + location. If api-key is set, it defaults to Gemini Developer API (AI Studio).
         # We keep api-key optional (empty default) to allow falling back to Vertex AI with GCP credentials (ADC / Service Account).
-        api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:}}
+        api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:#{null}}}
         project-id: ${GEMINI_PROJECT_ID:mock-project-id}
         location: ${GEMINI_LOCATION:asia-southeast1}
         chat:
@@ -102,7 +103,8 @@ spring:
             thinking-budget: ${GEMINI_THINKING_BUDGET:0}
         embedding:
           # Match connection configuration for embedding
-          api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:}}
+          vertex-ai: ${GEMINI_USE_VERTEX:true}
+          api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:#{null}}}
           project-id: ${GEMINI_PROJECT_ID:mock-project-id}
           location: ${GEMINI_LOCATION:asia-southeast1}
           text:
