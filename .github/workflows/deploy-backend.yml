@@ -64,5 +64,5 @@ jobs:
           --region ${{ env.REGION }} \
           --platform managed \
           --service-account ${{ env.SERVICE_ACCOUNT }} \
-          --set-env-vars "GEMINI_PROJECT_ID=${{ env.PROJECT_ID }},GEMINI_LOCATION=us-central1" \
+          --update-env-vars "GEMINI_PROJECT_ID=${{ env.PROJECT_ID }},GEMINI_LOCATION=asia-southeast1" \
           --allow-unauthenticated
