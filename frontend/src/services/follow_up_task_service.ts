@@ -4,6 +4,7 @@ import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_c
 
 export type TaskStatus = "OPEN" | "IN_PROGRESS" | "WAITING_CUSTOMER" | "COMPLETED" | "CANCELLED";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
+export type WorkflowAction = "START" | "COMPLETE" | "CANCEL" | "REOPEN";
 
 export type Task = {
   taskId: string;
@@ -12,6 +13,10 @@ export type Task = {
   priority: TaskPriority;
   status: TaskStatus;
   dueDate: string | null;
+  /** ISO datetime with timezone offset, e.g. "2026-06-24T09:00:00+07:00" */
+  startAt: string | null;
+  /** ISO datetime with timezone offset */
+  endAt: string | null;
   resultNote: string | null;
   assignedUserId: string | null;
   assignedUserName: string | null;
@@ -23,7 +28,8 @@ export type Task = {
   customerName: string | null;
   dealId: string | null;
   dealName: string | null;
-  contactName?: string | null;
+  primaryContactName: string | null;
+  primaryContactPhone: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -45,7 +51,10 @@ export type CreateTaskPayload = {
   leadId?: string;
   customerId?: string;
   dealId?: string;
-  contactName?: string; // Primary contact name
+  primaryContactName?: string;
+  primaryContactPhone?: string;
+  startAt?: string;
+  endAt?: string;
 };
 
 export type UpdateTaskPayload = {
@@ -53,12 +62,16 @@ export type UpdateTaskPayload = {
   description?: string;
   assignedUserId?: string;
   priority?: TaskPriority;
-  dueDate?: string;
   status?: TaskStatus;
+  dueDate?: string;
   resultNote?: string;
   leadId?: string;
   customerId?: string;
   dealId?: string;
+  primaryContactName?: string;
+  primaryContactPhone?: string;
+  startAt?: string;
+  endAt?: string;
 };
 
 export type TaskListParams = {
@@ -93,6 +106,15 @@ export const taskService = {
 
   async update(id: string, payload: UpdateTaskPayload): Promise<ApiResponse<Task>> {
     const { data } = await apiClient.put<ApiResponse<Task>>(`${ENDPOINT}/${id}`, payload);
+    return data;
+  },
+
+  /** Workflow transition: START → IN_PROGRESS, COMPLETE → COMPLETED (accepts OPEN too), CANCEL → CANCELLED, REOPEN → OPEN */
+  async transition(id: string, action: WorkflowAction): Promise<ApiResponse<Task>> {
+    const { data } = await apiClient.patch<ApiResponse<Task>>(
+      `${ENDPOINT}/${id}/workflow`,
+      { action },
+    );
     return data;
   },
 };
