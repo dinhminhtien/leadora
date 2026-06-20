@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Getter
@@ -20,4 +21,10 @@ public class UpdateTaskRequest {
     private UUID leadId;
     private UUID customerId;
     private UUID dealId;
+
+    private OffsetDateTime startAt;
+    private OffsetDateTime endAt;
+
+    private String primaryContactName;
+    private String primaryContactPhone;
 }

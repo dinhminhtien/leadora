@@ -67,4 +67,5 @@ public class TaskController {
         TaskResponse task = updateTaskUseCase.execute(taskId, request);
         return ResponseEntity.ok(ApiResponse.success(task, "Task updated successfully"));
     }
+
 }

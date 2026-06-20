@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Getter
@@ -25,11 +26,17 @@ public class CreateTaskRequest {
     @NotNull(message = "Priority is required")
     private String priority;
 
-    @NotNull(message = "Due date is required")
     private LocalDate dueDate;
 
     private String resultNote;
     private UUID leadId;
     private UUID customerId;
     private UUID dealId;
+
+    private String primaryContactName;
+    private String primaryContactPhone;
+
+    /** Timeline scheduling — both optional; null means task has no scheduled time block. */
+    private OffsetDateTime startAt;
+    private OffsetDateTime endAt;
 }
