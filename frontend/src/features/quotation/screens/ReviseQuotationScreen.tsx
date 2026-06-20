@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -22,31 +22,9 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
-import type { Quotation } from "@/services/quotation_service";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
-
-type VersionHistory = {
-  id: string;
-  quotationId: string;
-  quoteNo: string;
-  versionNumber: number;
-  amount: number;
-  roomType?: string;
-  checkInDate?: string;
-  checkOutDate?: string;
-  numberOfRooms?: number;
-  pricePerNight?: number;
-  discountPercent?: number;
-  discountAmount?: number;
-  subtotal?: number;
-  paymentPolicy?: string;
-  notes?: string;
-  changeReason: string;
-  revisedAt: string;
-  revisedBy: string;
-  statusBefore: string;
-  statusAfter: string;
-};
+import { useQuotationById, useReviseQuotation, useQuotations } from "@/features/quotation/hooks/use_quotations";
+import { useAuthStore } from "@/stores/auth_store";
 
 const schema = z
   .object({
@@ -104,43 +82,55 @@ interface ReviseQuotationScreenProps {
   quotationId: string;
 }
 
-export function ReviseQuotationScreen({ quotationId: _quotationId }: ReviseQuotationScreenProps) {
+export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProps) {
   const router = useRouter();
-  const [quotation] = useState<Quotation | null>(null);
+  const { user } = useAuthStore();
+
+  const { data: quotation, isLoading } = useQuotationById(quotationId);
+  const reviseQuotation = useReviseQuotation();
+  const { data: allQuotes = [] } = useQuotations();
 
   const [showHistory, setShowHistory] = useState(false);
   const [simulateNoManager, setSimulateNoManager] = useState(false);
   const [e3Error, setE3Error] = useState<string | null>(null);
   const [e4Error, setE4Error] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
-  const [versionHistory, setVersionHistory] = useState<VersionHistory[]>([]);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
     watch,
-    formState: { errors, isSubmitting },
+    reset,
+    formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema) as unknown as Resolver<FormValues>,
-    defaultValues: quotation
-      ? {
-          contactName: quotation.contactName,
-          email: quotation.email ?? "",
-          phone: quotation.phone ?? "",
-          dealName: quotation.dealName,
-          roomType: quotation.roomType ?? "",
-          checkInDate: quotation.checkInDate ?? "",
-          checkOutDate: quotation.checkOutDate ?? "",
-          numberOfRooms: quotation.numberOfRooms ?? 1,
-          pricePerNight: quotation.pricePerNight ?? 0,
-          discountPercent: quotation.discountPercent ?? 0,
-          paymentPolicy: quotation.paymentPolicy ?? "",
-          validUntil: quotation.expiryDate ?? "",
-          notes: quotation.notes ?? "",
-          changeReason: "",
-        }
-      : {},
+    defaultValues: {
+      discountPercent: 0,
+      numberOfRooms: 1,
+    },
   });
+
+  // Pre-populate form when quotation loads
+  useEffect(() => {
+    if (!quotation) return;
+    reset({
+      contactName: quotation.contactName ?? "",
+      email: quotation.email ?? "",
+      phone: quotation.phone ?? "",
+      dealName: quotation.dealName ?? "",
+      roomType: quotation.roomType ?? "",
+      checkInDate: quotation.checkInDate ?? "",
+      checkOutDate: quotation.checkOutDate ?? "",
+      numberOfRooms: quotation.numberOfRooms ?? 1,
+      pricePerNight: quotation.pricePerNight ?? 0,
+      discountPercent: Number(quotation.discountPercent ?? 0),
+      paymentPolicy: quotation.paymentPolicy ?? "",
+      validUntil: quotation.validUntil ?? quotation.expiryDate ?? "",
+      notes: quotation.notes ?? "",
+      changeReason: "",
+    });
+  }, [quotation, reset]);
 
   const [roomType, checkInDate, checkOutDate, numberOfRooms, pricePerNight, discountPercent] = watch([
     "roomType",
@@ -175,20 +165,27 @@ export function ReviseQuotationScreen({ quotationId: _quotationId }: ReviseQuota
     return { available: true };
   }, [roomType, checkInDate, checkOutDate]);
 
+  // Version history: all quotes for the same deal, sorted by version
+  const versionHistory = useMemo(() => {
+    if (!quotation?.dealId) return [];
+    return allQuotes
+      .filter((q) => q.dealId === quotation.dealId && q.id !== quotationId)
+      .sort((a, b) => (a.version ?? 1) - (b.version ?? 1));
+  }, [allQuotes, quotation, quotationId]);
+
   const requiresApproval = (discountPercent || 0) > 10;
   const nextVersion = (quotation?.version ?? 1) + 1;
 
-  const onSubmit = (data: FormValues) => {
+  const onSubmit = async (data: FormValues) => {
     setE3Error(null);
     setE4Error(null);
+    setSubmitError(null);
 
-    // E3: block if room unavailable
     if (availability && !availability.available) {
       setE3Error(`"${data.roomType}" is already booked for the selected dates. Choose different dates or a different room type.`);
       return;
     }
 
-    // E4: block if no manager available and discount > 10%
     if (simulateNoManager && data.discountPercent > 10) {
       setE4Error(
         `Discount of ${data.discountPercent}% exceeds Sales Staff authority (10%). No Sales Manager is currently available to approve. Please reduce the discount or try again later.`
@@ -196,37 +193,39 @@ export function ReviseQuotationScreen({ quotationId: _quotationId }: ReviseQuota
       return;
     }
 
-    const newStatus = data.discountPercent > 10 ? "pending_approval" : "draft";
-    const today = new Date().toISOString().split("T")[0];
-
-    if (quotation) {
-      setVersionHistory(prev => [{
-        id: `QV-${prev.length + 1}`,
-        quotationId: quotation.id,
-        quoteNo: quotation.quoteNo,
-        versionNumber: quotation.version ?? 1,
-        amount: quotation.amount,
-        roomType: quotation.roomType,
-        checkInDate: quotation.checkInDate,
-        checkOutDate: quotation.checkOutDate,
-        numberOfRooms: quotation.numberOfRooms,
-        pricePerNight: quotation.pricePerNight,
-        discountPercent: quotation.discountPercent,
-        discountAmount: quotation.discountAmount,
-        subtotal: quotation.subtotal,
-        paymentPolicy: quotation.paymentPolicy,
-        notes: quotation.notes,
-        changeReason: data.changeReason,
-        revisedAt: today,
-        revisedBy: "Sarah Connor",
-        statusBefore: quotation.status,
-        statusAfter: newStatus,
-      }, ...prev]);
+    try {
+      await reviseQuotation.mutateAsync({
+        id: quotationId,
+        payload: {
+          roomType: data.roomType,
+          checkInDate: data.checkInDate,
+          checkOutDate: data.checkOutDate,
+          numberOfRooms: data.numberOfRooms,
+          pricePerNight: data.pricePerNight,
+          discountPercent: data.discountPercent,
+          paymentPolicy: data.paymentPolicy,
+          validUntil: data.validUntil,
+          notes: data.notes,
+          changeReason: data.changeReason,
+          revisedByName: user?.name ?? user?.email ?? "Staff",
+          revisedByRole: user?.roles?.[0] ?? "SALES_STAFF",
+        },
+      });
+      setSubmitSuccess(true);
+      setTimeout(() => router.push(ROUTE_PATHS.quotations), 1200);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to revise quotation. Please try again.";
+      setSubmitError(msg);
     }
-
-    setSubmitSuccess(true);
-    setTimeout(() => router.push(ROUTE_PATHS.quotations), 1200);
   };
+
+  if (isLoading) {
+    return (
+      <div className="py-20 text-center">
+        <p className="text-sm text-slate-400">Loading quotation…</p>
+      </div>
+    );
+  }
 
   if (!quotation) {
     return (
@@ -284,64 +283,62 @@ export function ReviseQuotationScreen({ quotationId: _quotationId }: ReviseQuota
       </div>
 
       {/* Version History collapsible */}
-      {(versionHistory.length > 0 || true) && (
-        <Card className="border-slate-100 shadow-sm bg-white">
-          <CardHeader>
-            <button
-              type="button"
-              onClick={() => setShowHistory((v) => !v)}
-              className="flex items-center justify-between w-full"
-            >
-              <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                <History className="size-4 text-blue-400" />
-                Version History
-                <span className="ml-1 text-[10px] font-normal text-slate-400">
-                  ({versionHistory.length} revision{versionHistory.length !== 1 ? "s" : ""})
-                </span>
-              </CardTitle>
-              {showHistory ? (
-                <ChevronUp className="size-4 text-slate-400" />
-              ) : (
-                <ChevronDown className="size-4 text-slate-400" />
-              )}
-            </button>
-          </CardHeader>
-          {showHistory && (
-            <CardContent className="pt-0">
-              {versionHistory.length === 0 ? (
-                <p className="text-xs text-slate-400 italic py-2">
-                  No previous revisions. Current is the original version (v{quotation.version ?? 1}).
-                </p>
-              ) : (
-                <Table>
-                  <TableHeader className="bg-slate-50">
-                    <TableRow hoverable={false}>
-                      <TableHead className="text-[10px] font-semibold text-slate-500">Ver.</TableHead>
-                      <TableHead className="text-[10px] font-semibold text-slate-500">Date</TableHead>
-                      <TableHead className="text-[10px] font-semibold text-slate-500">Revised By</TableHead>
-                      <TableHead className="text-[10px] font-semibold text-slate-500">Amount</TableHead>
-                      <TableHead className="text-[10px] font-semibold text-slate-500">Discount</TableHead>
-                      <TableHead className="text-[10px] font-semibold text-slate-500">Change Reason</TableHead>
+      <Card className="border-slate-100 shadow-sm bg-white">
+        <CardHeader>
+          <button
+            type="button"
+            onClick={() => setShowHistory((v) => !v)}
+            className="flex items-center justify-between w-full"
+          >
+            <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
+              <History className="size-4 text-blue-400" />
+              Version History
+              <span className="ml-1 text-[10px] font-normal text-slate-400">
+                ({versionHistory.length} other version{versionHistory.length !== 1 ? "s" : ""})
+              </span>
+            </CardTitle>
+            {showHistory ? (
+              <ChevronUp className="size-4 text-slate-400" />
+            ) : (
+              <ChevronDown className="size-4 text-slate-400" />
+            )}
+          </button>
+        </CardHeader>
+        {showHistory && (
+          <CardContent className="pt-0">
+            {versionHistory.length === 0 ? (
+              <p className="text-xs text-slate-400 italic py-2">
+                No previous revisions. This is the original version (v{quotation.version ?? 1}).
+              </p>
+            ) : (
+              <Table>
+                <TableHeader className="bg-slate-50">
+                  <TableRow hoverable={false}>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">Ver.</TableHead>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">Quote #</TableHead>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">Status</TableHead>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">Amount</TableHead>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">Discount</TableHead>
+                    <TableHead className="text-[10px] font-semibold text-slate-500">Change Reason</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {versionHistory.map((v) => (
+                    <TableRow key={v.id} className="border-b border-slate-100">
+                      <TableCell className="py-2 text-xs font-bold text-slate-600">v{v.version ?? 1}</TableCell>
+                      <TableCell className="py-2 text-xs text-slate-500">{v.quoteNo}</TableCell>
+                      <TableCell className="py-2 text-xs text-slate-500 capitalize">{v.status.replace("_", " ")}</TableCell>
+                      <TableCell className="py-2 text-xs font-semibold text-slate-700">${v.amount.toLocaleString("en-US")}</TableCell>
+                      <TableCell className="py-2 text-xs text-slate-500">{Number(v.discountPercent ?? 0)}%</TableCell>
+                      <TableCell className="py-2 text-xs text-slate-500 max-w-[200px] truncate">{v.changeReason ?? "—"}</TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {versionHistory.map((v) => (
-                      <TableRow key={v.id} className="border-b border-slate-100">
-                        <TableCell className="py-2 text-xs font-bold text-slate-600">v{v.versionNumber}</TableCell>
-                        <TableCell className="py-2 text-xs text-slate-500">{v.revisedAt}</TableCell>
-                        <TableCell className="py-2 text-xs text-slate-600">{v.revisedBy}</TableCell>
-                        <TableCell className="py-2 text-xs font-semibold text-slate-700">${v.amount.toLocaleString('en-US')}</TableCell>
-                        <TableCell className="py-2 text-xs text-slate-500">{v.discountPercent ?? 0}%</TableCell>
-                        <TableCell className="py-2 text-xs text-slate-500 max-w-[200px] truncate">{v.changeReason}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          )}
-        </Card>
-      )}
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        )}
+      </Card>
 
       <form onSubmit={handleSubmit(onSubmit)}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -349,27 +346,30 @@ export function ReviseQuotationScreen({ quotationId: _quotationId }: ReviseQuota
           {/* Left: form sections */}
           <div className="lg:col-span-2 space-y-5">
 
-            {/* Section 1: Customer Info */}
+            {/* Section 1: Customer Info (read-only from deal) */}
             <Card className="border-slate-100 shadow-sm bg-white">
               <CardHeader>
-                <CardTitle className="text-sm font-bold text-slate-700">Customer Information</CardTitle>
+                <CardTitle className="text-sm font-bold text-slate-700">
+                  Customer Information
+                  <span className="ml-2 text-[10px] font-normal text-slate-400">(from deal — read only)</span>
+                </CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <FieldLabel required>Contact Name</FieldLabel>
-                  <Input {...register("contactName")} placeholder="e.g. Emily Miller" error={errors.contactName?.message} />
+                  <Input {...register("contactName")} disabled className="bg-slate-50 text-slate-500 cursor-not-allowed" />
                 </div>
                 <div>
                   <FieldLabel required>Email Address</FieldLabel>
-                  <Input {...register("email")} type="email" placeholder="e.g. emily@example.com" error={errors.email?.message} />
+                  <Input {...register("email")} type="email" disabled className="bg-slate-50 text-slate-500 cursor-not-allowed" />
                 </div>
                 <div>
                   <FieldLabel required>Phone Number</FieldLabel>
-                  <Input {...register("phone")} placeholder="e.g. +1 555-0100" error={errors.phone?.message} />
+                  <Input {...register("phone")} disabled className="bg-slate-50 text-slate-500 cursor-not-allowed" />
                 </div>
                 <div>
                   <FieldLabel required>Deal / Event Name</FieldLabel>
-                  <Input {...register("dealName")} placeholder="e.g. Miller Wedding Booking" error={errors.dealName?.message} />
+                  <Input {...register("dealName")} disabled className="bg-slate-50 text-slate-500 cursor-not-allowed" />
                 </div>
               </CardContent>
             </Card>
@@ -407,14 +407,9 @@ export function ReviseQuotationScreen({ quotationId: _quotationId }: ReviseQuota
                       Duration: <strong className="text-slate-800">{pricing.nights} night{pricing.nights !== 1 ? "s" : ""}</strong>
                     </span>
                   )}
-                  {/* E3 availability indicator */}
                   {availability && (
-                    <span className={`text-[10px] font-semibold flex items-center gap-1 ${availability.available ? "text-emerald-600" : "text-red-500"}`}>
-                      {availability.available ? (
-                        <><CheckCircle2 className="size-3" /> Room type available</>
-                      ) : (
-                        <><XCircle className="size-3" /> Booking conflict: {(availability as { available: false; bookingNo: string }).bookingNo}</>
-                      )}
+                    <span className="text-[10px] font-semibold flex items-center gap-1 text-emerald-600">
+                      <CheckCircle2 className="size-3" /> Room type available
                     </span>
                   )}
                 </div>
@@ -441,7 +436,6 @@ export function ReviseQuotationScreen({ quotationId: _quotationId }: ReviseQuota
                     </p>
                   )}
                 </div>
-                {/* E4 simulation toggle */}
                 <div className="sm:col-span-2">
                   <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
                     <input
@@ -537,21 +531,21 @@ export function ReviseQuotationScreen({ quotationId: _quotationId }: ReviseQuota
                   </div>
                   <div className="flex justify-between text-slate-500">
                     <span>Rate/Night</span>
-                    <span className="font-semibold text-slate-700">${(pricePerNight || 0).toLocaleString('en-US')}</span>
+                    <span className="font-semibold text-slate-700">${(pricePerNight || 0).toLocaleString("en-US")}</span>
                   </div>
                   <div className="border-t border-slate-100 pt-2 flex justify-between text-slate-600">
                     <span>Subtotal</span>
-                    <span className="font-bold">${pricing.subtotal.toLocaleString('en-US')}</span>
+                    <span className="font-bold">${pricing.subtotal.toLocaleString("en-US")}</span>
                   </div>
                   {pricing.discountAmount > 0 && (
                     <div className="flex justify-between text-amber-600">
                       <span>Discount ({discountPercent || 0}%)</span>
-                      <span className="font-bold">-${pricing.discountAmount.toLocaleString('en-US')}</span>
+                      <span className="font-bold">-${pricing.discountAmount.toLocaleString("en-US")}</span>
                     </div>
                   )}
                   <div className="border-t border-slate-200 pt-2 flex justify-between text-slate-800">
                     <span className="font-bold text-sm">Total</span>
-                    <span className="font-black text-sm text-blue-700">${pricing.total.toLocaleString('en-US')}</span>
+                    <span className="font-black text-sm text-blue-700">${pricing.total.toLocaleString("en-US")}</span>
                   </div>
                 </div>
 
@@ -568,7 +562,6 @@ export function ReviseQuotationScreen({ quotationId: _quotationId }: ReviseQuota
                   )}
                 </div>
 
-                {/* E3 / E4 error banners */}
                 {e3Error && (
                   <div className="rounded-lg border border-red-200 bg-red-50 p-3">
                     <p className="text-[10px] font-bold text-red-600 flex items-start gap-1.5">
@@ -585,13 +578,21 @@ export function ReviseQuotationScreen({ quotationId: _quotationId }: ReviseQuota
                     </p>
                   </div>
                 )}
+                {submitError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                    <p className="text-[10px] font-bold text-red-600 flex items-start gap-1.5">
+                      <AlertCircle className="size-3 mt-0.5 shrink-0" />
+                      <span>{submitError}</span>
+                    </p>
+                  </div>
+                )}
 
                 <div className="pt-1 space-y-2">
                   <Button
                     type="submit"
                     variant="primary"
                     className="w-full text-xs font-bold"
-                    isLoading={isSubmitting}
+                    isLoading={reviseQuotation.isPending}
                     leftIcon={<CheckCircle2 className="size-3.5" />}
                   >
                     {requiresApproval ? `Submit v${nextVersion} for Approval` : `Save Version ${nextVersion}`}

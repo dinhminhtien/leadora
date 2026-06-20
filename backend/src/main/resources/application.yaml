@@ -43,6 +43,8 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:myuser}
     password: ${SPRING_DATASOURCE_PASSWORD:secret}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:3}
   
   jpa:
     hibernate:
@@ -84,8 +86,12 @@ spring:
       embedding: google-genai
     google:
       genai:
-        # Gemini Developer API: just an API key (no project-id/location → not Vertex).
-        api-key: ${GEMINI_API_KEY:}
+        vertex-ai: ${GEMINI_USE_VERTEX:true}
+        # Vertex AI mode: Uses project-id + location. If api-key is set, it defaults to Gemini Developer API (AI Studio).
+        # We keep api-key optional (empty default) to allow falling back to Vertex AI with GCP credentials (ADC / Service Account).
+        api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:#{null}}}
+        project-id: ${GEMINI_PROJECT_ID:mock-project-id}
+        location: ${GEMINI_LOCATION:asia-southeast1}
         chat:
           options:
             # Cheap + fast, good for CRM Q&A. Other options: gemini-2.5-flash-lite, gemini-2.5-pro.
@@ -96,9 +102,11 @@ spring:
             # so on 3.x the reliable speed lever is the model: set GEMINI_CHAT_MODEL=gemini-2.5-flash.
             thinking-budget: ${GEMINI_THINKING_BUDGET:0}
         embedding:
-          # The embedding connection does NOT inherit the top-level api-key — set it here too,
-          # otherwise it falls back to Vertex mode and demands a project-id.
-          api-key: ${GEMINI_API_KEY:}
+          # Match connection configuration for embedding
+          vertex-ai: ${GEMINI_USE_VERTEX:true}
+          api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:#{null}}}
+          project-id: ${GEMINI_PROJECT_ID:mock-project-id}
+          location: ${GEMINI_LOCATION:asia-southeast1}
           text:
             options:
               # This API key serves gemini-embedding-001 (text-embedding-004 → 404 here).

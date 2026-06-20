@@ -4,13 +4,15 @@ import React, { useState } from "react";
 import { CheckCircle2, XCircle, Sparkles, RotateCcw, AlertCircle, X, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import type { Quotation } from "@/services/quotation_service";
+import { useTrackCustomerResponse } from "@/features/quotation/hooks/use_quotations";
+import { useAuthStore } from "@/stores/auth_store";
 
 type ResponseType = "accepted" | "rejected" | "interested" | "need_revision";
 
 interface RecordResponseModalProps {
   quote: Quotation;
   onClose: () => void;
-  onRecorded: (quotationId: string) => void;
+  onRecorded: (quotationId: string, newStatus: Quotation["status"]) => void;
 }
 
 const RESPONSE_OPTIONS: {
@@ -65,6 +67,13 @@ const LOST_REASONS = [
   "Other (see notes)",
 ];
 
+const RESPONSE_API_MAP: Record<ResponseType, "ACCEPTED" | "REJECTED" | "INTERESTED" | "NEED_REVISION"> = {
+  accepted: "ACCEPTED",
+  rejected: "REJECTED",
+  interested: "INTERESTED",
+  need_revision: "NEED_REVISION",
+};
+
 const STATUS_MAP: Record<ResponseType, Quotation["status"]> = {
   accepted: "accepted",
   rejected: "rejected",
@@ -73,14 +82,19 @@ const STATUS_MAP: Record<ResponseType, Quotation["status"]> = {
 };
 
 export function RecordResponseModal({ quote, onClose, onRecorded }: RecordResponseModalProps) {
+  const { user } = useAuthStore();
+  const trackResponse = useTrackCustomerResponse();
+
   const [selected, setSelected] = useState<ResponseType | null>(null);
   const [lostReason, setLostReason] = useState("");
   const [notes, setNotes] = useState("");
   const [e3Error, setE3Error] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setE3Error(null);
+    setApiError(null);
 
     // E3: no response selected
     if (!selected) {
@@ -94,10 +108,25 @@ export function RecordResponseModal({ quote, onClose, onRecorded }: RecordRespon
       return;
     }
 
-    setSuccess(true);
-    setTimeout(() => {
-      onRecorded(quote.id);
-    }, 1000);
+    try {
+      await trackResponse.mutateAsync({
+        id: quote.id,
+        payload: {
+          customerResponse: RESPONSE_API_MAP[selected],
+          lostReason: selected === "rejected" ? lostReason : undefined,
+          notes: notes.trim() || undefined,
+          recordedByName: user?.name ?? user?.email ?? "Staff",
+          recordedByRole: user?.roles?.[0] ?? "SALES_STAFF",
+        },
+      });
+      setSuccess(true);
+      setTimeout(() => {
+        onRecorded(quote.id, STATUS_MAP[selected]);
+      }, 1000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to record response. Please try again.";
+      setApiError(msg);
+    }
   };
 
   return (
@@ -203,7 +232,7 @@ export function RecordResponseModal({ quote, onClose, onRecorded }: RecordRespon
               />
             </div>
 
-            {/* E3 error */}
+            {/* E3 validation error */}
             {e3Error && (
               <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
                 <AlertCircle className="size-3.5 text-red-500 mt-0.5 shrink-0" />
@@ -213,12 +242,21 @@ export function RecordResponseModal({ quote, onClose, onRecorded }: RecordRespon
               </div>
             )}
 
+            {/* API error */}
+            {apiError && (
+              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                <AlertCircle className="size-3.5 text-red-500 mt-0.5 shrink-0" />
+                <p className="text-[10px] font-semibold text-red-600">{apiError}</p>
+              </div>
+            )}
+
             {/* Actions */}
             <div className="flex gap-2 pt-1">
               <Button
                 variant="primary"
                 className="flex-1 text-xs font-bold"
                 onClick={handleSubmit}
+                isLoading={trackResponse.isPending}
               >
                 Record Response
               </Button>
@@ -226,6 +264,7 @@ export function RecordResponseModal({ quote, onClose, onRecorded }: RecordRespon
                 variant="outline"
                 className="flex-1 text-xs border-slate-200 text-slate-600"
                 onClick={onClose}
+                disabled={trackResponse.isPending}
               >
                 Cancel
               </Button>

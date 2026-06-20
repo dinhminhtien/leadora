@@ -54,20 +54,26 @@ Header tùy chọn `X-User-Id: <users.user_id>` để chỉ định người dù
 
 ## Cài đặt & chạy
 
-### 1. Google Gemini API (chat + embedding, KHÔNG cần AI local)
-Lấy API key miễn phí ở https://aistudio.google.com/apikey → đặt vào `.env` (`GEMINI_API_KEY`).
-- Chat: `gemini-2.5-flash` (rẻ, nhanh; đổi sang `gemini-2.5-flash-lite` rẻ hơn, hoặc `gemini-2.5-pro` mạnh hơn).
-- Embedding: `text-embedding-004` (**768 chiều**).
+### 1. Google Vertex AI (Gemini API)
+Dự án sử dụng Google Cloud Vertex AI làm môi trường chạy Gemini và Embedding models.
+- **Xác thực:** Xác thực thông qua Application Default Credentials (ADC) hoặc service account key thay vì API key. Trên máy local, bạn cần cài đặt Google Cloud SDK và chạy lệnh sau để đăng nhập:
+  ```powershell
+  gcloud auth application-default login
+  ```
+  Hệ thống sẽ tự động sử dụng project và thông tin xác thực này để kết nối với Vertex AI.
+- **Chat Model:** `gemini-2.5-flash`
+- **Embedding Model:** `gemini-embedding-001` (hoặc `text-embedding-004` tùy cấu hình)
 
-Cả chat lẫn RAG đều chạy qua Gemini cloud — **không cần cài/chạy Ollama hay model local nào**.
+Cả chat lẫn RAG đều chạy qua Vertex AI — **không cần cài/chạy Ollama hay model local nào**.
 
 ### 2. `.env` — DUY NHẤT một file ở gốc repo: `leadora/.env`
 Backend đọc qua `optional:file:../.env` (chạy từ `leadora/backend/`); frontend đọc qua
 `next.config.ts` (`../.env`). Không còn `.env` trong `backend/` hay `frontend/.env.local`.
-```
-GEMINI_API_KEY=...                # BẮT BUỘC
+```properties
+GEMINI_PROJECT_ID=leadora-499809   # ID của project Google Cloud
+GEMINI_LOCATION=us-central1       # Region chạy Vertex AI
 GEMINI_CHAT_MODEL=gemini-2.5-flash
-GEMINI_EMBEDDING_MODEL=text-embedding-004
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 AI_EMBEDDING_DIMENSIONS=768
 AI_VECTORSTORE_INIT_SCHEMA=true
 AI_CHAT_DEV_USER_ID=        # để trống = dùng user đầu tiên trong DB
