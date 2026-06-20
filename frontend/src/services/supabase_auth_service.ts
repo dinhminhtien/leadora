@@ -1,11 +1,20 @@
 import { createSupabaseBrowserClient } from "@/services/supabase/client";
 import type { LoginCredentials } from "@/shared/types/auth";
 
-const supabase = createSupabaseBrowserClient();
+// Lazily create the browser client on first use. Creating it at module load runs during
+// Next.js static prerendering (on the server, with no browser env), where the public
+// Supabase env vars can be absent — `createBrowserClient` then throws "Your project's URL
+// and API key are required", which fails the production build (e.g. on Vercel). Deferring
+// creation to the first call keeps Supabase strictly browser-side.
+let client: ReturnType<typeof createSupabaseBrowserClient> | null = null;
+function sb() {
+  if (!client) client = createSupabaseBrowserClient();
+  return client;
+}
 
 export const supabaseAuthService = {
   async signInWithPassword(credentials: LoginCredentials) {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await sb().auth.signInWithPassword({
       email: credentials.email,
       password: credentials.password,
     });
@@ -14,7 +23,7 @@ export const supabaseAuthService = {
   },
 
   async signInWithGoogle(redirectTo?: string) {
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await sb().auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback${redirectTo ? `?next=${redirectTo}` : ""}`,
@@ -25,12 +34,12 @@ export const supabaseAuthService = {
   },
 
   async signOut() {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await sb().auth.signOut();
     if (error) throw error;
   },
 
   async resetPasswordForEmail(email: string) {
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { data, error } = await sb().auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     if (error) throw error;
@@ -38,7 +47,7 @@ export const supabaseAuthService = {
   },
 
   async updatePassword(newPassword: string) {
-    const { data, error } = await supabase.auth.updateUser({
+    const { data, error } = await sb().auth.updateUser({
       password: newPassword,
     });
     if (error) throw error;
@@ -49,7 +58,7 @@ export const supabaseAuthService = {
     const {
       data: { user },
       error,
-    } = await supabase.auth.getUser();
+    } = await sb().auth.getUser();
     if (error) throw error;
     return user;
   },
@@ -58,7 +67,7 @@ export const supabaseAuthService = {
     const {
       data: { session },
       error,
-    } = await supabase.auth.getSession();
+    } = await sb().auth.getSession();
     if (error) throw error;
     return session;
   },
@@ -67,10 +76,10 @@ export const supabaseAuthService = {
     callback: (
       event: string,
       session: Awaited<
-        ReturnType<typeof supabase.auth.getSession>
+        ReturnType<ReturnType<typeof sb>["auth"]["getSession"]>
       >["data"]["session"],
     ) => void,
   ) {
-    return supabase.auth.onAuthStateChange(callback);
+    return sb().auth.onAuthStateChange(callback);
   },
 };
