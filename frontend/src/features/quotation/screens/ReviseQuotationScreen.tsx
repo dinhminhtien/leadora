@@ -551,15 +551,9 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
 
                 <div className="pt-1">
                   <p className="text-[10px] text-slate-400 font-semibold mb-1.5">Status after Save:</p>
-                  {requiresApproval ? (
-                    <Badge variant="warning" size="sm" className="font-bold text-[10px] uppercase w-full justify-center py-1">
-                      Pending Manager Approval
-                    </Badge>
-                  ) : (
-                    <Badge variant="default" size="sm" className="font-bold text-[10px] uppercase w-full justify-center py-1 bg-slate-100 text-slate-600">
-                      Draft
-                    </Badge>
-                  )}
+                  <Badge variant="default" size="sm" className="font-bold text-[10px] uppercase w-full justify-center py-1 bg-slate-100 text-slate-600">
+                    Draft
+                  </Badge>
                 </div>
 
                 {e3Error && (
@@ -595,7 +589,7 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
                     isLoading={reviseQuotation.isPending}
                     leftIcon={<CheckCircle2 className="size-3.5" />}
                   >
-                    {requiresApproval ? `Submit v${nextVersion} for Approval` : `Save Version ${nextVersion}`}
+                    {`Save Version ${nextVersion}`}
                   </Button>
                   <Button
                     type="button"

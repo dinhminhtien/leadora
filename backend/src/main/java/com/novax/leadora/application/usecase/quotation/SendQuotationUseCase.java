@@ -8,18 +8,21 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationSendLogRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SendQuotationUseCase {
 
     private final QuotationRepository quotationRepository;
     private final QuotationSendLogRepository sendLogRepository;
+    private final QuotationEmailService quotationEmailService;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, SendQuotationRequest request) {
@@ -50,6 +53,15 @@ public class SendQuotationUseCase {
                 .personalMessage(request.getPersonalMessage())
                 .build();
         sendLogRepository.save(sendLog);
+
+        // POST-3: Send email when method is EMAIL (UC-14.4) — failure is logged but does not rollback DB state
+        if ("EMAIL".equalsIgnoreCase(request.getSendMethod())) {
+            try {
+                quotationEmailService.sendQuotationEmail(saved, request);
+            } catch (Exception e) {
+                log.warn("Email delivery failed for quotation {} — status remains SENT: {}", quotationId, e.getMessage());
+            }
+        }
 
         return QuotationResponse.from(saved);
     }

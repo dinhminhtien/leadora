@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { quotationService, type CreateQuotationPayload, type SendQuotationPayload, type ReviseQuotationPayload, type TrackCustomerResponsePayload, type ConvertToBookingPayload, type CloseQuotationPayload, type ExpireOverduePayload } from "@/services/quotation_service";
+import { quotationService, type CreateQuotationPayload, type SubmitQuotationPayload, type SendQuotationPayload, type ReviseQuotationPayload, type TrackCustomerResponsePayload, type ConvertToBookingPayload, type CloseQuotationPayload, type ExpireOverduePayload } from "@/services/quotation_service";
 import { dealService } from "@/services/deal_service";
 
 // Quotation list
@@ -18,6 +18,18 @@ export function useCreateQuotation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateQuotationPayload) => quotationService.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    },
+  });
+}
+
+// Submit a DRAFT quotation — discount ≤10% → APPROVED, >10% → PENDING_APPROVAL (UC-14.1)
+export function useSubmitQuotation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: SubmitQuotationPayload }) =>
+      quotationService.submit(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["quotations"] });
     },

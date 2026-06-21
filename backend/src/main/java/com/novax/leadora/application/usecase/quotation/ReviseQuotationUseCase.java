@@ -50,10 +50,8 @@ public class ReviseQuotationUseCase {
 
         BigDecimal totalAmount = subtotal.subtract(discountAmount);
 
-        // BR-21: discount > 10% requires manager approval
-        QuotationStatus status = discountPct.compareTo(DISCOUNT_APPROVAL_THRESHOLD) > 0
-                ? QuotationStatus.PENDING_APPROVAL
-                : QuotationStatus.DRAFT;
+        // Always save as DRAFT — status is resolved on explicit Submit
+        QuotationStatus status = QuotationStatus.DRAFT;
 
         // POST-1: Create new version (BR-22: preserve previous, create new)
         QuotationEntity revision = QuotationEntity.builder()

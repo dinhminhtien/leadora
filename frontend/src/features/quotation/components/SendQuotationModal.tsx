@@ -183,19 +183,18 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
 
     setIsSending(true);
 
-    // PDF: trigger download first (client-side only)
+    // PDF: open print window — user can Save as PDF from browser print dialog
     if (method === "pdf") {
       try {
         const html = generateQuotationHTML(quote, recipientName, personalMessage);
-        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${quote.quoteNo}-quotation.html`;
-        a.click();
-        URL.revokeObjectURL(url);
+        const printWindow = window.open("", "_blank", "width=900,height=700");
+        if (printWindow) {
+          printWindow.document.write(html);
+          printWindow.document.close();
+          printWindow.addEventListener("load", () => printWindow.print());
+        }
       } catch {
-        // continue even if download fails
+        // continue even if print window fails
       }
     }
 
@@ -225,6 +224,26 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
       setIsSending(false);
       setE4Error("Failed to update quotation status. Please try again.");
       return;
+    }
+
+    // WhatsApp: open deeplink after status is updated in CRM
+    if (method === "whatsapp" && recipientPhone.trim()) {
+      let phone = recipientPhone.trim().replace(/\D/g, "");
+      // Normalize Vietnamese numbers: 0912... → 84912...
+      if (phone.startsWith("0")) phone = "84" + phone.slice(1);
+      const lines = [
+        `Dear ${recipientName},`,
+        ``,
+        `Please find your room quotation from Leadora Hotels:`,
+        ``,
+        `📋 ${quote.quoteNo} — ${quote.dealName}`,
+        `🛏 Room: ${quote.roomType ?? "—"}`,
+        `📅 Check-in: ${quote.checkInDate ?? "—"}  →  Check-out: ${quote.checkOutDate ?? "—"}`,
+        `💰 Total: $${quote.amount.toLocaleString("en-US")}`,
+        `⏰ Valid until: ${quote.expiryDate}`,
+        ...(personalMessage ? [``, personalMessage] : []),
+      ];
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
     }
 
     setIsSending(false);
