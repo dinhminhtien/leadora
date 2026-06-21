@@ -23,7 +23,7 @@ public class UpdateSlaRuleUseCase {
         if (request.getWarningThreshold() >= request.getDeadlineHours()) {
             throw new IllegalArgumentException(
                     "Warning threshold (" + request.getWarningThreshold() + "h) must be less than deadline ("
-                    + request.getDeadlineHours() + "h)");
+                            + request.getDeadlineHours() + "h)");
         }
 
         SlaRuleEntity rule = slaRuleRepository.findById(ruleId)

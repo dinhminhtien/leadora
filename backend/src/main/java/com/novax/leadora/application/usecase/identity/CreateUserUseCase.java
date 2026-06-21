@@ -39,6 +39,8 @@ public class CreateUserUseCase {
         RoleEntity role = roleRepository.findById(request.getRoleId())
                 .orElseThrow(() -> new ResourceNotFoundException("Role", request.getRoleId()));
 
+        validatePasswordComplexity(request.getPassword());
+
         UserEntity user = UserEntity.builder()
                 .fullName(request.getFullName().trim())
                 .email(email)
@@ -50,5 +52,19 @@ public class CreateUserUseCase {
                 .build();
 
         return UserAccountResponse.from(userRepository.save(user));
+    }
+
+    private void validatePasswordComplexity(String password) {
+        if (password == null || password.length() < 6) {
+            throw new IllegalStateException("Password must be at least 6 characters.");
+        }
+        boolean hasUppercase = password.chars().anyMatch(Character::isUpperCase);
+        boolean hasLowercase = password.chars().anyMatch(Character::isLowerCase);
+        boolean hasDigit = password.chars().anyMatch(Character::isDigit);
+        boolean hasSymbol = password.chars().anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
+
+        if (!hasUppercase || !hasLowercase || !hasDigit || !hasSymbol) {
+            throw new IllegalStateException("Password must contain at least one lowercase letter, one uppercase letter, one digit, and one symbol.");
+        }
     }
 }

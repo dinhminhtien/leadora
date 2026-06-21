@@ -6,14 +6,21 @@ import * as z from "zod";
 import Link from "next/link";
 import { KeyRound, AlertCircle, CheckCircle2, ArrowRight } from "lucide-react";
 
-import { supabaseAuthService } from "@/services/supabase_auth_service";
+import { useSearchParams } from "next/navigation";
+import { apiClient } from "@/services/api_client";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
 const resetPasswordSchema = z
   .object({
-    password: z.string().min(6, "Password must be at least 6 characters"),
+    password: z
+      .string()
+      .min(6, "Password must be at least 6 characters")
+      .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+      .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+      .regex(/\d/, "Password must contain at least one digit")
+      .regex(/[^A-Za-z\d\s]/, "Password must contain at least one symbol"),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -24,6 +31,8 @@ const resetPasswordSchema = z
 type ResetPasswordSchema = z.infer<typeof resetPasswordSchema>;
 
 export function ResetPasswordScreen() {
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token") || "";
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -45,11 +54,20 @@ export function ResetPasswordScreen() {
     setError(null);
     setIsSuccess(false);
 
+    if (!token) {
+      setError("Reset token is missing from the link. Please make sure you copied the entire URL.");
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      await supabaseAuthService.updatePassword(data.password);
+      await apiClient.post("/auth/reset-password", {
+        token: token,
+        password: data.password,
+      });
       setIsSuccess(true);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Failed to update password. Reset token might have expired.";
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || "Failed to update password. Reset token might have expired.";
       setError(errorMsg);
     } finally {
       setIsLoading(false);

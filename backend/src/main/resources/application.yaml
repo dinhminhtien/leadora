@@ -45,7 +45,19 @@ spring:
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:3}
-  
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: leadora.novax@gmail.com
+    password: ${SPRING_MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
   jpa:
     hibernate:
       ddl-auto: ${SPRING_JPA_DDL_AUTO:validate}
@@ -127,4 +139,8 @@ spring:
 logging:
   level:
     org.springframework.security: DEBUG
+
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+
 
