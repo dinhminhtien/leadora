@@ -22,6 +22,9 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { dealService } from "@/services/deal_service";
+import { userService as taskUserService, type UserSummary } from "@/services/follow_up_task_service";
+
+const STAGES_ORDER: Deal["stage"][] = ["Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed"];
 
 export type Deal = {
   id: string;
@@ -36,6 +39,7 @@ export type Deal = {
   status: "active" | "won" | "lost";
   expectedClose: string;
   createdAt?: string;
+  notes?: string;
 };
 
 export function DealListScreen() {
@@ -44,6 +48,24 @@ export function DealListScreen() {
   const [stageFilter, setStageFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("active");
   const [isNewDealDrawerOpen, setIsNewDealDrawerOpen] = useState(false);
+  const [isEditDealDrawerOpen, setIsEditDealDrawerOpen] = useState(false);
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const showError = (msg: string) => {
+    setErrorMessage(msg);
+    setTimeout(() => {
+      setErrorMessage(prev => (prev === msg ? null : prev));
+    }, 6000);
+  };
+
+  const showSuccess = (msg: string) => {
+    setSuccessMessage(msg);
+    setTimeout(() => {
+      setSuccessMessage(prev => (prev === msg ? null : prev));
+    }, 4000);
+  };
 
   // Form State for new deal
   const [newDeal, setNewDeal] = useState({
@@ -54,11 +76,14 @@ export function DealListScreen() {
     stage: "Inquiry" as Deal["stage"],
     value: "",
     probability: "50",
-    owner: "John Doe",
-    expectedClose: ""
+    owner: "",
+    expectedClose: "",
+    notes: ""
   });
 
-  // Load deals on component mount
+  const [users, setUsers] = useState<UserSummary[]>([]);
+
+  // Load deals and users on component mount
   useEffect(() => {
     const fetchDeals = async () => {
       try {
@@ -70,8 +95,92 @@ export function DealListScreen() {
         console.error("Failed to fetch deals from API", err);
       }
     };
+    const fetchUsers = async () => {
+      try {
+        const response = await taskUserService.getAll();
+        if (response && response.success && response.data) {
+          setUsers(response.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch users from API", err);
+      }
+    };
     fetchDeals();
+    fetchUsers();
   }, []);
+
+  const getNextStage = (currentStage: Deal["stage"]): Deal["stage"] | null => {
+    const idx = STAGES_ORDER.indexOf(currentStage);
+    if (idx !== -1 && idx < STAGES_ORDER.length - 1) {
+      return STAGES_ORDER[idx + 1];
+    }
+    return null;
+  };
+
+  const checkTransitionConditions = () => ({ met: true });
+
+  const handleStageClick = (targetStage: Deal["stage"]) => {
+    if (!editingDeal) return;
+    const currentIdx = STAGES_ORDER.indexOf(editingDeal.stage);
+    const targetIdx = STAGES_ORDER.indexOf(targetStage);
+
+    if (currentIdx === targetIdx) return;
+
+    // Set stage in local state. Validation will happen on Save when calling backend.
+    let updatedStatus = editingDeal.status;
+    if (targetStage === "Confirmed") {
+      updatedStatus = "won";
+    } else if (editingDeal.stage === "Confirmed") {
+      updatedStatus = "active";
+    }
+
+    const updated = {
+      ...editingDeal,
+      stage: targetStage,
+      status: updatedStatus
+    };
+
+    setEditingDeal(updated);
+  };
+
+  const handleAdvanceStageQuick = async (deal: Deal) => {
+    const nextStg = getNextStage(deal.stage);
+    if (!nextStg) return;
+
+    let updatedStatus = deal.status;
+    if (nextStg === "Confirmed") {
+      updatedStatus = "won";
+    }
+
+    const payload = {
+      title: deal.title,
+      contactName: deal.contactName,
+      email: deal.email || "",
+      phone: deal.phone || "",
+      value: deal.value,
+      stage: nextStg,
+      status: updatedStatus,
+      expectedClose: deal.expectedClose,
+      owner: deal.owner,
+      notes: deal.notes || ""
+    };
+
+    try {
+      const response = await dealService.update(deal.id, payload);
+      if (response && response.success && response.data) {
+        setDeals(prev =>
+          prev.map(d => (d.id === deal.id ? (response.data as Deal) : d))
+        );
+        showSuccess(`Advanced deal to ${nextStg} successfully!`);
+      } else {
+        showError(response?.message || "Failed to advance stage");
+      }
+    } catch (err: any) {
+      console.error("Error advancing deal stage", err);
+      const errMsg = err.response?.data?.message || err.message || "An error occurred while updating stage.";
+      showError(errMsg);
+    }
+  };
 
   // Filter Logic
   const filteredDeals = useMemo(() => {
@@ -122,7 +231,8 @@ export function DealListScreen() {
       stage: updatedStage,
       status: newStatus,
       expectedClose: dealToUpdate.expectedClose,
-      owner: dealToUpdate.owner
+      owner: dealToUpdate.owner,
+      notes: dealToUpdate.notes || ""
     };
 
     try {
@@ -133,12 +243,14 @@ export function DealListScreen() {
             deal.id === dealId ? (response.data as Deal) : deal
           )
         );
+        showSuccess(`Deal marked as ${newStatus.toUpperCase()}!`);
       } else {
-        alert("Failed to update status: " + (response?.message || "Unknown error"));
+        showError(response?.message || "Failed to update status");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error updating status", err);
-      alert("An error occurred while updating status. Please try again.");
+      const errMsg = err.response?.data?.message || err.message || "An error occurred while updating status.";
+      showError(errMsg);
     }
   };
 
@@ -146,7 +258,7 @@ export function DealListScreen() {
   const handleCreateDeal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDeal.title || !newDeal.contactName) {
-      alert("Please enter both Deal title and Primary Contact name.");
+      showError("Please enter both Deal title and Primary Contact name.");
       return;
     }
 
@@ -159,7 +271,8 @@ export function DealListScreen() {
       value: Number(newDeal.value) || 0,
       expectedClose: newDeal.expectedClose || new Date().toISOString().split("T")[0],
       status: "active",
-      owner: newDeal.owner
+      owner: newDeal.owner,
+      notes: newDeal.notes || ""
     };
 
     try {
@@ -176,20 +289,100 @@ export function DealListScreen() {
           stage: "Inquiry",
           value: "",
           probability: "50",
-          owner: "John Doe",
-          expectedClose: ""
+          owner: "",
+          expectedClose: "",
+          notes: ""
         });
+        showSuccess("Deal created successfully!");
       } else {
-        alert("Failed to create deal: " + (response?.message || "Unknown error"));
+        showError(response?.message || "Failed to create deal");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error creating deal", err);
-      alert("An error occurred while creating the deal. Please try again.");
+      const errMsg = err.response?.data?.message || err.message || "An error occurred while creating the deal.";
+      showError(errMsg);
     }
   };
 
+  const handleOpenEditDrawer = async (deal: Deal) => {
+    try {
+      const response = await dealService.getById(deal.id);
+      if (response && response.success && response.data) {
+        setEditingDeal(response.data as Deal);
+      } else {
+        setEditingDeal(deal);
+      }
+    } catch (err) {
+      console.error("Failed to fetch deal details", err);
+      setEditingDeal(deal);
+    }
+    setIsEditDealDrawerOpen(true);
+  };
+
+  const handleUpdateDeal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDeal || !editingDeal.title || !editingDeal.contactName) {
+      showError("Please enter both Deal title and Primary Contact name.");
+      return;
+    }
+
+    const payload = {
+      title: editingDeal.title,
+      contactName: editingDeal.contactName,
+      email: editingDeal.email || "",
+      phone: editingDeal.phone || "",
+      value: Number(editingDeal.value) || 0,
+      stage: editingDeal.stage,
+      expectedClose: editingDeal.expectedClose,
+      status: editingDeal.status,
+      owner: editingDeal.owner,
+      notes: editingDeal.notes || ""
+    };
+
+    try {
+      const response = await dealService.update(editingDeal.id, payload);
+      if (response && response.success && response.data) {
+        setDeals(prev =>
+          prev.map(deal =>
+            deal.id === editingDeal.id ? (response.data as Deal) : deal
+          )
+        );
+        setIsEditDealDrawerOpen(false);
+        setEditingDeal(null);
+        showSuccess("Deal updated successfully!");
+      } else {
+        showError(response?.message || "Failed to update deal");
+      }
+    } catch (err: any) {
+      console.error("Error updating deal", err);
+      const errMsg = err.response?.data?.message || err.message || "An error occurred while updating the deal.";
+      showError(errMsg);
+    }
+  };
+
+
   return (
     <div className="space-y-6">
+      {/* Toast Banners */}
+      {errorMessage && (
+        <div className="fixed top-4 right-4 z-[100] bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
+          <AlertCircle className="size-4 shrink-0" />
+          <span className="text-xs font-semibold">{errorMessage}</span>
+          <button type="button" onClick={() => setErrorMessage(null)} className="ml-2 hover:text-red-900">
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="fixed top-4 right-4 z-[100] bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
+          <CheckCircle2 className="size-4 shrink-0" />
+          <span className="text-xs font-semibold">{successMessage}</span>
+          <button type="button" onClick={() => setSuccessMessage(null)} className="ml-2 hover:text-emerald-900">
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
       {/* Header and Quick stats */}
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
         <div>
@@ -291,7 +484,7 @@ export function DealListScreen() {
               <TableHead className="font-semibold text-xs text-slate-500">Close Date</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Owner</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Status</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500 text-center">Quick Action</TableHead>
+              <TableHead className="font-semibold text-xs text-slate-500 text-center">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -299,7 +492,12 @@ export function DealListScreen() {
               filteredDeals.map(deal => (
                 <TableRow key={deal.id} className="hover:bg-slate-50/70 border-b border-slate-100 transition">
                   <TableCell className="py-3 px-4 font-bold text-slate-800 text-xs">
-                    {deal.title}
+                    <button
+                      onClick={() => handleOpenEditDrawer(deal)}
+                      className="hover:underline text-blue-600 font-bold text-left transition"
+                    >
+                      {deal.title}
+                    </button>
                   </TableCell>
                   <TableCell className="py-3 px-4">
                     <div className="text-xs text-slate-700 font-semibold">{deal.contactName}</div>
@@ -344,24 +542,41 @@ export function DealListScreen() {
                     </Badge>
                   </TableCell>
                   <TableCell className="py-3 px-4 text-center">
-                    {deal.status === "active" ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => handleUpdateStatus(deal.id, "won")}
-                          className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-[10px] font-bold hover:bg-emerald-100 transition"
-                        >
-                          Won
-                        </button>
-                        <button
-                          onClick={() => handleUpdateStatus(deal.id, "lost")}
-                          className="px-2 py-1 bg-red-50 text-red-700 rounded text-[10px] font-bold hover:bg-red-100 transition"
-                        >
-                          Lost
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-[10px] text-slate-400 italic font-semibold">Closed</span>
-                    )}
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => handleOpenEditDrawer(deal)}
+                        className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-[10px] font-bold hover:bg-slate-200 transition"
+                      >
+                        Edit
+                      </button>
+                      {deal.status === "active" ? (
+                        <>
+                          {deal.stage !== "Confirmed" && (
+                            <button
+                              onClick={() => handleAdvanceStageQuick(deal)}
+                              className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-[10px] font-bold hover:bg-blue-100 transition"
+                              title={`Advance to ${getNextStage(deal.stage)}`}
+                            >
+                              Next Stage
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleUpdateStatus(deal.id, "won")}
+                            className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-[10px] font-bold hover:bg-emerald-100 transition"
+                          >
+                            Won
+                          </button>
+                          <button
+                            onClick={() => handleUpdateStatus(deal.id, "lost")}
+                            className="px-2 py-1 bg-red-50 text-red-700 rounded text-[10px] font-bold hover:bg-red-100 transition"
+                          >
+                            Lost
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic font-semibold">Closed</span>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -501,6 +716,32 @@ export function DealListScreen() {
                 </div>
               </div>
 
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-600">Deal Owner (Assignee)</label>
+                <Select
+                  value={newDeal.owner}
+                  onChange={e => setNewDeal({ ...newDeal, owner: e.target.value })}
+                  className="py-1.5"
+                >
+                  <option value="">Select Deal Owner...</option>
+                  {users.map(u => (
+                    <option key={u.userId} value={u.fullName}>
+                      {u.fullName} ({u.roleName || "Staff"})
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-600">Notes / Details</label>
+                <textarea
+                  placeholder="Describe deal requirements, guest details, etc..."
+                  value={newDeal.notes}
+                  onChange={e => setNewDeal({ ...newDeal, notes: e.target.value })}
+                  className="w-full min-h-[80px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
               <div className="pt-4 flex gap-3 border-t border-slate-100">
                 <Button
                   type="submit"
@@ -517,6 +758,265 @@ export function DealListScreen() {
                 >
                   Cancel
                 </Button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
+
+      {/* Slide-over Drawer for editing/viewing Deal Detail */}
+      {isEditDealDrawerOpen && editingDeal && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40 transition-opacity"
+            onClick={() => {
+              setIsEditDealDrawerOpen(false);
+              setEditingDeal(null);
+            }}
+          />
+          {/* Drawer Element */}
+          <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl border-l border-slate-200 z-50 flex flex-col animate-in slide-in-from-right duration-300">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <Briefcase className="size-4.5 text-blue-600" />
+                  Deal Details & Edit
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">View and update sales deal size, forecast close date, and pipeline stage</p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsEditDealDrawerOpen(false);
+                  setEditingDeal(null);
+                }}
+                className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+              >
+                <X className="size-4.5" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleUpdateDeal} className="flex-1 overflow-y-auto p-6 space-y-4">
+              {editingDeal.status !== "active" && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-2 mb-4 animate-in fade-in duration-255">
+                  <AlertCircle className="size-4 shrink-0 text-amber-600" />
+                  <span>This deal is closed and cannot be modified.</span>
+                </div>
+              )}
+
+              {/* Stage Tracker Stepper */}
+              <div className="space-y-2 border-b border-slate-100 pb-4 mb-4">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pipeline Stage Progression</label>
+                <div className="flex items-center justify-between gap-1 mt-2">
+                  {STAGES_ORDER.map((stg, idx) => {
+                    const isCurrent = editingDeal.stage === stg;
+                    const isPast = STAGES_ORDER.indexOf(editingDeal.stage) > idx;
+                    const isDisabled = editingDeal.status !== "active";
+                    return (
+                      <button
+                        key={stg}
+                        type="button"
+                        onClick={() => !isDisabled && handleStageClick(stg)}
+                        disabled={isDisabled}
+                        className={`flex-1 text-center py-1.5 px-0.5 rounded text-[9px] font-bold transition-all duration-200 border ${
+                          isCurrent
+                            ? "bg-blue-600 border-blue-600 text-white shadow-xs"
+                            : isPast
+                            ? "bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                            : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                        } ${isDisabled ? "cursor-not-allowed opacity-80" : ""}`}
+                      >
+                        {stg}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-600">Deal Title *</label>
+                <Input
+                  required
+                  disabled={editingDeal.status !== "active"}
+                  placeholder="e.g. Wedding Catering Block, Corporate Conference..."
+                  value={editingDeal.title || ""}
+                  onChange={e => setEditingDeal({ ...editingDeal, title: e.target.value })}
+                  className="py-1.5 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-600">Primary Contact Person *</label>
+                <Input
+                  required
+                  disabled={editingDeal.status !== "active"}
+                  placeholder="e.g. Alice Jenkins"
+                  value={editingDeal.contactName || ""}
+                  onChange={e => setEditingDeal({ ...editingDeal, contactName: e.target.value })}
+                  className="py-1.5 text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600">Email Address</label>
+                  <Input
+                    type="email"
+                    disabled={editingDeal.status !== "active"}
+                    placeholder="contact@gmail.com"
+                    value={editingDeal.email || ""}
+                    onChange={e => setEditingDeal({ ...editingDeal, email: e.target.value })}
+                    className="py-1.5 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600">Phone Number</label>
+                  <Input
+                    disabled={editingDeal.status !== "active"}
+                    placeholder="+1 555-0100"
+                    value={editingDeal.phone || ""}
+                    onChange={e => setEditingDeal({ ...editingDeal, phone: e.target.value })}
+                    className="py-1.5 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600">Deal Value ($)</label>
+                  <Input
+                    type="number"
+                    disabled={editingDeal.status !== "active"}
+                    placeholder="e.g. 15000"
+                    value={editingDeal.value || ""}
+                    onChange={e => setEditingDeal({ ...editingDeal, value: Number(e.target.value) })}
+                    className="py-1.5 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600">Sales Stage</label>
+                  <Select
+                    value={editingDeal.stage || "Inquiry"}
+                    disabled={editingDeal.status !== "active"}
+                    onChange={e => setEditingDeal({ ...editingDeal, stage: e.target.value as Deal["stage"] })}
+                    className="py-1.5"
+                  >
+                    <option value="Inquiry">Inquiry</option>
+                    <option value="Site Visit">Site Visit</option>
+                    <option value="Proposal">Proposal</option>
+                    <option value="Negotiation">Negotiation</option>
+                    <option value="Contract">Contract</option>
+                    <option value="Confirmed">Confirmed</option>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600">Probability % (0-100)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    disabled={editingDeal.status !== "active"}
+                    placeholder="50"
+                    value={editingDeal.probability || 0}
+                    onChange={e => setEditingDeal({ ...editingDeal, probability: Number(e.target.value) })}
+                    className="py-1.5 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600">Est. Close Date</label>
+                  <Input
+                    type="date"
+                    disabled={editingDeal.status !== "active"}
+                    value={editingDeal.expectedClose || ""}
+                    onChange={e => setEditingDeal({ ...editingDeal, expectedClose: e.target.value })}
+                    className="py-1.5 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600">Status</label>
+                  <Select
+                    value={editingDeal.status || "active"}
+                    disabled={editingDeal.status !== "active"}
+                    onChange={e => setEditingDeal({ ...editingDeal, status: e.target.value as Deal["status"] })}
+                    className="py-1.5"
+                  >
+                    <option value="active">Active</option>
+                    <option value="won">Won</option>
+                    <option value="lost">Lost</option>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600">Owner</label>
+                  <Select
+                    value={editingDeal.owner || ""}
+                    disabled={editingDeal.status !== "active"}
+                    onChange={e => setEditingDeal({ ...editingDeal, owner: e.target.value })}
+                    className="py-1.5"
+                  >
+                    <option value="">Select Deal Owner...</option>
+                    {users.map(u => (
+                      <option key={u.userId} value={u.fullName}>
+                        {u.fullName} ({u.roleName || "Staff"})
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-600">Notes / Details</label>
+                <textarea
+                  placeholder="Describe deal requirements, guest details, notes, etc..."
+                  value={editingDeal.notes || ""}
+                  disabled={editingDeal.status !== "active"}
+                  onChange={e => setEditingDeal({ ...editingDeal, notes: e.target.value })}
+                  className="w-full min-h-[100px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                />
+              </div>
+
+              <div className="pt-4 flex gap-3 border-t border-slate-100">
+                {editingDeal.status === "active" ? (
+                  <>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-xs font-semibold"
+                    >
+                      Save Changes
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setIsEditDealDrawerOpen(false);
+                        setEditingDeal(null);
+                      }}
+                      className="w-full border-slate-200 text-xs text-slate-600"
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={() => {
+                      setIsEditDealDrawerOpen(false);
+                      setEditingDeal(null);
+                    }}
+                    className="w-full bg-slate-600 hover:bg-slate-700 text-xs font-semibold"
+                  >
+                    Close Details
+                  </Button>
+                )}
               </div>
             </form>
           </div>
