@@ -5,6 +5,9 @@ import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -13,16 +16,8 @@ import java.util.UUID;
 /**
  * Resolves the acting user for requests.
  *
- * <p>Server-side JWT auth is not wired yet (the login feature is still in progress), so the
- * AI chat assistant identifies the actor with a best-effort strategy:
- * <ol>
- *   <li>the {@code X-User-Id} request header, if it is a valid existing user;</li>
- *   <li>otherwise the {@code AI_CHAT_DEV_USER_ID} configured in {@code .env};</li>
- *   <li>otherwise the first user in the database (single-tenant dev convenience).</li>
- * </ol>
- *
- * <p>When real authentication lands, replace this with the authenticated principal — the
- * use cases only depend on {@link #resolve(String)} returning a {@link UserEntity}.
+ * <p>Updated to support full server-side JWT authentication, falling back to the dev credentials
+ * and header bypass for local environment compatibility.
  */
 @Component
 @RequiredArgsConstructor
@@ -34,6 +29,28 @@ public class CurrentUserProvider {
     private String devUserId;
 
     public UserEntity resolve(String headerUserId) {
+        // 1. Try to load from Security Context (Spring Security authenticated principal from JWT)
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof Jwt jwt) {
+            String subject = jwt.getSubject();
+            if (StringUtils.hasText(subject)) {
+                UserEntity user = tryLoad(subject);
+                if (user != null) {
+                    return user;
+                }
+            }
+
+            // Fallback: try loading by verified email claim from JWT
+            String email = jwt.getClaimAsString("email");
+            if (StringUtils.hasText(email)) {
+                UserEntity user = userRepository.findWithRoleByEmailIgnoreCase(email.trim()).orElse(null);
+                if (user != null) {
+                    return user;
+                }
+            }
+        }
+
+        // 2. Fall back to X-User-Id request header
         if (StringUtils.hasText(headerUserId)) {
             UserEntity user = tryLoad(headerUserId);
             if (user != null) {
@@ -41,6 +58,7 @@ public class CurrentUserProvider {
             }
         }
 
+        // 3. Fall back to the devUserId env
         if (StringUtils.hasText(devUserId)) {
             UserEntity user = tryLoad(devUserId);
             if (user != null) {
@@ -48,6 +66,7 @@ public class CurrentUserProvider {
             }
         }
 
+        // 4. Fall back to the first user in the database (single-tenant convenience)
         return userRepository.findAll(PageRequest.of(0, 1)).stream()
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(

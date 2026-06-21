@@ -11,10 +11,21 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/stores/auth_store";
+import { ROUTE_PATHS } from "@/app/routes/route_paths";
 
 export const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const router = useRouter();
+  const { clearUser } = useAuthStore();
+
+  const handleLogout = () => {
+    localStorage.removeItem("accessToken");
+    clearUser();
+    router.push(ROUTE_PATHS.login || "/login");
+  };
 
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background">
@@ -85,7 +96,10 @@ export const Header: React.FC = () => {
                   <Settings className="size-4" />
                   Settings
                 </button>
-                <button className="flex w-full items-center gap-3 px-4 py-2 text-sm text-danger hover:bg-muted transition-colors border-t border-border">
+                <button 
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-3 px-4 py-2 text-sm text-danger hover:bg-muted transition-colors border-t border-border"
+                >
                   <LogOut className="size-4" />
                   Logout
                 </button>

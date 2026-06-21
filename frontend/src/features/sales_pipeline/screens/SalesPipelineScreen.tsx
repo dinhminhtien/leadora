@@ -60,55 +60,6 @@ export function SalesPipelineScreen() {
     }, 4000);
   };
 
-  // Modal states for Notes requirement when shifting to Negotiation
-  const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
-  const [modalDealId, setModalDealId] = useState<string | null>(null);
-  const [modalNextStage, setModalNextStage] = useState<Deal["stage"] | null>(null);
-  const [notesInput, setNotesInput] = useState("");
-  const [notesError, setNotesError] = useState<string | null>(null);
-
-  const handleConfirmNotes = async () => {
-    if (notesInput.trim().length < 5) {
-      setNotesError("Notes must be at least 5 characters.");
-      return;
-    }
-    if (!modalDealId || !modalNextStage) return;
-
-    const deal = deals.find(d => d.id === modalDealId);
-    if (!deal) return;
-
-    const payload = {
-      title: deal.title,
-      contactName: deal.contactName,
-      email: deal.email || "",
-      phone: deal.phone || "",
-      value: deal.value,
-      stage: modalNextStage,
-      expectedClose: deal.expectedClose || new Date().toISOString().split("T")[0],
-      owner: deal.owner,
-      notes: notesInput.trim()
-    };
-
-    try {
-      const response = await dealService.update(modalDealId, payload);
-      if (response && response.success && response.data) {
-        setDeals(prev =>
-          prev.map(d => (d.id === modalDealId ? (response.data as Deal) : d))
-        );
-        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
-        queryClient.invalidateQueries({ queryKey: ["deals-for-report"] });
-        showSuccess(`Moved deal "${deal.title}" to ${modalNextStage}`);
-        setIsNotesModalOpen(false);
-      } else {
-        showError(response?.message || "Failed to update deal stage");
-      }
-    } catch (err: any) {
-      console.error("Error shifting deal stage", err);
-      const errMsg = err.response?.data?.message || err.message || "An error occurred while shifting the deal stage.";
-      showError(errMsg);
-    }
-  };
-
   const stages: Deal["stage"][] = [
     "Inquiry",
     "Site Visit",
@@ -145,16 +96,6 @@ export function SalesPipelineScreen() {
     if (nextIdx < 0 || nextIdx >= stages.length) return;
 
     const nextStage = stages[nextIdx];
-
-    // Intercept to request notes if moving to Negotiation and notes are less than 5 characters
-    if (nextStage === "Negotiation" && (!deal.notes || deal.notes.trim().length < 5)) {
-      setModalDealId(dealId);
-      setModalNextStage(nextStage);
-      setNotesInput(deal.notes || "");
-      setNotesError(null);
-      setIsNotesModalOpen(true);
-      return;
-    }
 
     const payload = {
       title: deal.title,
@@ -193,16 +134,6 @@ export function SalesPipelineScreen() {
   const handleMoveToStage = async (dealId: string, targetStage: Deal["stage"]) => {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
-
-    // Intercept to request notes if moving to Negotiation and notes are less than 5 characters
-    if (targetStage === "Negotiation" && (!deal.notes || deal.notes.trim().length < 5)) {
-      setModalDealId(dealId);
-      setModalNextStage(targetStage);
-      setNotesInput(deal.notes || "");
-      setNotesError(null);
-      setIsNotesModalOpen(true);
-      return;
-    }
 
     const payload = {
       title: deal.title,
@@ -290,7 +221,7 @@ export function SalesPipelineScreen() {
     <div className="space-y-6">
       {/* Toast Banners */}
       {errorMessage && (
-        <div className="fixed top-4 right-4 z-[100] bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
+        <div className="fixed top-4 right-4 z-100 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
           <AlertCircle className="size-4 shrink-0" />
           <span className="text-xs font-semibold">{errorMessage}</span>
           <button type="button" onClick={() => setErrorMessage(null)} className="ml-2 hover:text-red-900">
@@ -300,7 +231,7 @@ export function SalesPipelineScreen() {
       )}
 
       {successMessage && (
-        <div className="fixed top-4 right-4 z-[100] bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
+        <div className="fixed top-4 right-4 z-100 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
           <CheckCircle className="size-4 shrink-0 text-emerald-600" />
           <span className="text-xs font-semibold">{successMessage}</span>
           <button type="button" onClick={() => setSuccessMessage(null)} className="ml-2 hover:text-emerald-900">
@@ -315,7 +246,7 @@ export function SalesPipelineScreen() {
           <h1 className="text-xl font-bold text-slate-800">Sales Pipeline Board</h1>
           <p className="text-xs text-slate-400">Drag or shift contract deals across hotel booking sales stages</p>
         </div>
-        
+
         {/* Owner filter dropdown */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-slate-400">Filter Owner:</span>
@@ -454,59 +385,6 @@ export function SalesPipelineScreen() {
           );
         })}
       </div>
-
-      {/* Notes Input Requirement Modal */}
-      {isNotesModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-md w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200">
-            <div>
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <Sparkles className="size-4.5 text-blue-500 shrink-0" />
-                Guest Requirements & Details
-              </h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Before starting Negotiation, please fill in notes or guest requirements (at least 5 characters).
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <textarea
-                value={notesInput}
-                onChange={e => {
-                  setNotesInput(e.target.value);
-                  if (e.target.value.trim().length >= 5) setNotesError(null);
-                }}
-                placeholder="e.g., Booking for 30 rooms, needs high-speed internet and local tour booking details."
-                className="w-full min-h-[100px] text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3 focus:outline-none focus:border-blue-400 focus:bg-white transition"
-              />
-              <div className="flex justify-between items-center text-[10px] font-bold">
-                <span className={notesInput.trim().length >= 5 ? "text-emerald-600" : "text-slate-400"}>
-                  {notesInput.trim().length} / 5 characters min
-                </span>
-                {notesError && <span className="text-red-500">{notesError}</span>}
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsNotesModalOpen(false)}
-                className="px-3.5 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmNotes}
-                disabled={notesInput.trim().length < 5}
-                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-xs font-bold text-white transition cursor-pointer"
-              >
-                Confirm & Move
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

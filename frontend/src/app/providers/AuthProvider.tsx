@@ -1,66 +1,83 @@
 "use client";
 
 import { useEffect } from "react";
-
-import { supabaseAuthService } from "@/services/supabase_auth_service";
+import { usePathname, useRouter } from "next/navigation";
+import { authService } from "@/services/auth_service";
 import { useAuthStore } from "@/stores/auth_store";
+import { ROUTE_PATHS } from "@/app/routes/route_paths";
+
+const PUBLIC_ROUTES = [
+  "/login",
+  "/forgot-password",
+  "/reset-password",
+  "/feedback",
+  "/auth/callback",
+];
 
 /**
- * AuthProvider listens to Supabase auth state changes and syncs
- * the Zustand auth store. Wrap your app with this provider.
+ * AuthProvider verifies the local JWT token, syncs the Zustand auth store,
+ * and handles secure client-side redirection for protected routes.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { setUser, clearUser, setLoading } = useAuthStore();
+  const { setUser, clearUser, setLoading, isAuthenticated, isLoading } = useAuthStore();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const isPublicRoute = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
 
   useEffect(() => {
-    // Check initial session
-    setLoading(true);
-    supabaseAuthService
-      .getUser()
-      .then((supabaseUser) => {
-        if (supabaseUser) {
-          setUser({
-            id: supabaseUser.id,
-            email: supabaseUser.email ?? "",
-            name:
-              supabaseUser.user_metadata?.full_name ??
-              supabaseUser.user_metadata?.name ??
-              supabaseUser.email ??
-              "",
-            roles: supabaseUser.user_metadata?.roles ?? [],
-          });
-        } else {
-          clearUser();
-        }
-      })
-      .catch(() => {
-        clearUser();
-      });
+    const checkSession = async () => {
+      setLoading(true);
+      let token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
 
-    // Listen for auth state changes (sign in, sign out, token refresh)
-    const {
-      data: { subscription },
-    } = supabaseAuthService.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email ?? "",
-          name:
-            session.user.user_metadata?.full_name ??
-            session.user.user_metadata?.name ??
-            session.user.email ??
-            "",
-          roles: session.user.user_metadata?.roles ?? [],
-        });
-      } else {
+      if (!token) {
+        try {
+          const { createSupabaseBrowserClient } = require("@/services/supabase/client");
+          const supabase = createSupabaseBrowserClient();
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            token = session.access_token;
+          }
+        } catch (e) {
+          console.warn("Failed to check Supabase session in AuthProvider", e);
+        }
+      }
+
+      if (!token) {
+        clearUser();
+        return;
+      }
+
+      try {
+        const response = await authService.getProfile();
+        setUser(response.data);
+      } catch (e) {
+        localStorage.removeItem("accessToken");
         clearUser();
       }
-    });
-
-    return () => {
-      subscription.unsubscribe();
     };
+
+    checkSession();
   }, [setUser, clearUser, setLoading]);
+
+  // Enforce redirection to login screen for unauthenticated users accessing protected routes
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated && !isPublicRoute) {
+      router.replace(`${ROUTE_PATHS.login || "/login"}?next=${encodeURIComponent(pathname)}`);
+    }
+  }, [isLoading, isAuthenticated, isPublicRoute, pathname, router]);
+
+  // Show a clean, professional loading screen during session verification of protected routes
+  if (isLoading && !isPublicRoute) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4 animate-pulse">
+          <div className="size-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm font-medium text-muted-foreground">Verifying session...</p>
+        </div>
+      </div>
+    );
+  }
 
   return <>{children}</>;
 }

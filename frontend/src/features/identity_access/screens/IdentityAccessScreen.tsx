@@ -83,8 +83,23 @@ function UserFormDrawer({
     if (!fullName.trim()) e.fullName = "Full name is required";
     if (!email.trim()) e.email = "Email is required";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = "Invalid email format";
-    if (mode === "create" && password.length < 8) e.password = "Password must be at least 8 characters";
-    if (mode === "edit" && password && password.length < 8) e.password = "Password must be at least 8 characters";
+    const validatePassword = (pwd: string) => {
+      if (pwd.length < 6) return "Password must be at least 6 characters";
+      if (!/[A-Z]/.test(pwd)) return "Must contain at least one uppercase letter";
+      if (!/[a-z]/.test(pwd)) return "Must contain at least one lowercase letter";
+      if (!/\d/.test(pwd)) return "Must contain at least one digit";
+      if (!/[^A-Za-z\d\s]/.test(pwd)) return "Must contain at least one symbol";
+      return null;
+    };
+
+    if (mode === "create") {
+      const pwdError = validatePassword(password);
+      if (pwdError) e.password = pwdError;
+    }
+    if (mode === "edit" && password) {
+      const pwdError = validatePassword(password);
+      if (pwdError) e.password = pwdError;
+    }
     if (phone && !/^\d{8,15}$/.test(phone.replace(/\s/g, ""))) e.phone = "Phone must be 8–15 digits";
     if (roleId === "") e.roleId = "Role is required";
     return e;
@@ -162,7 +177,7 @@ function UserFormDrawer({
               {mode === "create" ? "Initial Password *" : "New Password"}
             </label>
             <Input type="password"
-              placeholder={mode === "create" ? "At least 8 characters" : "Leave blank to keep current"}
+              placeholder={mode === "create" ? "Min 6 chars, uppercase, lowercase, digit, symbol" : "Leave blank to keep current"}
               value={password} onChange={e => setPassword(e.target.value)} error={errors.password} className="py-1.5 text-xs" />
           </div>
 
