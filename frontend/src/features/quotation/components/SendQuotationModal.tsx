@@ -66,12 +66,36 @@ function simulateDelivery(
   return { success: true };
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function generateQuotationHTML(quote: Quotation, recipientName: string, message: string): string {
+  const safeQuoteNo = escapeHtml(String(quote.quoteNo ?? ""));
+  const safeRecipientName = escapeHtml(recipientName ?? "");
+  const safeMessageHtml = message ? escapeHtml(message).replace(/\n/g, "<br>") : "";
+  const safeContactName = escapeHtml(quote.contactName ?? "");
+  const safeDealName = escapeHtml(quote.dealName ?? "");
+  const safeEmail = escapeHtml(quote.email ?? "—");
+  const safePhone = escapeHtml(quote.phone ?? "—");
+  const safeRoomType = escapeHtml(quote.roomType ?? "—");
+  const safeNumberOfRooms = escapeHtml(String(quote.numberOfRooms ?? "—"));
+  const safeCheckInDate = escapeHtml(quote.checkInDate ?? "—");
+  const safeCheckOutDate = escapeHtml(quote.checkOutDate ?? "—");
+  const rawPaymentPolicy = quote.paymentPolicy ? (PAYMENT_LABELS[quote.paymentPolicy] ?? quote.paymentPolicy) : "—";
+  const safePaymentPolicy = escapeHtml(rawPaymentPolicy);
+  const safeExpiryDate = escapeHtml(quote.expiryDate ?? "");
+
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Quotation ${quote.quoteNo}</title>
+  <title>Quotation ${safeQuoteNo}</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 48px; color: #1e293b; max-width: 700px; margin: 0 auto; }
     .header { border-bottom: 3px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; }
@@ -92,28 +116,28 @@ function generateQuotationHTML(quote: Quotation, recipientName: string, message:
 <body>
   <div class="header">
     <div class="logo">Leadora Hotels</div>
-    <div class="sub">Quotation ${quote.quoteNo} &bull; Issued: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div>
+    <div class="sub">Quotation ${safeQuoteNo} &bull; Issued: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div>
   </div>
 
-  <p style="font-size:13px">Dear <strong>${recipientName}</strong>,</p>
-  ${message ? `<div class="msg">${message.replace(/\n/g, "<br>")}</div>` : ""}
+  <p style="font-size:13px">Dear <strong>${safeRecipientName}</strong>,</p>
+  ${safeMessageHtml ? `<div class="msg">${safeMessageHtml}</div>` : ""}
 
   <h2>Customer &amp; Deal</h2>
   <div class="grid">
-    <span class="lbl">Contact Name</span><span class="val">${quote.contactName}</span>
-    <span class="lbl">Deal / Event</span><span class="val">${quote.dealName}</span>
-    <span class="lbl">Email</span><span class="val">${quote.email ?? "—"}</span>
-    <span class="lbl">Phone</span><span class="val">${quote.phone ?? "—"}</span>
+    <span class="lbl">Contact Name</span><span class="val">${safeContactName}</span>
+    <span class="lbl">Deal / Event</span><span class="val">${safeDealName}</span>
+    <span class="lbl">Email</span><span class="val">${safeEmail}</span>
+    <span class="lbl">Phone</span><span class="val">${safePhone}</span>
   </div>
 
   <h2>Room Booking</h2>
   <div class="grid">
-    <span class="lbl">Room Type</span><span class="val">${quote.roomType ?? "—"}</span>
-    <span class="lbl">Rooms</span><span class="val">${quote.numberOfRooms ?? "—"}</span>
-    <span class="lbl">Check-in</span><span class="val">${quote.checkInDate ?? "—"}</span>
-    <span class="lbl">Check-out</span><span class="val">${quote.checkOutDate ?? "—"}</span>
+    <span class="lbl">Room Type</span><span class="val">${safeRoomType}</span>
+    <span class="lbl">Rooms</span><span class="val">${safeNumberOfRooms}</span>
+    <span class="lbl">Check-in</span><span class="val">${safeCheckInDate}</span>
+    <span class="lbl">Check-out</span><span class="val">${safeCheckOutDate}</span>
     <span class="lbl">Rate / Night</span><span class="val">$${(quote.pricePerNight ?? 0).toLocaleString('en-US')}</span>
-    <span class="lbl">Payment Policy</span><span class="val">${quote.paymentPolicy ? (PAYMENT_LABELS[quote.paymentPolicy] ?? quote.paymentPolicy) : "—"}</span>
+    <span class="lbl">Payment Policy</span><span class="val">${safePaymentPolicy}</span>
   </div>
 
   <h2>Pricing</h2>
@@ -122,7 +146,7 @@ function generateQuotationHTML(quote: Quotation, recipientName: string, message:
     <tr><td>Discount (${quote.discountPercent ?? 0}%)</td><td align="right">-$${(quote.discountAmount ?? 0).toLocaleString('en-US')}</td></tr>
     <tr class="total"><td><strong>Total Amount</strong></td><td align="right"><strong>$${quote.amount.toLocaleString('en-US')}</strong></td></tr>
   </table>
-  <p style="font-size:11px;color:#94a3b8;margin-top:8px">This quotation is valid until <strong>${quote.expiryDate}</strong>. Please confirm your booking before the expiry date.</p>
+  <p style="font-size:11px;color:#94a3b8;margin-top:8px">This quotation is valid until <strong>${safeExpiryDate}</strong>. Please confirm your booking before the expiry date.</p>
 
   <div class="footer">Leadora Hotels &bull; Sales Department &bull; Generated by Leadora Hotel CRM</div>
 </body>
