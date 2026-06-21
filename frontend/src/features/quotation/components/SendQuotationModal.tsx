@@ -66,12 +66,29 @@ function simulateDelivery(
   return { success: true };
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function generateQuotationHTML(quote: Quotation, recipientName: string, message: string): string {
+  const safeQuoteNo = escapeHtml(String(quote.quoteNo ?? ""));
+  const safeRecipientName = escapeHtml(recipientName ?? "");
+  const safeMessageHtml = message ? escapeHtml(message).replace(/\n/g, "<br>") : "";
+  const safeContactName = escapeHtml(quote.contactName ?? "");
+  const safeDealName = escapeHtml(quote.dealName ?? "");
+  const safeEmail = escapeHtml(quote.email ?? "—");
+  const safePhone = escapeHtml(quote.phone ?? "—");
+
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Quotation ${quote.quoteNo}</title>
+  <title>Quotation ${safeQuoteNo}</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 48px; color: #1e293b; max-width: 700px; margin: 0 auto; }
     .header { border-bottom: 3px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; }
@@ -92,18 +109,18 @@ function generateQuotationHTML(quote: Quotation, recipientName: string, message:
 <body>
   <div class="header">
     <div class="logo">Leadora Hotels</div>
-    <div class="sub">Quotation ${quote.quoteNo} &bull; Issued: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div>
+    <div class="sub">Quotation ${safeQuoteNo} &bull; Issued: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div>
   </div>
 
-  <p style="font-size:13px">Dear <strong>${recipientName}</strong>,</p>
-  ${message ? `<div class="msg">${message.replace(/\n/g, "<br>")}</div>` : ""}
+  <p style="font-size:13px">Dear <strong>${safeRecipientName}</strong>,</p>
+  ${safeMessageHtml ? `<div class="msg">${safeMessageHtml}</div>` : ""}
 
   <h2>Customer &amp; Deal</h2>
   <div class="grid">
-    <span class="lbl">Contact Name</span><span class="val">${quote.contactName}</span>
-    <span class="lbl">Deal / Event</span><span class="val">${quote.dealName}</span>
-    <span class="lbl">Email</span><span class="val">${quote.email ?? "—"}</span>
-    <span class="lbl">Phone</span><span class="val">${quote.phone ?? "—"}</span>
+    <span class="lbl">Contact Name</span><span class="val">${safeContactName}</span>
+    <span class="lbl">Deal / Event</span><span class="val">${safeDealName}</span>
+    <span class="lbl">Email</span><span class="val">${safeEmail}</span>
+    <span class="lbl">Phone</span><span class="val">${safePhone}</span>
   </div>
 
   <h2>Room Booking</h2>
@@ -183,19 +200,18 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
 
     setIsSending(true);
 
-    // PDF: trigger download first (client-side only)
+    // PDF: open print window — user can Save as PDF from browser print dialog
     if (method === "pdf") {
       try {
         const html = generateQuotationHTML(quote, recipientName, personalMessage);
-        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${quote.quoteNo}-quotation.html`;
-        a.click();
-        URL.revokeObjectURL(url);
+        const printWindow = window.open("", "_blank", "width=900,height=700");
+        if (printWindow) {
+          printWindow.document.write(html);
+          printWindow.document.close();
+          printWindow.addEventListener("load", () => printWindow.print());
+        }
       } catch {
-        // continue even if download fails
+        // continue even if print window fails
       }
     }
 
@@ -225,6 +241,26 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
       setIsSending(false);
       setE4Error("Failed to update quotation status. Please try again.");
       return;
+    }
+
+    // WhatsApp: open deeplink after status is updated in CRM
+    if (method === "whatsapp" && recipientPhone.trim()) {
+      let phone = recipientPhone.trim().replace(/\D/g, "");
+      // Normalize Vietnamese numbers: 0912... → 84912...
+      if (phone.startsWith("0")) phone = "84" + phone.slice(1);
+      const lines = [
+        `Dear ${recipientName},`,
+        ``,
+        `Please find your room quotation from Leadora Hotels:`,
+        ``,
+        `📋 ${quote.quoteNo} — ${quote.dealName}`,
+        `🛏 Room: ${quote.roomType ?? "—"}`,
+        `📅 Check-in: ${quote.checkInDate ?? "—"}  →  Check-out: ${quote.checkOutDate ?? "—"}`,
+        `💰 Total: $${quote.amount.toLocaleString("en-US")}`,
+        `⏰ Valid until: ${quote.expiryDate}`,
+        ...(personalMessage ? [``, personalMessage] : []),
+      ];
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
     }
 
     setIsSending(false);

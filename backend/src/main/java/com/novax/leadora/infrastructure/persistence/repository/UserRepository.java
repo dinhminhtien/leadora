@@ -29,6 +29,9 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
     @EntityGraph(attributePaths = {"role"})
     Optional<UserEntity> findWithRoleByUserId(UUID userId);
 
+    @EntityGraph(attributePaths = {"role"})
+    Optional<UserEntity> findWithRoleByEmailIgnoreCase(String email);
+
     /** Used by the "last active Admin" guard (BR-03 safety). */
     long countByRole_RoleNameAndStatus(String roleName, UserStatus status);
 

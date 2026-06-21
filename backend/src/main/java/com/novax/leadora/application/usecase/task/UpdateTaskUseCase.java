@@ -55,7 +55,10 @@ public class UpdateTaskUseCase {
 
         if (StringUtils.hasText(request.getStatus())) {
             try {
-                task.setStatus(TaskStatus.valueOf(request.getStatus().toUpperCase()));
+                TaskStatus newStatus = TaskStatus.valueOf(request.getStatus().toUpperCase());
+                if (newStatus != TaskStatus.OVERDUE) {
+                    task.setStatus(newStatus);
+                }
             } catch (IllegalArgumentException ignored) {}
         }
 
@@ -75,6 +78,26 @@ public class UpdateTaskUseCase {
             task.setDeal(dealRepository.findById(request.getDealId()).orElse(null));
         }
 
+        if (request.getStartAt() != null && request.getEndAt() != null
+                && !request.getStartAt().isBefore(request.getEndAt())) {
+            throw new IllegalArgumentException("start_at must be before end_at");
+        }
+        if (request.getStartAt() != null) {
+            task.setStartAt(request.getStartAt());
+            // Keep due_date in sync with start date for backward compatibility
+            if (task.getDueDate() == null) {
+                task.setDueDate(request.getStartAt().toLocalDate());
+            }
+        }
+        if (request.getEndAt() != null) {
+            task.setEndAt(request.getEndAt());
+        }
+        if (request.getPrimaryContactName() != null) {
+            task.setPrimaryContactName(request.getPrimaryContactName());
+        }
+        if (request.getPrimaryContactPhone() != null) {
+            task.setPrimaryContactPhone(request.getPrimaryContactPhone());
+        }
         return TaskResponse.from(taskRepository.save(task));
     }
 }

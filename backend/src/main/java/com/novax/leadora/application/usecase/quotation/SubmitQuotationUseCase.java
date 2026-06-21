@@ -1,0 +1,64 @@
+package com.novax.leadora.application.usecase.quotation;
+
+import com.novax.leadora.api.dto.request.SubmitQuotationRequest;
+import com.novax.leadora.api.dto.response.QuotationResponse;
+import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
+import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
+import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
+import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class SubmitQuotationUseCase {
+
+    private static final BigDecimal DISCOUNT_APPROVAL_THRESHOLD = new BigDecimal("10");
+
+    private final QuotationRepository quotationRepository;
+    private final QuotationDetailRepository quotationDetailRepository;
+
+    @Transactional
+    public QuotationResponse execute(UUID id, SubmitQuotationRequest request) {
+        QuotationEntity quotation = quotationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Quotation", id));
+
+        if (quotation.getStatus() != QuotationStatus.DRAFT) {
+            throw new IllegalStateException(
+                    "Only DRAFT quotations can be submitted. Current status: " + quotation.getStatus());
+        }
+
+        BigDecimal discountPct = quotation.getDiscountPercent() != null
+                ? quotation.getDiscountPercent() : BigDecimal.ZERO;
+
+        // BR-21/BR-40: discount > 10% → pending manager approval; ≤ 10% → auto-approved
+        QuotationStatus newStatus = discountPct.compareTo(DISCOUNT_APPROVAL_THRESHOLD) > 0
+                ? QuotationStatus.PENDING_APPROVAL
+                : QuotationStatus.APPROVED;
+
+        quotation.setStatus(newStatus);
+        if (newStatus == QuotationStatus.APPROVED) {
+            quotation.setApprovedAt(OffsetDateTime.now());
+        }
+
+        QuotationEntity saved = quotationRepository.save(quotation);
+
+        List<QuotationDetailEntity> details =
+                quotationDetailRepository.findByQuotation_QuotationId(saved.getQuotationId());
+        QuotationDetailEntity detail = details.isEmpty() ? null : details.get(0);
+
+        int nights = detail != null ? detail.getNights() : 0;
+        int numberOfRooms = detail != null ? detail.getQuantity() : 0;
+        BigDecimal pricePerNight = detail != null ? detail.getUnitPrice() : BigDecimal.ZERO;
+
+        return QuotationResponse.fromWithDetail(saved, nights, numberOfRooms, pricePerNight);
+    }
+}

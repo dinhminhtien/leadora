@@ -45,7 +45,19 @@ spring:
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:3}
-  
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: leadora.novax@gmail.com
+    password: ${SPRING_MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
   jpa:
     hibernate:
       ddl-auto: ${SPRING_JPA_DDL_AUTO:validate}
@@ -60,6 +72,20 @@ spring:
         # pgbouncer compatibility — must explicitly set dialect when disabling JDBC metadata access
         boot:
           allow_jdbc_metadata_access: false
+
+  # Email / SMTP configuration (UC-14.4 Send Quotation to Customer)
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
 
   # # Redis Configuration for caching and HTTP session management
   # data:
@@ -127,4 +153,8 @@ spring:
 logging:
   level:
     org.springframework.security: DEBUG
+
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+
 

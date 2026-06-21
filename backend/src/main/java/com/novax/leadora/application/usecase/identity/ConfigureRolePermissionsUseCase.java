@@ -4,7 +4,6 @@ import com.novax.leadora.api.dto.request.UpdateRolePermissionsRequest;
 import com.novax.leadora.api.dto.response.PermissionResponse;
 import com.novax.leadora.api.dto.response.RoleResponse;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
-import com.novax.leadora.infrastructure.persistence.entity.PermissionEntity;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.RolePermissionEntity;
 import com.novax.leadora.infrastructure.persistence.repository.PermissionRepository;

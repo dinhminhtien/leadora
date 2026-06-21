@@ -14,7 +14,7 @@ import { ConvertToBookingModal } from "@/features/quotation/components/ConvertTo
 import { ExpireCloseModal } from "@/features/quotation/components/ExpireCloseModal";
 import type { Quotation } from "@/services/quotation_service";
 export type { Quotation } from "@/services/quotation_service";
-import { useQuotations, useExpireOverdue } from "@/features/quotation/hooks/use_quotations";
+import { useQuotations, useExpireOverdue, useSubmitQuotation } from "@/features/quotation/hooks/use_quotations";
 import { useAuthStore } from "@/stores/auth_store";
 
 type ClosureLog = {
@@ -33,6 +33,8 @@ export function QuotationListScreen() {
   const { data: serverQuotes = [], isLoading } = useQuotations();
   const { user } = useAuthStore();
   const expireOverdue = useExpireOverdue();
+  const submitQuotation = useSubmitQuotation();
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [localStatusMap, setLocalStatusMap] = useState<Record<string, Quotation["status"]>>({});
   const quotes = useMemo(
     () => serverQuotes.map(q => ({
@@ -74,6 +76,27 @@ export function QuotationListScreen() {
   const handleConverted = (_quotationId: string, _bookingNo: string) => {
     setLocalStatusMap(prev => ({ ...prev, [_quotationId]: "converted" }));
     setConvertTarget(null);
+  };
+
+  const handleSubmitDraft = async (q: Quotation) => {
+    setSubmittingId(q.id);
+    try {
+      const result = await submitQuotation.mutateAsync({
+        id: q.id,
+        payload: {
+          submittedByName: user?.name ?? user?.email ?? "Staff",
+          submittedByRole: user?.roles?.[0] ?? "SALES_STAFF",
+        },
+      });
+      const newStatus = result.data?.status as Quotation["status"];
+      if (newStatus) {
+        setLocalStatusMap(prev => ({ ...prev, [q.id]: newStatus }));
+      }
+    } catch {
+      // silent — server error will surface via list refetch
+    } finally {
+      setSubmittingId(null);
+    }
   };
 
   const handleClosed = (_quotationId: string, reason: string) => {
@@ -375,7 +398,17 @@ export function QuotationListScreen() {
                         </Button>
                       </div>
                     ) : q.status === "draft" ? (
-                      <div className="flex justify-center items-center gap-1.5">
+                      <div className="flex justify-center items-center gap-1.5 flex-wrap">
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleSubmitDraft(q)}
+                          isLoading={submittingId === q.id}
+                          leftIcon={<CheckCircle2 className="size-3" />}
+                          className="px-2.5 py-1 text-[10px] font-bold"
+                        >
+                          Submit
+                        </Button>
                         <Link href={ROUTE_PATHS.quotationRevise(q.id)}>
                           <Button
                             variant="outline"

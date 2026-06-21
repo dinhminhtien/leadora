@@ -22,4 +22,5 @@ public class DealResponse {
     private String status;
     private LocalDate expectedClose;
     private LocalDate createdAt;
+    private String notes;
 }

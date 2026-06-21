@@ -5,8 +5,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { KeyRound, Mail, AlertCircle, ArrowRight } from "lucide-react";
+import { KeyRound, Mail, AlertCircle, ArrowRight, Eye, EyeOff } from "lucide-react";
 
+import { authService } from "@/services/auth_service";
+import { useAuthStore } from "@/stores/auth_store";
 import { supabaseAuthService } from "@/services/supabase_auth_service";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { Input } from "@/components/ui/Input";
@@ -25,9 +27,11 @@ export function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const nextPath = searchParams.get("next") ?? ROUTE_PATHS.dashboard;
   const callbackError = searchParams.get("error");
+  const setUser = useAuthStore((s) => s.setUser);
 
   const {
     register,
@@ -46,13 +50,17 @@ export function LoginScreen() {
     setError(null);
 
     try {
-      await supabaseAuthService.signInWithPassword({
+      const response = await authService.login({
         email: data.email,
         password: data.password,
       });
+      if (response.data.accessToken) {
+        localStorage.setItem("accessToken", response.data.accessToken);
+      }
+      setUser(response.data.user);
       router.push(nextPath);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Invalid email or password";
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || "Invalid email or password";
       setError(errorMsg);
     } finally {
       setIsLoading(false);
@@ -123,10 +131,24 @@ export function LoginScreen() {
           </div>
           <Input
             {...register("password")}
-            type="password"
+            type={showPassword ? "text" : "password"}
             disabled={isLoading || isGoogleLoading}
             placeholder="••••••••"
             icon={<KeyRound className="h-4 w-4" />}
+            rightElement={
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                disabled={isLoading || isGoogleLoading}
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            }
             error={errors.password?.message}
           />
         </div>

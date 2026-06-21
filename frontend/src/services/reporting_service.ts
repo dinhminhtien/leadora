@@ -26,6 +26,24 @@ export type ReportLog = {
   generatedAt: string;
 };
 
+export type StageSummary = {
+  stage: string;
+  count: number;
+  value: number;
+};
+
+export type DashboardSummary = {
+  activeLeadsCount: number;
+  totalLeadsCount: number;
+  activeDealsCount: number;
+  activeDealsValue: number;
+  weightedPipelineValue: number;
+  totalDealsValue: number;
+  pendingTasksCount: number;
+  overdueTasksCount: number;
+  funnelStages: StageSummary[];
+};
+
 const ENDPOINT = "/reporting";
 
 export const reportingService = {
@@ -33,6 +51,13 @@ export const reportingService = {
     const response = await apiClient.post<ApiResponse<ReportLog>>(
       `${ENDPOINT}/logs`,
       payload,
+    );
+    return response.data;
+  },
+
+  async getDashboardSummary(): Promise<ApiResponse<DashboardSummary>> {
+    const response = await apiClient.get<ApiResponse<DashboardSummary>>(
+      `${ENDPOINT}/dashboard-summary`,
     );
     return response.data;
   },

@@ -8,6 +8,7 @@ import com.novax.leadora.api.dto.request.CreateQuotationRequest;
 import com.novax.leadora.api.dto.request.ProcessApprovalRequest;
 import com.novax.leadora.api.dto.request.ReviseQuotationRequest;
 import com.novax.leadora.api.dto.request.SendQuotationRequest;
+import com.novax.leadora.api.dto.request.SubmitQuotationRequest;
 import com.novax.leadora.api.dto.request.TrackCustomerResponseRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.application.usecase.quotation.CreateQuotationUseCase;
@@ -17,6 +18,7 @@ import com.novax.leadora.application.usecase.quotation.GetQuotationListUseCase;
 import com.novax.leadora.application.usecase.quotation.ProcessQuotationApprovalUseCase;
 import com.novax.leadora.application.usecase.quotation.ReviseQuotationUseCase;
 import com.novax.leadora.application.usecase.quotation.SendQuotationUseCase;
+import com.novax.leadora.application.usecase.quotation.SubmitQuotationUseCase;
 import com.novax.leadora.application.usecase.quotation.CloseQuotationUseCase;
 import com.novax.leadora.application.usecase.quotation.ConvertToBookingUseCase;
 import com.novax.leadora.application.usecase.quotation.ExpireOverdueQuotationsUseCase;
@@ -41,6 +43,7 @@ public class QuotationController {
     private final GetQuotationByIdUseCase getQuotationByIdUseCase;
     private final GetPendingApprovalsUseCase getPendingApprovalsUseCase;
     private final ProcessQuotationApprovalUseCase processApprovalUseCase;
+    private final SubmitQuotationUseCase submitQuotationUseCase;
     private final SendQuotationUseCase sendQuotationUseCase;
     private final ReviseQuotationUseCase reviseQuotationUseCase;
     private final TrackCustomerResponseUseCase trackCustomerResponseUseCase;
@@ -76,6 +79,16 @@ public class QuotationController {
     public ResponseEntity<ApiResponse<List<QuotationResponse>>> getPendingApprovals() {
         List<QuotationResponse> pending = getPendingApprovalsUseCase.execute();
         return ResponseEntity.ok(ApiResponse.success(pending));
+    }
+
+    /** UC-14.1 — Submit a DRAFT quotation: discount ≤10% → APPROVED, >10% → PENDING_APPROVAL */
+    @PostMapping("/{id}/submit")
+    public ResponseEntity<ApiResponse<QuotationResponse>> submitQuotation(
+            @PathVariable UUID id,
+            @RequestBody(required = false) SubmitQuotationRequest request) {
+        SubmitQuotationRequest req = request != null ? request : new SubmitQuotationRequest();
+        QuotationResponse response = submitQuotationUseCase.execute(id, req);
+        return ResponseEntity.ok(ApiResponse.success(response, "Quotation submitted successfully"));
     }
 
     /** UC-14.3 — Process approval decision (approve / reject / request changes) */
