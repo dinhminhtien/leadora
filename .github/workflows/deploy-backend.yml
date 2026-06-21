@@ -1,0 +1,69 @@
+name: Deploy Leadora Backend to Cloud Run
+
+on:
+  push:
+    branches:
+      - main  # Chạy khi push code lên branch main
+    paths:
+      - 'backend/**'  # Chỉ chạy khi có thay đổi trong code backend
+      - '.github/workflows/deploy-backend.yml'
+
+env:
+  PROJECT_ID: leadora-499809
+  PROJECT_NUMBER: 732291906105
+  REGION: asia-southeast1
+  SERVICE_NAME: leadora-backend
+  REPOSITORY: cloud-run-source-deploy
+  SERVICE_ACCOUNT: leadora@leadora-499809.iam.gserviceaccount.com
+
+# Cấp quyền cho workflow lấy OpenID Connect (OIDC) token từ GitHub để auth với GCP
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Build & Deploy Backend
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # 1. Authenticate với Google Cloud qua Workload Identity Federation (Không cần JSON Key)
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: 'projects/732291906105/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+        service_account: '${{ env.SERVICE_ACCOUNT }}'
+
+    # 2. Setup Google Cloud SDK
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    # 3. Cấu hình Docker đăng nhập vào Artifact Registry
+    - name: Configure Docker
+      run: |
+        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+    # 4. Build & Push Docker image
+    - name: Build and Push Docker Image
+      run: |
+        IMAGE_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+        # Di chuyển vào thư mục backend và build Dockerfile
+        docker build -t $IMAGE_TAG ./backend
+        docker push $IMAGE_TAG
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+    # 5. Deploy lên Cloud Run
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy ${{ env.SERVICE_NAME }} \
+          --image $IMAGE_TAG \
+          --region ${{ env.REGION }} \
+          --platform managed \
+          --service-account ${{ env.SERVICE_ACCOUNT }} \
+          --update-env-vars "GEMINI_PROJECT_ID=${{ env.PROJECT_ID }},GEMINI_LOCATION=asia-southeast1" \
+          --remove-env-vars "GOOGLE_GENAI_API_KEY,GEMINI_API_KEY" \
+          --allow-unauthenticated

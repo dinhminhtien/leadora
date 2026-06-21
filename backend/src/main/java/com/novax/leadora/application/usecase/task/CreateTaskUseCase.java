@@ -57,17 +57,32 @@ public class CreateTaskUseCase {
             deal = dealRepository.findById(request.getDealId()).orElse(null);
         }
 
+        if (request.getStartAt() != null && request.getEndAt() != null
+                && !request.getStartAt().isBefore(request.getEndAt())) {
+            throw new IllegalArgumentException("start_at must be before end_at");
+        }
+
+        // Auto-derive due_date from start_at when not explicitly provided
+        java.time.LocalDate dueDate = request.getDueDate();
+        if (dueDate == null && request.getStartAt() != null) {
+            dueDate = request.getStartAt().toLocalDate();
+        }
+
         TaskEntity task = TaskEntity.builder()
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .priority(priority)
                 .status(TaskStatus.OPEN)
-                .dueDate(request.getDueDate())
+                .dueDate(dueDate)
                 .resultNote(request.getResultNote())
                 .assignedUser(assignedUser)
                 .lead(lead)
                 .customer(customer)
                 .deal(deal)
+                .startAt(request.getStartAt())
+                .endAt(request.getEndAt())
+                .primaryContactName(request.getPrimaryContactName())
+                .primaryContactPhone(request.getPrimaryContactPhone())
                 .build();
 
         TaskEntity saved = taskRepository.save(task);

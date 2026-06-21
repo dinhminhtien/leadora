@@ -8,20 +8,19 @@ spring:
   main:
     allow-bean-definition-overriding: true
 
-  # Spring AI starters are on the classpath but not yet configured (the `ai:`
-  # block below is commented out). Their auto-configurations fail fast on missing
-  # credentials / unavailable services, so exclude them while AI is disabled.
-  # Remove the relevant entry when you enable that integration.
+  # Company-document uploads for the RAG knowledge base can exceed the 1MB default.
+  servlet:
+    multipart:
+      max-file-size: ${AI_MAX_UPLOAD_SIZE:20MB}
+      max-request-size: ${AI_MAX_UPLOAD_SIZE:20MB}
+
+  # AI chat assistant (feature/ai_internal): chat + embeddings BOTH via Google Gemini API (no local AI).
+  # Provider is selected with spring.ai.model.chat / spring.ai.model.embedding below, so the
+  # Ollama and Anthropic auto-configs back off cleanly (no Ollama needs to run). Only non-model
+  # integrations we don't use are excluded here (JDBC chat-memory, Elasticsearch, Redis vector stores).
   autoconfigure:
     exclude:
-      - org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration
-      - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiEmbeddingConnectionAutoConfiguration
-      - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiTextEmbeddingAutoConfiguration
-      - org.springframework.ai.model.ollama.autoconfigure.OllamaApiAutoConfiguration
-      - org.springframework.ai.model.ollama.autoconfigure.OllamaChatAutoConfiguration
-      - org.springframework.ai.model.ollama.autoconfigure.OllamaEmbeddingAutoConfiguration
       - org.springframework.ai.model.chat.memory.repository.jdbc.autoconfigure.JdbcChatMemoryRepositoryAutoConfiguration
-      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
       - org.springframework.ai.vectorstore.elasticsearch.autoconfigure.ElasticsearchVectorStoreAutoConfiguration
       - org.springframework.ai.vectorstore.redis.autoconfigure.RedisVectorStoreAutoConfiguration
 
@@ -29,9 +28,10 @@ spring:
     compose:
       enabled: false
 
-  # Import environment variables from the root .env file if present.
-  # Path is relative to the working directory (backend/ when running mvnw),
-  # so the repo-root .env is one level up.
+  # Canonical single shared .env is at the repo root (leadora/.env) → read via ../.env
+  # when running from leadora/backend/. The bare .env (backend-local) is an optional
+  # fallback; both are optional so a missing one is skipped. The last match wins, so
+  # the repo-root file (../.env) takes precedence.
   config:
     import:
       - optional:file:.env[.properties]
@@ -43,6 +43,8 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:myuser}
     password: ${SPRING_DATASOURCE_PASSWORD:secret}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:3}
   
   jpa:
     hibernate:
@@ -75,29 +77,52 @@ spring:
   # not RS256 (asymmetric JWK), so the default Spring auto-configuration does not apply.
 
 
-  # # Spring AI configuration
-  # ai:
-  #   google:
-  #     genai:
-  #       api-key: ${GOOGLE_GENAI_API_KEY:}
-  #       project-id: ${GOOGLE_GENAI_PROJECT_ID:dummy-project}
-  #       location: ${GOOGLE_GENAI_LOCATION:us-central1}
-  #       embedding:
-  #         project-id: ${GOOGLE_GENAI_PROJECT_ID:dummy-project}
-  #         location: ${GOOGLE_GENAI_LOCATION:us-central1}
-  #       chat:
-  #         options:
-  #           model: gemini-3.5-flash
-  #   ollama:
-  #     base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-  #     chat:
-  #       options:
-  #         model: ${OLLAMA_MODEL:qwen}
-  #   vectorstore:
-  #     pgvector:
-  #       database-name: ${SPRING_DATASOURCE_USERNAME:postgres}
-  #       table-name: leadora_vector_store
-  #       dimensions: 1536
+  # Spring AI configuration — Internal Sales Chat Assistant (feature/ai_internal)
+  # Runtime: Google Gemini API for BOTH chat and embeddings (no local AI) + pgvector store for RAG.
+  ai:
+    # Select Gemini as the active provider so Ollama/Anthropic auto-configs back off.
+    model:
+      chat: google-genai
+      embedding: google-genai
+    google:
+      genai:
+        vertex-ai: ${GEMINI_USE_VERTEX:true}
+        # Vertex AI mode: Uses project-id + location. If api-key is set, it defaults to Gemini Developer API (AI Studio).
+        # We keep api-key optional (empty default) to allow falling back to Vertex AI with GCP credentials (ADC / Service Account).
+        api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:#{null}}}
+        project-id: ${GEMINI_PROJECT_ID:mock-project-id}
+        location: ${GEMINI_LOCATION:asia-southeast1}
+        chat:
+          options:
+            # Cheap + fast, good for CRM Q&A. Other options: gemini-2.5-flash-lite, gemini-2.5-pro.
+            model: ${GEMINI_CHAT_MODEL:gemini-2.5-flash}
+            temperature: ${GEMINI_CHAT_TEMPERATURE:0.2}
+            # Latency control: 0 disables the model's "thinking" tokens (big speed win on Gemini 2.5).
+            # NOTE: Gemini 3.x (e.g. gemini-3.5-flash) may IGNORE this — it uses thinkingLevel (3-Pro only),
+            # so on 3.x the reliable speed lever is the model: set GEMINI_CHAT_MODEL=gemini-2.5-flash.
+            thinking-budget: ${GEMINI_THINKING_BUDGET:0}
+        embedding:
+          # Match connection configuration for embedding
+          vertex-ai: ${GEMINI_USE_VERTEX:true}
+          api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:#{null}}}
+          project-id: ${GEMINI_PROJECT_ID:mock-project-id}
+          location: ${GEMINI_LOCATION:asia-southeast1}
+          text:
+            options:
+              # This API key serves gemini-embedding-001 (text-embedding-004 → 404 here).
+              # gemini-embedding-001 defaults to 3072 dims; pin to 768 (outputDimensionality)
+              # to match the pgvector table below.
+              model: ${GEMINI_EMBEDDING_MODEL:gemini-embedding-001}
+              dimensions: ${AI_EMBEDDING_DIMENSIONS:768}
+    vectorstore:
+      pgvector:
+        # Creates the `vector` extension, the table and an HNSW index on first run.
+        initialize-schema: ${AI_VECTORSTORE_INIT_SCHEMA:true}
+        table-name: leadora_vector_store
+        schema-name: public
+        dimensions: ${AI_EMBEDDING_DIMENSIONS:768}   # text-embedding-004 → 768
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
 
 logging:
   level:

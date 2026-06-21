@@ -1,7 +1,7 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 type QueryProviderProps = {
   children: React.ReactNode;
@@ -20,6 +20,35 @@ export function QueryProvider({ children }: QueryProviderProps) {
         },
       }),
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleInvalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["deals-for-report"] });
+    };
+
+    // 1. Listen for cross-tab messages
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("leadora-channel");
+      channel.addEventListener("message", handleInvalidate);
+    } catch (e) {
+      console.warn("BroadcastChannel not supported", e);
+    }
+
+    // 2. Listen for local mutations
+    window.addEventListener("leadora-mutate", handleInvalidate);
+
+    return () => {
+      if (channel) {
+        channel.removeEventListener("message", handleInvalidate);
+        channel.close();
+      }
+      window.removeEventListener("leadora-mutate", handleInvalidate);
+    };
+  }, [queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

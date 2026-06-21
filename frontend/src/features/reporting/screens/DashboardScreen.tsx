@@ -17,11 +17,16 @@ import {
   UserCheck,
   ChevronRight,
   Plus,
-  Sparkles
+  Sparkles,
+  Loader2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useDashboardSummary } from "@/features/reporting/hooks/use_reporting";
+import { useTasks } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
+import { taskService, type WorkflowAction } from "@/services/follow_up_task_service";
 
 export type FollowUpTask = {
   id: string;
@@ -117,25 +122,70 @@ const initialInteractions: InteractionTimeline[] = [
 ];
 
 export function DashboardScreen() {
-  const [tasks, setTasks] = useState<FollowUpTask[]>(initialTasks);
-  const [interactions, setInteractions] = useState<InteractionTimeline[]>(initialInteractions);
+  // ── Backend-computed KPIs (no aggregation in the browser) ───────────────
+  const { data: summary, isLoading: loadingSummary } = useDashboardSummary();
 
-  // Toggle task status
-  const handleToggleTask = (taskId: string) => {
-    setTasks(prev =>
-      prev.map(task =>
-        task.id === taskId
-          ? { ...task, status: task.status === "completed" ? "pending" : "completed" }
-          : task
-      )
-    );
+  // Tasks list is still fetched for the task queue widget display
+  const { data: tasksResponse, isLoading: loadingTasks } = useTasks({ page: 0, size: 5 });
+  const realTasks = tasksResponse?.data?.content ?? [];
+
+  const queryClient = useQueryClient();
+  const transitionMutation = useMutation({
+    mutationFn: ({ taskId, action }: { taskId: string; action: WorkflowAction }) =>
+      taskService.transition(taskId, action),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+    }
+  });
+
+  // Toggle task status — only sends the action; backend decides the result
+  const handleToggleTask = (taskId: string, currentStatus: string) => {
+    const isCompleted = currentStatus === "COMPLETED";
+    const action: WorkflowAction = isCompleted ? "REOPEN" : "COMPLETE";
+    transitionMutation.mutate({ taskId, action });
   };
 
-  // KPI Calculations
-  const activeLeadsCount = 12;
-  const activeDealsValue = 104500;
-  const pendingTasksCount = tasks.filter(t => t.status !== "completed").length;
-  const overdueTasksCount = tasks.filter(t => t.status === "overdue").length;
+  const [interactions] = useState<InteractionTimeline[]>(initialInteractions);
+
+  // ── Display-only derived values (pure UI formatting, no business logic) ─
+  const activeLeadsCount = summary?.activeLeadsCount ?? 0;
+  const activeDealsCount = summary?.activeDealsCount ?? 0;
+  const activeDealsValue = summary?.activeDealsValue ?? 0;
+  const pendingTasksCount = summary?.pendingTasksCount ?? 0;
+  const overdueTasksCount = summary?.overdueTasksCount ?? 0;
+  const totalDealsValue = summary?.totalDealsValue ?? 0;
+  const weightedPipelineValue = summary?.weightedPipelineValue ?? 0;
+
+  // Color mapping for funnel bars (pure UI concern)
+  const STAGE_COLORS: Record<string, string> = {
+    "Inquiry": "bg-primary/80",
+    "Site Visit": "bg-accent/80",
+    "Proposal": "bg-indigo-500/80",
+    "Negotiation": "bg-pink-500/80",
+    "Contract": "bg-warning/80",
+    "Confirmed": "bg-success/80"
+  };
+
+  const funnelData = (summary?.funnelStages ?? []).map(fs => ({
+    ...fs,
+    color: STAGE_COLORS[fs.stage] ?? "bg-muted"
+  }));
+
+  const maxStageValue = Math.max(...funnelData.map(f => f.value), 1);
+
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  const isLoading = loadingSummary || loadingTasks;
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-xs">
+        <Loader2 className="size-8 text-blue-600 animate-spin mb-3" />
+        <p className="text-xs text-slate-500 font-bold">Loading dashboard analytics...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -143,7 +193,7 @@ export function DashboardScreen() {
       <div className="relative overflow-hidden bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 text-zinc-800 dark:text-zinc-100 shadow-xs">
         <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-primary/5 dark:bg-primary/10 blur-[80px] pointer-events-none" />
         <div className="absolute -bottom-20 -left-20 w-60 h-60 rounded-full bg-emerald-500/5 blur-[80px] pointer-events-none" />
-        
+
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 dark:bg-primary/20 border border-primary/20 dark:border-primary/30 text-[10px] font-bold text-primary dark:text-primary-foreground tracking-wider uppercase mb-3">
@@ -190,10 +240,10 @@ export function DashboardScreen() {
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Deals Pipeline</p>
                 <h3 className="text-2xl font-bold text-foreground mt-1.5">
-                  ${activeDealsValue.toLocaleString('en-US')}
+                  ${activeDealsValue.toLocaleString("en-US")}
                 </h3>
                 <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-0.5 mt-1.5">
-                  <TrendingUp className="size-3" /> 5 active bookings
+                  <TrendingUp className="size-3" /> {activeDealsCount} active deals
                 </span>
               </div>
               <div className="p-2 bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20 dark:text-emerald-400 rounded-lg">
@@ -257,25 +307,18 @@ export function DashboardScreen() {
           <CardContent>
             {/* SVG Visual Stage Chart */}
             <div className="space-y-3.5 pt-2">
-              {[
-                { stage: "Inquiry", count: 1, value: 18000, color: "bg-primary/80" },
-                { stage: "Site Visit", count: 1, value: 35000, color: "bg-accent/80" },
-                { stage: "Proposal", count: 1, value: 12500, color: "bg-indigo-500/80" },
-                { stage: "Negotiation", count: 1, value: 24000, color: "bg-pink-500/80" },
-                { stage: "Contract", count: 1, value: 9500, color: "bg-warning/80" },
-                { stage: "Confirmed", count: 1, value: 5500, color: "bg-success/80" }
-              ].map((stage, idx) => (
+              {funnelData.map((stage, idx) => (
                 <div key={idx} className="space-y-1">
                   <div className="flex justify-between items-center text-xs">
                     <span className="font-semibold text-foreground/80">{stage.stage}</span>
                     <span className="text-muted-foreground text-[10px]">
-                      {stage.count} deal ({((stage.value / 104500) * 100).toFixed(0)}%) • <strong className="text-foreground/90">${stage.value.toLocaleString('en-US')}</strong>
+                      {stage.count} {stage.count === 1 ? "deal" : "deals"} ({totalDealsValue > 0 ? ((stage.value / totalDealsValue) * 100).toFixed(0) : 0}%) • <strong className="text-foreground/90">${stage.value.toLocaleString("en-US")}</strong>
                     </span>
                   </div>
                   <div className="w-full bg-muted rounded-lg h-3 overflow-hidden flex">
                     <div
                       className={`${stage.color} h-full rounded-lg transition-all duration-500`}
-                      style={{ width: `${(stage.value / 35000) * 100}%` }}
+                      style={{ width: `${maxStageValue > 0 ? (stage.value / maxStageValue) * 100 : 0}%` }}
                     />
                   </div>
                 </div>
@@ -286,7 +329,9 @@ export function DashboardScreen() {
             <div className="mt-8 border-t border-border pt-6">
               <div className="flex justify-between items-center mb-4">
                 <div>
-                  <h4 className="text-xs font-bold text-foreground">Weighted Revenue Forecast</h4>
+                  <h4 className="text-xs font-bold text-foreground">
+                    Weighted Revenue Forecast: ${weightedPipelineValue.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                  </h4>
                   <p className="text-[10px] text-muted-foreground">Projected win values based on historical deal stages</p>
                 </div>
                 <div className="flex gap-4 text-[10px] font-semibold text-muted-foreground">
@@ -300,22 +345,22 @@ export function DashboardScreen() {
                 <svg className="w-full h-full" viewBox="0 0 500 120" preserveAspectRatio="none">
                   <defs>
                     <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.15"/>
-                      <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.0"/>
+                      <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.15" />
+                      <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.0" />
                     </linearGradient>
                   </defs>
-                  
+
                   {/* Grid Lines */}
                   <line x1="0" y1="30" x2="500" y2="30" stroke="var(--chart-grid)" strokeWidth="1" />
                   <line x1="0" y1="60" x2="500" y2="60" stroke="var(--chart-grid)" strokeWidth="1" />
                   <line x1="0" y1="90" x2="500" y2="90" stroke="var(--chart-grid)" strokeWidth="1" />
-                  
+
                   {/* Area path */}
                   <path
                     d="M 0 100 Q 100 85, 200 45 T 400 30 L 500 10 L 500 120 L 0 120 Z"
                     fill="url(#chartGrad)"
                   />
-                  
+
                   {/* Forecast Line */}
                   <path
                     d="M 0 100 Q 100 85, 200 45 T 400 30 L 500 10"
@@ -355,55 +400,57 @@ export function DashboardScreen() {
               <CardDescription className="text-xs text-muted-foreground">Due today or outstanding</CardDescription>
             </div>
             <Badge variant="primary" className="text-[10px]">
-              {tasks.filter(t => t.status !== "completed").length} Active
+              {realTasks.filter(t => t.status !== "COMPLETED" && t.status !== "CANCELLED").length} Active
             </Badge>
           </CardHeader>
           <CardContent className="px-2">
             <div className="divide-y divide-border">
-              {tasks.map(task => (
-                <div key={task.id} className="py-2.5 px-3 flex items-start gap-2.5 hover:bg-muted/50 rounded-xl transition-all duration-150">
-                  <button
-                    onClick={() => handleToggleTask(task.id)}
-                    className="mt-0.5 shrink-0 focus:outline-none cursor-pointer"
-                  >
-                    <CheckCircle2
-                      className={`size-4.5 transition-all ${
-                        task.status === "completed"
-                          ? "text-emerald-500 fill-emerald-500/20"
-                          : task.status === "overdue"
-                          ? "text-danger"
-                          : "text-zinc-300 dark:text-zinc-700"
-                      }`}
-                    />
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className={`text-xs font-bold text-foreground/90 truncate ${
-                        task.status === "completed" ? "line-through text-muted-foreground/60 font-normal" : ""
-                      }`}
+              {realTasks.slice(0, 5).map(task => {
+                const isCompleted = task.status === "COMPLETED";
+                const isOverdue = !isCompleted && task.dueDate && task.dueDate < todayStr;
+                const statusColor = isCompleted
+                  ? "text-emerald-500 fill-emerald-500/20"
+                  : isOverdue
+                    ? "text-danger"
+                    : "text-zinc-300 dark:text-zinc-700";
+
+                const linkedName = task.leadName || task.dealName || task.customerName || "Unlinked";
+
+                return (
+                  <div key={task.taskId} className="py-2.5 px-3 flex items-start gap-2.5 hover:bg-muted/50 rounded-xl transition-all duration-150">
+                    <button
+                      onClick={() => handleToggleTask(task.taskId, task.status)}
+                      className="mt-0.5 shrink-0 focus:outline-none cursor-pointer"
                     >
-                      {task.title}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{task.description}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-[9px] text-muted-foreground font-semibold bg-muted px-1.5 py-0.5 rounded">
-                        {task.linkedEntityName}
-                      </span>
-                      <span
-                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
-                          task.priority === "high"
-                            ? "bg-danger/10 text-danger border-danger/10"
-                            : task.priority === "medium"
-                            ? "bg-amber-500/10 text-amber-500 border-amber-500/10"
-                            : "bg-zinc-500/10 text-zinc-500 border-zinc-500/10"
-                        }`}
+                      <CheckCircle2 className={`size-4.5 transition-all ${statusColor}`} />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className={`text-xs font-bold text-foreground/90 truncate ${isCompleted ? "line-through text-muted-foreground/60 font-normal" : ""
+                          }`}
                       >
-                        {task.priority.toUpperCase()}
-                      </span>
+                        {task.title}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{task.description || "No description"}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[9px] text-muted-foreground font-semibold bg-muted px-1.5 py-0.5 rounded">
+                          {linkedName}
+                        </span>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${task.priority === "HIGH"
+                            ? "bg-danger/10 text-danger border-danger/10"
+                            : task.priority === "MEDIUM"
+                              ? "bg-amber-500/10 text-amber-500 border-amber-500/10"
+                              : "bg-zinc-500/10 text-zinc-500 border-zinc-500/10"
+                            }`}
+                        >
+                          {task.priority}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -429,7 +476,7 @@ export function DashboardScreen() {
                     {interaction.type === "meeting" && <Calendar className="size-3.5 text-indigo-500" />}
                     {interaction.type === "note" && <FileText className="size-3.5 text-amber-500" />}
                   </span>
-                  
+
                   <div>
                     <div className="flex justify-between items-center text-xs">
                       <p className="font-bold text-foreground/90">
@@ -441,7 +488,7 @@ export function DashboardScreen() {
                     <p className="text-xs text-muted-foreground mt-1">{interaction.description}</p>
                     <div className="flex items-center gap-1.5 mt-2">
                       <span className="size-4 rounded-full bg-primary/20 text-primary border border-primary/25 text-[8px] font-bold flex items-center justify-center">
-                        {interaction.agentName.slice(0,2).toUpperCase()}
+                        {interaction.agentName.slice(0, 2).toUpperCase()}
                       </span>
                       <span className="text-[10px] text-muted-foreground">by {interaction.agentName}</span>
                     </div>

@@ -5,6 +5,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
@@ -48,6 +49,18 @@ public class TaskEntity extends BaseEntity {
 
     @Column(name = "result_note", columnDefinition = "TEXT")
     private String resultNote;
+
+    @Column(name = "start_at", columnDefinition = "TIMESTAMPTZ")
+    private OffsetDateTime startAt;
+
+    @Column(name = "end_at", columnDefinition = "TIMESTAMPTZ")
+    private OffsetDateTime endAt;
+
+    @Column(name = "primary_contact_name", length = 255)
+    private String primaryContactName;
+
+    @Column(name = "primary_contact_phone", length = 50)
+    private String primaryContactPhone;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lead_id")
