@@ -2,6 +2,7 @@ package com.novax.leadora.application.usecase.task;
 
 import com.novax.leadora.api.dto.request.CreateTaskRequest;
 import com.novax.leadora.api.dto.response.TaskResponse;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
@@ -16,10 +17,12 @@ import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CreateTaskUseCase {
@@ -29,6 +32,7 @@ public class CreateTaskUseCase {
     private final LeadRepository leadRepository;
     private final CustomerRepository customerRepository;
     private final DealRepository dealRepository;
+    private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Transactional
     public TaskResponse execute(CreateTaskRequest request) {
@@ -86,6 +90,14 @@ public class CreateTaskUseCase {
                 .build();
 
         TaskEntity saved = taskRepository.save(task);
+
+        // UC-17.2: start SLA tracking — non-fatal if no rule configured
+        try {
+            startSlaTrackingUseCase.execute("FOLLOW_UP_TASK", "TASK", saved.getTaskId());
+        } catch (Exception e) {
+            log.warn("SLA tracking failed for task {}: {}", saved.getTaskId(), e.getMessage());
+        }
+
         return TaskResponse.from(saved);
     }
 }

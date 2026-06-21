@@ -14,4 +14,5 @@ public interface ReminderRepository extends JpaRepository<ReminderEntity, UUID> 
     List<ReminderEntity> findByUser_UserIdOrderByRemindAtAsc(UUID userId);
     List<ReminderEntity> findByUser_UserIdAndStatusOrderByRemindAtAsc(UUID userId, ReminderStatus status);
     List<ReminderEntity> findByStatusAndRemindAtBefore(ReminderStatus status, OffsetDateTime time);
+    List<ReminderEntity> findByRelatedEntityAndRelatedId(String relatedEntity, UUID relatedId);
 }
