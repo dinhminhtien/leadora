@@ -64,6 +64,6 @@ jobs:
           --region ${{ env.REGION }} \
           --platform managed \
           --service-account ${{ env.SERVICE_ACCOUNT }} \
-          --update-env-vars "GEMINI_PROJECT_ID=${{ env.PROJECT_ID }},GEMINI_LOCATION=asia-southeast1,SUPABASE_URL=${{ secrets.SUPABASE_URL }},SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}" \
+          --update-env-vars "GEMINI_PROJECT_ID=${{ env.PROJECT_ID }},GEMINI_LOCATION=asia-southeast1,SUPABASE_URL=${{ secrets.SUPABASE_URL }},SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }},FRONTEND_URL=https://leadora-novax.vercel.app" \
           --remove-env-vars "GOOGLE_GENAI_API_KEY,GEMINI_API_KEY" \
           --allow-unauthenticated
