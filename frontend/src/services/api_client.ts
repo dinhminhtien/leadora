@@ -56,7 +56,29 @@ apiClient.interceptors.request.use(async (config) => {
 });
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // If it's a mutating request, broadcast invalidation to other tabs and dispatch locally
+    const method = response.config.method?.toLowerCase();
+    if (
+      method &&
+      ["post", "put", "patch", "delete"].includes(method) &&
+      typeof window !== "undefined"
+    ) {
+      try {
+        const channel = new BroadcastChannel("leadora-channel");
+        channel.postMessage("invalidate-dashboard");
+        channel.close();
+      } catch (e) {
+        console.warn("Failed to broadcast change", e);
+      }
+      try {
+        window.dispatchEvent(new Event("leadora-mutate"));
+      } catch (e) {
+        console.warn("Failed to dispatch local mutation event", e);
+      }
+    }
+    return response;
+  },
   (error: AxiosError<ApiErrorResponse>) => {
     if (
       error.response?.status === 401 &&
