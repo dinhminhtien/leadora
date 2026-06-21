@@ -29,10 +29,13 @@ spring:
     compose:
       enabled: false
 
-  # Import environment variables from the root .env file if present
+  # Import environment variables from the root .env file if present.
+  # Path is relative to the working directory (backend/ when running mvnw),
+  # so the repo-root .env is one level up.
   config:
     import:
-    - optional:file:../.env[.properties]
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
 
   # Database configuration (Supabase PostgreSQL / local PostgreSQL)
   datasource:

@@ -30,6 +30,8 @@ public class CreateLeadUseCase {
                 .email(request.getEmail())
                 .phone(request.getPhone())
                 .companyName(request.getCompanyName())
+                .address(request.getAddress())
+                .isCorporate(Boolean.TRUE.equals(request.getIsCorporate()))
                 .source(request.getSource())
                 .status(LeadStatus.NEW)
                 .notes(request.getNotes())
