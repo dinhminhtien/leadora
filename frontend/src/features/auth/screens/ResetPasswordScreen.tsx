@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import Link from "next/link";
-import { KeyRound, AlertCircle, CheckCircle2, ArrowRight } from "lucide-react";
+import { KeyRound, AlertCircle, CheckCircle2, ArrowRight, Eye, EyeOff, Check, X } from "lucide-react";
 
 import { useSearchParams } from "next/navigation";
 import { apiClient } from "@/services/api_client";
@@ -36,10 +36,13 @@ export function ResetPasswordScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<ResetPasswordSchema>({
     resolver: zodResolver(resetPasswordSchema),
@@ -48,6 +51,17 @@ export function ResetPasswordScreen() {
       confirmPassword: "",
     },
   });
+
+  const passwordVal = watch("password") || "";
+  const confirmPasswordVal = watch("confirmPassword") || "";
+
+  const requirements = [
+    { label: "6+ characters", checked: passwordVal.length >= 6 },
+    { label: "Uppercase (A-Z)", checked: /[A-Z]/.test(passwordVal) },
+    { label: "Lowercase (a-z)", checked: /[a-z]/.test(passwordVal) },
+    { label: "Digit (0-9)", checked: /\d/.test(passwordVal) },
+    { label: "Special character", checked: /[^A-Za-z\d\s]/.test(passwordVal) },
+  ];
 
   const onSubmit = async (data: ResetPasswordSchema) => {
     setIsLoading(true);
@@ -120,12 +134,80 @@ export function ResetPasswordScreen() {
               </label>
               <Input
                 {...register("password")}
-                type="password"
+                type={showPassword ? "text" : "password"}
                 disabled={isLoading}
                 placeholder="••••••••"
                 icon={<KeyRound className="h-4 w-4" />}
                 error={errors.password?.message}
+                rightElement={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                    disabled={isLoading}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                }
               />
+            </div>
+
+            {/* Dynamic Real-time checklist as a symmetric OCD-friendly panel */}
+            <div className="rounded-xl border border-border bg-input/20 p-3.5 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Password Security
+                </span>
+                <span className="text-[10px] font-bold text-muted-foreground">
+                  {requirements.filter((r) => r.checked).length} / 5 passed
+                </span>
+              </div>
+
+              {/* Symmetric 5-segment progress bar */}
+              <div className="grid grid-cols-5 gap-1.5">
+                {requirements.map((req, i) => {
+                  const passedCount = requirements.filter((r) => r.checked).length;
+                  const isFilled = i < passedCount;
+                  let barClass = "bg-muted-foreground/20";
+                  if (isFilled) {
+                    if (passedCount <= 2) barClass = "bg-danger";
+                    else if (passedCount <= 4) barClass = "bg-warning";
+                    else barClass = "bg-success";
+                  }
+                  return (
+                    <div
+                      key={i}
+                      className={`h-1.5 rounded-full transition-all duration-300 ${barClass}`}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* Perfectly aligned requirements checklist */}
+              <div className="space-y-2 pt-1">
+                {requirements.map((req, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between text-xs py-1 border-b border-border/30 last:border-none"
+                  >
+                    <span
+                      className={`transition-colors duration-300 ${req.checked ? "text-success font-semibold" : "text-muted-foreground"
+                        }`}
+                    >
+                      {req.label}
+                    </span>
+                    {req.checked ? (
+                      <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                    ) : (
+                      <div className="h-4 w-4 rounded-full border-2 border-border bg-background shrink-0" />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -134,12 +216,41 @@ export function ResetPasswordScreen() {
               </label>
               <Input
                 {...register("confirmPassword")}
-                type="password"
+                type={showConfirmPassword ? "text" : "password"}
                 disabled={isLoading}
                 placeholder="••••••••"
                 icon={<KeyRound className="h-4 w-4" />}
                 error={errors.confirmPassword?.message}
+                rightElement={
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                    disabled={isLoading}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                }
               />
+              {confirmPasswordVal && (
+                <div className="flex items-center gap-1.5 pl-1 pt-0.5">
+                  {passwordVal === confirmPasswordVal ? (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
+                      <span className="text-[11px] font-semibold text-success">Passwords match</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-3.5 w-3.5 text-danger shrink-0" />
+                      <span className="text-[11px] font-semibold text-danger">Passwords do not match</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             <Button

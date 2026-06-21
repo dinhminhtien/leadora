@@ -115,6 +115,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
   const handleLogout = () => {
+    setIsUserDropdownOpen(false);
     localStorage.removeItem("accessToken");
     clearUser();
     router.push(ROUTE_PATHS.login || "/login");
@@ -328,17 +329,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 className="flex items-center gap-2 rounded-full p-0.5 hover:bg-muted transition cursor-pointer"
               >
                 <div className="flex size-7 items-center justify-center rounded-full bg-primary text-white text-[10px] font-bold shadow-xs">
-                  {user?.name?.slice(0, 2).toUpperCase() || "JD"}
+                  {user?.name ? user.name.slice(0, 2).toUpperCase() : ""}
                 </div>
               </button>
 
-              {isUserDropdownOpen && (
+              {isUserDropdownOpen && user && (
                 <>
                   <div className="fixed inset-0 z-20" onClick={() => setIsUserDropdownOpen(false)} />
                   <div className="absolute right-0 mt-2 w-56 rounded-xl border border-border bg-background p-1.5 shadow-lg z-30 animate-in fade-in slide-in-from-top-2 duration-150">
                     <div className="px-2.5 py-2 border-b border-border">
-                      <p className="text-xs font-bold text-foreground">{user?.name || "John Doe"}</p>
-                      <p className="text-[10px] text-muted-foreground">{user?.email || "j.doe@leadora-hotels.com"}</p>
+                      <p className="text-xs font-bold text-foreground">{user.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{user.email}</p>
                       <div className="mt-1.5 flex gap-1">
                         <Badge variant="primary" className="text-[9px] py-0 px-1.5 font-semibold">
                           Sales Manager

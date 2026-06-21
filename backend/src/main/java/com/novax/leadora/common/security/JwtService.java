@@ -26,11 +26,15 @@ public class JwtService {
 
     public String generateToken(UserEntity user) {
         try {
+            String secret = jwtSecret.trim();
+            if (secret.startsWith("\"") && secret.endsWith("\"") && secret.length() > 1) {
+                secret = secret.substring(1, secret.length() - 1);
+            }
             byte[] secretBytes;
             try {
-                secretBytes = Base64.getDecoder().decode(jwtSecret.trim());
+                secretBytes = Base64.getDecoder().decode(secret);
             } catch (IllegalArgumentException e) {
-                secretBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+                secretBytes = secret.getBytes(StandardCharsets.UTF_8);
             }
 
             JWSSigner signer = new MACSigner(secretBytes);

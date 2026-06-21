@@ -39,6 +39,15 @@ public class CurrentUserProvider {
                     return user;
                 }
             }
+
+            // Fallback: try loading by verified email claim from JWT
+            String email = jwt.getClaimAsString("email");
+            if (StringUtils.hasText(email)) {
+                UserEntity user = userRepository.findWithRoleByEmailIgnoreCase(email.trim()).orElse(null);
+                if (user != null) {
+                    return user;
+                }
+            }
         }
 
         // 2. Fall back to X-User-Id request header

@@ -43,17 +43,27 @@ export const apiClient = axios.create({
 // Inject access token as Bearer token on every request
 apiClient.interceptors.request.use(async (config) => {
   if (typeof window !== "undefined") {
-    const localToken = localStorage.getItem("accessToken");
-    if (localToken) {
-      config.headers.Authorization = `Bearer ${localToken}`;
-    } else {
-      const supabase = createSupabaseBrowserClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    // Check if it's a public auth endpoint
+    const isPublicAuth = config.url && (
+      config.url.endsWith("/auth/login") ||
+      config.url.endsWith("/auth/forgot-password") ||
+      config.url.endsWith("/auth/reset-password") ||
+      config.url.endsWith("/auth/logout")
+    );
 
-      if (session?.access_token) {
-        config.headers.Authorization = `Bearer ${session.access_token}`;
+    if (!isPublicAuth) {
+      const localToken = localStorage.getItem("accessToken");
+      if (localToken) {
+        config.headers.Authorization = `Bearer ${localToken}`;
+      } else {
+        const supabase = createSupabaseBrowserClient();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session?.access_token) {
+          config.headers.Authorization = `Bearer ${session.access_token}`;
+        }
       }
     }
   }
@@ -87,10 +97,19 @@ apiClient.interceptors.response.use(
   (error: AxiosError<ApiErrorResponse>) => {
     if (
       error.response?.status === 401 &&
-      typeof window !== "undefined" &&
-      window.location.pathname !== "/login"
+      typeof window !== "undefined"
     ) {
-      window.location.assign("/login");
+      localStorage.removeItem("accessToken"); // Clear the invalid token
+      try {
+        const { createSupabaseBrowserClient } = require("@/services/supabase/client");
+        const supabase = createSupabaseBrowserClient();
+        supabase.auth.signOut();
+      } catch (e) {
+        console.warn("Failed to clear Supabase session", e);
+      }
+      if (window.location.pathname !== "/login") {
+        window.location.assign("/login");
+      }
     }
 
     return Promise.reject(error);

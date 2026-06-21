@@ -139,8 +139,8 @@ export function LoginScreen() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="text-muted-foreground hover:text-foreground transition-colors p-1.5 focus:outline-none cursor-pointer flex items-center justify-center"
-                title={showPassword ? "Hide password" : "Show password"}
+                className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                disabled={isLoading || isGoogleLoading}
               >
                 {showPassword ? (
                   <EyeOff className="h-4 w-4" />

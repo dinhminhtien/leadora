@@ -28,7 +28,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkSession = async () => {
       setLoading(true);
-      const token = localStorage.getItem("accessToken");
+      let token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+
+      if (!token) {
+        try {
+          const { createSupabaseBrowserClient } = require("@/services/supabase/client");
+          const supabase = createSupabaseBrowserClient();
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            token = session.access_token;
+          }
+        } catch (e) {
+          console.warn("Failed to check Supabase session in AuthProvider", e);
+        }
+      }
+
       if (!token) {
         clearUser();
         return;
