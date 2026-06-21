@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
   Bot,
@@ -40,6 +40,7 @@ import {
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { useUiStore } from "@/stores/ui_store";
 import { useAuthStore } from "@/stores/auth_store";
+import { useNotifications } from "@/features/notification/hooks/use_notifications";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -105,8 +106,11 @@ const navigationGroups: NavGroup[] = [
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { sidebarOpen, toggleSidebar } = useUiStore();
   const { user } = useAuthStore();
+  const { data: unreadNotifications } = useNotifications(user?.id, true);
+  const unreadCount = unreadNotifications?.length ?? 0;
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
@@ -301,11 +305,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
             {/* Notification Center */}
             <button
+              onClick={() => router.push(ROUTE_PATHS.notifications)}
               className="relative rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition cursor-pointer"
               title="Notifications"
             >
               <Bell className="size-4" />
-              <span className="absolute right-2 top-2 size-1.5 rounded-full bg-danger"></span>
+              {unreadCount > 0 && (
+                <span className="absolute right-2 top-2 size-1.5 rounded-full bg-danger"></span>
+              )}
             </button>
 
             {/* User Profile */}
