@@ -109,12 +109,20 @@ export const taskService = {
     return data;
   },
 
-  /** Workflow transition: START → IN_PROGRESS, COMPLETE → COMPLETED (accepts OPEN too), CANCEL → CANCELLED, REOPEN → OPEN */
-  async transition(id: string, action: WorkflowAction): Promise<ApiResponse<Task>> {
-    const { data } = await apiClient.patch<ApiResponse<Task>>(
-      `${ENDPOINT}/${id}/workflow`,
-      { action },
-    );
+  async transition(id: string, action: WorkflowAction):
+      Promise<ApiResponse<Task>> {
+    const { data } = await
+        apiClient.patch<ApiResponse<Task>>(
+            `${ENDPOINT}/${id}/workflow`,
+            { action },
+        );
+    return data;
+  },
+
+  async resolve(taskId: string):
+      Promise<ApiResponse<Task>> {
+    const { data } = await apiClient.patch<ApiResponse<
+        Task>>(`${ENDPOINT}/${taskId}/resolve`);
     return data;
   },
 };
