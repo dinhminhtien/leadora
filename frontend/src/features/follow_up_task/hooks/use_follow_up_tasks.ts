@@ -130,3 +130,14 @@ export function useUsers() {
     staleTime: 5 * 60 * 1000,
   });
 }
+
+export function useResolveTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: string) => taskService.resolve(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] });
+    },
+  });
+}
