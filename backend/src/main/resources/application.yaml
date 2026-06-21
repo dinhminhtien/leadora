@@ -73,6 +73,20 @@ spring:
         boot:
           allow_jdbc_metadata_access: false
 
+  # Email / SMTP configuration (UC-14.4 Send Quotation to Customer)
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
   # # Redis Configuration for caching and HTTP session management
   # data:
   #   redis:

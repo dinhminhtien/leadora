@@ -64,10 +64,8 @@ public class CreateQuotationUseCase {
 
         BigDecimal totalAmount = subtotal.subtract(discountAmount);
 
-        // 4. Determine status — BR: discount > 10% requires manager approval
-        QuotationStatus status = discountPct.compareTo(DISCOUNT_APPROVAL_THRESHOLD) > 0
-                ? QuotationStatus.PENDING_APPROVAL
-                : QuotationStatus.DRAFT;
+        // 4. Always save as DRAFT — status is resolved on explicit Submit (UC-14.1)
+        QuotationStatus status = QuotationStatus.DRAFT;
 
         // 5. Save quotation
         QuotationEntity quotation = QuotationEntity.builder()
