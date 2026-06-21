@@ -157,4 +157,8 @@ logging:
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
 
+# Supabase environment fallbacks (prevents startup crash if environment variables are not set)
+SUPABASE_URL: ${SUPABASE_URL}
+SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+
 
