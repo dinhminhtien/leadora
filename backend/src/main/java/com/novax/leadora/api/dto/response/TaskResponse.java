@@ -39,6 +39,12 @@ public class TaskResponse {
     private UUID dealId;
     private String dealName;
 
+    private OffsetDateTime startAt;
+    private OffsetDateTime endAt;
+
+    private String primaryContactName;
+    private String primaryContactPhone;
+
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 
@@ -61,6 +67,10 @@ public class TaskResponse {
                 .customerName(entity.getCustomer() != null ? entity.getCustomer().getFullName() : null)
                 .dealId(entity.getDeal() != null ? entity.getDeal().getDealId() : null)
                 .dealName(entity.getDeal() != null ? entity.getDeal().getDealName() : null)
+                .startAt(entity.getStartAt())
+                .endAt(entity.getEndAt())
+                .primaryContactName(entity.getPrimaryContactName())
+                .primaryContactPhone(entity.getPrimaryContactPhone())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();

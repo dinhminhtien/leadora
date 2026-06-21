@@ -385,23 +385,13 @@ export function CreateQuotationScreen() {
 
                 <div className="pt-2">
                   <p className="text-[10px] text-slate-400 font-semibold mb-1.5">Quote Status after Save:</p>
-                  {requiresApproval ? (
-                    <Badge
-                      variant="warning"
-                      size="sm"
-                      className="font-bold text-[10px] uppercase w-full justify-center py-1"
-                    >
-                      Pending Manager Approval
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="default"
-                      size="sm"
-                      className="font-bold text-[10px] uppercase w-full justify-center py-1 bg-slate-100 text-slate-600"
-                    >
-                      Draft
-                    </Badge>
-                  )}
+                  <Badge
+                    variant="default"
+                    size="sm"
+                    className="font-bold text-[10px] uppercase w-full justify-center py-1 bg-slate-100 text-slate-600"
+                  >
+                    Draft
+                  </Badge>
                 </div>
 
                 <div className="pt-2 space-y-2">
@@ -412,7 +402,7 @@ export function CreateQuotationScreen() {
                     isLoading={isSubmitting || createQuotation.isPending}
                     leftIcon={<CheckCircle2 className="size-3.5" />}
                   >
-                    {requiresApproval ? "Submit for Approval" : "Save as Draft"}
+                    Save as Draft
                   </Button>
                   <Button
                     type="button"

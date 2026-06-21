@@ -1,7 +1,9 @@
 package com.novax.leadora.api.controller;
 
 import com.novax.leadora.api.dto.request.SaveReportLogRequest;
+import com.novax.leadora.api.dto.response.DashboardSummaryResponse;
 import com.novax.leadora.api.dto.response.ReportLogResponse;
+import com.novax.leadora.application.usecase.reporting.GetDashboardSummaryUseCase;
 import com.novax.leadora.application.usecase.reporting.SaveReportLogUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -16,6 +18,14 @@ import org.springframework.web.bind.annotation.*;
 public class ReportingController {
 
     private final SaveReportLogUseCase saveReportLogUseCase;
+    private final GetDashboardSummaryUseCase getDashboardSummaryUseCase;
+
+    /** Dashboard KPI summary — all aggregation happens server-side */
+    @GetMapping("/dashboard-summary")
+    public ResponseEntity<ApiResponse<DashboardSummaryResponse>> getDashboardSummary() {
+        DashboardSummaryResponse summary = getDashboardSummaryUseCase.execute();
+        return ResponseEntity.ok(ApiResponse.success(summary));
+    }
 
     /** UC-14.2 — Save audit log when a discount report is generated */
     @PostMapping("/logs")

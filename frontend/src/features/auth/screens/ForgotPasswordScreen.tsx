@@ -6,7 +6,7 @@ import * as z from "zod";
 import Link from "next/link";
 import { Mail, AlertCircle, CheckCircle2, ArrowLeft } from "lucide-react";
 
-import { supabaseAuthService } from "@/services/supabase_auth_service";
+import { apiClient } from "@/services/api_client";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -39,10 +39,10 @@ export function ForgotPasswordScreen() {
     setIsSuccess(false);
 
     try {
-      await supabaseAuthService.resetPasswordForEmail(data.email);
+      await apiClient.post("/auth/forgot-password", { email: data.email });
       setIsSuccess(true);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Failed to send password recovery email";
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || "Failed to send password recovery email";
       setError(errorMsg);
     } finally {
       setIsLoading(false);

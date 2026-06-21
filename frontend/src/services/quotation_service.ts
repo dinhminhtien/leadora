@@ -119,6 +119,11 @@ export type CreateQuotationPayload = {
   notes?: string;
 };
 
+export type SubmitQuotationPayload = {
+  submittedByName?: string;
+  submittedByRole?: string;
+};
+
 export type ProcessApprovalPayload = {
   action: "APPROVE" | "REJECT" | "REQUEST_CHANGES";
   managerName: string;
@@ -151,6 +156,11 @@ export const quotationService = {
 
   async create(payload: CreateQuotationPayload): Promise<ApiResponse<Quotation>> {
     const response = await apiClient.post<ApiResponse<Quotation>>(ENDPOINT, payload);
+    return response.data;
+  },
+
+  async submit(id: string, payload: SubmitQuotationPayload): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(`${ENDPOINT}/${id}/submit`, payload);
     return response.data;
   },
 

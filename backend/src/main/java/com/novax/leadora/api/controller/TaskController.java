@@ -6,6 +6,7 @@ import com.novax.leadora.api.dto.response.TaskResponse;
 import com.novax.leadora.application.usecase.task.CreateTaskUseCase;
 import com.novax.leadora.application.usecase.task.GetTaskDetailUseCase;
 import com.novax.leadora.application.usecase.task.GetTaskListUseCase;
+import com.novax.leadora.application.usecase.task.ResolveTaskUseCase;
 import com.novax.leadora.application.usecase.task.UpdateTaskUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -20,13 +21,13 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/tasks")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*", allowedHeaders = "*")
 public class TaskController {
 
     private final CreateTaskUseCase createTaskUseCase;
     private final GetTaskListUseCase getTaskListUseCase;
     private final GetTaskDetailUseCase getTaskDetailUseCase;
     private final UpdateTaskUseCase updateTaskUseCase;
+    private final ResolveTaskUseCase resolveTaskUseCase;
 
     /** UC-10.1 — Create Follow-up Task */
     @PostMapping
@@ -66,5 +67,12 @@ public class TaskController {
     ) {
         TaskResponse task = updateTaskUseCase.execute(taskId, request);
         return ResponseEntity.ok(ApiResponse.success(task, "Task updated successfully"));
+    }
+
+    /** UC-17.5 — Resolve SLA Task (marks COMPLETED + resolves SLA tracking + cancels reminders) */
+    @PatchMapping("/{taskId}/resolve")
+    public ResponseEntity<ApiResponse<TaskResponse>> resolveTask(@PathVariable UUID taskId) {
+        TaskResponse task = resolveTaskUseCase.execute(taskId);
+        return ResponseEntity.ok(ApiResponse.success(task, "Task resolved successfully"));
     }
 }

@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useNotifications } from "@/features/notification/hooks/use_notifications";
 import {
   Bell,
   Bot,
@@ -105,10 +106,20 @@ const navigationGroups: NavGroup[] = [
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { sidebarOpen, toggleSidebar } = useUiStore();
-  const { user } = useAuthStore();
+  const { user, clearUser } = useAuthStore();
+  const { data: unreadNotifications } = useNotifications(user?.id, true);
+  const unreadCount = unreadNotifications?.length ?? 0;
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+
+  const handleLogout = () => {
+    setIsUserDropdownOpen(false);
+    localStorage.removeItem("accessToken");
+    clearUser();
+    router.push(ROUTE_PATHS.login || "/login");
+  };
 
   // Quick Action Handler (Mock)
   const handleQuickAction = (type: string) => {
@@ -169,8 +180,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     key={href}
                     href={href}
                     className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all relative ${isActive
-                        ? "bg-zinc-200/60 text-zinc-900 border border-zinc-300/40 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-850 shadow-xs"
-                        : "hover:bg-zinc-200/30 hover:text-zinc-900 dark:hover:bg-zinc-900/50 dark:hover:text-zinc-200 text-zinc-500 dark:text-zinc-400"
+                      ? "bg-zinc-200/60 text-zinc-900 border border-zinc-300/40 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-850 shadow-xs"
+                      : "hover:bg-zinc-200/30 hover:text-zinc-900 dark:hover:bg-zinc-900/50 dark:hover:text-zinc-200 text-zinc-500 dark:text-zinc-400"
                       }`}
                     title={label}
                   >
@@ -301,11 +312,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
             {/* Notification Center */}
             <button
+              onClick={() => router.push(ROUTE_PATHS.notifications)}
               className="relative rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition cursor-pointer"
               title="Notifications"
             >
               <Bell className="size-4" />
-              <span className="absolute right-2 top-2 size-1.5 rounded-full bg-danger"></span>
+              {unreadCount > 0 && (
+                <span className="absolute right-2 top-2 size-1.5 rounded-full bg-danger"></span>
+              )}
             </button>
 
             {/* User Profile */}
@@ -315,17 +329,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 className="flex items-center gap-2 rounded-full p-0.5 hover:bg-muted transition cursor-pointer"
               >
                 <div className="flex size-7 items-center justify-center rounded-full bg-primary text-white text-[10px] font-bold shadow-xs">
-                  {user?.name?.slice(0, 2).toUpperCase() || "JD"}
+                  {user?.name ? user.name.slice(0, 2).toUpperCase() : ""}
                 </div>
               </button>
 
-              {isUserDropdownOpen && (
+              {isUserDropdownOpen && user && (
                 <>
                   <div className="fixed inset-0 z-20" onClick={() => setIsUserDropdownOpen(false)} />
                   <div className="absolute right-0 mt-2 w-56 rounded-xl border border-border bg-background p-1.5 shadow-lg z-30 animate-in fade-in slide-in-from-top-2 duration-150">
                     <div className="px-2.5 py-2 border-b border-border">
-                      <p className="text-xs font-bold text-foreground">{user?.name || "John Doe"}</p>
-                      <p className="text-[10px] text-muted-foreground">{user?.email || "j.doe@leadora-hotels.com"}</p>
+                      <p className="text-xs font-bold text-foreground">{user.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{user.email}</p>
                       <div className="mt-1.5 flex gap-1">
                         <Badge variant="primary" className="text-[9px] py-0 px-1.5 font-semibold">
                           Sales Manager
@@ -339,7 +353,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                       <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-foreground hover:bg-muted transition cursor-pointer">
                         <Settings className="size-3.5 text-muted-foreground" /> Admin Console
                       </button>
-                      <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-danger hover:bg-rose-500/5 transition border-t border-border mt-1 pt-2 cursor-pointer">
+                      <button 
+                        onClick={handleLogout}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-danger hover:bg-rose-500/5 transition border-t border-border mt-1 pt-2 cursor-pointer"
+                      >
                         <LogOut className="size-3.5" /> Logout Session
                       </button>
                     </div>

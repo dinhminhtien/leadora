@@ -58,9 +58,7 @@ public class UpdateUserUseCase {
         }
 
         if (StringUtils.hasText(request.getPassword())) {
-            if (request.getPassword().length() < 8) {
-                throw new IllegalStateException("Password must be at least 8 characters.");
-            }
+            validatePasswordComplexity(request.getPassword());
             user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         }
 
@@ -100,6 +98,20 @@ public class UpdateUserUseCase {
         if (activeAdmins <= 1) {
             throw new IllegalStateException(
                     "Cannot deactivate or demote the last active Admin account.");
+        }
+    }
+
+    private void validatePasswordComplexity(String password) {
+        if (password == null || password.length() < 6) {
+            throw new IllegalStateException("Password must be at least 6 characters.");
+        }
+        boolean hasUppercase = password.chars().anyMatch(Character::isUpperCase);
+        boolean hasLowercase = password.chars().anyMatch(Character::isLowerCase);
+        boolean hasDigit = password.chars().anyMatch(Character::isDigit);
+        boolean hasSymbol = password.chars().anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
+
+        if (!hasUppercase || !hasLowercase || !hasDigit || !hasSymbol) {
+            throw new IllegalStateException("Password must contain at least one lowercase letter, one uppercase letter, one digit, and one symbol.");
         }
     }
 }

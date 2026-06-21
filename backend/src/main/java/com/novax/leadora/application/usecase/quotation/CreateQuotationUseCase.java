@@ -2,6 +2,7 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.CreateQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
@@ -12,6 +13,7 @@ import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.temporal.ChronoUnit;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CreateQuotationUseCase {
@@ -28,6 +31,7 @@ public class CreateQuotationUseCase {
     private final QuotationRepository quotationRepository;
     private final QuotationDetailRepository quotationDetailRepository;
     private final DealRepository dealRepository;
+    private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Transactional
     public QuotationResponse execute(CreateQuotationRequest request) {
@@ -60,10 +64,8 @@ public class CreateQuotationUseCase {
 
         BigDecimal totalAmount = subtotal.subtract(discountAmount);
 
-        // 4. Determine status — BR: discount > 10% requires manager approval
-        QuotationStatus status = discountPct.compareTo(DISCOUNT_APPROVAL_THRESHOLD) > 0
-                ? QuotationStatus.PENDING_APPROVAL
-                : QuotationStatus.DRAFT;
+        // 4. Always save as DRAFT — status is resolved on explicit Submit (UC-14.1)
+        QuotationStatus status = QuotationStatus.DRAFT;
 
         // 5. Save quotation
         QuotationEntity quotation = QuotationEntity.builder()
@@ -96,6 +98,13 @@ public class CreateQuotationUseCase {
                 .build();
 
         quotationDetailRepository.save(detail);
+
+        // UC-17.2: start SLA tracking — non-fatal if no rule configured
+        try {
+            startSlaTrackingUseCase.execute("QUOTATION_SENT", "QUOTATION", saved.getQuotationId());
+        } catch (Exception e) {
+            log.warn("SLA tracking failed for quotation {}: {}", saved.getQuotationId(), e.getMessage());
+        }
 
         return QuotationResponse.fromWithDetail(saved, (int) nights,
                 request.getNumberOfRooms(), request.getPricePerNight());

@@ -27,8 +27,8 @@ public class GlobalExceptionHandler {
     }
 
     /** BR-07 và các business rule violation → 422 Unprocessable Entity */
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBusinessRuleViolation(IllegalStateException ex) {
+    @ExceptionHandler({IllegalStateException.class, com.novax.leadora.common.exception.BusinessRuleException.class})
+    public ResponseEntity<ApiResponse<Void>> handleBusinessRuleViolation(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(ApiResponse.error(ex.getMessage()));
     }
 

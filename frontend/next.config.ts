@@ -37,7 +37,10 @@ function loadSharedEnv(): void {
 loadSharedEnv();
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
+  turbopack: {},
 };
 
 export default nextConfig;

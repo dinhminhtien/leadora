@@ -12,6 +12,7 @@ import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.novax.leadora.common.exception.BusinessRuleException;
 
 import java.util.List;
 import java.util.UUID;
@@ -73,11 +74,20 @@ public class ManageDealUseCase {
             }
         }
 
+        DealPipelineStage initialStage = mapStageToEnum(request.getStage());
+        DealEntity tempDeal = DealEntity.builder()
+                .customer(customer)
+                .notes(request.getNotes())
+                .expectedRevenue(request.getValue())
+                .expectedCloseDate(request.getExpectedClose())
+                .build();
+        validateStageTransition(DealPipelineStage.PROSPECTING, initialStage, tempDeal, request);
+
         DealEntity deal = DealEntity.builder()
                 .dealName(request.getTitle())
                 .customer(customer)
                 .assignedUser(owner)
-                .pipelineStage(mapStageToEnum(request.getStage()))
+                .pipelineStage(initialStage)
                 .expectedRevenue(request.getValue())
                 .expectedCloseDate(request.getExpectedClose())
                 .status(mapStatusToEnum(request.getStatus()))
@@ -94,22 +104,40 @@ public class ManageDealUseCase {
         DealEntity deal = dealRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Deal not found with ID: " + id));
 
+        if (deal.getStatus() != DealStatus.OPEN) {
+            throw new BusinessRuleException("Closed deals cannot be modified.");
+        }
+
+        // Validate stage transition rules before applying updates
+        if (request.getStage() != null) {
+            DealPipelineStage targetStage = mapStageToEnum(request.getStage());
+            validateStageTransition(deal.getPipelineStage(), targetStage, deal, request);
+            deal.setPipelineStage(targetStage);
+
+            // Auto-assign status based on stage name
+            String stageStr = request.getStage().toLowerCase();
+            if (stageStr.equals("confirmed")) {
+                deal.setStatus(DealStatus.WON);
+            } else if (stageStr.equals("contract")) {
+                deal.setStatus(DealStatus.OPEN);
+            }
+        }
+
         deal.setDealName(request.getTitle());
 
         // Update customer details if they changed
         CustomerEntity customer = deal.getCustomer();
         if (customer != null) {
             customer.setFullName(request.getContactName());
-            if (request.getEmail() != null) customer.setEmail(request.getEmail());
-            if (request.getPhone() != null) customer.setPhone(request.getPhone());
+            if (request.getEmail() != null)
+                customer.setEmail(request.getEmail());
+            if (request.getPhone() != null)
+                customer.setPhone(request.getPhone());
             customerRepository.save(customer);
         }
 
         if (request.getValue() != null) {
             deal.setExpectedRevenue(request.getValue());
-        }
-        if (request.getStage() != null) {
-            deal.setPipelineStage(mapStageToEnum(request.getStage()));
         }
         if (request.getStatus() != null) {
             deal.setStatus(mapStatusToEnum(request.getStatus()));
@@ -136,6 +164,10 @@ public class ManageDealUseCase {
     public DealResponse updateDealStatus(UUID id, String status) {
         DealEntity deal = dealRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Deal not found with ID: " + id));
+
+        if (deal.getStatus() != DealStatus.OPEN) {
+            throw new BusinessRuleException("Closed deals cannot be modified.");
+        }
 
         DealStatus enumStatus = mapStatusToEnum(status);
         deal.setStatus(enumStatus);
@@ -164,23 +196,31 @@ public class ManageDealUseCase {
                 .phone(phone)
                 .value(deal.getExpectedRevenue())
                 .probability(calculateProbability(deal.getPipelineStage(), deal.getStatus()))
-                .stage(mapStageToString(deal.getPipelineStage()))
+                .stage(mapStageToString(deal.getPipelineStage(), deal.getStatus()))
                 .owner(ownerName)
                 .status(mapStatusToString(deal.getStatus()))
                 .expectedClose(deal.getExpectedCloseDate())
                 .createdAt(deal.getCreatedAt() != null ? deal.getCreatedAt().toLocalDate() : java.time.LocalDate.now())
+                .notes(deal.getNotes())
                 .build();
     }
 
     private DealPipelineStage mapStageToEnum(String stage) {
-        if (stage == null) return DealPipelineStage.PROSPECTING;
+        if (stage == null)
+            return DealPipelineStage.PROSPECTING;
         switch (stage.toLowerCase()) {
-            case "inquiry": return DealPipelineStage.PROSPECTING;
-            case "site visit": return DealPipelineStage.QUALIFICATION;
-            case "proposal": return DealPipelineStage.PROPOSAL;
-            case "negotiation": return DealPipelineStage.NEGOTIATION;
-            case "contract": return DealPipelineStage.CLOSED_WON;
-            case "confirmed": return DealPipelineStage.CLOSED_WON;
+            case "inquiry":
+                return DealPipelineStage.PROSPECTING;
+            case "site visit":
+                return DealPipelineStage.QUALIFICATION;
+            case "proposal":
+                return DealPipelineStage.PROPOSAL;
+            case "negotiation":
+                return DealPipelineStage.NEGOTIATION;
+            case "contract":
+                return DealPipelineStage.CLOSED_WON;
+            case "confirmed":
+                return DealPipelineStage.CLOSED_WON;
             default:
                 try {
                     return DealPipelineStage.valueOf(stage.toUpperCase());
@@ -190,25 +230,41 @@ public class ManageDealUseCase {
         }
     }
 
-    private String mapStageToString(DealPipelineStage stage) {
-        if (stage == null) return "Inquiry";
+    private String mapStageToString(DealPipelineStage stage, DealStatus status) {
+        if (stage == null)
+            return "Inquiry";
         switch (stage) {
-            case PROSPECTING: return "Inquiry";
-            case QUALIFICATION: return "Site Visit";
-            case PROPOSAL: return "Proposal";
-            case NEGOTIATION: return "Negotiation";
-            case CLOSED_WON: return "Confirmed";
-            case CLOSED_LOST: return "Confirmed";
-            default: return "Inquiry";
+            case PROSPECTING:
+                return "Inquiry";
+            case QUALIFICATION:
+                return "Site Visit";
+            case PROPOSAL:
+                return "Proposal";
+            case NEGOTIATION:
+                return "Negotiation";
+            case CLOSED_WON:
+                if (status == DealStatus.WON) {
+                    return "Confirmed";
+                } else {
+                    return "Contract";
+                }
+            case CLOSED_LOST:
+                return "Confirmed";
+            default:
+                return "Inquiry";
         }
     }
 
     private DealStatus mapStatusToEnum(String status) {
-        if (status == null) return DealStatus.OPEN;
+        if (status == null)
+            return DealStatus.OPEN;
         switch (status.toLowerCase()) {
-            case "active": return DealStatus.OPEN;
-            case "won": return DealStatus.WON;
-            case "lost": return DealStatus.LOST;
+            case "active":
+                return DealStatus.OPEN;
+            case "won":
+                return DealStatus.WON;
+            case "lost":
+                return DealStatus.LOST;
             default:
                 try {
                     return DealStatus.valueOf(status.toUpperCase());
@@ -219,27 +275,127 @@ public class ManageDealUseCase {
     }
 
     private String mapStatusToString(DealStatus status) {
-        if (status == null) return "active";
+        if (status == null)
+            return "active";
         switch (status) {
-            case OPEN: return "active";
-            case WON: return "won";
-            case LOST: return "lost";
-            default: return "active";
+            case OPEN:
+                return "active";
+            case WON:
+                return "won";
+            case LOST:
+                return "lost";
+            default:
+                return "active";
         }
     }
 
     private int calculateProbability(DealPipelineStage stage, DealStatus status) {
-        if (status == DealStatus.WON) return 100;
-        if (status == DealStatus.LOST) return 0;
-        if (stage == null) return 50;
+        if (status == DealStatus.WON)
+            return 100;
+        if (status == DealStatus.LOST)
+            return 0;
+        if (stage == null)
+            return 50;
         switch (stage) {
-            case PROSPECTING: return 10;
-            case QUALIFICATION: return 30;
-            case PROPOSAL: return 50;
-            case NEGOTIATION: return 70;
-            case CLOSED_WON: return 100;
-            case CLOSED_LOST: return 0;
-            default: return 50;
+            case PROSPECTING:
+                return 10;
+            case QUALIFICATION:
+                return 30;
+            case PROPOSAL:
+                return 50;
+            case NEGOTIATION:
+                return 70;
+            case CLOSED_WON:
+                return 100;
+            case CLOSED_LOST:
+                return 0;
+            default:
+                return 50;
+        }
+    }
+
+    private void validateStageTransition(DealPipelineStage currentStage, DealPipelineStage targetStage, DealEntity deal,
+            DealRequest request) {
+        if (currentStage == targetStage) {
+            return;
+        }
+
+        int currentIdx = getStageOrder(currentStage);
+        int targetIdx = getStageOrder(targetStage);
+
+        if (targetIdx > currentIdx) {
+            for (int i = currentIdx + 1; i <= targetIdx; i++) {
+                validateStep(i, deal, request);
+            }
+        }
+    }
+
+    private int getStageOrder(DealPipelineStage stage) {
+        if (stage == null)
+            return 0;
+        switch (stage) {
+            case PROSPECTING:
+                return 0;
+            case QUALIFICATION:
+                return 1;
+            case PROPOSAL:
+                return 2;
+            case NEGOTIATION:
+                return 3;
+            case CLOSED_WON:
+                return 4;
+            case CLOSED_LOST:
+                return 4;
+            default:
+                return 0;
+        }
+    }
+
+    private void validateStep(int stepIndex, DealEntity deal, DealRequest request) {
+        switch (stepIndex) {
+            case 1: // Site Visit (QUALIFICATION)
+                String email = request.getEmail() != null ? request.getEmail().trim() : "";
+                String phone = request.getPhone() != null ? request.getPhone().trim() : "";
+                if (email.isEmpty() && phone.isEmpty() && deal.getCustomer() != null) {
+                    email = deal.getCustomer().getEmail() != null ? deal.getCustomer().getEmail().trim() : "";
+                    phone = deal.getCustomer().getPhone() != null ? deal.getCustomer().getPhone().trim() : "";
+                }
+                if (email.isEmpty() && phone.isEmpty()) {
+                    throw new BusinessRuleException(
+                            "A Phone number or Email address is required to coordinate a Site Visit.");
+                }
+                break;
+
+            case 2: // Proposal (PROPOSAL)
+                java.math.BigDecimal value = request.getValue();
+                if (value == null) {
+                    value = deal.getExpectedRevenue();
+                }
+                if (value == null || value.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    throw new BusinessRuleException("A deal value greater than $0 is required to generate a Proposal.");
+                }
+                break;
+
+            case 3: // Negotiation (NEGOTIATION)
+                String notes = request.getNotes() != null ? request.getNotes().trim() : "";
+                if (notes.isEmpty() && deal.getNotes() != null) {
+                    notes = deal.getNotes().trim();
+                }
+                if (notes.length() < 5) {
+                    throw new BusinessRuleException(
+                            "Please fill in Notes/Details (at least 5 characters) about guest requirements before starting Negotiation.");
+                }
+                break;
+
+            case 4: // Contract / Confirmed (CLOSED_WON)
+                java.time.LocalDate closeDate = request.getExpectedClose();
+                if (closeDate == null) {
+                    closeDate = deal.getExpectedCloseDate();
+                }
+                if (closeDate == null) {
+                    throw new BusinessRuleException("An Estimated Close Date must be set before drafting a Contract.");
+                }
+                break;
         }
     }
 }
