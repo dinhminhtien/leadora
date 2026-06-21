@@ -27,8 +27,6 @@ public class GetSlaMonitoringUseCase {
         OffsetDateTime now = OffsetDateTime.now();
 
         // Fetch all non-RESOLVED records (ACTIVE + BREACHED still need attention)
-        var records = slaTrackingRepository.findByStatusAndDeadlineAtBefore(SlaStatus.RESOLVED, now);
-
         // Actually fetch all non-RESOLVED: ACTIVE records + already BREACHED in DB
         // Re-query: get all where status != RESOLVED
         var allActive = slaTrackingRepository.findAll().stream()

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useNotifications } from "@/features/notification/hooks/use_notifications";
 import {
   Bell,
   Bot,
@@ -40,7 +41,6 @@ import {
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { useUiStore } from "@/stores/ui_store";
 import { useAuthStore } from "@/stores/auth_store";
-import { useNotifications } from "@/features/notification/hooks/use_notifications";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -173,8 +173,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     key={href}
                     href={href}
                     className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all relative ${isActive
-                        ? "bg-zinc-200/60 text-zinc-900 border border-zinc-300/40 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-850 shadow-xs"
-                        : "hover:bg-zinc-200/30 hover:text-zinc-900 dark:hover:bg-zinc-900/50 dark:hover:text-zinc-200 text-zinc-500 dark:text-zinc-400"
+                      ? "bg-zinc-200/60 text-zinc-900 border border-zinc-300/40 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-850 shadow-xs"
+                      : "hover:bg-zinc-200/30 hover:text-zinc-900 dark:hover:bg-zinc-900/50 dark:hover:text-zinc-200 text-zinc-500 dark:text-zinc-400"
                       }`}
                     title={label}
                   >

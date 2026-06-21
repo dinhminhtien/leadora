@@ -53,7 +53,7 @@ public class WebSecurityConfig {
             "http://127.0.0.1:*",
             "https://*.vercel.app"
         ));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         // X-User-Id: temporary actor identity used by the AI chat assistant while
         // server-side JWT auth is not yet wired (login feature still in progress).
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-User-Id"));
