@@ -108,11 +108,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { sidebarOpen, toggleSidebar } = useUiStore();
-  const { user } = useAuthStore();
+  const { user, clearUser } = useAuthStore();
   const { data: unreadNotifications } = useNotifications(user?.id, true);
   const unreadCount = unreadNotifications?.length ?? 0;
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+
+  const handleLogout = () => {
+    localStorage.removeItem("accessToken");
+    clearUser();
+    router.push(ROUTE_PATHS.login || "/login");
+  };
 
   // Quick Action Handler (Mock)
   const handleQuickAction = (type: string) => {
@@ -346,7 +352,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                       <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-foreground hover:bg-muted transition cursor-pointer">
                         <Settings className="size-3.5 text-muted-foreground" /> Admin Console
                       </button>
-                      <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-danger hover:bg-rose-500/5 transition border-t border-border mt-1 pt-2 cursor-pointer">
+                      <button 
+                        onClick={handleLogout}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-danger hover:bg-rose-500/5 transition border-t border-border mt-1 pt-2 cursor-pointer"
+                      >
                         <LogOut className="size-3.5" /> Logout Session
                       </button>
                     </div>

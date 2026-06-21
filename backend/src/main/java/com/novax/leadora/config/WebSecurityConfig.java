@@ -1,39 +1,75 @@
 package com.novax.leadora.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 
 @Configuration
 @EnableWebSecurity
 public class WebSecurityConfig {
 
+    @Value("${SUPABASE_JWT_SECRET}")
+    private String jwtSecret;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
-            // All endpoints are open for now — JWT role enforcement will be added in a later phase.
-            // NOTE: oauth2ResourceServer is intentionally removed.
-            // Supabase signs access tokens with RS256 (asymmetric). Spring's default JWK decoder
-            // fetches certs from /auth/v1/certs which requires authentication — causing it to fail
-            // and reject all API requests despite the user being authenticated on the frontend.
-            // Since all routes are public (permitAll) for the MVP phase, we skip server-side JWT
-            // validation here. The frontend still sends Bearer tokens for future auth enforcement.
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password").permitAll()
+                .requestMatchers("/api/v1/auth/profile").authenticated()
+                .requestMatchers("/api/v1/**").authenticated()
                 .anyRequest().permitAll()
+            )
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
             );
 
         return http.build();
+    }
+
+    @Bean
+    public JwtDecoder jwtDecoder() {
+        byte[] secretBytes;
+        try {
+            secretBytes = Base64.getDecoder().decode(jwtSecret.trim());
+        } catch (IllegalArgumentException e) {
+            secretBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+        }
+        SecretKey secretKey = new SecretKeySpec(secretBytes, "HmacSHA256");
+        return NimbusJwtDecoder.withSecretKey(secretKey).build();
+    }
+
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
+        grantedAuthoritiesConverter.setAuthorityPrefix("ROLE_");
+        grantedAuthoritiesConverter.setAuthoritiesClaimName("role");
+
+        JwtAuthenticationConverter jwtAuthenticationConverter = new JwtAuthenticationConverter();
+        jwtAuthenticationConverter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);
+        return jwtAuthenticationConverter;
     }
 
     /**
@@ -54,8 +90,6 @@ public class WebSecurityConfig {
             "https://*.vercel.app"
         ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        // X-User-Id: temporary actor identity used by the AI chat assistant while
-        // server-side JWT auth is not yet wired (login feature still in progress).
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-User-Id"));
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true);

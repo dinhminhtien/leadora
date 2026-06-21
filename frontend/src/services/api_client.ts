@@ -40,16 +40,21 @@ export const apiClient = axios.create({
   },
 });
 
-// Inject Supabase access token as Bearer token on every request
+// Inject access token as Bearer token on every request
 apiClient.interceptors.request.use(async (config) => {
   if (typeof window !== "undefined") {
-    const supabase = createSupabaseBrowserClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    const localToken = localStorage.getItem("accessToken");
+    if (localToken) {
+      config.headers.Authorization = `Bearer ${localToken}`;
+    } else {
+      const supabase = createSupabaseBrowserClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    if (session?.access_token) {
-      config.headers.Authorization = `Bearer ${session.access_token}`;
+      if (session?.access_token) {
+        config.headers.Authorization = `Bearer ${session.access_token}`;
+      }
     }
   }
   return config;
