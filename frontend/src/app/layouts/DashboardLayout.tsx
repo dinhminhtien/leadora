@@ -118,7 +118,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const handleLogout = async () => {
     setIsUserDropdownOpen(false);
-    localStorage.removeItem("accessToken");
+    supabaseAuthService.clearLocalSession();
     clearUser();
     
     try {
@@ -143,7 +143,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     <div className="min-h-screen bg-background text-foreground flex">
       {/* Sidebar navigation: Fully Adaptive light/dark theme */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 flex flex-col border-r border-zinc-200 dark:border-zinc-900 bg-zinc-50 dark:bg-zinc-950 text-zinc-500 dark:text-zinc-400 transition-all duration-300 ${sidebarOpen ? "w-64" : "w-16"
+        className={`fixed inset-y-0 left-0 z-30 flex flex-col border-r border-zinc-200 dark:border-zinc-900 bg-zinc-50 dark:bg-zinc-950 text-zinc-500 dark:text-zinc-400 transition-all duration-300 ${sidebarOpen ? "w-52" : "w-16"
           }`}
       >
         {/* Brand/Logo Header */}
@@ -237,11 +237,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Main Content Area */}
       <div
-        className={`flex-1 flex flex-col transition-all duration-300 ${sidebarOpen ? "pl-64" : "pl-16"
+        className={`flex-1 flex flex-col transition-all duration-300 ${sidebarOpen ? "pl-52" : "pl-16"
           }`}
       >
         {/* Top Header */}
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background/80 backdrop-blur-md px-6 shadow-xs">
+        <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-border bg-background/80 backdrop-blur-md px-6 shadow-xs">
           {/* Left: Mobile Toggle or Current Route Name */}
           <div className="flex items-center gap-3">
             <button
@@ -287,8 +287,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
               {isQuickAddOpen && (
                 <>
-                  <div className="fixed inset-0 z-20" onClick={() => setIsQuickAddOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-48 rounded-xl border border-border bg-background p-1.5 shadow-lg z-30 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="fixed inset-0 z-40" onClick={() => setIsQuickAddOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-48 rounded-xl border border-border bg-background p-1.5 shadow-lg z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                     <p className="px-2.5 py-1 text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Create New</p>
                     <button
                       onClick={() => handleQuickAction("Lead")}
@@ -347,8 +347,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
               {isUserDropdownOpen && user && (
                 <>
-                  <div className="fixed inset-0 z-20" onClick={() => setIsUserDropdownOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-border bg-background p-1.5 shadow-lg z-30 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="fixed inset-0 z-40" onClick={() => setIsUserDropdownOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-border bg-background p-1.5 shadow-lg z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                     <div className="px-2.5 py-2 border-b border-border">
                       <p className="text-xs font-bold text-foreground">{user.name}</p>
                       <p className="text-[10px] text-muted-foreground">{user.email}</p>

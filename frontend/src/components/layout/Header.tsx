@@ -24,9 +24,9 @@ export const Header: React.FC = () => {
   const { clearUser } = useAuthStore();
 
   const handleLogout = async () => {
-    localStorage.removeItem("accessToken");
+    supabaseAuthService.clearLocalSession();
     clearUser();
-    
+
     try {
       await Promise.allSettled([
         authService.logout(),
@@ -108,7 +108,7 @@ export const Header: React.FC = () => {
                   <Settings className="size-4" />
                   Settings
                 </button>
-                <button 
+                <button
                   onClick={handleLogout}
                   className="flex w-full items-center gap-3 px-4 py-2 text-sm text-danger hover:bg-muted transition-colors border-t border-border"
                 >

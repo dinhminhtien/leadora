@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { authService } from "@/services/auth_service";
+import { supabaseAuthService } from "@/services/supabase_auth_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 
@@ -32,9 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!token) {
         try {
-          const { createSupabaseBrowserClient } = require("@/services/supabase/client");
-          const supabase = createSupabaseBrowserClient();
-          const { data: { session } } = await supabase.auth.getSession();
+          const session = await supabaseAuthService.getSession();
           if (session?.access_token) {
             token = session.access_token;
           }
@@ -52,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const response = await authService.getProfile();
         setUser(response.data);
       } catch (e) {
-        localStorage.removeItem("accessToken");
+        supabaseAuthService.clearLocalSession();
         clearUser();
       }
     };
