@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/Button";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth_store";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { authService } from "@/services/auth_service";
+import { supabaseAuthService } from "@/services/supabase_auth_service";
 
 export const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -21,9 +23,19 @@ export const Header: React.FC = () => {
   const router = useRouter();
   const { clearUser } = useAuthStore();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     localStorage.removeItem("accessToken");
     clearUser();
+    
+    try {
+      await Promise.allSettled([
+        authService.logout(),
+        supabaseAuthService.signOut(),
+      ]);
+    } catch (e) {
+      console.warn("Failed to complete services logout", e);
+    }
+
     router.push(ROUTE_PATHS.login || "/login");
   };
 
