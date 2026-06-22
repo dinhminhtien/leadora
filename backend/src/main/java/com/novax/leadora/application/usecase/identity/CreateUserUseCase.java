@@ -15,8 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * UC-6.2 — Create User Account.
- * Enforces email uniqueness (E5) and a valid role (E6), hashes the initial password with BCrypt,
- * and never echoes the credential back. Admin-only per BR-03 (auth enforcement is a later phase).
+ * Enforces email uniqueness (E5) and a valid role (E6), hashes the initial
+ * password with BCrypt,
+ * and never echoes the credential back. Admin-only per BR-03 (auth enforcement
+ * is a later phase).
  */
 @Service
 @RequiredArgsConstructor
@@ -61,10 +63,12 @@ public class CreateUserUseCase {
         boolean hasUppercase = password.chars().anyMatch(Character::isUpperCase);
         boolean hasLowercase = password.chars().anyMatch(Character::isLowerCase);
         boolean hasDigit = password.chars().anyMatch(Character::isDigit);
-        boolean hasSymbol = password.chars().anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
+        boolean hasSymbol = password.chars()
+                .anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
 
         if (!hasUppercase || !hasLowercase || !hasDigit || !hasSymbol) {
-            throw new IllegalStateException("Password must contain at least one lowercase letter, one uppercase letter, one digit, and one symbol.");
+            throw new IllegalStateException(
+                    "Password must contain at least one lowercase letter, one uppercase letter, one digit, and one symbol.");
         }
     }
 }

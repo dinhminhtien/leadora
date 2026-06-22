@@ -493,8 +493,8 @@ export function LeadListScreen() {
 
   const pageData      = resp?.data;
   const leads         = pageData?.content ?? [];
-  const totalPages    = pageData?.totalPages ?? 1;
-  const totalElements = pageData?.totalElements ?? 0;
+  const totalPages    = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalPages : (pageData?.totalPages ?? 1);
+  const totalElements = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalElements : (pageData?.totalElements ?? 0);
 
   const qualified     = leads.filter(l => l.status === "QUALIFIED").length;
   const active        = leads.filter(l => l.status !== "LOST" && l.status !== "CONVERTED").length;

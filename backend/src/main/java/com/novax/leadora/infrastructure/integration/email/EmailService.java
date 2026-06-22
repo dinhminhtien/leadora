@@ -55,7 +55,7 @@ public class EmailService {
                     "  </p>" +
                     "  <div style=\"border-top: 1px solid #f1f5f9; margin-top: 25px; padding-top: 15px; text-align: center;\">"
                     +
-                    "    <p style=\"color: #94a3b8; font-size: 11px; margin: 0;\">&copy; 2026 Leadora Novax. All rights reserved.</p>"
+                    "    <p style=\"color: #94a3b8; font-size: 11px; margin: 0;\">&copy; 2026 Leadora NovaX. All rights reserved.</p>"
                     +
                     "  </div>" +
                     "</div>";
