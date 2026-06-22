@@ -17,11 +17,11 @@ import java.util.UUID;
 @Repository
 public interface LeadRepository extends JpaRepository<LeadEntity, UUID> {
 
-    @EntityGraph(attributePaths = {"assignedUser", "createdBy"})
+    @EntityGraph(attributePaths = {"assignedUser", "createdBy", "customer"})
     @Query("SELECT l FROM LeadEntity l WHERE l.leadId = :leadId")
     Optional<LeadEntity> findWithUsersById(@Param("leadId") UUID leadId);
 
-    @EntityGraph(attributePaths = {"assignedUser", "createdBy"})
+    @EntityGraph(attributePaths = {"assignedUser", "createdBy", "customer"})
     @Query(value = """
         SELECT l FROM LeadEntity l
         WHERE (:search = '' OR LOWER(l.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
@@ -54,7 +54,7 @@ public interface LeadRepository extends JpaRepository<LeadEntity, UUID> {
      * since the status enum is stored as STRING (alphabetical order would be meaningless).
      * Ordering is fixed high→low, so the Pageable must be unsorted.
      */
-    @EntityGraph(attributePaths = {"assignedUser", "createdBy"})
+    @EntityGraph(attributePaths = {"assignedUser", "createdBy", "customer"})
     @Query(value = """
         SELECT l FROM LeadEntity l
         WHERE (:search = '' OR LOWER(l.fullName) LIKE LOWER(CONCAT('%', :search, '%'))

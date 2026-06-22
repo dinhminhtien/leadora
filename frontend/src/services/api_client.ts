@@ -11,10 +11,15 @@ export type ApiResponse<T> = {
 
 export type PageResponse<T> = {
   content: T[];
-  page: number;
-  size: number;
-  totalElements: number;
-  totalPages: number;
+  page: number | {
+    size: number;
+    number: number;
+    totalElements: number;
+    totalPages: number;
+  };
+  size?: number;
+  totalElements?: number;
+  totalPages?: number;
   first?: boolean;
   last?: boolean;
 };
