@@ -69,5 +69,5 @@ jobs:
           --service-account ${{ env.RUNTIME_SERVICE_ACCOUNT }} \
           --update-env-vars "GEMINI_PROJECT_ID=${{ env.PROJECT_ID }},GEMINI_LOCATION=asia-southeast1,SUPABASE_URL=${{ secrets.SUPABASE_URL }},FRONTEND_URL=https://leadora-novax.vercel.app" \
           --update-secrets "SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET:latest" \
-          --remove-env-vars "GOOGLE_GENAI_API_KEY,GEMINI_API_KEY" \
+          --remove-env-vars "GOOGLE_GENAI_API_KEY,GEMINI_API_KEY,SUPABASE_JWT_SECRET" \
           --allow-unauthenticated
