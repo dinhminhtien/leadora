@@ -27,8 +27,14 @@ export type Task = {
   createdByName: string | null;
   leadId: string | null;
   leadName: string | null;
+  leadPhone: string | null;
+  leadEmail: string | null;
+  leadCompanyName: string | null;
   customerId: string | null;
   customerName: string | null;
+  customerPhone: string | null;
+  customerEmail: string | null;
+  customerCompanyName: string | null;
   dealId: string | null;
   dealName: string | null;
   primaryContactName: string | null;

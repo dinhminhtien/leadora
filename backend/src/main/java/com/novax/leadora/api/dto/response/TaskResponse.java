@@ -30,9 +30,15 @@ public class TaskResponse {
 
     private UUID leadId;
     private String leadName;
+    private String leadPhone;
+    private String leadEmail;
+    private String leadCompanyName;
 
     private UUID customerId;
     private String customerName;
+    private String customerPhone;
+    private String customerEmail;
+    private String customerCompanyName;
 
     private UUID dealId;
     private String dealName;
@@ -68,8 +74,14 @@ public class TaskResponse {
                 .createdByName(entity.getCreatedBy() != null ? entity.getCreatedBy().getFullName() : null)
                 .leadId(entity.getLead() != null ? entity.getLead().getLeadId() : null)
                 .leadName(entity.getLead() != null ? entity.getLead().getFullName() : null)
+                .leadPhone(entity.getLead() != null ? entity.getLead().getPhone() : null)
+                .leadEmail(entity.getLead() != null ? entity.getLead().getEmail() : null)
+                .leadCompanyName(entity.getLead() != null ? entity.getLead().getCompanyName() : null)
                 .customerId(entity.getCustomer() != null ? entity.getCustomer().getCustomerId() : null)
                 .customerName(entity.getCustomer() != null ? entity.getCustomer().getFullName() : null)
+                .customerPhone(entity.getCustomer() != null ? entity.getCustomer().getPhone() : null)
+                .customerEmail(entity.getCustomer() != null ? entity.getCustomer().getEmail() : null)
+                .customerCompanyName(entity.getCustomer() != null ? entity.getCustomer().getCompanyName() : null)
                 .dealId(entity.getDeal() != null ? entity.getDeal().getDealId() : null)
                 .dealName(entity.getDeal() != null ? entity.getDeal().getDealName() : null)
                 .startAt(entity.getStartAt())

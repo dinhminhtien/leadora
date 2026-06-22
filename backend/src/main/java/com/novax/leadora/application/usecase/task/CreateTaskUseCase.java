@@ -3,7 +3,9 @@ package com.novax.leadora.application.usecase.task;
 import com.novax.leadora.api.dto.request.CreateTaskRequest;
 import com.novax.leadora.api.dto.response.TaskResponse;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import org.springframework.http.HttpStatus;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
@@ -63,7 +65,10 @@ public class CreateTaskUseCase {
 
         if (request.getStartAt() != null && request.getEndAt() != null
                 && !request.getStartAt().isBefore(request.getEndAt())) {
-            throw new IllegalArgumentException("start_at must be before end_at");
+            throw new BusinessException(
+                    "INVALID_SCHEDULE",
+                    "End time must be later than start time.",
+                    HttpStatus.BAD_REQUEST);
         }
 
         TaskEntity task = TaskEntity.builder()

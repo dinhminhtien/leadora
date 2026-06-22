@@ -42,9 +42,10 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID> {
           AND t.endAt IS NOT NULL AND t.endAt < CURRENT_TIMESTAMP
         ))
       ORDER BY
+        CASE WHEN t.status = com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus.OPEN THEN 0 ELSE 1 END ASC,
         CASE WHEN t.startAt IS NULL THEN 1 ELSE 0 END ASC,
         t.startAt ASC,
-        t.createdAt DESC
+        t.updatedAt DESC
       """, countQuery = """
       SELECT COUNT(t) FROM TaskEntity t
       WHERE (:search = '' OR LOWER(t.title) LIKE LOWER(CONCAT('%', :search, '%'))
