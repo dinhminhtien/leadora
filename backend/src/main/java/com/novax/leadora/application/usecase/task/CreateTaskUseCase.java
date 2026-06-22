@@ -66,18 +66,11 @@ public class CreateTaskUseCase {
             throw new IllegalArgumentException("start_at must be before end_at");
         }
 
-        // Auto-derive due_date from start_at when not explicitly provided
-        java.time.LocalDate dueDate = request.getDueDate();
-        if (dueDate == null && request.getStartAt() != null) {
-            dueDate = request.getStartAt().toLocalDate();
-        }
-
         TaskEntity task = TaskEntity.builder()
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .priority(priority)
                 .status(TaskStatus.OPEN)
-                .dueDate(dueDate)
                 .resultNote(request.getResultNote())
                 .assignedUser(assignedUser)
                 .lead(lead)

@@ -4,7 +4,6 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.TaskPriority;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -44,9 +43,6 @@ public class TaskEntity extends BaseEntity {
     @Column(name = "status", nullable = false, length = 20)
     private TaskStatus status;
 
-    @Column(name = "due_date")
-    private LocalDate dueDate;
-
     @Column(name = "result_note", columnDefinition = "TEXT")
     private String resultNote;
 
@@ -61,7 +57,7 @@ public class TaskEntity extends BaseEntity {
 
     @Column(name = "primary_contact_phone", length = 50)
     private String primaryContactPhone;
-
+    
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lead_id")
     private LeadEntity lead;
@@ -73,4 +69,6 @@ public class TaskEntity extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "deal_id")
     private DealEntity deal;
+
+
 }

@@ -2,9 +2,13 @@ import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_c
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type TaskStatus = "OPEN" | "IN_PROGRESS" | "WAITING_CUSTOMER" | "COMPLETED" | "CANCELLED";
-export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
-export type WorkflowAction = "START" | "COMPLETE" | "CANCEL" | "REOPEN";
+/**
+ * TaskStatus - Simplified to 3 core business statuses.
+ * OVERDUE is NOT a status; it is calculated dynamically:
+ * - isOverdue = true when status == OPEN && now > endAt
+ */
+export type TaskStatus = "OPEN" | "COMPLETED" | "CANCELLED";
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
 export type Task = {
   taskId: string;
@@ -12,7 +16,6 @@ export type Task = {
   description: string | null;
   priority: TaskPriority;
   status: TaskStatus;
-  dueDate: string | null;
   /** ISO datetime with timezone offset, e.g. "2026-06-24T09:00:00+07:00" */
   startAt: string | null;
   /** ISO datetime with timezone offset */
@@ -30,6 +33,7 @@ export type Task = {
   dealName: string | null;
   primaryContactName: string | null;
   primaryContactPhone: string | null;
+  isOverdue: boolean | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -46,7 +50,6 @@ export type CreateTaskPayload = {
   description?: string;
   assignedUserId: string;
   priority: TaskPriority;
-  dueDate: string;
   resultNote?: string;
   leadId?: string;
   customerId?: string;
@@ -63,7 +66,6 @@ export type UpdateTaskPayload = {
   assignedUserId?: string;
   priority?: TaskPriority;
   status?: TaskStatus;
-  dueDate?: string;
   resultNote?: string;
   leadId?: string;
   customerId?: string;
@@ -74,11 +76,22 @@ export type UpdateTaskPayload = {
   endAt?: string;
 };
 
+export type ResignTaskPayload = {
+  title?: string;
+  description?: string;
+  priority?: TaskPriority;
+  assignedUserId?: string;
+  startAt?: string;
+  endAt?: string;
+  resignNote?: string;
+};
+
 export type TaskListParams = {
   search?: string;
   status?: string;
   priority?: string;
   assignedUserId?: string;
+  customerId?: string;
   overdue?: boolean;
   page?: number;
   size?: number;
@@ -109,20 +122,13 @@ export const taskService = {
     return data;
   },
 
-  async transition(id: string, action: WorkflowAction):
-      Promise<ApiResponse<Task>> {
-    const { data } = await
-        apiClient.patch<ApiResponse<Task>>(
-            `${ENDPOINT}/${id}/workflow`,
-            { action },
-        );
+  async resign(id: string, payload: ResignTaskPayload): Promise<ApiResponse<Task>> {
+    const { data } = await apiClient.post<ApiResponse<Task>>(`${ENDPOINT}/${id}/resign`, payload);
     return data;
   },
 
-  async resolve(taskId: string):
-      Promise<ApiResponse<Task>> {
-    const { data } = await apiClient.patch<ApiResponse<
-        Task>>(`${ENDPOINT}/${taskId}/resolve`);
+  async resolve(taskId: string): Promise<ApiResponse<Task>> {
+    const { data } = await apiClient.patch<ApiResponse<Task>>(`${ENDPOINT}/${taskId}/resolve`);
     return data;
   },
 };

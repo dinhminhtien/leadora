@@ -7,7 +7,6 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import lombok.Builder;
 import lombok.Getter;
 
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -21,7 +20,6 @@ public class TaskResponse {
     private String description;
     private TaskPriority priority;
     private TaskStatus status;
-    private LocalDate dueDate;
     private String resultNote;
 
     private UUID assignedUserId;
@@ -48,14 +46,21 @@ public class TaskResponse {
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 
+    /** Computed property: true if status == OPEN && now > endAt */
+    private Boolean isOverdue;
+
     public static TaskResponse from(TaskEntity entity) {
+        final OffsetDateTime now = OffsetDateTime.now();
+        final boolean isOverdue = entity.getStatus() == TaskStatus.OPEN
+                && entity.getEndAt() != null
+                && now.isAfter(entity.getEndAt());
+
         return TaskResponse.builder()
                 .taskId(entity.getTaskId())
                 .title(entity.getTitle())
                 .description(entity.getDescription())
                 .priority(entity.getPriority())
                 .status(entity.getStatus())
-                .dueDate(entity.getDueDate())
                 .resultNote(entity.getResultNote())
                 .assignedUserId(entity.getAssignedUser() != null ? entity.getAssignedUser().getUserId() : null)
                 .assignedUserName(entity.getAssignedUser() != null ? entity.getAssignedUser().getFullName() : null)
@@ -71,6 +76,7 @@ public class TaskResponse {
                 .endAt(entity.getEndAt())
                 .primaryContactName(entity.getPrimaryContactName())
                 .primaryContactPhone(entity.getPrimaryContactPhone())
+                .isOverdue(isOverdue)
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();

@@ -40,9 +40,6 @@ public class UpdateTaskUseCase {
         if (request.getDescription() != null) {
             task.setDescription(request.getDescription());
         }
-        if (request.getDueDate() != null) {
-            task.setDueDate(request.getDueDate());
-        }
         if (request.getResultNote() != null) {
             task.setResultNote(request.getResultNote());
         }
@@ -56,9 +53,7 @@ public class UpdateTaskUseCase {
         if (StringUtils.hasText(request.getStatus())) {
             try {
                 TaskStatus newStatus = TaskStatus.valueOf(request.getStatus().toUpperCase());
-                if (newStatus != TaskStatus.OVERDUE) {
-                    task.setStatus(newStatus);
-                }
+                task.setStatus(newStatus);
             } catch (IllegalArgumentException ignored) {}
         }
 
@@ -84,10 +79,6 @@ public class UpdateTaskUseCase {
         }
         if (request.getStartAt() != null) {
             task.setStartAt(request.getStartAt());
-            // Keep due_date in sync with start date for backward compatibility
-            if (task.getDueDate() == null) {
-                task.setDueDate(request.getStartAt().toLocalDate());
-            }
         }
         if (request.getEndAt() != null) {
             task.setEndAt(request.getEndAt());
