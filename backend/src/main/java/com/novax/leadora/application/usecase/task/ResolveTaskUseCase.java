@@ -1,6 +1,7 @@
 package com.novax.leadora.application.usecase.task;
 
 import com.novax.leadora.api.dto.response.TaskResponse;
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.ReminderEntity;
 import com.novax.leadora.infrastructure.persistence.entity.SlaTrackingEntity;
@@ -16,7 +17,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -44,7 +44,10 @@ public class ResolveTaskUseCase {
 
         // E3: task already resolved
         if (task.getStatus() == TaskStatus.COMPLETED || task.getStatus() == TaskStatus.CANCELLED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Task already resolved");
+            throw new BusinessException(
+                    "TASK_ALREADY_RESOLVED",
+                    "This task has already been completed or cancelled.",
+                    HttpStatus.CONFLICT);
         }
 
         // Step 3-4 (POST-1): mark task COMPLETED

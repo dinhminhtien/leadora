@@ -26,13 +26,12 @@ import { Button } from "@/components/ui/Button";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useDashboardSummary } from "@/features/reporting/hooks/use_reporting";
 import { useTasks } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
-import { taskService, type WorkflowAction } from "@/services/follow_up_task_service";
+import { taskService } from "@/services/follow_up_task_service";
 
 export type FollowUpTask = {
   id: string;
   title: string;
   description: string;
-  dueDate: string;
   priority: "high" | "medium" | "low";
   status: "pending" | "completed" | "overdue";
   linkedEntityName: string;
@@ -52,7 +51,6 @@ const initialTasks: FollowUpTask[] = [
     id: "task-1",
     title: "Follow up on Corporate Group inquiry",
     description: "Call back event planner for Hilton corporate booking",
-    dueDate: "Today",
     priority: "high",
     status: "pending",
     linkedEntityName: "Hilton Corporate Group",
@@ -61,7 +59,6 @@ const initialTasks: FollowUpTask[] = [
     id: "task-2",
     title: "Send quotation for VIP room block",
     description: "Draft custom contract rates for wedding block (40 rooms)",
-    dueDate: "Today",
     priority: "medium",
     status: "pending",
     linkedEntityName: "Victoria Wedding",
@@ -70,7 +67,6 @@ const initialTasks: FollowUpTask[] = [
     id: "task-3",
     title: "Approve front desk handover log",
     description: "Review night auditor handover logs for operational deviations",
-    dueDate: "Today",
     priority: "low",
     status: "completed",
     linkedEntityName: "Front Desk Shift A",
@@ -79,7 +75,6 @@ const initialTasks: FollowUpTask[] = [
     id: "task-4",
     title: "Check SLA alert for VIP booking",
     description: "Booking response time exceeded 2 hours limit",
-    dueDate: "Overdue",
     priority: "high",
     status: "overdue",
     linkedEntityName: "John Hammond (VIP)",
@@ -131,19 +126,17 @@ export function DashboardScreen() {
 
   const queryClient = useQueryClient();
   const transitionMutation = useMutation({
-    mutationFn: ({ taskId, action }: { taskId: string; action: WorkflowAction }) =>
-      taskService.transition(taskId, action),
+    mutationFn: ({ taskId, status }: { taskId: string; status: "OPEN" | "COMPLETED" }) =>
+      taskService.update(taskId, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     }
   });
 
-  // Toggle task status — only sends the action; backend decides the result
   const handleToggleTask = (taskId: string, currentStatus: string) => {
-    const isCompleted = currentStatus === "COMPLETED";
-    const action: WorkflowAction = isCompleted ? "REOPEN" : "COMPLETE";
-    transitionMutation.mutate({ taskId, action });
+    const newStatus = currentStatus === "COMPLETED" ? "OPEN" : "COMPLETED";
+    transitionMutation.mutate({ taskId, status: newStatus });
   };
 
   const [interactions] = useState<InteractionTimeline[]>(initialInteractions);
@@ -173,8 +166,6 @@ export function DashboardScreen() {
   }));
 
   const maxStageValue = Math.max(...funnelData.map(f => f.value), 1);
-
-  const todayStr = new Date().toISOString().split("T")[0];
 
   const isLoading = loadingSummary || loadingTasks;
 
@@ -407,7 +398,7 @@ export function DashboardScreen() {
             <div className="divide-y divide-border">
               {realTasks.slice(0, 5).map(task => {
                 const isCompleted = task.status === "COMPLETED";
-                const isOverdue = !isCompleted && task.dueDate && task.dueDate < todayStr;
+                const isOverdue = !isCompleted && task.isOverdue === true;
                 const statusColor = isCompleted
                   ? "text-emerald-500 fill-emerald-500/20"
                   : isOverdue

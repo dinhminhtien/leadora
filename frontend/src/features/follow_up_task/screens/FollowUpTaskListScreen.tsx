@@ -35,6 +35,7 @@ import {
   useTasks,
   useCreateTask,
   useUpdateTask,
+  useResignTask,
   useUsers,
 } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import {
@@ -42,11 +43,13 @@ import {
   type Task,
   type TaskPriority,
   type TaskStatus,
-  type WorkflowAction,
   type CreateTaskPayload,
   type UpdateTaskPayload,
+  type ResignTaskPayload,
   type TaskListParams,
 } from "@/services/follow_up_task_service";
+import { toast } from "@/stores/toast_store";
+import { getApiErrorMessage } from "@/lib/api_error";
 import { leadService, type Lead } from "@/services/lead_service";
 import { customerProfileService } from "@/services/customer_profile_service";
 
@@ -67,17 +70,13 @@ type ActivityType = typeof ACTIVITY_TYPES[number]["type"];
 
 function isOverdue(task: Task): boolean {
   if (task.status === "COMPLETED" || task.status === "CANCELLED") return false;
-  // Timeline task: overdue when endAt has passed
   if (task.endAt) return new Date(task.endAt) < new Date();
-  // Legacy task: overdue when dueDate has passed
-  if (task.dueDate) return new Date(task.dueDate) < new Date();
   return false;
 }
 
-/** Primary date for agenda/calendar grouping: prefer startAt date, fall back to dueDate. */
+/** Primary date for agenda/calendar grouping — uses startAt date. */
 function taskDateKey(task: Task): string | null {
-  if (task.startAt) return task.startAt.split("T")[0];
-  if (task.dueDate) return task.dueDate.split("T")[0];
+  if (task.startAt) return extractLocalDate(task.startAt);
   return null;
 }
 
@@ -108,7 +107,26 @@ function buildISODateTime(date: string, time: string): string {
 function addDays(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatShortDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", "");
+}
+
+/** Extract local date "YYYY-MM-DD" from any ISO datetime string (handles UTC and offset). */
+function extractLocalDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Extract local time "HH:mm" from any ISO datetime string (handles UTC and offset). */
+function extractLocalTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
 function linkedEntityLabel(task: Task): string {
@@ -129,23 +147,27 @@ function linkedEntityType(task: Task): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PRIORITY_BADGE: Record<TaskPriority, "danger" | "warning" | "default"> = {
+  CRITICAL: "danger",
   HIGH: "danger",
   MEDIUM: "warning",
   LOW: "default",
 };
 
+const PRIORITY_DOT: Record<TaskPriority, string> = {
+  CRITICAL: "bg-red-600",
+  HIGH: "bg-red-400",
+  MEDIUM: "bg-amber-400",
+  LOW: "bg-slate-300",
+};
+
 const STATUS_BADGE: Record<TaskStatus, "primary" | "warning" | "success" | "default"> = {
   OPEN: "primary",
-  IN_PROGRESS: "warning",
-  WAITING_CUSTOMER: "warning",
   COMPLETED: "success",
   CANCELLED: "default",
 };
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   OPEN: "Open",
-  IN_PROGRESS: "In Progress",
-  WAITING_CUSTOMER: "Waiting Customer",
   COMPLETED: "Completed",
   CANCELLED: "Cancelled",
 };
@@ -178,44 +200,73 @@ function ReassignFollowUpModal({
   users: UserOption[];
 }) {
   const [form, setForm] = useState({
-    assignedUserId: task.assignedUserId ?? "",
-    date: task.startAt ? task.startAt.split("T")[0] : (task.dueDate ?? ""),
-    startTime: task.startAt ? task.startAt.substring(11, 16) : "",
-    endTime: task.endAt ? task.endAt.substring(11, 16) : "",
+    title: task.title,
+    description: task.description ?? "",
+    priority: task.priority as TaskPriority,
+    assignedUserId: "",
+    startDate: task.startAt ? extractLocalDate(task.startAt) : addDays(1),
+    startTime: task.startAt ? extractLocalTime(task.startAt) : "09:00",
+    endDate: task.endAt ? extractLocalDate(task.endAt) : (task.startAt ? extractLocalDate(task.startAt) : addDays(1)),
+    endTime: task.endAt ? extractLocalTime(task.endAt) : "10:00",
     note: "",
-    status: task.status,
   });
+  const [validationError, setValidationError] = useState<string | null>(null);
 
-  const updateMutation = useUpdateTask(task.taskId);
+  const resignMutation = useResignTask(task.taskId);
 
   function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
-    if (!form.assignedUserId) return;
+    setValidationError(null);
+
+    if (!form.assignedUserId) {
+      setValidationError("Please select a staff member to reassign to.");
+      return;
+    }
+    if (!form.startDate || !form.startTime || !form.endDate || !form.endTime) {
+      setValidationError("Start and end date/time are all required.");
+      return;
+    }
+    const today = toDateStr(new Date());
+    if (form.startDate < today) {
+      setValidationError("Cannot schedule in the past.");
+      return;
+    }
+    const newStartAt = buildISODateTime(form.startDate, form.startTime);
+    const newEndAt = buildISODateTime(form.endDate, form.endTime);
+    if (new Date(newStartAt) >= new Date(newEndAt)) {
+      setValidationError("End time must be after start time.");
+      return;
+    }
 
     const toUser = users.find(u => u.userId === form.assignedUserId);
     const toName = toUser?.fullName ?? "Unknown";
     const fromName = task.assignedUserName ?? "Unassigned";
-    const ts = new Date().toLocaleString();
-    const stamp = `[Reassigned] ${fromName} → ${toName} (${ts})${form.note ? `\nNote: ${form.note}` : ""}`;
-    const newResultNote = task.resultNote ? `${stamp}\n---\n${task.resultNote}` : stamp;
+    const oldSchedule = task.startAt
+      ? `${formatShortDateTime(task.startAt)} → ${formatShortDateTime(task.endAt)}`
+      : "not set";
+    const newSchedule = `${formatShortDateTime(newStartAt)} → ${formatShortDateTime(newEndAt)}`;
 
-    const payload: UpdateTaskPayload = {
-      assignedUserId: form.assignedUserId,
-      resultNote: newResultNote,
-      status: form.status,
-    };
-    if (form.date && form.startTime) {
-      payload.startAt = buildISODateTime(form.date, form.startTime);
-      const [h, m] = (form.endTime || form.startTime).split(":").map(Number);
-      const endH = form.endTime ? h : (h + 1) % 24;
-      payload.endAt = buildISODateTime(form.date, `${String(endH).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
-    } else if (form.date) {
-      payload.startAt = buildISODateTime(form.date, "09:00");
-      payload.endAt = buildISODateTime(form.date, "10:00");
-    }
+    const lines = [
+      "[Reassigned]",
+      `${fromName} → ${toName}`,
+      `Old: ${oldSchedule}`,
+      `New: ${newSchedule}`,
+    ];
+    if (form.note.trim()) lines.push(`Note: ${form.note.trim()}`);
+    const resignNote = lines.join("\n");
 
-    updateMutation.mutate(payload, { onSuccess: () => onClose() });
+    resignMutation.mutate(
+      { title: form.title, description: form.description || undefined, priority: form.priority, assignedUserId: form.assignedUserId, resignNote, startAt: newStartAt, endAt: newEndAt } satisfies ResignTaskPayload,
+      {
+        onSuccess: () => { toast.success("Task reassigned successfully."); onClose(); },
+        onError: (error) => { toast.error(getApiErrorMessage(error, "Failed to reassign. Please try again.")); },
+      }
+    );
   }
+
+  const apiError = resignMutation.error
+    ? getApiErrorMessage(resignMutation.error, "Failed to reassign. Please try again.")
+    : null;
 
   return (
     <>
@@ -238,14 +289,53 @@ function ReassignFollowUpModal({
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            {/* Current assignment */}
             {task.assignedUserName && (
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-700">
-                Currently assigned to: <strong>{task.assignedUserName}</strong>
+                <span className="font-semibold">Current assignee:</span> {task.assignedUserName}
+                {task.startAt && (
+                  <span className="ml-2 text-amber-500">· {formatShortDateTime(task.startAt)} → {formatShortDateTime(task.endAt)}</span>
+                )}
               </div>
             )}
 
+            {/* Title */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600">Assign To *</label>
+              <label className="text-xs font-semibold text-slate-600">Title *</label>
+              <input
+                required
+                value={form.title}
+                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+                placeholder="Task title…"
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600">Description</label>
+              <textarea
+                rows={2}
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition resize-none"
+                placeholder="Description…"
+              />
+            </div>
+
+            {/* Priority */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600">Priority</label>
+              <Select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value as TaskPriority }))} className="py-2">
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+              </Select>
+            </div>
+
+            {/* New assignee */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600">Reassign To *</label>
               <Select
                 required
                 value={form.assignedUserId}
@@ -253,40 +343,52 @@ function ReassignFollowUpModal({
                 className="py-2"
               >
                 <option value="">Select staff member…</option>
-                {users.map(u => (
+                {users.filter(u => u.userId !== task.assignedUserId).map(u => (
                   <option key={u.userId} value={u.userId}>{u.fullName}</option>
                 ))}
               </Select>
             </div>
 
-            <div className="space-y-1.5">
+            {/* New schedule — start and end each with date + time */}
+            <div className="space-y-2">
               <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
                 <Clock className="size-3.5 text-slate-400" />
-                Follow-up Schedule
+                New Schedule *
               </label>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] text-slate-500 font-medium">Date</label>
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Start at *</p>
+                <div className="grid grid-cols-2 gap-2">
                   <Input
                     type="date"
-                    value={form.date}
-                    onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                    required
+                    value={form.startDate}
+                    min={toDateStr(new Date())}
+                    onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
                     className="py-2 text-sm"
                   />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] text-slate-500 font-medium">Start</label>
                   <Input
                     type="time"
+                    required
                     value={form.startTime}
                     onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))}
                     className="py-2 text-sm"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] text-slate-500 font-medium">End</label>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">End at *</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    type="date"
+                    required
+                    value={form.endDate}
+                    min={form.startDate || toDateStr(new Date())}
+                    onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))}
+                    className="py-2 text-sm"
+                  />
                   <Input
                     type="time"
+                    required
                     value={form.endTime}
                     onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))}
                     className="py-2 text-sm"
@@ -295,34 +397,22 @@ function ReassignFollowUpModal({
               </div>
             </div>
 
+            {/* Note */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600">Status</label>
-              <Select
-                value={form.status}
-                onChange={e => setForm(f => ({ ...f, status: e.target.value as TaskStatus }))}
-                className="py-2"
-              >
-                <option value="OPEN">Open</option>
-                <option value="IN_PROGRESS">In Progress</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="CANCELLED">Cancelled</option>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600">Reassignment Note</label>
+              <label className="text-xs font-semibold text-slate-600">Reason / Note</label>
               <textarea
-                rows={3}
+                rows={2}
                 value={form.note}
                 onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition resize-none"
-                placeholder="Reason for reassignment or follow-up instructions…"
+                placeholder="Reason for reassignment…"
               />
             </div>
 
-            {updateMutation.error && (
-              <p className="text-sm text-red-500 flex items-center gap-2">
-                <AlertCircle className="size-4 shrink-0" />Failed to reassign. Please try again.
+            {(validationError || apiError) && (
+              <p className="text-sm text-red-500 flex items-start gap-2">
+                <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                {validationError ?? apiError}
               </p>
             )}
 
@@ -330,10 +420,10 @@ function ReassignFollowUpModal({
               <Button
                 type="submit"
                 variant="primary"
-                disabled={updateMutation.isPending || !form.assignedUserId}
+                disabled={resignMutation.isPending || !form.assignedUserId}
                 className="flex-1 text-sm font-semibold py-2.5"
               >
-                {updateMutation.isPending ? (
+                {resignMutation.isPending ? (
                   <span className="flex items-center justify-center gap-2">
                     <Loader2 className="size-4 animate-spin" />Reassigning…
                   </span>
@@ -374,25 +464,72 @@ function TaskDetailDrawer({
     assignedUserId: task.assignedUserId ?? "",
     priority: task.priority,
     status: task.status,
-    dueDate: task.dueDate ?? "",
     resultNote: task.resultNote ?? "",
+    leadId: task.leadId ?? undefined,
+    customerId: task.customerId ?? undefined,
     startAt: task.startAt ?? undefined,
     endAt: task.endAt ?? undefined,
     primaryContactName: task.primaryContactName ?? "",
     primaryContactPhone: task.primaryContactPhone ?? "",
   });
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(
+    task.leadId ? {
+      leadId: task.leadId,
+      fullName: task.leadName ?? "",
+      email: task.leadEmail ?? null,
+      phone: task.leadPhone ?? null,
+      companyName: task.leadCompanyName ?? null,
+      address: null, isCorporate: false, source: null, status: "NEW",
+      notes: null, convertedAt: null, customerId: null,
+      assignedUserId: null, assignedUserName: null,
+      createdById: null, createdByName: null,
+      createdAt: task.createdAt, updatedAt: task.updatedAt ?? task.createdAt,
+    } : null
+  );
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerResult | null>(
+    !task.leadId && task.customerId ? {
+      customerId: task.customerId,
+      fullName: task.customerName ?? "",
+      email: task.customerEmail ?? null,
+      phone: task.customerPhone ?? null,
+      companyName: task.customerCompanyName ?? null,
+    } : null
+  );
+
+  function handleSelectLead(lead: Lead | null) {
+    setSelectedLead(lead);
+    setSelectedCustomer(null);
+    setForm(f => ({
+      ...f,
+      leadId: lead?.leadId ?? undefined,
+      customerId: undefined,
+      primaryContactName: lead?.fullName ?? f.primaryContactName,
+      primaryContactPhone: lead?.phone ?? f.primaryContactPhone,
+    }));
+  }
+
+  function handleSelectCustomer(customer: CustomerResult | null) {
+    setSelectedCustomer(customer);
+    setSelectedLead(null);
+    setForm(f => ({
+      ...f,
+      customerId: customer?.customerId ?? undefined,
+      leadId: undefined,
+      primaryContactName: customer?.fullName ?? f.primaryContactName,
+      primaryContactPhone: customer?.phone ?? f.primaryContactPhone,
+    }));
+  }
 
   const updateMutation = useUpdateTask(task.taskId);
   const taskOverdue = isOverdue(task);
+  const actType = detectActivityType(task.title);
+  const typeInfo = ACTIVITY_TYPES.find(a => a.type === actType)!;
 
   function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
-    const payload = { ...form };
-    if (form.startAt && !form.dueDate) {
-      payload.dueDate = form.startAt.split("T")[0];
-    }
-    updateMutation.mutate(payload, {
-      onSuccess: () => { setEditing(false); onClose(); },
+    updateMutation.mutate({ ...form }, {
+      onSuccess: () => { toast.success("Task updated successfully."); setEditing(false); onClose(); },
+      onError: (error) => { toast.error(getApiErrorMessage(error, "Failed to update task.")); },
     });
   }
 
@@ -400,59 +537,69 @@ function TaskDetailDrawer({
     <>
       <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40" onClick={onClose} />
       <div className="fixed inset-y-0 right-0 w-full max-w-xl bg-white shadow-2xl border-l border-slate-200 z-50 flex flex-col animate-in slide-in-from-right duration-300">
-        {/* Header */}
-        <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100 shrink-0">
-          <div>
-            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <CalendarCheck className="size-5 text-blue-600" />
-              {editing ? "Edit Task" : "Task Details"}
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">{linkedEntityType(task)} follow-up activity</p>
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold shrink-0 ${ACTIVITY_CHIP[actType]}`}>
+              <typeInfo.Icon className="size-3" />
+              {typeInfo.label}
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-slate-800 truncate">
+                {editing ? "Edit Task" : task.title}
+              </h3>
+              <p className="text-[10px] text-slate-400">
+                {linkedEntityType(task)} · {task.assignedUserName ?? "Unassigned"}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2.5">
+
+          <div className="flex items-center gap-1.5 shrink-0 ml-3">
             {!editing && task.status !== "CANCELLED" && (
-              <Button
-                variant="secondary"
-                size="sm"
+              <button
                 onClick={() => { onClose(); onReassign(); }}
-                leftIcon={<UserCog className="size-3.5" />}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition"
+                title="Reassign to another staff member"
               >
+                <UserCog className="size-3.5" />
                 Reassign
-              </Button>
+              </button>
             )}
             {!editing && (
-              <Button
-                variant="secondary"
-                size="sm"
+              <button
                 onClick={() => setEditing(true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition"
               >
-                Edit Task
-              </Button>
+                Edit
+              </button>
             )}
             <button
               onClick={onClose}
-              className="p-2 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+              className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
             >
-              <X className="size-5" />
+              <X className="size-4" />
             </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-7 py-5">
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {editing ? (
+            /* ── Edit Form ── */
             <form onSubmit={handleSubmit} className="space-y-5">
+
+              {/* Title */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-600">Title *</label>
-                <div className="flex flex-wrap gap-2 mb-2">
+                <div className="flex flex-wrap gap-1.5 mb-2">
                   {ACTIVITY_TYPES.map(({ type, label, Icon }) => (
                     <button
                       key={type}
                       type="button"
                       onClick={() => setForm(f => ({ ...f, title: `${label}: ` }))}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-100"
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-100"
                     >
-                      <Icon className="size-4" />
-                      {label}
+                      <Icon className="size-3" />{label}
                     </button>
                   ))}
                 </div>
@@ -464,19 +611,120 @@ function TaskDetailDrawer({
                 />
               </div>
 
+              {/* Description */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-600">Description</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={form.description ?? ""}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition resize-none"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 focus:outline-none focus:border-blue-400 focus:bg-white transition resize-none"
                 />
               </div>
 
+              {/* Priority + Status */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-600">Priority</label>
+                  <Select value={form.priority ?? "MEDIUM"} onChange={e => setForm(f => ({ ...f, priority: e.target.value as TaskPriority }))} className="py-2">
+                    <option value="LOW">Low</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HIGH">High</option>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-600">Status</label>
+                  <Select value={form.status ?? task.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as TaskStatus }))} className="py-2">
+                    <option value="OPEN">Open</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="CANCELLED" disabled={task.status === "COMPLETED"}>
+                      {task.status === "COMPLETED" ? "Cancelled (reopen first)" : "Cancelled"}
+                    </option>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Assigned Staff */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-600">Assigned Staff *</label>
+                <Select value={form.assignedUserId ?? ""} onChange={e => setForm(f => ({ ...f, assignedUserId: e.target.value }))} className="py-2">
+                  <option value="">Select staff member…</option>
+                  {users.map(u => <option key={u.userId} value={u.userId}>{u.fullName}</option>)}
+                </Select>
+              </div>
+
+              {/* Schedule — Start at / End at */}
+              <div className="space-y-3">
+                <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                  <Clock className="size-3.5 text-blue-500" />
+                  Schedule
+                </label>
+
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Start at</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      type="date"
+                      value={extractLocalDate(form.startAt)}
+                      onChange={e => {
+                        const date = e.target.value;
+                        const time = extractLocalTime(form.startAt) || "09:00";
+                        setForm(f => ({ ...f, startAt: date ? buildISODateTime(date, time) : undefined }));
+                      }}
+                      className="py-2 text-sm"
+                    />
+                    <Input
+                      type="time"
+                      value={extractLocalTime(form.startAt)}
+                      onChange={e => {
+                        const time = e.target.value;
+                        const date = extractLocalDate(form.startAt) || toDateStr(new Date());
+                        setForm(f => ({ ...f, startAt: time ? buildISODateTime(date, time) : undefined }));
+                      }}
+                      className="py-2 text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">End at</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      type="date"
+                      value={extractLocalDate(form.endAt) || extractLocalDate(form.startAt)}
+                      onChange={e => {
+                        const date = e.target.value;
+                        const time = extractLocalTime(form.endAt) || "10:00";
+                        setForm(f => ({ ...f, endAt: date ? buildISODateTime(date, time) : undefined }));
+                      }}
+                      className="py-2 text-sm"
+                    />
+                    <Input
+                      type="time"
+                      value={extractLocalTime(form.endAt)}
+                      onChange={e => {
+                        const time = e.target.value;
+                        const date = extractLocalDate(form.endAt) || extractLocalDate(form.startAt) || toDateStr(new Date());
+                        setForm(f => ({ ...f, endAt: time ? buildISODateTime(date, time) : undefined }));
+                      }}
+                      className="py-2 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Link to Entity */}
+              <EntitySearchPicker
+                selectedLead={selectedLead}
+                selectedCustomer={selectedCustomer}
+                onSelectLead={handleSelectLead}
+                onSelectCustomer={handleSelectCustomer}
+              />
+
+              {/* Primary Contact */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-600">Primary Contact</label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2">
                   <Input
                     value={form.primaryContactName ?? ""}
                     onChange={e => setForm(f => ({ ...f, primaryContactName: e.target.value }))}
@@ -493,196 +741,144 @@ function TaskDetailDrawer({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600">Priority</label>
-                  <Select
-                    value={form.priority ?? "MEDIUM"}
-                    onChange={e => setForm(f => ({ ...f, priority: e.target.value as TaskPriority }))}
-                    className="py-2"
-                  >
-                    <option value="LOW">Low</option>
-                    <option value="MEDIUM">Medium</option>
-                    <option value="HIGH">High</option>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600">Status</label>
-                  <Select
-                    value={form.status ?? task.status}
-                    onChange={e => setForm(f => ({ ...f, status: e.target.value as TaskStatus }))}
-                    className="py-2"
-                  >
-                    <option value="OPEN">Open</option>
-                    <option value="IN_PROGRESS">In Progress</option>
-                    <option value="WAITING_CUSTOMER">Waiting Customer</option>
-                    <option value="COMPLETED">Completed</option>
-                    <option value="CANCELLED">Cancelled</option>
-                  </Select>
-                </div>
-              </div>
-
+              {/* Result Note */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-600">Assigned Staff *</label>
-                <Select
-                  value={form.assignedUserId ?? ""}
-                  onChange={e => setForm(f => ({ ...f, assignedUserId: e.target.value }))}
-                  className="py-2"
-                >
-                  <option value="">Select staff member…</option>
-                  {users.map(u => (
-                    <option key={u.userId} value={u.userId}>{u.fullName}</option>
-                  ))}
-                </Select>
-              </div>
-
-              {/* Timeline schedule */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                  <Clock className="size-3.5 text-blue-500" />
-                  Schedule
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-500 font-medium">Start Date</label>
-                    <Input
-                      type="date"
-                      value={form.startAt?.split("T")[0] ?? form.dueDate ?? ""}
-                      onChange={e => {
-                        const date = e.target.value;
-                        const time = form.startAt?.substring(11, 16) || "09:00";
-                        setForm(f => ({
-                          ...f,
-                          dueDate: date || f.dueDate,
-                          startAt: date ? buildISODateTime(date, time) : undefined,
-                        }));
-                      }}
-                      className="py-2 text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-500 font-medium">Start Time</label>
-                    <Input
-                      type="time"
-                      value={form.startAt?.substring(11, 16) ?? ""}
-                      onChange={e => {
-                        const time = e.target.value;
-                        const date = form.startAt?.split("T")[0] || form.dueDate || new Date().toISOString().split("T")[0];
-                        setForm(f => ({ ...f, startAt: time ? buildISODateTime(date, time) : undefined }));
-                      }}
-                      className="py-2 text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-500 font-medium">End Date</label>
-                    <Input
-                      type="date"
-                      value={form.endAt?.split("T")[0] ?? form.startAt?.split("T")[0] ?? form.dueDate ?? ""}
-                      onChange={e => {
-                        const date = e.target.value;
-                        const time = form.endAt?.substring(11, 16) || "10:00";
-                        setForm(f => ({ ...f, endAt: date ? buildISODateTime(date, time) : undefined }));
-                      }}
-                      className="py-2 text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-500 font-medium">End Time</label>
-                    <Input
-                      type="time"
-                      value={form.endAt?.substring(11, 16) ?? ""}
-                      onChange={e => {
-                        const time = e.target.value;
-                        const date = form.endAt?.split("T")[0] || form.startAt?.split("T")[0] || form.dueDate || new Date().toISOString().split("T")[0];
-                        setForm(f => ({ ...f, endAt: time ? buildISODateTime(date, time) : undefined }));
-                      }}
-                      className="py-2 text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-600">Result / Completion Notes</label>
+                <label className="text-xs font-semibold text-slate-600">Result / Notes</label>
                 <textarea
                   rows={3}
                   value={form.resultNote ?? ""}
                   onChange={e => setForm(f => ({ ...f, resultNote: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition resize-none"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 focus:outline-none focus:border-blue-400 focus:bg-white transition resize-none"
                   placeholder="Outcome or notes after completing this task…"
                 />
               </div>
 
-              {updateMutation.error && (
-                <p className="text-sm text-red-500 flex items-center gap-2">
-                  <AlertCircle className="size-4 shrink-0" />Failed to update task. Please try again.
-                </p>
-              )}
 
               <div className="pt-4 flex gap-3 border-t border-slate-100">
-                <Button
-                  type="submit"
-                  variant="primary"
-                  disabled={updateMutation.isPending}
-                  className="flex-1 text-sm font-semibold py-2.5"
-                >
-                  {updateMutation.isPending ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 className="size-4 animate-spin" />Saving…
-                    </span>
-                  ) : "Save Changes"}
+                <Button type="submit" variant="primary" disabled={updateMutation.isPending} className="flex-1 py-2.5 text-sm font-semibold">
+                  {updateMutation.isPending
+                    ? <span className="flex items-center justify-center gap-2"><Loader2 className="size-4 animate-spin" />Saving…</span>
+                    : "Save Changes"}
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setEditing(false)}
-                  className="flex-1 text-sm py-2.5"
-                >
-                  Cancel
-                </Button>
+                <Button type="button" variant="ghost" onClick={() => setEditing(false)} className="flex-1 py-2.5 text-sm">Cancel</Button>
               </div>
             </form>
           ) : (
+            /* ── View Mode ── */
             <div className="space-y-5">
-              {/* Title & badges */}
-              <div>
-                <h2 className="text-base font-bold text-slate-800 leading-snug">{task.title}</h2>
-                <div className="flex flex-wrap gap-2 mt-3">
-                  <Badge variant={PRIORITY_BADGE[task.priority]} size="sm" className="text-[10px] uppercase font-bold px-2 py-0.5">
-                    {task.priority}
+
+              {/* Badges row */}
+              <div className="flex flex-wrap gap-2">
+                <Badge variant={PRIORITY_BADGE[task.priority]} size="sm" className="text-[10px] uppercase font-bold px-2 py-0.5">
+                  {task.priority}
+                </Badge>
+                <Badge variant={STATUS_BADGE[task.status]} size="sm" className="text-[10px] font-bold px-2 py-0.5">
+                  {STATUS_LABEL[task.status]}
+                </Badge>
+                {taskOverdue && (
+                  <Badge variant="danger" size="sm" className="text-[10px] font-bold px-2 py-0.5 bg-red-100 text-red-700">
+                    OVERDUE
                   </Badge>
-                  <Badge variant={STATUS_BADGE[task.status]} size="sm" className="text-[10px] font-bold px-2 py-0.5">
-                    {STATUS_LABEL[task.status]}
+                )}
+                {task.dealId && (
+                  <Badge variant="default" size="sm" className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-700">
+                    Linked Deal
                   </Badge>
-                  {taskOverdue && (
-                    <Badge variant="danger" size="sm" className="text-[10px] font-bold px-2 py-0.5 bg-red-100 text-red-700">
-                      OVERDUE
-                    </Badge>
-                  )}
-                  {task.dealId && (
-                    <Badge variant="default" size="sm" className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-700">
-                      Linked Deal
-                    </Badge>
+                )}
+              </div>
+
+              {/* Overdue warning banner */}
+              {taskOverdue && (
+                <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200">
+                  <AlertCircle className="size-4 text-red-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-bold text-red-700">This task is overdue</p>
+                    <p className="text-[11px] text-red-600 mt-0.5">
+                      Ended {task.endAt ? formatDate(task.endAt) : "—"}. Use <strong>Reassign</strong> to reschedule and reassign.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Schedule card */}
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-1.5">
+                  <Clock className="size-3.5 text-slate-400" />
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Schedule</p>
+                </div>
+                <div className="p-4">
+                  {task.startAt || task.endAt ? (
+                    <>
+                      <div className="flex items-start gap-4">
+                        {/* Start at */}
+                        <div className="flex-1">
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Start at</p>
+                          {task.startAt ? (
+                            <>
+                              <p className="text-sm font-bold text-slate-800">{formatDate(task.startAt)}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">{formatTime(task.startAt)}</p>
+                            </>
+                          ) : (
+                            <p className="text-sm text-slate-400">—</p>
+                          )}
+                        </div>
+                        <div className="pt-5 text-slate-300 font-bold text-base select-none">→</div>
+                        {/* End at */}
+                        <div className="flex-1">
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">End at</p>
+                          {task.endAt ? (
+                            <>
+                              <p className={`text-sm font-bold ${taskOverdue ? "text-red-700" : "text-slate-800"}`}>
+                                {formatDate(task.endAt)}
+                              </p>
+                              <p className={`text-xs mt-0.5 ${taskOverdue ? "text-red-500" : "text-slate-500"}`}>
+                                {formatTime(task.endAt)}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-sm text-slate-400">—</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Duration + active indicator */}
+                      {task.startAt && task.endAt && (() => {
+                        const start = new Date(task.startAt);
+                        const end = new Date(task.endAt);
+                        const now = new Date();
+                        const diffMs = end.getTime() - start.getTime();
+                        const hours = Math.floor(diffMs / 3600000);
+                        const mins = Math.floor((diffMs % 3600000) / 60000);
+                        const dur = hours > 0 ? `${hours}h${mins > 0 ? ` ${mins}m` : ""}` : `${mins}m`;
+                        const isActive = start <= now && now <= end && !taskOverdue;
+                        return (
+                          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+                            <span className="text-[11px] text-slate-400">Duration: {dur}</span>
+                            {isActive && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+                                <span className="size-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
+                                ACTIVE NOW
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </>
+                  ) : (
+                    <p className="text-sm text-slate-400 italic">No schedule set</p>
                   )}
                 </div>
               </div>
 
-              {/* Info grid */}
-              <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                {task.startAt ? (
-                  <InfoRow
-                    icon={<Clock className="size-4 text-slate-400" />}
-                    label="Scheduled"
-                    value={`${formatDate(task.startAt)}  ${formatTime(task.startAt)}${task.endAt ? ` – ${formatTime(task.endAt)}` : ""}`}
-                  />
-                ) : (
-                  <InfoRow icon={<Calendar className="size-4 text-slate-400" />} label="Due Date" value={formatDate(task.dueDate)} />
-                )}
+              {/* Staff & Entity grid */}
+              <div className="grid grid-cols-2 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
                 <InfoRow icon={<User className="size-4 text-slate-400" />} label="Assigned To" value={task.assignedUserName ?? "—"} />
+                <InfoRow icon={<User className="size-4 text-slate-400" />} label="Created By" value={task.createdByName ?? "—"} />
                 <InfoRow icon={<Briefcase className="size-4 text-slate-400" />} label="Related To" value={linkedEntityLabel(task)} />
-                <InfoRow icon={<Clock className="size-4 text-slate-400" />} label="Entity Type" value={linkedEntityType(task)} />
+                <InfoRow icon={<Building2 className="size-4 text-slate-400" />} label="Entity Type" value={linkedEntityType(task)} />
               </div>
 
+              {/* Primary Contact */}
               {(task.primaryContactName || task.primaryContactPhone) && (
                 <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-100">
                   <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider mb-2">Primary Contact</p>
@@ -703,6 +899,7 @@ function TaskDetailDrawer({
                 </div>
               )}
 
+              {/* Description */}
               {task.description && (
                 <div className="space-y-1.5">
                   <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Description</p>
@@ -710,18 +907,20 @@ function TaskDetailDrawer({
                 </div>
               )}
 
+              {/* Result Notes */}
               {task.resultNote && (
-                <div className="space-y-1.5 p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 space-y-1.5">
                   <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wider">Result / Notes</p>
-                  <p className="text-sm text-emerald-800 leading-relaxed">{task.resultNote}</p>
+                  <p className="text-sm text-emerald-800 leading-relaxed whitespace-pre-line">{task.resultNote}</p>
                 </div>
               )}
 
-
-
+              {/* Timestamps */}
               <div className="pt-3 border-t border-slate-100 text-xs text-slate-400 space-y-1">
-                <p>Created by: <span className="text-slate-600 font-medium">{task.createdByName ?? "—"}</span></p>
-                <p>Created at: <span className="text-slate-600 font-medium">{formatDate(task.createdAt)}</span></p>
+                <p>Created: <span className="text-slate-600 font-medium">{formatDate(task.createdAt)}</span></p>
+                {task.updatedAt && (
+                  <p>Updated: <span className="text-slate-600 font-medium">{formatDate(task.updatedAt)}</span></p>
+                )}
               </div>
             </div>
           )}
@@ -730,6 +929,8 @@ function TaskDetailDrawer({
     </>
   );
 }
+
+
 
 // ── Entity Search Picker ──────────────────────────────────────────────────────
 
@@ -937,7 +1138,6 @@ function CreateTaskDrawer({
     description: "",
     assignedUserId: users[0]?.userId ?? "",
     priority: "MEDIUM",
-    dueDate: initialDueDate ?? "",
     startAt: initialDueDate ? buildISODateTime(initialDueDate, "09:00") : undefined,
     endAt: initialDueDate ? buildISODateTime(initialDueDate, "10:00") : undefined,
     primaryContactName: "",
@@ -993,11 +1193,10 @@ function CreateTaskDrawer({
 
   function applyDatePreset(days: number) {
     const date = addDays(days);
-    const startTime = form.startAt?.substring(11, 16) || "09:00";
-    const endTime = form.endAt?.substring(11, 16) || "10:00";
+    const startTime = extractLocalTime(form.startAt) || "09:00";
+    const endTime = extractLocalTime(form.endAt) || "10:00";
     setForm(f => ({
       ...f,
-      dueDate: date,
       startAt: buildISODateTime(date, startTime),
       endAt: buildISODateTime(date, endTime),
     }));
@@ -1008,10 +1207,12 @@ function CreateTaskDrawer({
     if (!form.title.trim() || !form.assignedUserId || !form.startAt) return;
     createMutation.mutate({
       ...form,
-      dueDate: form.startAt.split("T")[0],
       primaryContactName: form.primaryContactName?.trim() || undefined,
       primaryContactPhone: form.primaryContactPhone?.trim() || undefined,
-    }, { onSuccess: () => onClose() });
+    }, {
+      onSuccess: () => { toast.success("Task created successfully."); onClose(); },
+      onError: (error) => { toast.error(getApiErrorMessage(error, "Failed to create task.")); },
+    });
   }
 
   return (
@@ -1098,7 +1299,7 @@ function CreateTaskDrawer({
                   key={preset.label}
                   type="button"
                   onClick={() => applyDatePreset(preset.days)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${form.startAt?.split("T")[0] === addDays(preset.days)
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${extractLocalDate(form.startAt) === addDays(preset.days)
                       ? "bg-[#185FA5] text-white border-[#185FA5] shadow-sm"
                       : "bg-white text-slate-600 border-slate-200 hover:border-[#185FA5]/40 hover:text-[#185FA5]"
                   }`}
@@ -1114,13 +1315,12 @@ function CreateTaskDrawer({
                 <Input
                   required
                   type="date"
-                  value={form.startAt?.split("T")[0] ?? ""}
+                  value={extractLocalDate(form.startAt)}
                   onChange={e => {
                     const date = e.target.value;
-                    const time = form.startAt?.substring(11, 16) || "09:00";
+                    const time = extractLocalTime(form.startAt) || "09:00";
                     setForm(f => ({
                       ...f,
-                      dueDate: date,
                       startAt: date ? buildISODateTime(date, time) : undefined,
                     }));
                   }}
@@ -1131,10 +1331,10 @@ function CreateTaskDrawer({
                 <label className="text-[10px] text-slate-500 font-medium">Start Time</label>
                 <Input
                   type="time"
-                  value={form.startAt?.substring(11, 16) ?? ""}
+                  value={extractLocalTime(form.startAt)}
                   onChange={e => {
                     const time = e.target.value;
-                    const date = form.startAt?.split("T")[0] || addDays(0);
+                    const date = extractLocalDate(form.startAt) || addDays(0);
                     setForm(f => ({ ...f, startAt: time ? buildISODateTime(date, time) : f.startAt }));
                   }}
                   className="py-2 text-sm"
@@ -1147,10 +1347,10 @@ function CreateTaskDrawer({
                 <label className="text-[10px] text-slate-500 font-medium">End Date</label>
                 <Input
                   type="date"
-                  value={form.endAt?.split("T")[0] ?? form.startAt?.split("T")[0] ?? ""}
+                  value={extractLocalDate(form.endAt) || extractLocalDate(form.startAt)}
                   onChange={e => {
                     const date = e.target.value;
-                    const time = form.endAt?.substring(11, 16) || "10:00";
+                    const time = extractLocalTime(form.endAt) || "10:00";
                     setForm(f => ({ ...f, endAt: date ? buildISODateTime(date, time) : undefined }));
                   }}
                   className="py-2 text-sm"
@@ -1160,10 +1360,10 @@ function CreateTaskDrawer({
                 <label className="text-[10px] text-slate-500 font-medium">End Time</label>
                 <Input
                   type="time"
-                  value={form.endAt?.substring(11, 16) ?? ""}
+                  value={extractLocalTime(form.endAt)}
                   onChange={e => {
                     const time = e.target.value;
-                    const date = form.endAt?.split("T")[0] || form.startAt?.split("T")[0] || addDays(0);
+                    const date = extractLocalDate(form.endAt) || extractLocalDate(form.startAt) || addDays(0);
                     setForm(f => ({ ...f, endAt: time ? buildISODateTime(date, time) : undefined }));
                   }}
                   className="py-2 text-sm"
@@ -1255,12 +1455,6 @@ function CreateTaskDrawer({
             </div>
           )}
 
-          {createMutation.error && (
-            <p className="text-sm text-red-500 flex items-center gap-2">
-              <AlertCircle className="size-4 shrink-0" />Failed to create task. Please check required fields.
-            </p>
-          )}
-
           <div className="pt-4 flex gap-3 border-t border-slate-100">
             <Button
               type="submit"
@@ -1312,7 +1506,7 @@ function getWeekDays(ws: Date): Date[] {
 }
 
 function toDateStr(d: Date): string {
-  return d.toISOString().split("T")[0];
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // Detect activity type from title prefix ("Call: …")
@@ -1325,8 +1519,8 @@ function detectActivityType(title: string): ActivityType {
 
 /** Returns true when the task's scheduled window covers the given date string. */
 function taskCoversDay(task: Task, ds: string): boolean {
-  const start = task.startAt ? task.startAt.split("T")[0] : task.dueDate;
-  const end   = task.endAt   ? task.endAt.split("T")[0]   : start;
+  const start = task.startAt ? extractLocalDate(task.startAt) : null;
+  const end   = task.endAt   ? extractLocalDate(task.endAt)   : start;
   if (!start) return false;
   return start <= ds && (end ?? start) >= ds;
 }
@@ -1359,22 +1553,17 @@ export function FollowUpTaskListScreen() {
   const { data: usersData } = useUsers();
   const users = useMemo(() => usersData?.data ?? [], [usersData]);
 
-  const ACTION_TO_STATUS: Record<WorkflowAction, TaskStatus> = {
-    START: "IN_PROGRESS", COMPLETE: "COMPLETED", CANCEL: "CANCELLED", REOPEN: "OPEN",
-  };
-
   const toggleMutation = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: WorkflowAction }) =>
-      taskService.transition(id, action),
-    onMutate: async ({ id, action }) => {
+    mutationFn: ({ id, status }: { id: string; status: TaskStatus }) =>
+      taskService.update(id, { status }),
+    onMutate: async ({ id, status }) => {
       await queryClient.cancelQueries({ queryKey: ["tasks"] });
       const snapshot = queryClient.getQueriesData({ queryKey: ["tasks"] });
-      const newStatus = ACTION_TO_STATUS[action];
       queryClient.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) => {
         if (!old || typeof old !== "object") return old;
         const root = old as { data?: { content?: { taskId: string; status: TaskStatus }[] } };
         if (!root.data?.content) return old;
-        return { ...root, data: { ...root.data, content: root.data.content.map(t => t.taskId === id ? { ...t, status: newStatus } : t) } };
+        return { ...root, data: { ...root.data, content: root.data.content.map(t => t.taskId === id ? { ...t, status } : t) } };
       });
       return { snapshot };
     },
@@ -1413,7 +1602,7 @@ export function FollowUpTaskListScreen() {
 
   const filteredTasks = useMemo(() => {
     let filtered = allTasks;
-    const today = new Date().toISOString().split("T")[0];
+    const today = toDateStr(new Date());
 
     if (activeTab === "today") {
       filtered = filtered.filter(t => taskDateKey(t) === today && t.status !== "COMPLETED" && t.status !== "CANCELLED");
@@ -1432,7 +1621,7 @@ export function FollowUpTaskListScreen() {
   }, [allTasks, activeTab, activityTypeFilter]);
 
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = toDateStr(new Date());
   const tabs: { id: TabId; label: string }[] = [
     { id: "all", label: "All" },
     { id: "today", label: "Today" },
@@ -1462,7 +1651,7 @@ export function FollowUpTaskListScreen() {
           <button
             onClick={() => {
               if (!done) {
-                toggleMutation.mutate({ id: task.taskId, action: "COMPLETE" });
+                toggleMutation.mutate({ id: task.taskId, status: "COMPLETED" });
               }
             }}
             title={done ? "Task completed" : "Mark complete"}
@@ -1526,10 +1715,10 @@ export function FollowUpTaskListScreen() {
           )}
         </td>
 
-        {/* Due date / scheduled time */}
+        {/* Schedule — start at / end at */}
         <td className="w-[110px] px-3 py-3 whitespace-nowrap">
           <p className={`text-xs font-semibold ${overdue ? "text-[#A32D2D]" : "text-slate-600 dark:text-slate-300"}`}>
-            {formatDate(task.startAt ?? task.dueDate)}
+            {formatDate(task.startAt)}
           </p>
           {task.startAt && (
             <p className="text-[9px] text-slate-400 font-medium mt-0.5 flex items-center gap-0.5">
@@ -1601,7 +1790,7 @@ export function FollowUpTaskListScreen() {
 
     const multiDayTasks = filteredCalTasks.filter(t => {
       if (!t.startAt || !t.endAt) return false;
-      return t.startAt.split("T")[0] !== t.endAt.split("T")[0];
+      return extractLocalDate(t.startAt) !== extractLocalDate(t.endAt);
     });
 
     const singleDayTasks = filteredCalTasks.filter(t => !multiDayTasks.includes(t));
@@ -1609,8 +1798,8 @@ export function FollowUpTaskListScreen() {
     // Compute grid column spans for multi-day tasks (clipped to current week)
     type MultiDayEvent = { task: Task; colStart: number; colEnd: number; clippedLeft: boolean; clippedRight: boolean };
     const multiDayEvents: MultiDayEvent[] = multiDayTasks.flatMap(task => {
-      const spanStart = task.startAt!.split("T")[0];
-      const spanEnd   = task.endAt!.split("T")[0];
+      const spanStart = extractLocalDate(task.startAt);
+      const spanEnd   = extractLocalDate(task.endAt);
       if (spanEnd < weekStartStr || spanStart > weekEndStr) return [];
       const effectiveStart = spanStart < weekStartStr ? weekStartStr : spanStart;
       const effectiveEnd   = spanEnd   > weekEndStr   ? weekEndStr   : spanEnd;
@@ -1692,6 +1881,9 @@ export function FollowUpTaskListScreen() {
                       <span className="size-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
                     )}
                     <typeInfo.Icon className="size-3 shrink-0" />
+                    {!done && (
+                      <span className={`size-1.5 rounded-full shrink-0 ${PRIORITY_DOT[task.priority]}`} title={task.priority} />
+                    )}
                     <span className="truncate leading-tight">
                       {task.title.replace(/^[^:]+:\s*/, "") || task.title}
                     </span>
@@ -1745,6 +1937,9 @@ export function FollowUpTaskListScreen() {
                         <span className="flex items-center gap-1.5 min-w-0">
                           {isActive && <span className="size-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />}
                           <typeInfo.Icon className="size-3 shrink-0" />
+                          {!done && (
+                            <span className={`size-1.5 rounded-full shrink-0 ${PRIORITY_DOT[task.priority]}`} title={task.priority} />
+                          )}
                           <span className="truncate leading-tight">
                             {task.title.replace(/^[^:]+:\s*/, "") || task.title}
                           </span>
@@ -1917,7 +2112,7 @@ export function FollowUpTaskListScreen() {
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Subject</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Contact</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Deal / Entity</th>
-                    <th className="w-[90px] px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Due Date</th>
+                    <th className="w-[90px] px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Schedule</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Assigned To</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Priority / Status</th>
                     <th className="w-[120px] px-3 py-2.5" />
