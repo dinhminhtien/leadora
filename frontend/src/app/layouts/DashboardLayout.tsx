@@ -44,6 +44,8 @@ import { useAuthStore } from "@/stores/auth_store";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { authService } from "@/services/auth_service";
+import { supabaseAuthService } from "@/services/supabase_auth_service";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -114,10 +116,20 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setIsUserDropdownOpen(false);
     localStorage.removeItem("accessToken");
     clearUser();
+    
+    try {
+      await Promise.allSettled([
+        authService.logout(),
+        supabaseAuthService.signOut(),
+      ]);
+    } catch (e) {
+      console.warn("Failed to complete services logout", e);
+    }
+
     router.push(ROUTE_PATHS.login || "/login");
   };
 
