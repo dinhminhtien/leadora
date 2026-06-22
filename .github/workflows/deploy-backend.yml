@@ -14,7 +14,10 @@ env:
   REGION: asia-southeast1
   SERVICE_NAME: leadora-backend
   REPOSITORY: cloud-run-source-deploy
-  SERVICE_ACCOUNT: leadora@leadora-499809.iam.gserviceaccount.com
+  # Service account used by GitHub Actions to deploy resources
+  DEPLOYER_SERVICE_ACCOUNT: leadora@leadora-499809.iam.gserviceaccount.com
+  # Dedicated service account for Cloud Run container runtime (least privilege)
+  RUNTIME_SERVICE_ACCOUNT: leadora-runtime@leadora-499809.iam.gserviceaccount.com
 
 # Cấp quyền cho workflow lấy OpenID Connect (OIDC) token từ GitHub để auth với GCP
 permissions:
@@ -36,7 +39,7 @@ jobs:
       uses: google-github-actions/auth@v2
       with:
         workload_identity_provider: 'projects/732291906105/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
-        service_account: '${{ env.SERVICE_ACCOUNT }}'
+        service_account: '${{ env.DEPLOYER_SERVICE_ACCOUNT }}'
 
     # 2. Setup Google Cloud SDK
     - name: Set up Cloud SDK
@@ -63,7 +66,8 @@ jobs:
           --image $IMAGE_TAG \
           --region ${{ env.REGION }} \
           --platform managed \
-          --service-account ${{ env.SERVICE_ACCOUNT }} \
-          --update-env-vars "GEMINI_PROJECT_ID=${{ env.PROJECT_ID }},GEMINI_LOCATION=asia-southeast1,SUPABASE_URL=${{ secrets.SUPABASE_URL }},SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}" \
+          --service-account ${{ env.RUNTIME_SERVICE_ACCOUNT }} \
+          --update-env-vars "GEMINI_PROJECT_ID=${{ env.PROJECT_ID }},GEMINI_LOCATION=asia-southeast1,SUPABASE_URL=${{ secrets.SUPABASE_URL }},FRONTEND_URL=https://leadora-novax.vercel.app" \
+          --update-secrets "SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET:latest" \
           --remove-env-vars "GOOGLE_GENAI_API_KEY,GEMINI_API_KEY" \
           --allow-unauthenticated
