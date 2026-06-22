@@ -3,7 +3,8 @@ export type Status =
   | "pending"
   | "active"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  | "overdue";
 
 export type TaskStatus = "OPEN" | "COMPLETED" | "CANCELLED";
 
