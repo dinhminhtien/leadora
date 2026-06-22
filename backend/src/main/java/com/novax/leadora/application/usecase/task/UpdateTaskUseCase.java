@@ -11,8 +11,10 @@ import com.novax.leadora.infrastructure.persistence.repository.CustomerRepositor
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -40,9 +42,6 @@ public class UpdateTaskUseCase {
         if (request.getDescription() != null) {
             task.setDescription(request.getDescription());
         }
-        if (request.getDueDate() != null) {
-            task.setDueDate(request.getDueDate());
-        }
         if (request.getResultNote() != null) {
             task.setResultNote(request.getResultNote());
         }
@@ -56,9 +55,13 @@ public class UpdateTaskUseCase {
         if (StringUtils.hasText(request.getStatus())) {
             try {
                 TaskStatus newStatus = TaskStatus.valueOf(request.getStatus().toUpperCase());
-                if (newStatus != TaskStatus.OVERDUE) {
-                    task.setStatus(newStatus);
+                if (task.getStatus() == TaskStatus.COMPLETED && newStatus == TaskStatus.CANCELLED) {
+                    throw new BusinessException(
+                            "TASK_INVALID_STATUS_TRANSITION",
+                            "Completed tasks cannot be cancelled directly. Please reopen the task first.",
+                            HttpStatus.CONFLICT);
                 }
+                task.setStatus(newStatus);
             } catch (IllegalArgumentException ignored) {}
         }
 
@@ -80,14 +83,13 @@ public class UpdateTaskUseCase {
 
         if (request.getStartAt() != null && request.getEndAt() != null
                 && !request.getStartAt().isBefore(request.getEndAt())) {
-            throw new IllegalArgumentException("start_at must be before end_at");
+            throw new BusinessException(
+                    "INVALID_SCHEDULE",
+                    "End time must be later than start time.",
+                    HttpStatus.BAD_REQUEST);
         }
         if (request.getStartAt() != null) {
             task.setStartAt(request.getStartAt());
-            // Keep due_date in sync with start date for backward compatibility
-            if (task.getDueDate() == null) {
-                task.setDueDate(request.getStartAt().toLocalDate());
-            }
         }
         if (request.getEndAt() != null) {
             task.setEndAt(request.getEndAt());

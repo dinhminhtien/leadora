@@ -6,7 +6,6 @@ import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -25,8 +24,6 @@ public class CreateTaskRequest {
 
     @NotNull(message = "Priority is required")
     private String priority;
-
-    private LocalDate dueDate;
 
     private String resultNote;
     private UUID leadId;

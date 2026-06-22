@@ -14,7 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -110,18 +110,17 @@ public class CrmContextService {
                     .append(" | dự kiến chốt ").append(d.getExpectedCloseDate()).append("\n"));
         }
 
-        // Tasks (overdue derived per BR-17)
-        LocalDate today = LocalDate.now();
-        long openTasks = tasks.stream().filter(t -> t.getStatus() == TaskStatus.OPEN
-                || t.getStatus() == TaskStatus.IN_PROGRESS).count();
-        List<TaskEntity> overdue = tasks.stream().filter(t -> isOverdue(t, today)).toList();
+        // Tasks (overdue derived: status == OPEN && endAt < now())
+        OffsetDateTime now = OffsetDateTime.now();
+        long openTasks = tasks.stream().filter(t -> t.getStatus() == TaskStatus.OPEN).count();
+        List<TaskEntity> overdue = tasks.stream().filter(t -> isOverdue(t, now)).toList();
         sb.append("Tasks: tổng ").append(tasks.size())
                 .append(", đang mở/đang làm ").append(openTasks)
                 .append(", quá hạn ").append(overdue.size()).append("\n");
         if (!overdue.isEmpty()) {
             sb.append("Công việc quá hạn (tối đa ").append(MAX_TASKS).append("):\n");
             overdue.stream().limit(MAX_TASKS).forEach(t -> sb.append("  - \"").append(t.getTitle())
-                    .append("\" | hạn ").append(t.getDueDate())
+                    .append("\" | hạn ").append(t.getEndAt())
                     .append(" | ưu tiên ").append(t.getPriority())
                     .append(" | ").append(t.getStatus()).append("\n"));
         }
@@ -134,7 +133,6 @@ public class CrmContextService {
         List<DealEntity> deals = dealRepository.findAll();
         List<LeadEntity> leads = leadRepository.findAll();
         List<TaskEntity> tasks = taskRepository.findAll();
-        LocalDate today = LocalDate.now();
 
         long openDeals = deals.stream().filter(d -> d.getStatus() == DealStatus.OPEN).count();
         long wonDeals = deals.stream().filter(d -> d.getStatus() == DealStatus.WON).count();
@@ -157,8 +155,9 @@ public class CrmContextService {
                 .append(", giá trị WON ").append(wonValue)
                 .append(", giá trị pipeline (OPEN) ").append(openValue).append("\n");
         sb.append("Leads: tổng ").append(leads.size()).append("\n");
+        OffsetDateTime nowTeam = OffsetDateTime.now();
         sb.append("Tasks: tổng ").append(tasks.size())
-                .append(", quá hạn ").append(tasks.stream().filter(t -> isOverdue(t, today)).count())
+                .append(", quá hạn ").append(tasks.stream().filter(t -> isOverdue(t, nowTeam)).count())
                 .append("\n");
 
         // Per-rep breakdown (group by assigned user)
@@ -196,10 +195,8 @@ public class CrmContextService {
         return assignee != null ? " | phụ trách: " + repLabel(assignee) : " | phụ trách: (chưa giao)";
     }
 
-    private boolean isOverdue(TaskEntity t, LocalDate today) {
-        return t.getDueDate() != null
-                && t.getDueDate().isBefore(today)
-                && t.getStatus() != TaskStatus.COMPLETED
-                && t.getStatus() != TaskStatus.CANCELLED;
+    private boolean isOverdue(TaskEntity t, OffsetDateTime now) {
+        if (t.getStatus() == TaskStatus.COMPLETED || t.getStatus() == TaskStatus.CANCELLED) return false;
+        return t.getEndAt() != null && t.getEndAt().isBefore(now);
     }
 }

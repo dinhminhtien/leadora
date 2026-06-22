@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.*;
 
 /**
@@ -73,16 +73,11 @@ public class GetDashboardSummaryUseCase {
                 .filter(t -> t.getStatus() != TaskStatus.COMPLETED && t.getStatus() != TaskStatus.CANCELLED)
                 .count();
 
-        // Overdue = pending + dueDate < today (or endAt < now)
-        LocalDate today = LocalDate.now();
+        // Overdue = status OPEN && endAt < now
+        OffsetDateTime now = OffsetDateTime.now();
         long overdueTasks = taskRepository.findAll().stream()
                 .filter(t -> t.getStatus() != TaskStatus.COMPLETED && t.getStatus() != TaskStatus.CANCELLED)
-                .filter(t -> {
-                    if (t.getEndAt() != null) {
-                        return t.getEndAt().toLocalDate().isBefore(today);
-                    }
-                    return t.getDueDate() != null && t.getDueDate().isBefore(today);
-                })
+                .filter(t -> t.getEndAt() != null && t.getEndAt().isBefore(now))
                 .count();
 
         // ── Sales Funnel ──────────────────────────────────────────────────────

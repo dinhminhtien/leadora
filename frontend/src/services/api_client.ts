@@ -28,6 +28,8 @@ export type ApiErrorResponse = {
   status?: number;
   code?: string;
   message: string;
+  errorCode?: string;
+  details?: string;
   errors?: Record<string, string | string[]>;
   path?: string;
   timestamp?: string;

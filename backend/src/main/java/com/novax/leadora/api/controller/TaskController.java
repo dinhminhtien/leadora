@@ -1,11 +1,13 @@
 package com.novax.leadora.api.controller;
 
 import com.novax.leadora.api.dto.request.CreateTaskRequest;
+import com.novax.leadora.api.dto.request.ResignTaskRequest;
 import com.novax.leadora.api.dto.request.UpdateTaskRequest;
 import com.novax.leadora.api.dto.response.TaskResponse;
 import com.novax.leadora.application.usecase.task.CreateTaskUseCase;
 import com.novax.leadora.application.usecase.task.GetTaskDetailUseCase;
 import com.novax.leadora.application.usecase.task.GetTaskListUseCase;
+import com.novax.leadora.application.usecase.task.ResignTaskUseCase;
 import com.novax.leadora.application.usecase.task.ResolveTaskUseCase;
 import com.novax.leadora.application.usecase.task.UpdateTaskUseCase;
 import com.novax.leadora.common.response.ApiResponse;
@@ -27,6 +29,7 @@ public class TaskController {
     private final GetTaskListUseCase getTaskListUseCase;
     private final GetTaskDetailUseCase getTaskDetailUseCase;
     private final UpdateTaskUseCase updateTaskUseCase;
+    private final ResignTaskUseCase resignTaskUseCase;
     private final ResolveTaskUseCase resolveTaskUseCase;
 
     /** UC-10.1 — Create Follow-up Task */
@@ -44,11 +47,12 @@ public class TaskController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String priority,
             @RequestParam(required = false) String assignedUserId,
+            @RequestParam(required = false) String customerId,
             @RequestParam(defaultValue = "false") boolean overdue,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        Page<TaskResponse> tasks = getTaskListUseCase.execute(search, status, priority, assignedUserId, overdue, page, size);
+        Page<TaskResponse> tasks = getTaskListUseCase.execute(search, status, priority, assignedUserId, customerId, overdue, page, size);
         return ResponseEntity.ok(ApiResponse.success(tasks));
     }
 
@@ -67,6 +71,17 @@ public class TaskController {
     ) {
         TaskResponse task = updateTaskUseCase.execute(taskId, request);
         return ResponseEntity.ok(ApiResponse.success(task, "Task updated successfully"));
+    }
+
+    /** UC-10.7 — Resign Task (clone + create new follow-up task, soft parent ref in resultNote) */
+    @PostMapping("/{taskId}/resign")
+    public ResponseEntity<ApiResponse<TaskResponse>> resignTask(
+            @PathVariable UUID taskId,
+            @Valid @RequestBody ResignTaskRequest request
+    ) {
+        TaskResponse task = resignTaskUseCase.execute(taskId, request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(task, "Task resigned successfully"));
     }
 
     /** UC-17.5 — Resolve SLA Task (marks COMPLETED + resolves SLA tracking + cancels reminders) */
