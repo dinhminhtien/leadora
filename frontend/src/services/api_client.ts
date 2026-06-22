@@ -99,13 +99,12 @@ apiClient.interceptors.response.use(
       error.response?.status === 401 &&
       typeof window !== "undefined"
     ) {
-      localStorage.removeItem("accessToken"); // Clear the invalid token
       try {
-        const { createSupabaseBrowserClient } = require("@/services/supabase/client");
-        const supabase = createSupabaseBrowserClient();
-        supabase.auth.signOut();
+        const { supabaseAuthService } = require("@/services/supabase_auth_service");
+        supabaseAuthService.clearLocalSession();
+        supabaseAuthService.signOut();
       } catch (e) {
-        console.warn("Failed to clear Supabase session", e);
+        console.warn("Failed to clear session on 401", e);
       }
       if (window.location.pathname !== "/login") {
         window.location.assign("/login");

@@ -38,6 +38,30 @@ export const supabaseAuthService = {
     if (error) throw error;
   },
 
+  clearLocalSession() {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("accessToken");
+      
+      // Clear all Supabase keys from localStorage
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith("sb-") || key.includes("supabase"))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
+
+      // Clear Supabase cookies
+      document.cookie.split(";").forEach((cookie) => {
+        const name = cookie.split("=")[0].trim();
+        if (name.startsWith("sb-") || name.includes("supabase")) {
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        }
+      });
+    }
+  },
+
   async resetPasswordForEmail(email: string) {
     const { data, error } = await sb().auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,

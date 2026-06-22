@@ -279,7 +279,7 @@ export function SalesPipelineScreen() {
       </div>
 
       {/* Kanban Board Grid */}
-      <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar select-none min-h-[480px]">
+      <div className="flex lg:grid lg:grid-cols-6 gap-2 lg:gap-3 overflow-x-auto lg:overflow-x-hidden pb-4 custom-scrollbar select-none min-h-[480px]">
         {stages.map(stage => {
           const stageDeals = dealsByStage[stage] || [];
           const stageTotalVal = stageDeals.reduce((sum, d) => sum + d.value, 0);
@@ -287,7 +287,7 @@ export function SalesPipelineScreen() {
           return (
             <div
               key={stage}
-              className="flex-1 min-w-[240px] max-w-[280px] bg-slate-100/60 rounded-xl p-3 flex flex-col gap-3 border border-slate-200/50"
+              className="flex-1 min-w-[200px] lg:min-w-0 lg:max-w-none bg-slate-100/60 rounded-xl p-2.5 lg:p-2 flex flex-col gap-2.5 lg:gap-2 border border-slate-200/50"
             >
               {/* Stage Header */}
               <div className="px-1 py-0.5">
@@ -310,7 +310,7 @@ export function SalesPipelineScreen() {
                       key={deal.id}
                       className="border-slate-200 bg-white hover:border-blue-400 shadow-xs hover:shadow-md transition group duration-200"
                     >
-                      <CardContent className="p-3 space-y-2.5">
+                      <CardContent className="p-2.5 lg:p-2 space-y-2">
                         {/* Title and Value */}
                         <div>
                           <div className="flex items-start justify-between gap-2">

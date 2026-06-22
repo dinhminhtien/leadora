@@ -4,20 +4,34 @@ import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.Arrays;
 import java.util.UUID;
 
 /**
  * Resolves the acting user for requests.
  *
- * <p>Updated to support full server-side JWT authentication, falling back to the dev credentials
- * and header bypass for local environment compatibility.
+ * <p>
+ * Resolution order:
+ * <ol>
+ * <li>JWT subject (UUID) from Spring Security context</li>
+ * <li>Email claim from the same verified JWT</li>
+ * <li>X-User-Id request header</li>
+ * <li>AI_CHAT_DEV_USER_ID env — <b>only in the "dev" Spring profile</b></li>
+ * </ol>
+ *
+ * <p>
+ * If none of the above resolves a user, an {@link AccessDeniedException} is
+ * thrown
+ * (→ HTTP 403). The old "first user in DB" fallback has been removed as it was
+ * a
+ * critical security hole allowing unauthenticated access.
  */
 @Component
 @RequiredArgsConstructor
@@ -28,8 +42,12 @@ public class CurrentUserProvider {
     @Value("${AI_CHAT_DEV_USER_ID:}")
     private String devUserId;
 
+    @Value("${spring.profiles.active:}")
+    private String activeProfiles;
+
     public UserEntity resolve(String headerUserId) {
-        // 1. Try to load from Security Context (Spring Security authenticated principal from JWT)
+        // 1. Try to load from Security Context (Spring Security authenticated principal
+        // from JWT)
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof Jwt jwt) {
             String subject = jwt.getSubject();
@@ -58,20 +76,22 @@ public class CurrentUserProvider {
             }
         }
 
-        // 3. Fall back to the devUserId env
-        if (StringUtils.hasText(devUserId)) {
+        // 3. Dev-only fallback: AI_CHAT_DEV_USER_ID env variable.
+        // Intentionally disabled in production to prevent unauthorized access.
+        boolean isDevProfile = Arrays.stream(activeProfiles.split(","))
+                .map(String::trim)
+                .anyMatch("dev"::equalsIgnoreCase);
+
+        if (isDevProfile && StringUtils.hasText(devUserId)) {
             UserEntity user = tryLoad(devUserId);
             if (user != null) {
                 return user;
             }
         }
 
-        // 4. Fall back to the first user in the database (single-tenant convenience)
-        return userRepository.findAll(PageRequest.of(0, 1)).stream()
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "No user available to act as the chat assistant actor. "
-                                + "Seed a user or set AI_CHAT_DEV_USER_ID."));
+        // No authenticated user could be resolved — reject the request.
+        throw new AccessDeniedException(
+                "Could not resolve an authenticated user. Please provide a valid Bearer token.");
     }
 
     private UserEntity tryLoad(String rawId) {
