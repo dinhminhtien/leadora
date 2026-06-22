@@ -7,7 +7,6 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import lombok.Builder;
 import lombok.Getter;
 
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -21,7 +20,6 @@ public class TaskResponse {
     private String description;
     private TaskPriority priority;
     private TaskStatus status;
-    private LocalDate dueDate;
     private String resultNote;
 
     private UUID assignedUserId;
@@ -32,9 +30,15 @@ public class TaskResponse {
 
     private UUID leadId;
     private String leadName;
+    private String leadPhone;
+    private String leadEmail;
+    private String leadCompanyName;
 
     private UUID customerId;
     private String customerName;
+    private String customerPhone;
+    private String customerEmail;
+    private String customerCompanyName;
 
     private UUID dealId;
     private String dealName;
@@ -48,14 +52,21 @@ public class TaskResponse {
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 
+    /** Computed property: true if status == OPEN && now > endAt */
+    private Boolean isOverdue;
+
     public static TaskResponse from(TaskEntity entity) {
+        final OffsetDateTime now = OffsetDateTime.now();
+        final boolean isOverdue = entity.getStatus() == TaskStatus.OPEN
+                && entity.getEndAt() != null
+                && now.isAfter(entity.getEndAt());
+
         return TaskResponse.builder()
                 .taskId(entity.getTaskId())
                 .title(entity.getTitle())
                 .description(entity.getDescription())
                 .priority(entity.getPriority())
                 .status(entity.getStatus())
-                .dueDate(entity.getDueDate())
                 .resultNote(entity.getResultNote())
                 .assignedUserId(entity.getAssignedUser() != null ? entity.getAssignedUser().getUserId() : null)
                 .assignedUserName(entity.getAssignedUser() != null ? entity.getAssignedUser().getFullName() : null)
@@ -63,14 +74,21 @@ public class TaskResponse {
                 .createdByName(entity.getCreatedBy() != null ? entity.getCreatedBy().getFullName() : null)
                 .leadId(entity.getLead() != null ? entity.getLead().getLeadId() : null)
                 .leadName(entity.getLead() != null ? entity.getLead().getFullName() : null)
+                .leadPhone(entity.getLead() != null ? entity.getLead().getPhone() : null)
+                .leadEmail(entity.getLead() != null ? entity.getLead().getEmail() : null)
+                .leadCompanyName(entity.getLead() != null ? entity.getLead().getCompanyName() : null)
                 .customerId(entity.getCustomer() != null ? entity.getCustomer().getCustomerId() : null)
                 .customerName(entity.getCustomer() != null ? entity.getCustomer().getFullName() : null)
+                .customerPhone(entity.getCustomer() != null ? entity.getCustomer().getPhone() : null)
+                .customerEmail(entity.getCustomer() != null ? entity.getCustomer().getEmail() : null)
+                .customerCompanyName(entity.getCustomer() != null ? entity.getCustomer().getCompanyName() : null)
                 .dealId(entity.getDeal() != null ? entity.getDeal().getDealId() : null)
                 .dealName(entity.getDeal() != null ? entity.getDeal().getDealName() : null)
                 .startAt(entity.getStartAt())
                 .endAt(entity.getEndAt())
                 .primaryContactName(entity.getPrimaryContactName())
                 .primaryContactPhone(entity.getPrimaryContactPhone())
+                .isOverdue(isOverdue)
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();

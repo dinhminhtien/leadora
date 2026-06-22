@@ -34,12 +34,12 @@ export function CustomerProfileListScreen() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Guest Profiles</h1>
-          <p className="text-xs text-slate-400">Manage guest lists, company corporate directories, and past deal metrics</p>
+          <h1 className="text-xl font-bold text-slate-800">Customer Profiles</h1>
+          <p className="text-xs text-slate-400">Manage customer relationships, track interactions, and monitor deal metrics</p>
         </div>
         <Button variant="primary" size="sm" className="gap-1 bg-blue-600 hover:bg-blue-700 text-xs font-semibold text-white">
           <UserPlus className="size-3.5" />
-          <span>Add Guest Profile</span>
+          <span>Add Customer Profile</span>
         </Button>
       </div>
 
@@ -49,7 +49,7 @@ export function CustomerProfileListScreen() {
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search guests, email, corporate..."
+              placeholder="Search customers, email, company..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
@@ -62,12 +62,12 @@ export function CustomerProfileListScreen() {
         <Table>
           <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
             <TableRow hoverable={false}>
-              <TableHead className="font-semibold text-xs text-slate-500">Guest Name</TableHead>
+              <TableHead className="font-semibold text-xs text-slate-500">Customer Name</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Email Address</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Phone</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Company</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Last Interaction</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Total Booking Value</TableHead>
+              <TableHead className="font-semibold text-xs text-slate-500">Total Deal Value</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Internal Notes</TableHead>
             </TableRow>
           </TableHeader>
@@ -100,7 +100,7 @@ export function CustomerProfileListScreen() {
             ) : (
               <TableRow hoverable={false}>
                 <TableCell colSpan={7} className="py-8 text-center text-slate-400 text-xs">
-                  No guest profile records matched your filters.
+                  No customer profile records matched your filters.
                 </TableCell>
               </TableRow>
             )}

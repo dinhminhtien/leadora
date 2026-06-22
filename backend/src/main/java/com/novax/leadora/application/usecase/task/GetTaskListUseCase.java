@@ -27,26 +27,19 @@ public class GetTaskListUseCase {
             String status,
             String priority,
             String assignedUserId,
+            String customerId,
             boolean overdue,
             int page,
             int size
     ) {
-        // Sort is handled inside the JPQL query (startAt ASC NULLS LAST, then createdAt DESC).
-        // Pass an unsorted Pageable so the DB-level ORDER BY is not overridden.
         Pageable pageable = PageRequest.of(page, size, Sort.unsorted());
 
         String searchParam = StringUtils.hasText(search) ? search.trim() : "";
 
-        boolean overdueParam = overdue;
         TaskStatus statusParam = null;
         if (StringUtils.hasText(status)) {
             try {
-                TaskStatus parsedStatus = TaskStatus.valueOf(status.toUpperCase());
-                if (parsedStatus == TaskStatus.OVERDUE) {
-                    overdueParam = true;
-                } else {
-                    statusParam = parsedStatus;
-                }
+                statusParam = TaskStatus.valueOf(status.toUpperCase());
             } catch (IllegalArgumentException ignored) {}
         }
 
@@ -64,7 +57,14 @@ public class GetTaskListUseCase {
             } catch (IllegalArgumentException ignored) {}
         }
 
-        return taskRepository.searchTasks(searchParam, statusParam, priorityParam, assignedUserIdParam, overdueParam, pageable)
+        UUID customerIdParam = null;
+        if (StringUtils.hasText(customerId)) {
+            try {
+                customerIdParam = UUID.fromString(customerId);
+            } catch (IllegalArgumentException ignored) {}
+        }
+
+        return taskRepository.searchTasks(searchParam, statusParam, priorityParam, assignedUserIdParam, customerIdParam, overdue, pageable)
                 .map(TaskResponse::from);
     }
 }

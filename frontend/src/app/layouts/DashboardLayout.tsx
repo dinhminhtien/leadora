@@ -46,6 +46,7 @@ import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { authService } from "@/services/auth_service";
 import { supabaseAuthService } from "@/services/supabase_auth_service";
+import { ToastContainer } from "@/components/ui/ToastContainer";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -384,6 +385,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           {children}
         </main>
       </div>
+      <ToastContainer />
     </div>
   );
 }
