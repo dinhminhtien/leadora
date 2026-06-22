@@ -24,8 +24,10 @@ export function handleAuthMiddleware(
   user: User | null,
 ): NextResponse | undefined {
   const { pathname } = request.nextUrl;
-  // DEV bypass: skip auth for demo
-  const isAuthenticated = process.env.NODE_ENV === "development" ? true : Boolean(user);
+  
+  // Check if a custom accessToken cookie or Supabase user exists
+  const hasAccessToken = request.cookies.has("accessToken");
+  const isAuthenticated = process.env.NODE_ENV === "development" ? true : (Boolean(user) || hasAccessToken);
 
   // Authenticated user visiting login → redirect to dashboard
   if (isAuthenticated && pathname === ROUTE_PATHS.login) {

@@ -52,7 +52,15 @@ apiClient.interceptors.request.use(async (config) => {
     );
 
     if (!isPublicAuth) {
-      const localToken = localStorage.getItem("accessToken");
+      let localToken = localStorage.getItem("accessToken");
+      if (!localToken) {
+        // Fallback to cookie if localStorage is empty
+        const match = document.cookie.match(/(^|;)\s*accessToken\s*=\s*([^;]+)/);
+        if (match) {
+          localToken = match[2];
+        }
+      }
+
       if (localToken) {
         config.headers.Authorization = `Bearer ${localToken}`;
       } else {

@@ -118,7 +118,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const handleLogout = async () => {
     setIsUserDropdownOpen(false);
-    localStorage.removeItem("accessToken");
+    supabaseAuthService.clearLocalSession();
     clearUser();
     
     try {
