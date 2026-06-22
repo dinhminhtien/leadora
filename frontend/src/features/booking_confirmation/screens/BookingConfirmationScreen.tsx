@@ -13,10 +13,17 @@ import { productService, type ProductService } from "@/services/product_service"
 import { customerProfileService, type CustomerProfile } from "@/services/customer_profile_service";
 import { quotationService, type Quotation } from "@/services/quotation_service";
 
-type TabType = "queue" | "checker" | "form";
+type TabType = "queue" | "checker";
 
 export function BookingConfirmationScreen() {
   const [activeTab, setActiveTab] = useState<TabType>("queue");
+  const [isNewRequestOpen, setIsNewRequestOpen] = useState(false);
+
+  const handleOpenNewRequest = () => {
+    setFormSuccess("");
+    setFormError("");
+    setIsNewRequestOpen(true);
+  };
 
   // State for Booking Queue Tab
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -105,12 +112,13 @@ export function BookingConfirmationScreen() {
     const timer = setTimeout(() => {
       if (activeTab === "queue") {
         loadBookings();
-      } else if (activeTab === "form" || activeTab === "checker") {
+      }
+      if (activeTab === "checker" || isNewRequestOpen) {
         loadFormData();
       }
     }, 0);
     return () => clearTimeout(timer);
-  }, [activeTab, statusFilter]);
+  }, [activeTab, statusFilter, isNewRequestOpen]);
 
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -260,7 +268,7 @@ export function BookingConfirmationScreen() {
       });
 
       if (res.success) {
-        setFormSuccess(`Booking request submitted successfully! Booking Code: ${res.data.bookingCode}`);
+        alert(`Booking request submitted successfully! Booking Code: ${res.data.bookingCode}`);
         setFormCustomerId("");
         setFormQuotationId("");
         setFormCheckIn("");
@@ -269,6 +277,8 @@ export function BookingConfirmationScreen() {
         setFormQuantity(1);
         setFormNights(1);
         setFormSpecialRequests("");
+        setIsNewRequestOpen(false);
+        loadBookings();
       }
     } catch (err) {
       const axiosError = err as { response?: { data?: { message?: string } } };
@@ -302,12 +312,12 @@ export function BookingConfirmationScreen() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ scrollbarGutter: "stable" }}>
       {/* Header section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-foreground dark:text-zinc-50">Booking Confirmations</h1>
-          <p className="text-xs text-muted-foreground">Manage reservation confirmation states, check active room inventory capacity, and process requests.</p>
+          <h1 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Booking Confirmations</h1>
+          <p className="text-xs text-slate-400 dark:text-zinc-400">Manage reservation confirmation states, check active room inventory capacity, and process requests.</p>
         </div>
         <div className="flex items-center gap-2 border border-border rounded-xl p-1 bg-muted/30">
           <Button
@@ -329,23 +339,14 @@ export function BookingConfirmationScreen() {
           >
             Availability Checker
           </Button>
-          <Button
-            variant={activeTab === "form" ? "primary" : "ghost"}
-            size="sm"
-            onClick={() => setActiveTab("form")}
-            leftIcon={<Plus className="size-3.5" />}
-            className="rounded-lg"
-          >
-            New Request
-          </Button>
         </div>
       </div>
 
       {/* Tab 1: Booking Queue List */}
       {activeTab === "queue" && (
-        <div className="space-y-4">
+        <div className="w-full block clear-both space-y-4">
           <Card className="shadow-sm border-border bg-background">
-            <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
+            <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
               <div className="relative w-full md:w-80">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/60" />
                 <input
@@ -354,24 +355,33 @@ export function BookingConfirmationScreen() {
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   onKeyDown={handleSearchKeyPress}
-                  className="w-full pl-9 pr-4 py-2 rounded-xl border border-border bg-input text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition"
+                  className="w-full pl-9 pr-4 h-9 rounded-xl border border-border bg-input text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition"
                 />
               </div>
 
-              <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+              <div className="flex items-center gap-3 w-full md:w-auto justify-start md:justify-end">
                 <span className="text-xs text-muted-foreground font-bold uppercase tracking-wide">Status:</span>
                 <select
                   value={statusFilter}
                   onChange={e => setStatusFilter(e.target.value)}
-                  className="rounded-xl border border-border bg-input px-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-primary"
+                  className="h-9 rounded-xl border border-border bg-input px-3 text-xs text-foreground focus:outline-none focus:border-primary"
                 >
                   <option value="all">All Request Queue</option>
                   <option value="PENDING">Pending</option>
                   <option value="CONFIRMED">Approved</option>
                   <option value="REJECTED">Rejected</option>
                 </select>
-                <Button variant="outline" size="sm" onClick={loadBookings} isLoading={loadingBookings} className="h-8">
+                <Button variant="outline" size="sm" onClick={loadBookings} isLoading={loadingBookings} className="h-9">
                   <RefreshCw className="size-3.5" />
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleOpenNewRequest}
+                  leftIcon={<Plus className="size-3.5" />}
+                  className="h-9 font-semibold"
+                >
+                  New Request
                 </Button>
               </div>
             </CardContent>
@@ -385,182 +395,201 @@ export function BookingConfirmationScreen() {
           )}
 
           <div className="bg-background rounded-xl border border-border shadow-sm overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow hoverable={false}>
-                  <TableHead className="font-bold text-xs uppercase text-muted-foreground tracking-wider">Booking Number</TableHead>
-                  <TableHead className="font-bold text-xs uppercase text-muted-foreground tracking-wider">Guest Name</TableHead>
-                  <TableHead className="font-bold text-xs uppercase text-muted-foreground tracking-wider">Room Type</TableHead>
-                  <TableHead className="font-bold text-xs uppercase text-muted-foreground tracking-wider">Check In</TableHead>
-                  <TableHead className="font-bold text-xs uppercase text-muted-foreground tracking-wider">Check Out</TableHead>
-                  <TableHead className="font-bold text-xs uppercase text-muted-foreground tracking-wider">Total Amount</TableHead>
-                  <TableHead className="font-bold text-xs uppercase text-muted-foreground tracking-wider">Status</TableHead>
-                  <TableHead className="font-bold text-xs uppercase text-muted-foreground tracking-wider text-center">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loadingBookings ? (
+            <div className="w-full overflow-x-auto">
+              <Table className="w-full table-fixed min-w-[1100px]">
+                <TableHeader>
                   <TableRow hoverable={false}>
-                    <TableCell colSpan={8} className="py-12 text-center text-muted-foreground text-xs">
-                      <RefreshCw className="size-6 animate-spin mx-auto mb-2 text-primary" />
-                      Loading bookings from live server...
-                    </TableCell>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[14%] !text-center whitespace-nowrap">Booking Number</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[17%] !text-left whitespace-nowrap">Guest Name</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[15%] !text-left whitespace-nowrap">Room Type</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Check In</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Check Out</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[10%] !text-center whitespace-nowrap">Total Amount</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Status</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Actions</TableHead>
                   </TableRow>
-                ) : bookings.length > 0 ? (
-                  bookings.map(b => (
-                    <TableRow key={b.bookingId} className="hover:bg-muted/30 border-b border-border transition">
-                      <TableCell className="py-3.5 px-4 text-xs font-bold text-slate-800 dark:text-zinc-200">
-                        <span className="flex items-center gap-1.5 text-primary">
-                          <Receipt className="size-3.5 text-muted-foreground/60" />
-                          {b.bookingCode}
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-3.5 px-4 text-xs font-semibold text-foreground">{b.customerName}</TableCell>
-                      <TableCell className="py-3.5 px-4 text-xs text-muted-foreground">
-                        {b.details && b.details.length > 0 ? b.details[0].productName : "N/A"}
-                      </TableCell>
-                      <TableCell className="py-3.5 px-4 text-xs text-muted-foreground">{b.checkInDate}</TableCell>
-                      <TableCell className="py-3.5 px-4 text-xs text-muted-foreground">{b.checkOutDate}</TableCell>
-                      <TableCell className="py-3.5 px-4 text-xs font-black text-foreground">
-                        ${b.totalAmount.toLocaleString('en-US')}
-                      </TableCell>
-                      <TableCell className="py-3.5 px-4">
-                        <Badge variant={getBadgeVariant(b.status)} className="font-bold text-[9px] uppercase">
-                          {b.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="py-3.5 px-4 text-center">
-                        <div className="flex justify-center gap-1.5">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleViewDetails(b.bookingId)}
-                            className="px-2.5 py-1 text-[11px] border-border bg-background h-7"
-                          >
-                            Details
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDownload(b.bookingCode)}
-                            className="px-2 py-1 text-[11px] h-7 text-muted-foreground hover:text-foreground"
-                          >
-                            <Download className="size-3.5" />
-                          </Button>
-                        </div>
+                </TableHeader>
+                <TableBody>
+                  {loadingBookings ? (
+                    <TableRow hoverable={false}>
+                      <TableCell colSpan={8} className="py-12 text-center text-muted-foreground text-xs">
+                        <RefreshCw className="size-6 animate-spin mx-auto mb-2 text-primary" />
+                        Loading bookings from live server...
                       </TableCell>
                     </TableRow>
-                  ))
-                ) : (
-                  <TableRow hoverable={false}>
-                    <TableCell colSpan={8} className="py-12 text-center text-muted-foreground text-xs">
-                      No booking confirmation requests match the filter criteria.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                  ) : bookings.length > 0 ? (
+                    bookings.map(b => (
+                      <TableRow key={b.bookingId} className="hover:bg-muted/30 border-b border-border transition">
+                        <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-700 dark:!text-zinc-300 !text-center whitespace-nowrap">
+                          <span className="flex items-center justify-center gap-1.5 text-primary">
+                            <Receipt className="size-3.5 text-muted-foreground/60" />
+                            {b.bookingCode}
+                          </span>
+                        </TableCell>
+                        <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-800 dark:!text-zinc-200 !text-left whitespace-nowrap">{b.customerName}</TableCell>
+                        <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-600 dark:!text-zinc-400 !text-left whitespace-nowrap">
+                          {b.details && b.details.length > 0 ? b.details[0].productName : "N/A"}
+                        </TableCell>
+                        <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-500 dark:!text-zinc-400 !text-center whitespace-nowrap">{b.checkInDate}</TableCell>
+                        <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-500 dark:!text-zinc-400 !text-center whitespace-nowrap">{b.checkOutDate}</TableCell>
+                        <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-700 dark:!text-zinc-300 !text-center whitespace-nowrap">
+                          ${b.totalAmount.toLocaleString('en-US')}
+                        </TableCell>
+                        <TableCell className="!py-3.5 !px-4 !text-center whitespace-nowrap">
+                          <div className="flex justify-center">
+                            <Badge variant={getBadgeVariant(b.status)} className="font-bold text-[9px] uppercase min-w-[90px] justify-center text-center py-1">
+                              {b.status}
+                            </Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell className="!py-3.5 !px-4 !text-center whitespace-nowrap">
+                          <div className="flex justify-center gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewDetails(b.bookingId)}
+                              className="px-2.5 py-1 text-[11px] border-border bg-background h-7"
+                            >
+                              Details
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDownload(b.bookingCode)}
+                              className="px-2 py-1 text-[11px] h-7 text-muted-foreground hover:text-foreground"
+                            >
+                              <Download className="size-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow hoverable={false}>
+                      <TableCell colSpan={8} className="py-12 text-center text-muted-foreground text-xs">
+                        No booking confirmation requests match the filter criteria.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </div>
       )}
 
       {/* Tab 2: Availability Checker */}
       {activeTab === "checker" && (
-        <Card className="shadow-sm border-border bg-background">
-          <CardHeader>
-            <CardTitle>Room Inventory Availability Checker</CardTitle>
-            <CardDescription>Input requested stay dates to verify available room count inside live hotel databases.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <form onSubmit={handleCheckAvailability} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">Check-in Date *</label>
-                <Input
-                  type="date"
-                  value={checkIn}
-                  onChange={e => setCheckIn(e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">Check-out Date *</label>
-                <Input
-                  type="date"
-                  value={checkOut}
-                  onChange={e => setCheckOut(e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <Select
-                  label="Room Type Option"
-                  value={selectedProductId}
-                  onChange={e => setSelectedProductId(e.target.value)}
-                >
-                  <option value="">All Room Catalogue</option>
-                  {roomProducts.map(p => (
-                    <option key={p.productId} value={p.productId}>{p.name}</option>
-                  ))}
-                </Select>
-              </div>
-              <Button type="submit" isLoading={loadingAvail} className="w-full">
-                Check Room Availability
-              </Button>
-            </form>
+        <div className="w-full block clear-both">
+          <Card className="shadow-sm border-border bg-background">
+            <CardHeader>
+              <CardTitle>Room Inventory Availability Checker</CardTitle>
+              <CardDescription>Input requested stay dates to verify available room count inside live hotel databases.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <form onSubmit={handleCheckAvailability} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">Check-in Date *</label>
+                  <Input
+                    type="date"
+                    value={checkIn}
+                    onChange={e => setCheckIn(e.target.value)}
+                    required
+                    className="w-full"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">Check-out Date *</label>
+                  <Input
+                    type="date"
+                    value={checkOut}
+                    onChange={e => setCheckOut(e.target.value)}
+                    required
+                    className="w-full"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">Room Type Option</label>
+                  <Select
+                    value={selectedProductId}
+                    onChange={e => setSelectedProductId(e.target.value)}
+                    className="w-full"
+                  >
+                    <option value="">All Room Catalogue</option>
+                    {roomProducts.map(p => (
+                      <option key={p.productId} value={p.productId}>{p.name}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="w-full">
+                  <Button type="submit" isLoading={loadingAvail} className="w-full h-[38px]">
+                    Check Room Availability
+                  </Button>
+                </div>
+              </form>
 
-            {availError && (
-              <div className="bg-red-50 dark:bg-red-950/20 text-danger border border-red-200 dark:border-red-900 rounded-xl p-3 text-xs">
-                {availError}
-              </div>
-            )}
+              {availError && (
+                <div className="bg-red-50 dark:bg-red-950/20 text-danger border border-red-200 dark:border-red-900 rounded-xl p-3 text-xs">
+                  {availError}
+                </div>
+              )}
 
-            {availabilities.length > 0 && (
-              <div className="border border-border rounded-xl overflow-hidden bg-background">
-                <Table>
-                  <TableHeader>
-                    <TableRow hoverable={false}>
-                      <TableHead className="font-bold text-xs uppercase">Room Category Name</TableHead>
-                      <TableHead className="font-bold text-xs uppercase">Base Rate</TableHead>
-                      <TableHead className="font-bold text-xs uppercase">Occupied (Booked)</TableHead>
-                      <TableHead className="font-bold text-xs uppercase">Available Capacity</TableHead>
-                      <TableHead className="font-bold text-xs uppercase">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {availabilities.map(av => {
-                      const capacity = 20; // Default capacity limit on backend
-                      const remaining = Math.max(0, capacity - av.totalBooked);
-                      return (
-                        <TableRow key={av.productId}>
-                          <TableCell className="font-bold text-xs text-foreground">{av.name}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">${av.unitPrice}/{av.unit || "night"}</TableCell>
-                          <TableCell className="text-xs font-semibold text-foreground">{av.totalBooked} / {capacity} Rooms</TableCell>
-                          <TableCell className="text-xs font-bold text-primary">{remaining} rooms remaining</TableCell>
-                          <TableCell>
-                            <Badge variant={av.isAvailable ? "success" : "danger"} className="uppercase font-semibold">
-                              {av.isAvailable ? "Available" : "Fully Booked"}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              {availabilities.length > 0 && (
+                <div className="border border-border rounded-xl overflow-hidden bg-background">
+                  <Table>
+                    <TableHeader>
+                      <TableRow hoverable={false}>
+                        <TableHead className="font-bold text-xs uppercase min-w-[150px] whitespace-nowrap">Room Category Name</TableHead>
+                        <TableHead className="font-bold text-xs uppercase min-w-[100px] whitespace-nowrap">Base Rate</TableHead>
+                        <TableHead className="font-bold text-xs uppercase min-w-[150px] whitespace-nowrap">Occupied (Booked)</TableHead>
+                        <TableHead className="font-bold text-xs uppercase min-w-[150px] whitespace-nowrap">Available Capacity</TableHead>
+                        <TableHead className="font-bold text-xs uppercase min-w-[110px] whitespace-nowrap">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {availabilities.map(av => {
+                        const capacity = 20; // Default capacity limit on backend
+                        const remaining = Math.max(0, capacity - av.totalBooked);
+                        return (
+                          <TableRow key={av.productId}>
+                            <TableCell className="font-bold text-xs text-foreground min-w-[150px] whitespace-nowrap">{av.name}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground min-w-[100px] whitespace-nowrap">${av.unitPrice}/{av.unit || "night"}</TableCell>
+                            <TableCell className="text-xs font-semibold text-foreground min-w-[150px] whitespace-nowrap">{av.totalBooked} / {capacity} Rooms</TableCell>
+                            <TableCell className="text-xs font-bold text-primary min-w-[150px] whitespace-nowrap">{remaining} rooms remaining</TableCell>
+                            <TableCell className="min-w-[110px]">
+                              <Badge variant={av.isAvailable ? "success" : "danger"} className="uppercase font-bold text-[9px] min-w-[90px] justify-center text-center py-1">
+                                {av.isAvailable ? "Available" : "Fully Booked"}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
 
-      {/* Tab 3: Submit Booking Request Form */}
-      {activeTab === "form" && (
-        <Card className="shadow-sm border-border bg-background">
-          <CardHeader>
-            <CardTitle>Submit Booking Request Form (Sales UI)</CardTitle>
-            <CardDescription>Initiate a new booking request. All submissions save to the live database in PENDING state.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleCreateBooking} className="space-y-6">
+      {/* UC-18.2: Create Booking Request Modal */}
+      {isNewRequestOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-xl max-w-2xl w-full p-6 relative animate-in fade-in zoom-in-95 duration-200 border border-border">
+            <button
+              type="button"
+              onClick={() => setIsNewRequestOpen(false)}
+              className="absolute top-4 right-4 p-1 rounded-lg hover:bg-muted text-muted-foreground transition"
+            >
+              <X className="size-5" />
+            </button>
+            <div className="mb-4">
+              <h3 className="text-lg font-bold text-foreground">Submit Booking Request Form (Sales UI)</h3>
+              <p className="text-xs text-muted-foreground">Initiate a new booking request. All submissions save to the live database in PENDING state.</p>
+            </div>
+            
+            <form onSubmit={handleCreateBooking} className="space-y-4">
               {formSuccess && (
                 <div className="bg-green-100/70 dark:bg-green-950/20 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-900 rounded-xl p-3 text-xs flex items-center gap-2">
                   <Check className="size-4 shrink-0" />
@@ -576,117 +605,134 @@ export function BookingConfirmationScreen() {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Select
-                  label="Guest / Customer *"
-                  value={formCustomerId}
-                  onChange={e => setFormCustomerId(e.target.value)}
-                  required
-                >
-                  <option value="">-- Choose Customer --</option>
-                  {customers.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.email || "No email"})</option>
-                  ))}
-                </Select>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">Guest / Customer *</label>
+                  <Select
+                    value={formCustomerId}
+                    onChange={e => setFormCustomerId(e.target.value)}
+                    required
+                    className="w-full"
+                  >
+                    <option value="">-- Choose Customer --</option>
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.email || "No email"})</option>
+                    ))}
+                  </Select>
+                </div>
 
-                <Select
-                  label="Linked Quotation *"
-                  value={formQuotationId}
-                  onChange={e => setFormQuotationId(e.target.value)}
-                  required
-                >
-                  <option value="">-- Choose Quotation Ref --</option>
-                  {quotations.map(q => (
-                    <option key={q.id} value={q.id}>{String(q.quoteNo || q.id).substring(0, 8)}... (Status: {q.status})</option>
-                  ))}
-                </Select>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">Linked Quotation *</label>
+                  <Select
+                    value={formQuotationId}
+                    onChange={e => setFormQuotationId(e.target.value)}
+                    required
+                    className="w-full"
+                  >
+                    <option value="">-- Choose Quotation Ref --</option>
+                    {quotations.map(q => (
+                      <option key={q.id} value={q.id}>{String(q.quoteNo || q.id).substring(0, 8)}... (Status: {q.status})</option>
+                    ))}
+                  </Select>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">Check-in Date *</label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">Check-in Date *</label>
                   <Input
                     type="date"
                     value={formCheckIn}
                     onChange={e => setFormCheckIn(e.target.value)}
                     required
+                    className="w-full"
                   />
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">Check-out Date *</label>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">Check-out Date *</label>
                   <Input
                     type="date"
                     value={formCheckOut}
                     onChange={e => setFormCheckOut(e.target.value)}
                     required
+                    className="w-full"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">Nights Count *</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={formNights}
+                    onChange={e => setFormNights(Number(e.target.value))}
+                    required
+                    className="w-full"
                   />
                 </div>
               </div>
 
               <div className="border-t border-border pt-4">
-                <h4 className="text-xs font-bold uppercase text-foreground mb-4 tracking-wide">Allocated Room Details</h4>
+                <h4 className="text-xs font-black uppercase text-foreground mb-3 tracking-wider">Allocated Room Details</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Select
-                    label="Room Type Selection *"
-                    value={formProductId}
-                    onChange={e => setFormProductId(e.target.value)}
-                    required
-                  >
-                    <option value="">-- Select Room Type --</option>
-                    {roomProducts.map(p => (
-                      <option key={p.productId} value={p.productId}>{p.name} (${p.unitPrice}/night)</option>
-                    ))}
-                  </Select>
+                  <div className="md:col-span-2 flex flex-col gap-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">Room Type Selection *</label>
+                    <Select
+                      value={formProductId}
+                      onChange={e => setFormProductId(e.target.value)}
+                      required
+                      className="w-full"
+                    >
+                      <option value="">-- Select Room Type --</option>
+                      {roomProducts.map(p => (
+                        <option key={p.productId} value={p.productId}>{p.name} (${p.unitPrice}/night)</option>
+                      ))}
+                    </Select>
+                  </div>
 
-                  <div>
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">Quantity (Rooms) *</label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">Quantity (Rooms) *</label>
                     <Input
                       type="number"
                       min={1}
                       value={formQuantity}
                       onChange={e => setFormQuantity(Number(e.target.value))}
                       required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">Nights Count *</label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={formNights}
-                      onChange={e => setFormNights(Number(e.target.value))}
-                      required
+                      className="w-full"
                     />
                   </div>
                 </div>
               </div>
 
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1.5">Special Requests Note</label>
+              <div className="flex flex-col gap-1.5 w-full">
+                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">Special Requests Note</label>
                 <textarea
                   rows={2}
                   value={formSpecialRequests}
                   onChange={e => setFormSpecialRequests(e.target.value)}
-                  className="w-full rounded-xl border border-border bg-input py-2 px-3 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.025)] dark:shadow-none"
+                  className="w-full rounded-xl border border-border bg-input py-2 px-3.5 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.025)] dark:shadow-none transition"
                   placeholder="E.g., early check-in, high floor, quiet room..."
                 />
               </div>
 
-              <div className="bg-muted/30 rounded-xl border border-border p-4 flex justify-between items-center">
-                <div className="text-xs text-muted-foreground">
+              <div className="bg-muted/30 rounded-xl border border-border p-3 flex justify-between items-center w-full">
+                <div className="text-xs text-muted-foreground font-bold uppercase tracking-wide">
                   Autocalculated Total (UnitPrice * Qty * Nights):
                 </div>
-                <div className="text-base font-black text-foreground">
+                <div className="text-lg font-black text-foreground">
                   ${computedFormAmount.toLocaleString("en-US")}
                 </div>
               </div>
 
-              <Button type="submit" isLoading={submittingBooking} className="w-full">
-                Submit Pending Booking Request
-              </Button>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => setIsNewRequestOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" isLoading={submittingBooking} className="px-6">
+                  Submit Booking Request
+                </Button>
+              </div>
             </form>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* UC-18.4 & UC-18.5: Selected Booking Request Detail Modal */}
@@ -774,23 +820,23 @@ export function BookingConfirmationScreen() {
                   <Table>
                     <TableHeader className="bg-muted/60">
                       <TableRow hoverable={false}>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500">Room Type</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500">Room #</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500">Qty</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500">Nights</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500">Rate</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 text-right">Line Total</TableHead>
+                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-[130px] whitespace-nowrap">Room Type</TableHead>
+                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-[110px] whitespace-nowrap">Room #</TableHead>
+                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-[50px] whitespace-nowrap">Qty</TableHead>
+                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-[60px] whitespace-nowrap">Nights</TableHead>
+                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-[80px] whitespace-nowrap">Rate</TableHead>
+                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 text-right min-w-[100px] whitespace-nowrap">Line Total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {selectedBooking.details && selectedBooking.details.map((d, index) => (
                         <TableRow key={index} hoverable={false}>
-                          <TableCell className="py-2.5 px-3 font-semibold text-xs text-foreground">{d.productName}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs text-primary font-bold">{d.roomNumber || "Pending Assignment"}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs">{d.quantity}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs">{d.nights}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs">${d.unitPrice}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs font-black text-right">${d.lineTotal.toLocaleString("en-US")}</TableCell>
+                          <TableCell className="py-2.5 px-3 font-semibold text-xs text-foreground min-w-[130px] whitespace-nowrap">{d.productName}</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs text-primary font-bold min-w-[110px] whitespace-nowrap">{d.roomNumber || "Pending Assignment"}</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs min-w-[50px]">{d.quantity}</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs min-w-[60px]">{d.nights}</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs min-w-[80px]">${d.unitPrice}</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs font-black text-right min-w-[100px] whitespace-nowrap">${d.lineTotal.toLocaleString("en-US")}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
