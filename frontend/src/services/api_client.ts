@@ -52,7 +52,15 @@ apiClient.interceptors.request.use(async (config) => {
     );
 
     if (!isPublicAuth) {
-      const localToken = localStorage.getItem("accessToken");
+      let localToken = localStorage.getItem("accessToken");
+      if (!localToken) {
+        // Fallback to cookie if localStorage is empty
+        const match = document.cookie.match(/(^|;)\s*accessToken\s*=\s*([^;]+)/);
+        if (match) {
+          localToken = match[2];
+        }
+      }
+
       if (localToken) {
         config.headers.Authorization = `Bearer ${localToken}`;
       } else {
@@ -99,13 +107,12 @@ apiClient.interceptors.response.use(
       error.response?.status === 401 &&
       typeof window !== "undefined"
     ) {
-      localStorage.removeItem("accessToken"); // Clear the invalid token
       try {
-        const { createSupabaseBrowserClient } = require("@/services/supabase/client");
-        const supabase = createSupabaseBrowserClient();
-        supabase.auth.signOut();
+        const { supabaseAuthService } = require("@/services/supabase_auth_service");
+        supabaseAuthService.clearLocalSession();
+        supabaseAuthService.signOut();
       } catch (e) {
-        console.warn("Failed to clear Supabase session", e);
+        console.warn("Failed to clear session on 401", e);
       }
       if (window.location.pathname !== "/login") {
         window.location.assign("/login");

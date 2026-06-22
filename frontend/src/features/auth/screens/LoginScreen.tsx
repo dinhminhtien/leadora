@@ -50,13 +50,24 @@ export function LoginScreen() {
     setError(null);
 
     try {
+      // 1. Clear any active Supabase sessions before email/password login
+      supabaseAuthService.clearLocalSession();
+      try {
+        await supabaseAuthService.signOut();
+      } catch (e) {}
+
       const response = await authService.login({
         email: data.email,
         password: data.password,
       });
+      
       if (response.data.accessToken) {
         localStorage.setItem("accessToken", response.data.accessToken);
+        // Save to cookie for Next.js middleware (especially in production)
+        const isProd = process.env.NODE_ENV === "production";
+        document.cookie = `accessToken=${response.data.accessToken}; path=/; max-age=86400; SameSite=Lax${isProd ? "; Secure" : ""}`;
       }
+      
       setUser(response.data.user);
       router.push(nextPath);
     } catch (err: any) {
@@ -71,6 +82,10 @@ export function LoginScreen() {
     setIsGoogleLoading(true);
     setError(null);
     try {
+      // Clear any custom email auth sessions before starting Google OAuth
+      localStorage.removeItem("accessToken");
+      document.cookie = "accessToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+
       await supabaseAuthService.signInWithGoogle(nextPath);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Google authentication failed";
