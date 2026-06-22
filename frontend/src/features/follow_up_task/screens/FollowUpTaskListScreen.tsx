@@ -1596,8 +1596,8 @@ export function FollowUpTaskListScreen() {
   );
 
   const allTasks: Task[] = data?.data?.content ?? [];
-  const totalPages = data?.data?.totalPages ?? 1;
-  const totalElements = data?.data?.totalElements ?? 0;
+  const totalPages = (data?.data?.page && typeof data.data.page === "object") ? data.data.page.totalPages : (data?.data?.totalPages ?? 1);
+  const totalElements = (data?.data?.page && typeof data.data.page === "object") ? data.data.page.totalElements : (data?.data?.totalElements ?? 0);
   const calTasks: Task[] = calData?.data?.content ?? [];
 
   const filteredTasks = useMemo(() => {
