@@ -24,7 +24,7 @@ public class PermissionEntity {
     @Column(name = "permission_code", nullable = false, unique = true, length = 100)
     private String permissionCode;
 
-    @Column(name = "description", length = 255)
+    @Column(name = "description", length = 100)
     private String description;
 
     @CreatedDate

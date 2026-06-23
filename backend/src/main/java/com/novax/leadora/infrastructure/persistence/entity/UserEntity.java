@@ -28,7 +28,7 @@ public class UserEntity extends BaseEntity {
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
-    @Column(name = "phone", length = 20)
+    @Column(name = "phone", length = 15)
     private String phone;
 
     @ManyToOne(fetch = FetchType.LAZY)
