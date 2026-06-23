@@ -20,49 +20,41 @@ import java.util.UUID;
 @Repository
 public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpecificationExecutor<TaskEntity> {
 
-    // ── Single entity ──────────────────────────────────────────────────────
+        // ── Single entity ──────────────────────────────────────────────────────
 
-    @EntityGraph(attributePaths = {"assignedUser", "createdBy", "lead", "customer", "deal"})
-    @Query("SELECT t FROM TaskEntity t WHERE t.taskId = :taskId")
-    Optional<TaskEntity> findWithRelationsById(@Param("taskId") UUID taskId);
+        @EntityGraph(attributePaths = { "assignedUser", "createdBy", "lead", "customer", "deal" })
+        @Query("SELECT t FROM TaskEntity t WHERE t.taskId = :taskId")
+        Optional<TaskEntity> findWithRelationsById(@Param("taskId") UUID taskId);
 
-    // ── Paginated list (dynamic filtering via Specification) ───────────────
+        // ── Paginated list (dynamic filtering via Specification) ───────────────
+        @Override
+        @EntityGraph(attributePaths = { "assignedUser", "createdBy", "lead", "customer", "deal" })
+        Page<TaskEntity> findAll(Specification<TaskEntity> spec, Pageable pageable);
 
-    /**
-     * Overrides JpaSpecificationExecutor to apply the task EntityGraph on every
-     * paginated Specification query. All associations are @ManyToOne, so
-     * EntityGraph does not trigger Hibernate's in-memory pagination warning.
-     * Pass Sort.unsorted() in the Pageable when TaskSpecification.defaultSort() is active.
-     */
-    @Override
-    @EntityGraph(attributePaths = {"assignedUser", "createdBy", "lead", "customer", "deal"})
-    Page<TaskEntity> findAll(Specification<TaskEntity> spec, Pageable pageable);
+        // ── Calendar range query ───────────────────────────────────────────────
+        @EntityGraph(attributePaths = { "assignedUser", "createdBy", "lead", "customer", "deal" })
+        @Query("""
+                        SELECT t FROM TaskEntity t
+                        WHERE (:assignedUserId IS NULL OR t.assignedUser.userId = :assignedUserId)
+                          AND t.startAt IS NOT NULL
+                          AND t.startAt <= :rangeEnd
+                          AND (t.endAt IS NULL OR t.endAt >= :rangeStart)
+                        ORDER BY t.startAt ASC
+                        """)
+        List<TaskEntity> findByDateRange(
+                        @Param("assignedUserId") UUID assignedUserId,
+                        @Param("rangeStart") OffsetDateTime rangeStart,
+                        @Param("rangeEnd") OffsetDateTime rangeEnd);
 
-    // ── Calendar range query ───────────────────────────────────────────────
+        // ── Lightweight association lookups (no eager load required) ──────────
 
-    /**
-     * Returns tasks whose schedule overlaps [rangeStart, rangeEnd].
-     * Recommended index: CREATE INDEX idx_tasks_calendar ON tasks(assigned_user_id, start_at, end_at);
-     */
-    @EntityGraph(attributePaths = {"assignedUser", "createdBy", "lead", "customer", "deal"})
-    @Query("""
-            SELECT t FROM TaskEntity t
-            WHERE (:assignedUserId IS NULL OR t.assignedUser.userId = :assignedUserId)
-              AND t.startAt IS NOT NULL
-              AND t.startAt <= :rangeEnd
-              AND (t.endAt IS NULL OR t.endAt >= :rangeStart)
-            ORDER BY t.startAt ASC
-            """)
-    List<TaskEntity> findByDateRange(
-            @Param("assignedUserId") UUID assignedUserId,
-            @Param("rangeStart") OffsetDateTime rangeStart,
-            @Param("rangeEnd") OffsetDateTime rangeEnd);
+        List<TaskEntity> findByAssignedUser_UserId(UUID assignedUserId);
 
-    // ── Lightweight association lookups (no eager load required) ──────────
+        List<TaskEntity> findByStatus(TaskStatus status);
 
-    List<TaskEntity> findByAssignedUser_UserId(UUID assignedUserId);
-    List<TaskEntity> findByStatus(TaskStatus status);
-    List<TaskEntity> findByDeal_DealId(UUID dealId);
-    List<TaskEntity> findByCustomer_CustomerId(UUID customerId);
-    List<TaskEntity> findByLead_LeadId(UUID leadId);
+        List<TaskEntity> findByDeal_DealId(UUID dealId);
+
+        List<TaskEntity> findByCustomer_CustomerId(UUID customerId);
+
+        List<TaskEntity> findByLead_LeadId(UUID leadId);
 }

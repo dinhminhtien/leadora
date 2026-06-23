@@ -30,11 +30,11 @@ public class DealEntity extends BaseEntity {
     @JoinColumn(name = "assigned_user_id")
     private UserEntity assignedUser;
 
-    @Column(name = "deal_name", nullable = false, length = 255)
+    @Column(name = "deal_name", nullable = false, length = 20)
     private String dealName;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "pipeline_stage", nullable = false, length = 50)
+    @Column(name = "pipeline_stage", nullable = false, length = 10)
     private DealPipelineStage pipelineStage;
 
     @Column(name = "expected_revenue", precision = 15, scale = 2)
@@ -44,7 +44,7 @@ public class DealEntity extends BaseEntity {
     private LocalDate expectedCloseDate;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(name = "status", nullable = false, length = 10)
     private DealStatus status;
 
     @Column(name = "notes", columnDefinition = "TEXT")
