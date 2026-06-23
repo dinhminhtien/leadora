@@ -96,7 +96,7 @@ public class CurrentUserProvider {
 
     private UserEntity tryLoad(String rawId) {
         try {
-            return userRepository.findById(UUID.fromString(rawId.trim())).orElse(null);
+            return userRepository.findWithRoleByUserId(UUID.fromString(rawId.trim())).orElse(null);
         } catch (IllegalArgumentException ex) {
             return null; // not a UUID — ignore and fall through
         }

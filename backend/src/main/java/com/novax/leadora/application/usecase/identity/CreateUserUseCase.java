@@ -29,6 +29,7 @@ public class CreateUserUseCase {
     private final PasswordEncoder passwordEncoder;
 
     @Transactional
+    @org.springframework.cache.annotation.CacheEvict(value = "user-roles", key = "#request.email.toLowerCase()")
     public UserAccountResponse execute(CreateUserRequest request) {
         String email = request.getEmail().trim();
 
