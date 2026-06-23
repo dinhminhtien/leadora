@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -71,6 +72,7 @@ public class TaskController {
 
     /** UC-17.5 — Resolve SLA Task (marks COMPLETED + resolves SLA tracking + cancels reminders) */
     @PatchMapping("/{taskId}/resolve")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<TaskResponse>> resolveTask(@PathVariable UUID taskId) {
         TaskResponse task = resolveTaskUseCase.execute(taskId);
         return ResponseEntity.ok(ApiResponse.success(task, "Task resolved successfully"));

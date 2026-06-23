@@ -13,8 +13,13 @@ import java.util.UUID;
 
 @Repository
 public interface SlaTrackingRepository extends JpaRepository<SlaTrackingEntity, UUID> {
+    boolean existsByRuleId(UUID ruleId);
     List<SlaTrackingEntity> findByEntityTypeAndEntityId(String entityType, UUID entityId);
     List<SlaTrackingEntity> findByStatusAndDeadlineAtBefore(SlaStatus status, OffsetDateTime before);
+    List<SlaTrackingEntity> findByStatusIn(List<SlaStatus> statuses);
+    List<SlaTrackingEntity> findByStatusInAndEntityType(List<SlaStatus> statuses, String entityType);
+
+    List<SlaTrackingEntity> findByStatusAndWarningAtBeforeAndWarningNotifiedFalse(SlaStatus status, OffsetDateTime before);
 
     /** UC-17.6: fetch records for report with optional entityType / activityType filters */
     @Query("SELECT s FROM SlaTrackingEntity s " +
