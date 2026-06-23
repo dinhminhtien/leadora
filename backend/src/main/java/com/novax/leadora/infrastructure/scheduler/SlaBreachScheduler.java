@@ -1,6 +1,7 @@
 package com.novax.leadora.infrastructure.scheduler;
 
 import com.novax.leadora.application.usecase.sla.ProcessSlaBreachUseCase;
+import com.novax.leadora.application.usecase.sla.ProcessSlaWarningUseCase;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -12,15 +13,30 @@ import org.springframework.stereotype.Component;
 public class SlaBreachScheduler {
 
     private final ProcessSlaBreachUseCase processSlaBreachUseCase;
+    private final ProcessSlaWarningUseCase processSlaWarningUseCase;
+
+    /**
+     * UC-17.2 step 5-6: Scan every 30 seconds for ACTIVE records whose warningAt has
+     * passed. Send warning notifications to assigned staff + managers.
+     */
+    @Scheduled(fixedDelay = 30_000)
+    public void detectWarnings() {
+        try {
+            int count = processSlaWarningUseCase.execute();
+            if (count > 0) {
+                log.info("SLA warning scan: {} warning notification(s) sent", count);
+            }
+        } catch (Exception e) {
+            log.error("SLA warning scheduler error: {}", e.getMessage(), e);
+        }
+    }
 
     /**
      * UC-17.4 step 1: Scan every 30 seconds for ACTIVE SLA records that have passed
-     * their deadline.
-     * Each detected breach is updated to BREACHED and notifications are sent.
+     * their deadline. Each detected breach is updated to BREACHED and notifications are sent.
      */
     @Scheduled(fixedDelay = 30_000)
     public void detectBreaches() {
-        log.info("SLA breach scheduler tick: scanning for active breaches...");
         try {
             int count = processSlaBreachUseCase.execute();
             if (count > 0) {

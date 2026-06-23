@@ -5,6 +5,7 @@ import com.novax.leadora.api.dto.response.SlaMonitoringResponse;
 import com.novax.leadora.api.dto.response.SlaReportResponse;
 import com.novax.leadora.api.dto.response.SlaRuleResponse;
 import com.novax.leadora.application.usecase.sla.CreateSlaRuleUseCase;
+import com.novax.leadora.application.usecase.sla.DeleteSlaRuleUseCase;
 import com.novax.leadora.application.usecase.sla.GetSlaMonitoringUseCase;
 import com.novax.leadora.application.usecase.sla.GetSlaReportUseCase;
 import com.novax.leadora.application.usecase.sla.GetSlaRuleByIdUseCase;
@@ -15,6 +16,7 @@ import com.novax.leadora.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -33,6 +35,7 @@ public class SlaController {
     private final GetSlaRuleByIdUseCase getSlaRuleByIdUseCase;
     private final CreateSlaRuleUseCase createSlaRuleUseCase;
     private final UpdateSlaRuleUseCase updateSlaRuleUseCase;
+    private final DeleteSlaRuleUseCase deleteSlaRuleUseCase;
     private final GetSlaMonitoringUseCase getSlaMonitoringUseCase;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     private final GetSlaReportUseCase getSlaReportUseCase;
@@ -58,30 +61,42 @@ public class SlaController {
         return ResponseEntity.ok(ApiResponse.success(getSlaRuleByIdUseCase.execute(id)));
     }
 
-    /** UC-17.1 — Create new SLA rule (Admin/Manager only — enforced by permission_guard on frontend) */
+    /** UC-17.1 — Create new SLA rule (Admin/Manager only) */
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<ApiResponse<SlaRuleResponse>> create(@Valid @RequestBody SlaRuleRequest request) {
         SlaRuleResponse response = createSlaRuleUseCase.execute(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response, "SLA rule created"));
     }
 
-    /** UC-17.1 — Update existing SLA rule */
+    /** UC-17.1 — Update existing SLA rule (Admin/Manager only) */
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<ApiResponse<SlaRuleResponse>> update(
             @PathVariable UUID id,
             @Valid @RequestBody SlaRuleRequest request) {
         return ResponseEntity.ok(ApiResponse.success(updateSlaRuleUseCase.execute(id, request), "SLA rule updated"));
     }
 
-    /** UC-17.4 — Resolve a breached SLA tracking record */
+    /** UC-17.1 — Delete SLA rule (Admin/Manager only) */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+        deleteSlaRuleUseCase.execute(id);
+        return ResponseEntity.ok(ApiResponse.success(null, "SLA rule deleted"));
+    }
+
+    /** UC-17.4 — Resolve a breached SLA tracking record (E4: authenticated users only) */
     @PatchMapping("/tracking/{trackingId}/resolve")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Void>> resolve(@PathVariable UUID trackingId) {
         resolveSlaBreachUseCase.execute(trackingId);
         return ResponseEntity.ok(ApiResponse.success(null, "SLA breach resolved"));
     }
 
-    /** UC-17.6 — View SLA performance report with optional date/type filters */
+    /** UC-17.6 — View SLA performance report (Admin, Manager, Reservation Staff, Front Office) */
     @GetMapping("/report")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'RESERVATION_STAFF', 'FRONT_OFFICE')")
     public ResponseEntity<ApiResponse<SlaReportResponse>> getReport(
             @RequestParam(defaultValue = "#{T(java.time.LocalDate).now().minusDays(30)}")
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,

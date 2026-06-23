@@ -27,10 +27,14 @@ public class GetSlaReportUseCase {
     private final SlaTrackingRepository slaTrackingRepository;
 
     private static final Map<String, String> ACTIVITY_LABELS = Map.of(
-            "LEAD_RESPONSE",   "Lead Response",
-            "QUOTATION_SENT",  "Quotation Dispatch",
-            "FOLLOW_UP_TASK",  "Follow-up Task",
-            "BOOKING_CONFIRM", "Booking Confirmation"
+            "LEAD_RESPONSE",              "Lead Response",
+            "QUOTATION_SENT",             "Quotation Dispatch",
+            "FOLLOW_UP_TASK",             "Follow-up Task",
+            "BOOKING_CONFIRM",            "Booking Confirmation",
+            "PAYMENT_DEPOSIT",            "Payment Deposit",
+            "HANDOVER_SUBMISSION",        "Handover Submission",
+            "QUOTATION_APPROVAL",         "Quotation Approval",
+            "CUSTOMER_FEEDBACK_RESPONSE", "Customer Feedback Response"
     );
 
     /**

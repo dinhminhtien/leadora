@@ -1,6 +1,7 @@
 package com.novax.leadora.application.usecase.sla;
 
 import com.novax.leadora.api.dto.response.SlaMonitoringResponse;
+import com.novax.leadora.infrastructure.persistence.entity.SlaTrackingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.SlaStatus;
 import com.novax.leadora.infrastructure.persistence.repository.SlaTrackingRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,8 @@ public class GetSlaMonitoringUseCase {
 
     private final SlaTrackingRepository slaTrackingRepository;
 
+    private static final List<SlaStatus> ACTIVE_STATUSES = List.of(SlaStatus.ACTIVE, SlaStatus.BREACHED);
+
     /**
      * @param entityType    optional filter — LEAD | QUOTATION | BOOKING | TASK
      * @param displayStatus optional filter — WITHIN_SLA | WARNING | BREACHED
@@ -26,23 +29,15 @@ public class GetSlaMonitoringUseCase {
     public List<SlaMonitoringResponse> execute(String entityType, String displayStatus) {
         OffsetDateTime now = OffsetDateTime.now();
 
-        // Fetch all non-RESOLVED records (ACTIVE + BREACHED still need attention)
-        // Actually fetch all non-RESOLVED: ACTIVE records + already BREACHED in DB
-        // Re-query: get all where status != RESOLVED
-        var allActive = slaTrackingRepository.findAll().stream()
-                .filter(t -> !SlaStatus.RESOLVED.equals(t.getStatus()))
-                .toList();
+        // Push status + entityType filter to DB — avoid loading RESOLVED records
+        List<SlaTrackingEntity> records = StringUtils.hasText(entityType)
+                ? slaTrackingRepository.findByStatusInAndEntityType(ACTIVE_STATUSES, entityType.toUpperCase())
+                : slaTrackingRepository.findByStatusIn(ACTIVE_STATUSES);
 
-        var responses = allActive.stream()
-                .map(t -> SlaMonitoringResponse.from(t, now))
+        return records.stream()
                 // E3: skip records with missing data
-                .filter(r -> r.getEntityId() != null && r.getDeadlineAt() != null)
-                .toList();
-
-        // Apply optional filters
-        var filtered = responses.stream()
-                .filter(r -> !StringUtils.hasText(entityType)
-                        || r.getEntityType().equalsIgnoreCase(entityType))
+                .filter(t -> t.getEntityId() != null && t.getDeadlineAt() != null)
+                .map(t -> SlaMonitoringResponse.from(t, now))
                 .filter(r -> !StringUtils.hasText(displayStatus)
                         || r.getDisplayStatus().equalsIgnoreCase(displayStatus))
                 // Most urgent first: BREACHED → WARNING → WITHIN_SLA, then by deadlineAt ASC
@@ -50,8 +45,6 @@ public class GetSlaMonitoringUseCase {
                         .comparingInt((SlaMonitoringResponse r) -> displayStatusOrder(r.getDisplayStatus()))
                         .thenComparing(SlaMonitoringResponse::getDeadlineAt))
                 .toList();
-
-        return filtered;
     }
 
     private int displayStatusOrder(String status) {

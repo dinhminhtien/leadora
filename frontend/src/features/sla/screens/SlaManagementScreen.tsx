@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import {
   Gauge, Plus, AlertTriangle, ShieldOff, ShieldAlert,
-  Pencil, X, Check, ExternalLink, Activity, CheckCircle,
+  Pencil, Trash2, X, Check, ExternalLink, Activity, CheckCircle,
   BarChart2, Download, TrendingUp, TrendingDown,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -15,6 +15,7 @@ import {
   useSlaRules,
   useCreateSlaRule,
   useUpdateSlaRule,
+  useDeleteSlaRule,
   useSlaMonitoring,
   useResolveSlaTracking,
   useSlaReport,
@@ -29,10 +30,14 @@ const CONFIGURE_ROLES = ["ADMIN", "MANAGER"];
 // ─── Shared constants ────────────────────────────────────────────────────────
 
 const ACTIVITY_LABELS: Record<string, string> = {
-  LEAD_RESPONSE:   "Lead Response",
-  QUOTATION_SENT:  "Quotation Dispatch",
-  FOLLOW_UP_TASK:  "Follow-up Task",
-  BOOKING_CONFIRM: "Booking Confirmation",
+  LEAD_RESPONSE:              "Lead Response",
+  QUOTATION_SENT:             "Quotation Dispatch",
+  FOLLOW_UP_TASK:             "Follow-up Task",
+  BOOKING_CONFIRM:            "Booking Confirmation",
+  PAYMENT_DEPOSIT:            "Payment Deposit",
+  HANDOVER_SUBMISSION:        "Handover Submission",
+  QUOTATION_APPROVAL:         "Quotation Approval",
+  CUSTOMER_FEEDBACK_RESPONSE: "Customer Feedback Response",
 };
 
 const ENTITY_TYPE_LABELS: Record<string, string> = {
@@ -40,6 +45,8 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   QUOTATION: "Quotation",
   BOOKING:   "Booking",
   TASK:      "Task",
+  PAYMENT:   "Payment",
+  HANDOVER:  "Handover",
 };
 
 // ─── Monitor tab ─────────────────────────────────────────────────────────────
@@ -62,6 +69,8 @@ function getEntityRoute(entityType: string, entityId: string): string | null {
     case "QUOTATION": return ROUTE_PATHS.quotations;
     case "BOOKING":   return ROUTE_PATHS.bookingConfirmation;
     case "TASK":      return ROUTE_PATHS.followUpTasks;
+    case "PAYMENT":   return ROUTE_PATHS.depositPayment;
+    case "HANDOVER":  return ROUTE_PATHS.operationalHandover;
     default:          return null;
   }
 }
@@ -77,41 +86,65 @@ function MonitorTab() {
   const [entityTypeFilter, setEntityTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<SlaDisplayStatus | "">("");
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [resolveTarget, setResolveTarget] = useState<{ trackingId: string; entityId?: string; isTask: boolean } | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+  const { show: showToast, ToastContainer } = useToast();
 
   const { data: records = [], isLoading } = useSlaMonitoring(
     entityTypeFilter || undefined,
     statusFilter || undefined,
   );
-  const resolveMutation     = useResolveSlaTracking(); // UC-17.4: resolve SLA tracking only
-  const resolveTaskMutation = useResolveTask();        // UC-17.5: resolve task + SLA + reminders
+  const resolveMutation     = useResolveSlaTracking();
+  const resolveTaskMutation = useResolveTask();
 
   const breachedCount = records.filter((r) => r.displayStatus === "BREACHED").length;
   const warningCount  = records.filter((r) => r.displayStatus === "WARNING").length;
   const withinCount   = records.filter((r) => r.displayStatus === "WITHIN_SLA").length;
 
-  // UC-17.4: generic SLA breach resolve (LEAD / QUOTATION / BOOKING)
-  const handleResolve = async (trackingId: string) => {
-    if (!window.confirm("Mark this SLA breach as resolved? This action cannot be undone.")) return;
+  const handleConfirmResolve = async () => {
+    if (!resolveTarget) return;
+    const { trackingId, entityId, isTask } = resolveTarget;
     setResolvingId(trackingId);
     try {
-      await resolveMutation.mutateAsync(trackingId);
-    } finally {
-      setResolvingId(null);
-    }
-  };
-
-  // UC-17.5: resolve task + SLA tracking + associated reminders
-  const handleResolveTask = async (trackingId: string, entityId: string) => {
-    if (!window.confirm("Mark this task as completed? SLA tracking and pending reminders will also be resolved.")) return;
-    setResolvingId(trackingId);
-    try {
-      await resolveTaskMutation.mutateAsync(entityId);
+      if (isTask && entityId) {
+        try {
+          await resolveTaskMutation.mutateAsync(entityId);
+        } catch (e: unknown) {
+          const status = (e as { response?: { status?: number } })?.response?.status;
+          if (status === 404) {
+            await resolveMutation.mutateAsync(trackingId);
+          } else throw e;
+        }
+        showToast("Task marked as completed. SLA tracking and reminders resolved.");
+      } else {
+        await resolveMutation.mutateAsync(trackingId);
+        showToast("SLA breach marked as resolved.");
+      }
+      setResolveTarget(null);
+      setResolveError(null);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setResolveError(msg ?? "Failed to resolve. Please try again.");
     } finally {
       setResolvingId(null);
     }
   };
 
   return (
+    <>
+      <ToastContainer />
+      {resolveTarget && (
+        <ResolveDialog
+          title={resolveTarget.isTask ? "Resolve Task" : "Resolve SLA Breach"}
+          message={resolveTarget.isTask
+            ? "Mark this task as completed? SLA tracking and pending reminders will also be resolved."
+            : "Mark this SLA breach as resolved? This action cannot be undone."}
+          error={resolveError}
+          onConfirm={handleConfirmResolve}
+          onCancel={() => { setResolveTarget(null); setResolveError(null); }}
+          isLoading={resolveMutation.isPending || resolveTaskMutation.isPending}
+        />
+      )}
     <div className="space-y-5">
       {/* Summary stats */}
       <div className="grid grid-cols-3 gap-3">
@@ -174,11 +207,9 @@ function MonitorTab() {
               onNavigate={(path) => router.push(path)}
               onResolve={
                 r.entityType === "TASK"
-                  // UC-17.5: always show for TASK rows (any SLA status)
-                  ? () => handleResolveTask(r.trackingId, r.entityId)
-                  // UC-17.4: only show for BREACHED non-task rows
+                  ? () => setResolveTarget({ trackingId: r.trackingId, entityId: r.entityId, isTask: true })
                   : r.displayStatus === "BREACHED"
-                    ? () => handleResolve(r.trackingId)
+                    ? () => setResolveTarget({ trackingId: r.trackingId, isTask: false })
                     : undefined
               }
               resolveLabel={r.entityType === "TASK" ? "Resolve Task" : "Resolve"}
@@ -188,6 +219,7 @@ function MonitorTab() {
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -284,10 +316,142 @@ function SlaTrackingRow({
   );
 }
 
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+type ToastItem = { id: number; message: string; type: "success" | "error" };
+
+function useToast() {
+  const [toasts, setToasts] = React.useState<ToastItem[]>([]);
+  const counter = React.useRef(0);
+
+  const show = React.useCallback((message: string, type: "success" | "error" = "success") => {
+    const id = ++counter.current;
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
+  }, []);
+
+  const ToastContainer = React.useCallback(() => (
+    <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+      {toasts.map((t) => (
+        <div key={t.id} className={`flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg border text-xs font-semibold pointer-events-auto transition-all
+          ${t.type === "success"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+            : "bg-red-50 border-red-200 text-red-700"}`}>
+          {t.type === "success"
+            ? <CheckCircle className="size-4 shrink-0" />
+            : <AlertTriangle className="size-4 shrink-0" />}
+          {t.message}
+        </div>
+      ))}
+    </div>
+  ), [toasts]);
+
+  return { show, ToastContainer };
+}
+
+// ─── Confirm Dialog ───────────────────────────────────────────────────────────
+
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel = "Delete",
+  error,
+  onConfirm,
+  onCancel,
+  isLoading,
+}: {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  error?: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isLoading?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm mx-4 p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="flex-shrink-0 flex items-center justify-center size-10 rounded-full bg-red-50">
+            <Trash2 className="size-5 text-red-500" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">{message}</p>
+          </div>
+        </div>
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-semibold">
+            <AlertTriangle className="size-3.5 shrink-0" /> {error}
+          </div>
+        )}
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <Button onClick={onCancel} variant="outline" size="sm" className="text-xs border-slate-200 text-slate-600 font-semibold">
+            Cancel
+          </Button>
+          <Button onClick={onConfirm} isLoading={isLoading} size="sm" className="text-xs bg-red-600 hover:bg-red-700 text-white font-semibold gap-1.5">
+            <Trash2 className="size-3" /> {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Resolve Dialog ───────────────────────────────────────────────────────────
+
+function ResolveDialog({
+  title,
+  message,
+  error,
+  onConfirm,
+  onCancel,
+  isLoading,
+}: {
+  title: string;
+  message: string;
+  error?: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isLoading?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm mx-4 p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="flex-shrink-0 flex items-center justify-center size-10 rounded-full bg-emerald-50">
+            <CheckCircle className="size-5 text-emerald-500" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">{message}</p>
+          </div>
+        </div>
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-semibold">
+            <AlertTriangle className="size-3.5 shrink-0" /> {error}
+          </div>
+        )}
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <Button onClick={onCancel} variant="outline" size="sm" className="text-xs border-slate-200 text-slate-600 font-semibold">
+            Cancel
+          </Button>
+          <Button onClick={onConfirm} isLoading={isLoading} size="sm" className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5">
+            <CheckCircle className="size-3" /> Confirm
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Configure tab ────────────────────────────────────────────────────────────
 
 const ACTIVITY_OPTIONS: SlaActivityType[] = [
   "LEAD_RESPONSE", "QUOTATION_SENT", "FOLLOW_UP_TASK", "BOOKING_CONFIRM",
+  "PAYMENT_DEPOSIT", "HANDOVER_SUBMISSION", "QUOTATION_APPROVAL", "CUSTOMER_FEEDBACK_RESPONSE",
 ];
 
 type FormState = {
@@ -396,6 +560,7 @@ function ConfigureTab() {
   const { data: rules = [], isLoading } = useSlaRules();
   const createRule = useCreateSlaRule();
   const updateRule = useUpdateSlaRule();
+  const deleteRule = useDeleteSlaRule();
 
   const [isCreating, setIsCreating] = useState(false);
   const [newForm, setNewForm] = useState<FormState>(EMPTY_FORM);
@@ -403,6 +568,8 @@ function ConfigureTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<FormState>(EMPTY_FORM);
   const [editError, setEditError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // E4: Unauthorized Access (BR-02)
   if (!hasAccess) {
@@ -421,9 +588,26 @@ function ConfigureTab() {
     const err = validate(newForm);
     if (err) { setNewError(err); return; }
     setNewError(null);
-    await createRule.mutateAsync(newForm as SlaRulePayload);
-    setIsCreating(false);
-    setNewForm(EMPTY_FORM);
+    try {
+      await createRule.mutateAsync(newForm as SlaRulePayload);
+      setIsCreating(false);
+      setNewForm(EMPTY_FORM);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setNewError(msg ?? "Failed to save rule. Please try again.");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteRule.mutateAsync(deleteTarget.id);
+      setDeleteTarget(null);
+      setDeleteError(null);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setDeleteError(msg ?? "Failed to delete rule. Please try again.");
+    }
   };
 
   const startEdit = (rule: SlaRule) => {
@@ -436,13 +620,28 @@ function ConfigureTab() {
     const err = validate(editForm);
     if (err) { setEditError(err); return; }
     setEditError(null);
-    await updateRule.mutateAsync({ id, payload: editForm as SlaRulePayload });
-    setEditingId(null);
+    try {
+      await updateRule.mutateAsync({ id, payload: editForm as SlaRulePayload });
+      setEditingId(null);
+    } catch {
+      setEditError("Failed to save rule. Please try again.");
+    }
   };
 
   const activeCount = rules.filter((r) => r.active).length;
 
   return (
+    <>
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Delete SLA Rule"
+          message={`Are you sure you want to delete "${deleteTarget.name}"? This action cannot be undone.`}
+          error={deleteError}
+          onConfirm={handleDelete}
+          onCancel={() => { setDeleteTarget(null); setDeleteError(null); }}
+          isLoading={deleteRule.isPending}
+        />
+      )}
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <p className="text-xs text-slate-400">
@@ -496,9 +695,14 @@ function ConfigureTab() {
                       <span className="flex items-center gap-1"><ShieldAlert className="size-3 text-red-400" />Escalation: <span className="text-slate-700 ml-0.5">{rule.escalationThreshold}h after</span></span>
                     </div>
                   </div>
-                  <Button onClick={() => startEdit(rule)} variant="outline" size="sm" className="gap-1.5 text-xs border-slate-200 text-slate-600 font-semibold shrink-0">
-                    <Pencil className="size-3" /> Edit
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button onClick={() => startEdit(rule)} variant="outline" size="sm" className="gap-1.5 text-xs border-slate-200 text-slate-600 font-semibold">
+                      <Pencil className="size-3" /> Edit
+                    </Button>
+                    <Button onClick={() => setDeleteTarget({ id: rule.id, name: rule.name })} variant="outline" size="sm" className="gap-1.5 text-xs border-red-200 text-red-500 hover:bg-red-50 font-semibold">
+                      <Trash2 className="size-3" /> Delete
+                    </Button>
+                  </div>
                 </CardContent>
               )}
             </Card>
@@ -506,12 +710,13 @@ function ConfigureTab() {
         </div>
       )}
     </div>
+    </>
   );
 }
 
 // ─── Report tab ───────────────────────────────────────────────────────────────
 
-const REPORT_ROLES = ["ADMIN", "MANAGER"];
+const REPORT_ROLES = ["ADMIN", "MANAGER", "RESERVATION_STAFF", "FRONT_OFFICE"];
 
 function toIsoDate(d: Date): string {
   return d.toISOString().split("T")[0];
@@ -557,8 +762,8 @@ function ReportTab() {
   const defaultFrom = toIsoDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
   const defaultTo   = toIsoDate(new Date());
 
-  const [fromDate, setFromDate]         = useState(defaultFrom);
-  const [toDate, setToDate]             = useState(defaultTo);
+  const [fromDate, setFromDate]             = useState(defaultFrom);
+  const [toDate, setToDate]                 = useState(defaultTo);
   const [activityFilter, setActivityFilter] = useState("");
 
   const { data: report, isLoading, isFetching } = useSlaReport({
@@ -574,7 +779,7 @@ function ReportTab() {
         <ShieldOff className="size-10 text-red-400" />
         <h2 className="text-sm font-bold text-slate-700">Access Denied</h2>
         <p className="text-xs text-slate-400 text-center max-w-xs">
-          Only Admin or Sales Manager can view SLA performance reports.
+          Only Admin, Sales Manager, Reservation Staff, or Front Office can view SLA performance reports.
         </p>
       </div>
     );
@@ -634,8 +839,11 @@ function ReportTab() {
       </div>
 
       {/* Loading state */}
-      {(isLoading || isFetching) && (
+      {isLoading && (
         <div className="py-10 text-center text-xs text-slate-400">Loading report…</div>
+      )}
+      {!isLoading && isFetching && (
+        <p className="text-[10px] text-slate-400 text-right">Updating…</p>
       )}
 
       {/* E3: No SLA data found */}
@@ -648,7 +856,7 @@ function ReportTab() {
       )}
 
       {/* Summary KPI cards */}
-      {report && report.totalTracked > 0 && !isLoading && (
+      {report && report.totalTracked > 0 && !isLoading && !isFetching && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <KpiCard
