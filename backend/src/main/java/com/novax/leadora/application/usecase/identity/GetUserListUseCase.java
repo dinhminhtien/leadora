@@ -2,7 +2,10 @@ package com.novax.leadora.application.usecase.identity;
 
 import com.novax.leadora.api.dto.response.UserAccountResponse;
 import com.novax.leadora.infrastructure.persistence.entity.enums.UserStatus;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.specification.UserSpecification;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import org.springframework.data.jpa.domain.Specification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -29,13 +32,20 @@ public class GetUserListUseCase {
     @Transactional(readOnly = true)
     public Page<UserAccountResponse> execute(String search, Integer roleId, String status,
                                              String sortBy, String sortDir, int page, int size) {
-        // Pass "" (not null) so Hibernate 6 binds a varchar instead of bytea (see backend/CLAUDE.md).
-        String searchParam = StringUtils.hasText(search) ? search.trim() : "";
+        Specification<UserEntity> spec = (root, query, cb) -> cb.conjunction();
 
-        UserStatus statusParam = null;
+        if (StringUtils.hasText(search)) {
+            spec = spec.and(UserSpecification.search(search));
+        }
+
+        if (roleId != null) {
+            spec = spec.and(UserSpecification.hasRoleId(roleId));
+        }
+
         if (StringUtils.hasText(status)) {
             try {
-                statusParam = UserStatus.valueOf(status.trim().toUpperCase());
+                UserStatus statusParam = UserStatus.valueOf(status.trim().toUpperCase());
+                spec = spec.and(UserSpecification.hasStatus(statusParam));
             } catch (IllegalArgumentException ignored) {
                 // unknown status → treat as no filter
             }
@@ -45,7 +55,7 @@ public class GetUserListUseCase {
         Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
 
-        return userRepository.searchUsers(searchParam, roleId, statusParam, pageable)
+        return userRepository.findAll(spec, pageable)
                 .map(UserAccountResponse::from);
     }
 }

@@ -1,14 +1,15 @@
 package com.novax.leadora.application.usecase.task;
 
 import com.novax.leadora.api.dto.response.TaskResponse;
+import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskPriority;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
+import com.novax.leadora.infrastructure.persistence.specification.TaskSpecification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -32,39 +33,35 @@ public class GetTaskListUseCase {
             int page,
             int size
     ) {
-        Pageable pageable = PageRequest.of(page, size, Sort.unsorted());
+        // Sort is defined by TaskSpecification.defaultSort() — pass unsorted Pageable.
+        Specification<TaskEntity> spec = Specification.allOf(
+                TaskSpecification.search(StringUtils.hasText(search) ? search.trim() : null),
+                TaskSpecification.hasStatus(parseEnum(TaskStatus.class, status)),
+                TaskSpecification.hasPriority(parseEnum(TaskPriority.class, priority)),
+                TaskSpecification.assignedTo(parseUuid(assignedUserId)),
+                TaskSpecification.forCustomer(parseUuid(customerId)),
+                overdue ? TaskSpecification.isOverdue() : null,
+                TaskSpecification.defaultSort()
+        );
 
-        String searchParam = StringUtils.hasText(search) ? search.trim() : "";
+        return taskRepository.findAll(spec, PageRequest.of(page, size)).map(TaskResponse::from);
+    }
 
-        TaskStatus statusParam = null;
-        if (StringUtils.hasText(status)) {
-            try {
-                statusParam = TaskStatus.valueOf(status.toUpperCase());
-            } catch (IllegalArgumentException ignored) {}
+    private <E extends Enum<E>> E parseEnum(Class<E> type, String value) {
+        if (!StringUtils.hasText(value)) return null;
+        try {
+            return Enum.valueOf(type, value.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
         }
+    }
 
-        TaskPriority priorityParam = null;
-        if (StringUtils.hasText(priority)) {
-            try {
-                priorityParam = TaskPriority.valueOf(priority.toUpperCase());
-            } catch (IllegalArgumentException ignored) {}
+    private UUID parseUuid(String value) {
+        if (!StringUtils.hasText(value)) return null;
+        try {
+            return UUID.fromString(value.trim());
+        } catch (IllegalArgumentException e) {
+            return null;
         }
-
-        UUID assignedUserIdParam = null;
-        if (StringUtils.hasText(assignedUserId)) {
-            try {
-                assignedUserIdParam = UUID.fromString(assignedUserId);
-            } catch (IllegalArgumentException ignored) {}
-        }
-
-        UUID customerIdParam = null;
-        if (StringUtils.hasText(customerId)) {
-            try {
-                customerIdParam = UUID.fromString(customerId);
-            } catch (IllegalArgumentException ignored) {}
-        }
-
-        return taskRepository.searchTasks(searchParam, statusParam, priorityParam, assignedUserIdParam, customerIdParam, overdue, pageable)
-                .map(TaskResponse::from);
     }
 }

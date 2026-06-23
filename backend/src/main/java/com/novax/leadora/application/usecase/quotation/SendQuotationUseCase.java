@@ -5,6 +5,7 @@ import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationSendLogEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
+import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationSendLogRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class SendQuotationUseCase {
     private final QuotationRepository quotationRepository;
     private final QuotationSendLogRepository sendLogRepository;
     private final QuotationEmailService quotationEmailService;
+    private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, SendQuotationRequest request) {
@@ -53,6 +55,13 @@ public class SendQuotationUseCase {
                 .personalMessage(request.getPersonalMessage())
                 .build();
         sendLogRepository.save(sendLog);
+
+        // UC-17.2: auto-resolve SLA tracking — quotation sent = action completed
+        try {
+            resolveSlaBreachUseCase.executeByEntity("QUOTATION", quotationId);
+        } catch (Exception e) {
+            log.warn("SLA auto-resolve failed for quotation {}: {}", quotationId, e.getMessage());
+        }
 
         // POST-3: Send email when method is EMAIL (UC-14.4) — failure is logged but does not rollback DB state
         if ("EMAIL".equalsIgnoreCase(request.getSendMethod())) {

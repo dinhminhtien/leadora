@@ -33,6 +33,7 @@ public class UpdateUserUseCase {
     private final PasswordEncoder passwordEncoder;
 
     @Transactional
+    @org.springframework.cache.annotation.CacheEvict(value = "user-roles", allEntries = true)
     public UserAccountResponse execute(UUID userId, UpdateUserRequest request) {
         UserEntity user = userRepository.findWithRoleByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
