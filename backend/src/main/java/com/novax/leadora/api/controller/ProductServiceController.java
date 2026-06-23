@@ -1,0 +1,38 @@
+package com.novax.leadora.api.controller;
+
+import com.novax.leadora.common.response.ApiResponse;
+import com.novax.leadora.infrastructure.persistence.entity.ProductServiceEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ProductCategory;
+import com.novax.leadora.infrastructure.persistence.repository.ProductServiceRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/v1/product-services")
+@RequiredArgsConstructor
+@CrossOrigin(origins = "*")
+public class ProductServiceController {
+
+    private final ProductServiceRepository productServiceRepository;
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<ProductServiceEntity>>> getProductServices(
+            @RequestParam(required = false) String category
+    ) {
+        List<ProductServiceEntity> products;
+        if (category != null && !category.trim().isEmpty()) {
+            try {
+                ProductCategory productCategory = ProductCategory.valueOf(category.trim().toUpperCase());
+                products = productServiceRepository.findByCategory(productCategory);
+            } catch (IllegalArgumentException e) {
+                products = productServiceRepository.findAll();
+            }
+        } else {
+            products = productServiceRepository.findAll();
+        }
+        return ResponseEntity.ok(ApiResponse.success(products));
+    }
+}

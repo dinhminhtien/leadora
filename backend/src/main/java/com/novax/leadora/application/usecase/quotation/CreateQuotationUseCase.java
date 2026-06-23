@@ -26,8 +26,6 @@ import java.time.temporal.ChronoUnit;
 @RequiredArgsConstructor
 public class CreateQuotationUseCase {
 
-    private static final BigDecimal DISCOUNT_APPROVAL_THRESHOLD = new BigDecimal("10");
-
     private final QuotationRepository quotationRepository;
     private final QuotationDetailRepository quotationDetailRepository;
     private final DealRepository dealRepository;

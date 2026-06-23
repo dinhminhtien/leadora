@@ -3,7 +3,9 @@ package com.novax.leadora.application.usecase.task;
 import com.novax.leadora.api.dto.request.CreateTaskRequest;
 import com.novax.leadora.api.dto.response.TaskResponse;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import org.springframework.http.HttpStatus;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
@@ -63,13 +65,10 @@ public class CreateTaskUseCase {
 
         if (request.getStartAt() != null && request.getEndAt() != null
                 && !request.getStartAt().isBefore(request.getEndAt())) {
-            throw new IllegalArgumentException("start_at must be before end_at");
-        }
-
-        // Auto-derive due_date from start_at when not explicitly provided
-        java.time.LocalDate dueDate = request.getDueDate();
-        if (dueDate == null && request.getStartAt() != null) {
-            dueDate = request.getStartAt().toLocalDate();
+            throw new BusinessException(
+                    "INVALID_SCHEDULE",
+                    "End time must be later than start time.",
+                    HttpStatus.BAD_REQUEST);
         }
 
         TaskEntity task = TaskEntity.builder()
@@ -77,7 +76,6 @@ public class CreateTaskUseCase {
                 .description(request.getDescription())
                 .priority(priority)
                 .status(TaskStatus.OPEN)
-                .dueDate(dueDate)
                 .resultNote(request.getResultNote())
                 .assignedUser(assignedUser)
                 .lead(lead)

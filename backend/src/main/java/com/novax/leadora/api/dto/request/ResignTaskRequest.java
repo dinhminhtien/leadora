@@ -8,21 +8,13 @@ import java.util.UUID;
 
 @Getter
 @Setter
-public class UpdateTaskRequest {
+public class ResignTaskRequest {
 
     private String title;
     private String description;
-    private UUID assignedUserId;
     private String priority;
-    private String status;
-    private String resultNote;
-    private UUID leadId;
-    private UUID customerId;
-    private UUID dealId;
-
+    private UUID assignedUserId;
+    private String resignNote;
     private OffsetDateTime startAt;
     private OffsetDateTime endAt;
-
-    private String primaryContactName;
-    private String primaryContactPhone;
 }

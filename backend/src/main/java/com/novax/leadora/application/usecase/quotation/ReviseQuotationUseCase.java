@@ -20,8 +20,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ReviseQuotationUseCase {
 
-    private static final BigDecimal DISCOUNT_APPROVAL_THRESHOLD = new BigDecimal("10");
-
     private final QuotationRepository quotationRepository;
     private final QuotationDetailRepository quotationDetailRepository;
 

@@ -1,11 +1,13 @@
 package com.novax.leadora.infrastructure.persistence.entity.enums;
 
+/**
+ * Task Status Enum - Represents the business state of a task.
+ * OVERDUE is NOT persisted; it is calculated dynamically based on:
+ * - task.status == OPEN
+ * - task.endTime < now()
+ */
 public enum TaskStatus {
     OPEN,
-    IN_PROGRESS,
-    WAITING_CUSTOMER,
     COMPLETED,
-    CANCELLED,
-    // OVERDUE is calculated and not persisted, but included for completeness
-    OVERDUE
+    CANCELLED
 }
