@@ -32,7 +32,7 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ProcessSlaBreachUseCase {
+public class ProcessSlaWarningUseCase {
 
     private final SlaTrackingRepository slaTrackingRepository;
     private final NotificationRepository notificationRepository;
@@ -45,19 +45,18 @@ public class ProcessSlaBreachUseCase {
     private final OpHandoverRepository opHandoverRepository;
 
     /**
-     * UC-17.4 step 1-2: Find all newly-breached ACTIVE tracking records,
-     * update their status to BREACHED, and notify assigned staff + all managers.
+     * UC-17.2 step 5-6: Find ACTIVE records whose warningAt has passed but warning
+     * notification has not been sent yet. Notify assigned staff + all managers.
      *
-     * @return number of breach records processed
+     * @return number of warning notifications processed
      */
     @Transactional
     public int execute() {
-        List<SlaTrackingEntity> newBreaches = slaTrackingRepository
-                .findByStatusAndDeadlineAtBefore(SlaStatus.ACTIVE, OffsetDateTime.now());
+        List<SlaTrackingEntity> pendingWarnings = slaTrackingRepository
+                .findByStatusAndWarningAtBeforeAndWarningNotifiedFalse(SlaStatus.ACTIVE, OffsetDateTime.now());
 
-        if (newBreaches.isEmpty()) return 0;
+        if (pendingWarnings.isEmpty()) return 0;
 
-        // Load escalation targets once for the whole batch (BR-33)
         List<UserEntity> managers = userRepository.findAllWithRole().stream()
                 .filter(u -> {
                     String role = u.getRole().getRoleName();
@@ -65,12 +64,10 @@ public class ProcessSlaBreachUseCase {
                 })
                 .toList();
 
-        for (SlaTrackingEntity tracking : newBreaches) {
-            // POST-2: update DB status
-            tracking.setStatus(SlaStatus.BREACHED);
+        for (SlaTrackingEntity tracking : pendingWarnings) {
+            tracking.setWarningNotified(true);
             slaTrackingRepository.save(tracking);
 
-            // Collect unique recipients: all managers + the directly assigned staff
             Set<UUID> seen = new HashSet<>();
             List<UserEntity> recipients = new ArrayList<>();
             for (UserEntity m : managers) {
@@ -79,29 +76,30 @@ public class ProcessSlaBreachUseCase {
             UserEntity assigned = resolveAssignedUser(tracking);
             if (assigned != null && seen.add(assigned.getUserId())) recipients.add(assigned);
 
-            String title   = "SLA Breach: " + activityLabel(tracking.getActivityType());
-            String message = String.format("%s SLA deadline exceeded for %s. Immediate action required.",
-                    activityLabel(tracking.getActivityType()), entityLabel(tracking.getEntityType()));
+            String title   = "SLA Warning: " + activityLabel(tracking.getActivityType());
+            String message = String.format(
+                    "%s SLA deadline is approaching for %s. Take action now to avoid a breach.",
+                    activityLabel(tracking.getActivityType()),
+                    entityLabel(tracking.getEntityType()));
 
-            // POST-3: create notification for each recipient (UC-17.4 step 2)
             for (UserEntity recipient : recipients) {
                 NotificationEntity notification = NotificationEntity.builder()
                         .user(recipient)
                         .title(title)
                         .message(message)
-                        .type("SLA_BREACH")
+                        .type("SLA_WARNING")
                         .relatedEntity("SLA")
                         .relatedId(tracking.getTrackingId())
                         .build();
                 notificationRepository.save(notification);
             }
 
-            log.warn("SLA breach: trackingId={}, entityType={}, entityId={}, recipients={}",
+            log.warn("SLA warning sent: trackingId={}, entityType={}, entityId={}, recipients={}",
                     tracking.getTrackingId(), tracking.getEntityType(),
                     tracking.getEntityId(), recipients.size());
         }
 
-        return newBreaches.size();
+        return pendingWarnings.size();
     }
 
     private UserEntity resolveAssignedUser(SlaTrackingEntity tracking) {

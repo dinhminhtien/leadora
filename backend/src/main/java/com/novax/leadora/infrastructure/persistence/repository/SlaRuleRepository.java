@@ -12,4 +12,5 @@ import java.util.UUID;
 public interface SlaRuleRepository extends JpaRepository<SlaRuleEntity, UUID> {
     List<SlaRuleEntity> findAllByOrderByActivityTypeAsc();
     Optional<SlaRuleEntity> findByActivityTypeAndActiveTrue(String activityType);
+    boolean existsByActivityType(String activityType);
 }
