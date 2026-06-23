@@ -20,16 +20,23 @@ public class SlaMonitoringResponse {
     private OffsetDateTime startedAt;
     private OffsetDateTime deadlineAt;
     private OffsetDateTime warningAt;
+    private OffsetDateTime resolvedAt;
 
-    /** Computed at query time: WITHIN_SLA | WARNING | BREACHED */
+    /** ACTIVE | BREACHED | RESOLVED */
+    private String slaStatus;
+
+    /** Computed: WITHIN_SLA | WARNING | BREACHED — for RESOLVED records, reflects performance at resolve time */
     private String displayStatus;
 
-    /** Positive = hours left; negative = hours overdue */
+    /** For active: hours until deadline (negative = overdue). For resolved: hours between resolvedAt and deadline. */
     private long hoursRemaining;
 
     public static SlaMonitoringResponse from(SlaTrackingEntity entity, OffsetDateTime now) {
         String displayStatus = computeDisplayStatus(entity, now);
-        long hoursRemaining = ChronoUnit.HOURS.between(now, entity.getDeadlineAt());
+        OffsetDateTime ref = SlaStatus.RESOLVED.equals(entity.getStatus()) && entity.getResolvedAt() != null
+                ? entity.getResolvedAt()
+                : now;
+        long hoursRemaining = ChronoUnit.HOURS.between(ref, entity.getDeadlineAt());
 
         return SlaMonitoringResponse.builder()
                 .trackingId(entity.getTrackingId())
@@ -39,12 +46,21 @@ public class SlaMonitoringResponse {
                 .startedAt(entity.getStartedAt())
                 .deadlineAt(entity.getDeadlineAt())
                 .warningAt(entity.getWarningAt())
+                .resolvedAt(entity.getResolvedAt())
+                .slaStatus(entity.getStatus().name())
                 .displayStatus(displayStatus)
                 .hoursRemaining(hoursRemaining)
                 .build();
     }
 
     private static String computeDisplayStatus(SlaTrackingEntity entity, OffsetDateTime now) {
+        // For resolved records, evaluate performance at the time of resolution
+        if (SlaStatus.RESOLVED.equals(entity.getStatus()) && entity.getResolvedAt() != null) {
+            OffsetDateTime ref = entity.getResolvedAt();
+            if (!ref.isBefore(entity.getDeadlineAt())) return "BREACHED";
+            if (!ref.isBefore(entity.getWarningAt())) return "WARNING";
+            return "WITHIN_SLA";
+        }
         if (SlaStatus.BREACHED.equals(entity.getStatus()) || !now.isBefore(entity.getDeadlineAt())) {
             return "BREACHED";
         }

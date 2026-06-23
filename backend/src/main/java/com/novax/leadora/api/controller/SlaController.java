@@ -4,6 +4,7 @@ import com.novax.leadora.api.dto.request.SlaRuleRequest;
 import com.novax.leadora.api.dto.response.SlaMonitoringResponse;
 import com.novax.leadora.api.dto.response.SlaReportResponse;
 import com.novax.leadora.api.dto.response.SlaRuleResponse;
+import com.novax.leadora.application.usecase.sla.BackfillSlaTrackingUseCase;
 import com.novax.leadora.application.usecase.sla.CreateSlaRuleUseCase;
 import com.novax.leadora.application.usecase.sla.DeleteSlaRuleUseCase;
 import com.novax.leadora.application.usecase.sla.GetSlaMonitoringUseCase;
@@ -39,6 +40,7 @@ public class SlaController {
     private final GetSlaMonitoringUseCase getSlaMonitoringUseCase;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     private final GetSlaReportUseCase getSlaReportUseCase;
+    private final BackfillSlaTrackingUseCase backfillSlaTrackingUseCase;
 
     /** UC-17.3 — Monitor SLA status across all entities */
     @GetMapping("/monitoring")
@@ -92,6 +94,14 @@ public class SlaController {
     public ResponseEntity<ApiResponse<Void>> resolve(@PathVariable UUID trackingId) {
         resolveSlaBreachUseCase.execute(trackingId);
         return ResponseEntity.ok(ApiResponse.success(null, "SLA breach resolved"));
+    }
+
+    /** Backfill SLA tracking records for quotations created before a rule existed (Admin/Manager only) */
+    @PostMapping("/backfill/quotations")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<ApiResponse<Integer>> backfillQuotations() {
+        int count = backfillSlaTrackingUseCase.executeForQuotations();
+        return ResponseEntity.ok(ApiResponse.success(count, count + " quotation SLA tracking records created"));
     }
 
     /** UC-17.6 — View SLA performance report (Admin, Manager, Reservation Staff, Front Office) */
