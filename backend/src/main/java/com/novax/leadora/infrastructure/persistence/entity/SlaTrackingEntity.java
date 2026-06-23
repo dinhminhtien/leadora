@@ -47,4 +47,8 @@ public class SlaTrackingEntity extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private SlaStatus status;
+
+    @Column(name = "warning_notified", nullable = false)
+    @Builder.Default
+    private boolean warningNotified = false;
 }

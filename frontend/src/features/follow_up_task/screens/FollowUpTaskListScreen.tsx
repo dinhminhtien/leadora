@@ -451,13 +451,15 @@ function TaskDetailDrawer({
   onClose,
   users,
   onReassign,
+  initialEditing = false,
 }: {
   task: Task;
   onClose: () => void;
   users: UserOption[];
   onReassign: () => void;
+  initialEditing?: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initialEditing);
   const [form, setForm] = useState<UpdateTaskPayload>({
     title: task.title,
     description: task.description ?? "",
@@ -878,7 +880,55 @@ function TaskDetailDrawer({
                 <InfoRow icon={<Building2 className="size-4 text-slate-400" />} label="Entity Type" value={linkedEntityType(task)} />
               </div>
 
-              {/* Primary Contact */}
+              {/* Lead / Customer contact card */}
+              {(task.leadId || task.customerId) && (() => {
+                const isLead = !!task.leadId;
+                const name    = isLead ? task.leadName        : task.customerName;
+                const phone   = isLead ? task.leadPhone       : task.customerPhone;
+                const email   = isLead ? task.leadEmail       : task.customerEmail;
+                const company = isLead ? task.leadCompanyName : task.customerCompanyName;
+                const hasAny  = name || phone || email || company;
+                if (!hasAny) return null;
+                return (
+                  <div className="rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-1.5">
+                      <Phone className="size-3.5 text-slate-400" />
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Contact Information</p>
+                      <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold ${isLead ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
+                        {isLead ? "Lead" : "Customer"}
+                      </span>
+                    </div>
+                    <div className="px-4 py-3 space-y-2">
+                      {name && (
+                        <div className="flex items-center gap-2">
+                          <User className="size-3.5 text-slate-400 shrink-0" />
+                          <span className="text-sm font-semibold text-slate-800">{name}</span>
+                        </div>
+                      )}
+                      {phone && (
+                        <div className="flex items-center gap-2">
+                          <Phone className="size-3.5 text-slate-400 shrink-0" />
+                          <a href={`tel:${phone}`} className="text-sm text-blue-600 hover:underline">{phone}</a>
+                        </div>
+                      )}
+                      {email && (
+                        <div className="flex items-center gap-2">
+                          <Mail className="size-3.5 text-slate-400 shrink-0" />
+                          <a href={`mailto:${email}`} className="text-sm text-blue-600 hover:underline truncate">{email}</a>
+                        </div>
+                      )}
+                      {company && (
+                        <div className="flex items-center gap-2">
+                          <Building2 className="size-3.5 text-slate-400 shrink-0" />
+                          <span className="text-sm text-slate-600">{company}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Primary Contact (override / manual entry) */}
               {(task.primaryContactName || task.primaryContactPhone) && (
                 <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-100">
                   <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider mb-2">Primary Contact</p>
@@ -1546,6 +1596,7 @@ export function FollowUpTaskListScreen() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createDueDate, setCreateDueDate] = useState<string | undefined>(undefined);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [openTaskInEdit, setOpenTaskInEdit] = useState(false);
   const [reassignTask, setReassignTask] = useState<Task | null>(null);
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
 
@@ -1759,7 +1810,7 @@ export function FollowUpTaskListScreen() {
         {/* Row actions — appear on hover */}
         <td className="px-3 py-3 w-[120px]" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
-            <Button variant="secondary" size="sm" onClick={() => setSelectedTask(task)}>Edit</Button>
+            <Button variant="secondary" size="sm" onClick={() => { setSelectedTask(task); setOpenTaskInEdit(true); }}>Edit</Button>
             {task.status !== "CANCELLED" && task.status !== "COMPLETED" && (
               <Button
                 variant="secondary"
@@ -2233,9 +2284,10 @@ export function FollowUpTaskListScreen() {
       {selectedTask && (
         <TaskDetailDrawer
           task={selectedTask}
-          onClose={() => setSelectedTask(null)}
+          onClose={() => { setSelectedTask(null); setOpenTaskInEdit(false); }}
           users={users}
-          onReassign={() => { setReassignTask(selectedTask); setSelectedTask(null); }}
+          onReassign={() => { setReassignTask(selectedTask); setSelectedTask(null); setOpenTaskInEdit(false); }}
+          initialEditing={openTaskInEdit}
         />
       )}
       {reassignTask && <ReassignFollowUpModal task={reassignTask} onClose={() => setReassignTask(null)} users={users} />}

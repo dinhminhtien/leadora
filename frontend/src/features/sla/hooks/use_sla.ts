@@ -30,6 +30,14 @@ export function useUpdateSlaRule() {
   });
 }
 
+export function useDeleteSlaRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => slaService.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sla-rules"] }),
+  });
+}
+
 export function useSlaMonitoring(entityType?: string, displayStatus?: SlaDisplayStatus | "") {
   return useQuery({
     queryKey: ["sla-monitoring", entityType, displayStatus],

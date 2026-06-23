@@ -1,4 +1,4 @@
-package com.novax.leadora.application.usecase;
+    package com.novax.leadora.application.usecase;
 
 import com.novax.leadora.api.dto.request.DealRequest;
 import com.novax.leadora.api.dto.response.DealResponse;
@@ -29,6 +29,13 @@ public class ManageDealUseCase {
     @Transactional(readOnly = true)
     public List<DealResponse> getAllDeals() {
         return dealRepository.findAll().stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<DealResponse> getDealsByCustomer(UUID customerId) {
+        return dealRepository.findByCustomer_CustomerId(customerId).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }

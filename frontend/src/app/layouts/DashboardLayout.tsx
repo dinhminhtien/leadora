@@ -86,7 +86,7 @@ const navigationGroups: NavGroup[] = [
   {
     title: "Hotel Operations",
     items: [
-      { href: ROUTE_PATHS.customerProfiles, label: "Guest Profiles", Icon: Users },
+      { href: ROUTE_PATHS.customerProfiles, label: "Customer Profiles", Icon: Users },
       { href: ROUTE_PATHS.bookingConfirmation, label: "Bookings", Icon: FileText },
       { href: ROUTE_PATHS.reservationStatus, label: "Reservations", Icon: Hotel },
       { href: ROUTE_PATHS.operationalHandover, label: "Handovers", Icon: Workflow },

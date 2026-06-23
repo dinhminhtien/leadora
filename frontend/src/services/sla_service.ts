@@ -4,7 +4,11 @@ export type SlaActivityType =
   | "LEAD_RESPONSE"
   | "QUOTATION_SENT"
   | "FOLLOW_UP_TASK"
-  | "BOOKING_CONFIRM";
+  | "BOOKING_CONFIRM"
+  | "PAYMENT_DEPOSIT"
+  | "HANDOVER_SUBMISSION"
+  | "QUOTATION_APPROVAL"
+  | "CUSTOMER_FEEDBACK_RESPONSE";
 
 export type SlaRule = {
   id: string;
@@ -86,6 +90,11 @@ export const slaService = {
 
   async update(id: string, payload: SlaRulePayload): Promise<ApiResponse<SlaRule>> {
     const response = await apiClient.put<ApiResponse<SlaRule>>(`${ENDPOINT}/${id}`, payload);
+    return response.data;
+  },
+
+  async delete(id: string): Promise<ApiResponse<null>> {
+    const response = await apiClient.delete<ApiResponse<null>>(`${ENDPOINT}/${id}`);
     return response.data;
   },
 
