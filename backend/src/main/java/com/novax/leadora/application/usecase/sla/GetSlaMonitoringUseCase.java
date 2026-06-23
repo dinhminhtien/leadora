@@ -19,7 +19,7 @@ public class GetSlaMonitoringUseCase {
 
     private final SlaTrackingRepository slaTrackingRepository;
 
-    private static final List<SlaStatus> ACTIVE_STATUSES = List.of(SlaStatus.ACTIVE, SlaStatus.BREACHED);
+    private static final List<SlaStatus> TRACKED_STATUSES = List.of(SlaStatus.ACTIVE, SlaStatus.BREACHED, SlaStatus.RESOLVED);
 
     /**
      * @param entityType    optional filter — LEAD | QUOTATION | BOOKING | TASK
@@ -31,8 +31,8 @@ public class GetSlaMonitoringUseCase {
 
         // Push status + entityType filter to DB — avoid loading RESOLVED records
         List<SlaTrackingEntity> records = StringUtils.hasText(entityType)
-                ? slaTrackingRepository.findByStatusInAndEntityType(ACTIVE_STATUSES, entityType.toUpperCase())
-                : slaTrackingRepository.findByStatusIn(ACTIVE_STATUSES);
+                ? slaTrackingRepository.findByStatusInAndEntityType(TRACKED_STATUSES, entityType.toUpperCase())
+                : slaTrackingRepository.findByStatusIn(TRACKED_STATUSES);
 
         return records.stream()
                 // E3: skip records with missing data
@@ -52,7 +52,8 @@ public class GetSlaMonitoringUseCase {
             case "BREACHED"   -> 0;
             case "WARNING"    -> 1;
             case "WITHIN_SLA" -> 2;
-            default           -> 3;
+            case "RESOLVED"   -> 3;
+            default           -> 4;
         };
     }
 }
