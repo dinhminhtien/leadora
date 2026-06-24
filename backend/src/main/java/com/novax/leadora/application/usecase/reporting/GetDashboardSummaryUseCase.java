@@ -7,6 +7,8 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.*;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
+import com.novax.leadora.application.usecase.deal.DealMapper;
+import com.novax.leadora.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +30,7 @@ public class GetDashboardSummaryUseCase {
     private final LeadRepository leadRepository;
     private final DealRepository dealRepository;
     private final TaskRepository taskRepository;
+    private final DealMapper dealMapper;
 
     /**
      * Stage display names in pipeline order.
@@ -43,8 +46,8 @@ public class GetDashboardSummaryUseCase {
         // ── Lead KPIs ─────────────────────────────────────────────────────────
         long totalLeads = leadRepository.count();
         long activeLeads = totalLeads
-                - leadRepository.findByStatus(LeadStatus.LOST).size()
-                - leadRepository.findByStatus(LeadStatus.CONVERTED).size();
+                - leadRepository.countByStatus(LeadStatus.LOST)
+                - leadRepository.countByStatus(LeadStatus.CONVERTED);
 
         // ── Deal KPIs ─────────────────────────────────────────────────────────
         List<DealEntity> allDeals = dealRepository.findAll();
@@ -62,23 +65,17 @@ public class GetDashboardSummaryUseCase {
         BigDecimal weightedPipelineValue = allDeals.stream()
                 .map(d -> {
                     BigDecimal value = d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO;
-                    int prob = calculateProbability(d.getPipelineStage(), d.getStatus());
+                    int prob = dealMapper.calculateProbability(d.getPipelineStage(), d.getStatus());
                     return value.multiply(BigDecimal.valueOf(prob)).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
                 })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // ── Task KPIs ─────────────────────────────────────────────────────────
-        // Pending = not COMPLETED and not CANCELLED
-        long pendingTasks = taskRepository.findAll().stream()
-                .filter(t -> t.getStatus() != TaskStatus.COMPLETED && t.getStatus() != TaskStatus.CANCELLED)
-                .count();
+        List<TaskStatus> excludedTaskStatuses = List.of(TaskStatus.COMPLETED, TaskStatus.CANCELLED);
+        long pendingTasks = taskRepository.countByStatusNotIn(excludedTaskStatuses);
 
-        // Overdue = status OPEN && endAt < now
         OffsetDateTime now = OffsetDateTime.now();
-        long overdueTasks = taskRepository.findAll().stream()
-                .filter(t -> t.getStatus() != TaskStatus.COMPLETED && t.getStatus() != TaskStatus.CANCELLED)
-                .filter(t -> t.getEndAt() != null && t.getEndAt().isBefore(now))
-                .count();
+        long overdueTasks = taskRepository.countByStatusNotInAndEndAtBefore(excludedTaskStatuses, now);
 
         // ── Sales Funnel ──────────────────────────────────────────────────────
         List<StageSummary> funnelStages = new ArrayList<>();
@@ -87,7 +84,7 @@ public class GetDashboardSummaryUseCase {
             BigDecimal value = BigDecimal.ZERO;
 
             for (DealEntity deal : allDeals) {
-                String dealStageName = mapStageToString(deal.getPipelineStage(), deal.getStatus());
+                String dealStageName = dealMapper.mapStageToString(deal.getPipelineStage(), deal.getStatus());
                 if (stageName.equals(dealStageName)) {
                     count++;
                     value = value.add(deal.getExpectedRevenue() != null ? deal.getExpectedRevenue() : BigDecimal.ZERO);
@@ -112,36 +109,5 @@ public class GetDashboardSummaryUseCase {
                 .overdueTasksCount(overdueTasks)
                 .funnelStages(funnelStages)
                 .build();
-    }
-
-    // ── Private helpers (mirrored from DealMapper) ─────────────────────
-
-    private String mapStageToString(DealPipelineStage stage, DealStatus status) {
-        if (stage == null) return "Inquiry";
-        switch (stage) {
-            case PROSPECTING:  return "Inquiry";
-            case QUALIFICATION: return "Site Visit";
-            case PROPOSAL:     return "Proposal";
-            case NEGOTIATION:  return "Negotiation";
-            case CLOSED_WON:
-                return (status == DealStatus.WON) ? "Confirmed" : "Contract";
-            case CLOSED_LOST:  return "Confirmed";
-            default:           return "Inquiry";
-        }
-    }
-
-    private int calculateProbability(DealPipelineStage stage, DealStatus status) {
-        if (status == DealStatus.WON) return 100;
-        if (status == DealStatus.LOST) return 0;
-        if (stage == null) return 50;
-        switch (stage) {
-            case PROSPECTING:  return 10;
-            case QUALIFICATION: return 30;
-            case PROPOSAL:     return 50;
-            case NEGOTIATION:  return 70;
-            case CLOSED_WON:   return 100;
-            case CLOSED_LOST:  return 0;
-            default:           return 50;
-        }
     }
 }

@@ -1,5 +1,6 @@
 package com.novax.leadora.api.controller;
 
+import com.novax.leadora.api.dto.response.ProductServiceResponse;
 import com.novax.leadora.common.response.ApiResponse;
 import com.novax.leadora.infrastructure.persistence.entity.ProductServiceEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ProductCategory;
@@ -13,13 +14,12 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/product-services")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class ProductServiceController {
 
     private final ProductServiceRepository productServiceRepository;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<ProductServiceEntity>>> getProductServices(
+    public ResponseEntity<ApiResponse<List<ProductServiceResponse>>> getProductServices(
             @RequestParam(required = false) String category
     ) {
         List<ProductServiceEntity> products;
@@ -33,6 +33,9 @@ public class ProductServiceController {
         } else {
             products = productServiceRepository.findAll();
         }
-        return ResponseEntity.ok(ApiResponse.success(products));
+        List<ProductServiceResponse> responses = products.stream()
+                .map(ProductServiceResponse::from)
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(responses));
     }
 }

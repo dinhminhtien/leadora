@@ -91,4 +91,6 @@ public interface LeadRepository extends JpaRepository<LeadEntity, UUID> {
     List<LeadEntity> findByAssignedUser_UserId(UUID assignedUserId);
 
     List<LeadEntity> findByStatus(LeadStatus status);
+
+    long countByStatus(LeadStatus status);
 }

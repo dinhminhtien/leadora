@@ -3,6 +3,7 @@ package com.novax.leadora.application.usecase.deal;
 import com.novax.leadora.api.dto.request.DealRequest;
 import com.novax.leadora.api.dto.response.DealResponse;
 import com.novax.leadora.common.exception.BusinessRuleException;
+import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
@@ -30,7 +31,7 @@ public class UpdateDealUseCase {
     @Transactional
     public DealResponse execute(UUID id, DealRequest request) {
         DealEntity deal = dealRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Deal not found with ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Deal", id));
 
         if (deal.getStatus() != DealStatus.OPEN) {
             throw new BusinessRuleException("Closed deals cannot be modified.");
@@ -93,7 +94,7 @@ public class UpdateDealUseCase {
     @Transactional
     public DealResponse updateDealStatus(UUID id, String status) {
         DealEntity deal = dealRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Deal not found with ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Deal", id));
 
         if (deal.getStatus() != DealStatus.OPEN) {
             throw new BusinessRuleException("Closed deals cannot be modified.");

@@ -143,7 +143,7 @@ public class WebSecurityConfig {
             if (email == null || email.isBlank()) {
                 return List.of(new SimpleGrantedAuthority("ROLE_authenticated"));
             }
-            Collection<GrantedAuthority> authorities = userRepository.findWithRoleByEmailIgnoreCase(email.trim())
+            Collection<GrantedAuthority> authorities = userRepository.findRoleNameByEmailIgnoreCase(email.trim())
                     .map(roleName -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + roleName))
                     .map(a -> (Collection<GrantedAuthority>) List.<GrantedAuthority>of(a))
                     .orElse(List.of(new SimpleGrantedAuthority("ROLE_authenticated")));
