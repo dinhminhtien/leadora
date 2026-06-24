@@ -83,7 +83,7 @@ spring:
       url: ${REDIS_URL:redis://localhost:6379}
 
   cache:
-    type: ${SPRING_CACHE_TYPE:redis}
+    type: ${SPRING_CACHE_TYPE:simple}
     redis:
       time-to-live: 3600000 # 1 hour
       cache-null-values: false

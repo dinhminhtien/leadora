@@ -8,7 +8,6 @@ import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
 import com.novax.leadora.application.usecase.deal.DealMapper;
-import com.novax.leadora.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,11 +33,11 @@ public class GetDashboardSummaryUseCase {
 
     /**
      * Stage display names in pipeline order.
-     * Must match the mapping used in {@link com.novax.leadora.application.usecase.deal.DealMapper}.
+     * Must match the mapping used in
+     * {@link com.novax.leadora.application.usecase.deal.DealMapper}.
      */
     private static final List<String> PIPELINE_STAGES = List.of(
-            "Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed"
-    );
+            "Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed");
 
     @Transactional(readOnly = true)
     public DashboardSummaryResponse execute() {
@@ -66,7 +65,8 @@ public class GetDashboardSummaryUseCase {
                 .map(d -> {
                     BigDecimal value = d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO;
                     int prob = dealMapper.calculateProbability(d.getPipelineStage(), d.getStatus());
-                    return value.multiply(BigDecimal.valueOf(prob)).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    return value.multiply(BigDecimal.valueOf(prob)).divide(BigDecimal.valueOf(100), 2,
+                            RoundingMode.HALF_UP);
                 })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
