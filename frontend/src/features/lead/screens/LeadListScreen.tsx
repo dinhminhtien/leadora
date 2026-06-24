@@ -19,21 +19,21 @@ import type { LeadStatus, CreateLeadPayload } from "@/services/lead_service";
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<LeadStatus, { label: string; dot: string; badge: string }> = {
-  NEW:       { label: "New",       dot: "bg-sky-400",     badge: "bg-sky-50 text-sky-700 ring-sky-200" },
-  CONTACTED: { label: "Contacted", dot: "bg-amber-400",   badge: "bg-amber-50 text-amber-700 ring-amber-200" },
-  QUALIFIED: { label: "Qualified", dot: "bg-teal-400",    badge: "bg-teal-50 text-teal-700 ring-teal-200" },
+  NEW: { label: "New", dot: "bg-sky-400", badge: "bg-sky-50 text-sky-700 ring-sky-200" },
+  CONTACTED: { label: "Contacted", dot: "bg-amber-400", badge: "bg-amber-50 text-amber-700 ring-amber-200" },
+  QUALIFIED: { label: "Qualified", dot: "bg-teal-400", badge: "bg-teal-50 text-teal-700 ring-teal-200" },
   CONVERTED: { label: "Converted", dot: "bg-emerald-500", badge: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
-  LOST:      { label: "Lost",      dot: "bg-rose-400",    badge: "bg-rose-50 text-rose-700 ring-rose-200" },
+  LOST: { label: "Lost", dot: "bg-rose-400", badge: "bg-rose-50 text-rose-700 ring-rose-200" },
 };
 
 const SOURCE_OPTIONS = ["Website Inquiry", "Referral", "Social Media", "Cold Call", "Walk-in", "Event"];
 
 const SORT_OPTIONS = [
-  { value: "status_desc",    label: "Status",      icon: ArrowDownWideNarrow },
-  { value: "createdAt_desc", label: "Newest",      icon: ArrowDown },
-  { value: "createdAt_asc",  label: "Oldest",      icon: ArrowUp },
-  { value: "fullName_asc",   label: "Name A → Z",  icon: ArrowUpDown },
-  { value: "fullName_desc",  label: "Name Z → A",  icon: ArrowUpDown },
+  { value: "status_desc", label: "Status", icon: ArrowDownWideNarrow },
+  { value: "createdAt_desc", label: "Newest", icon: ArrowDown },
+  { value: "createdAt_asc", label: "Oldest", icon: ArrowUp },
+  { value: "fullName_asc", label: "Name A → Z", icon: ArrowUpDown },
+  { value: "fullName_desc", label: "Name Z → A", icon: ArrowUpDown },
 ];
 
 const EMPTY_FORM: CreateLeadPayload = {
@@ -43,14 +43,14 @@ const EMPTY_FORM: CreateLeadPayload = {
 // Lead type (individual vs corporate/organization) — `isCorporate` boolean on the lead.
 const TYPE_OPTIONS = [
   { value: "individual", label: "Individual", isCorporate: false },
-  { value: "corporate",  label: "Organization", isCorporate: true },
+  { value: "corporate", label: "Organization", isCorporate: true },
 ] as const;
 
 // Segmented toggle shown at the top-right of the list (All / Individual / Organization).
 const TYPE_SEGMENTS: { value: string; label: string; icon?: React.ElementType }[] = [
-  { value: "",           label: "All" },
-  { value: "individual", label: "Individual",   icon: User },
-  { value: "corporate",  label: "Organization", icon: Building2 },
+  { value: "", label: "All" },
+  { value: "individual", label: "Individual", icon: User },
+  { value: "corporate", label: "Organization", icon: Building2 },
 ];
 
 // ── Validation ────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ function validateForm(f: CreateLeadPayload): FormErrors {
 
 function Avatar({ name }: { name: string | null }) {
   const initials = (name ?? "?").split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
-  const colors = ["bg-blue-100 text-blue-700","bg-violet-100 text-violet-700","bg-emerald-100 text-emerald-700","bg-amber-100 text-amber-700"];
+  const colors = ["bg-blue-100 text-blue-700", "bg-violet-100 text-violet-700", "bg-emerald-100 text-emerald-700", "bg-amber-100 text-amber-700"];
   const color = colors[(name?.charCodeAt(0) ?? 0) % colors.length];
   return (
     <span className={`inline-flex items-center justify-center rounded-full font-bold size-7 text-[10px] ${color}`}>
@@ -375,8 +375,8 @@ function LeadTable({
               <TableCell className="py-3 px-4 border-b-0">
                 {lead.phone
                   ? <a href={`tel:${lead.phone}`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-blue-600">
-                      <Phone className="size-3 text-slate-300 shrink-0" />{lead.phone}
-                    </a>
+                    <Phone className="size-3 text-slate-300 shrink-0" />{lead.phone}
+                  </a>
                   : <span className="text-xs"><Unknown /></span>}
               </TableCell>
               <TableCell className="py-3 px-4 text-xs text-slate-500 border-b-0">
@@ -439,18 +439,18 @@ function LeadTable({
 
 export function LeadListScreen() {
   const [searchInput, setSearchInput] = useState("");
-  const [search,      setSearch]      = useState("");
+  const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
-  const [typeFilter,  setTypeFilter]  = useState("");
-  const [dateFrom,    setDateFrom]    = useState("");
-  const [dateTo,      setDateTo]      = useState("");
-  const [sortOption,  setSortOption]  = useState("status_desc");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sortOption, setSortOption] = useState("status_desc");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
-  const [page,        setPage]        = useState(0);
-  const [drawerOpen,  setDrawer]      = useState(false);
-  const [fullScreen,  setFullScreen]  = useState(false);
+  const [page, setPage] = useState(0);
+  const [drawerOpen, setDrawer] = useState(false);
+  const [fullScreen, setFullScreen] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
 
   // Debounce search
@@ -479,30 +479,30 @@ export function LeadListScreen() {
   const [sortBy, sortDir] = sortOption.split("_") as [string, "asc" | "desc"];
 
   const { data: resp, isLoading, isError } = useLeads({
-    search:   search        || undefined,
-    status:   statusFilter  || undefined,
-    source:   sourceFilter  || undefined,
+    search: search || undefined,
+    status: statusFilter || undefined,
+    source: sourceFilter || undefined,
     isCorporate: typeFilter === "" ? undefined : typeFilter === "corporate",
     sortBy,
     sortDir,
-    dateFrom: dateFrom      || undefined,
-    dateTo:   dateTo        || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
     page,
     size: 10,
   });
 
-  const pageData      = resp?.data;
-  const leads         = pageData?.content ?? [];
-  const totalPages    = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalPages : (pageData?.totalPages ?? 1);
+  const pageData = resp?.data;
+  const leads = pageData?.content ?? [];
+  const totalPages = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalPages : (pageData?.totalPages ?? 1);
   const totalElements = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalElements : (pageData?.totalElements ?? 0);
 
-  const qualified     = leads.filter(l => l.status === "QUALIFIED").length;
-  const active        = leads.filter(l => l.status !== "LOST" && l.status !== "CONVERTED").length;
-  const qualifyRate   = `${((qualified / (leads.length || 1)) * 100).toFixed(1)}%`;
+  const qualified = leads.filter(l => l.status === "QUALIFIED").length;
+  const active = leads.filter(l => l.status !== "LOST" && l.status !== "CONVERTED").length;
+  const qualifyRate = `${((qualified / (leads.length || 1)) * 100).toFixed(1)}%`;
 
   // Type now has its own always-visible segmented toggle, so it is excluded from the advanced-filter badge.
   const activeFilterCount = [statusFilter, sourceFilter, dateFrom, dateTo].filter(Boolean).length;
-  const hasFilters    = activeFilterCount > 0 || !!search;
+  const hasFilters = activeFilterCount > 0 || !!search;
 
   const clearAll = () => {
     setStatusFilter(""); setSourceFilter(""); setTypeFilter(""); setDateFrom(""); setDateTo("");
@@ -646,7 +646,7 @@ export function LeadListScreen() {
           {statusFilter && <FilterChip label={`Status: ${STATUS_CONFIG[statusFilter as LeadStatus]?.label}`} onRemove={() => { setStatusFilter(""); resetPage(); }} />}
           {sourceFilter && <FilterChip label={`Source: ${sourceFilter}`} onRemove={() => { setSourceFilter(""); resetPage(); }} />}
           {dateFrom && <FilterChip label={`From: ${new Date(dateFrom).toLocaleDateString("en-US")}`} onRemove={() => { setDateFrom(""); resetPage(); }} />}
-          {dateTo   && <FilterChip label={`To: ${new Date(dateTo).toLocaleDateString("en-US")}`}   onRemove={() => { setDateTo("");   resetPage(); }} />}
+          {dateTo && <FilterChip label={`To: ${new Date(dateTo).toLocaleDateString("en-US")}`} onRemove={() => { setDateTo(""); resetPage(); }} />}
         </div>
       )}
     </div>

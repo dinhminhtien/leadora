@@ -9,6 +9,7 @@ import com.novax.leadora.application.usecase.identity.ForgotPasswordUseCase;
 import com.novax.leadora.application.usecase.identity.ResetPasswordUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import com.novax.leadora.common.security.CurrentUserProvider;
+import com.novax.leadora.common.security.TokenBlacklistService;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class AuthController {
     private final ForgotPasswordUseCase forgotPasswordUseCase;
     private final ResetPasswordUseCase resetPasswordUseCase;
     private final CurrentUserProvider currentUserProvider;
+    private final TokenBlacklistService tokenBlacklistService;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@RequestBody LoginRequest request) {
@@ -33,7 +35,11 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout() {
+    public ResponseEntity<ApiResponse<Void>> logout(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7).trim();
+            tokenBlacklistService.blacklistToken(token);
+        }
         return ResponseEntity.ok(ApiResponse.success(null, "Logged out successfully."));
     }
 

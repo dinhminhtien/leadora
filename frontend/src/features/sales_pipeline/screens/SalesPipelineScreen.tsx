@@ -459,11 +459,10 @@ export function SalesPipelineScreen() {
                   handleMoveToStage(dealId, stage);
                 }
               }}
-              className={`flex-1 min-w-[200px] lg:min-w-0 lg:max-w-none rounded-xl p-2.5 lg:p-2 flex flex-col gap-2.5 lg:gap-2 border transition-all duration-200 ${
-                draggedOverStage === stage
+              className={`flex-1 min-w-[200px] lg:min-w-0 lg:max-w-none rounded-xl p-2.5 lg:p-2 flex flex-col gap-2.5 lg:gap-2 border transition-all duration-200 ${draggedOverStage === stage
                   ? "bg-blue-50/50 border-blue-400 border-dashed"
                   : "bg-slate-100/60 border-slate-200/50"
-              } ${styles.border}`}
+                } ${styles.border}`}
             >
               {/* Stage Header */}
               <div className="px-1 py-0.5">
@@ -492,9 +491,8 @@ export function SalesPipelineScreen() {
                         e.dataTransfer.setData("text/plain", deal.id);
                         e.dataTransfer.effectAllowed = "move";
                       }}
-                      className={`border-slate-200 bg-white hover:border-blue-400 shadow-xs hover:shadow-md transition group duration-200 ${
-                        deal.status === "active" ? "cursor-grab active:cursor-grabbing" : "opacity-80"
-                      }`}
+                      className={`border-slate-200 bg-white hover:border-blue-400 shadow-xs hover:shadow-md transition group duration-200 ${deal.status === "active" ? "cursor-grab active:cursor-grabbing" : "opacity-80"
+                        }`}
                     >
                       <CardContent className="p-2.5 lg:p-2 space-y-2">
                         {/* Title and Value */}
@@ -634,13 +632,12 @@ export function SalesPipelineScreen() {
                         type="button"
                         onClick={() => !isDisabled && handleStageClick(stg)}
                         disabled={isDisabled}
-                        className={`flex-1 text-center py-1.5 px-0.5 rounded text-[9px] font-bold transition-all duration-200 border ${
-                          isCurrent
+                        className={`flex-1 text-center py-1.5 px-0.5 rounded text-[9px] font-bold transition-all duration-200 border ${isCurrent
                             ? "bg-blue-600 border-blue-600 text-white shadow-xs"
                             : isPast
-                            ? "bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100"
-                            : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                        } ${isDisabled ? "cursor-not-allowed opacity-80" : ""}`}
+                              ? "bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                              : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          } ${isDisabled ? "cursor-not-allowed opacity-80" : ""}`}
                       >
                         {stg}
                       </button>

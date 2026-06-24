@@ -37,7 +37,7 @@ function AnalyticsTab({ reportPeriod, setReportPeriod }: { reportPeriod: string;
     return deals.filter(deal => {
       if (!deal.createdAt) return true;
       const createdDate = new Date(deal.createdAt as string);
-      
+
       if (reportPeriod === "this-month") {
         return createdDate.getMonth() === now.getMonth() && createdDate.getFullYear() === now.getFullYear();
       } else if (reportPeriod === "this-quarter") {
@@ -57,7 +57,7 @@ function AnalyticsTab({ reportPeriod, setReportPeriod }: { reportPeriod: string;
     const activeDeals = filteredDeals.filter(d => d.status === "active");
     const activeValue = activeDeals.reduce((sum, d) => sum + (Number(d.value) || 0), 0);
     const weightedValue = activeDeals.reduce((sum, d) => sum + (Number(d.value) || 0) * ((Number(d.probability) || 0) / 100), 0);
-    
+
     const wonCount = filteredDeals.filter(d => d.status === "won").length;
     const lostCount = filteredDeals.filter(d => d.status === "lost").length;
     const closedCount = wonCount + lostCount;
@@ -129,7 +129,7 @@ function AnalyticsTab({ reportPeriod, setReportPeriod }: { reportPeriod: string;
     return STAGES.map((stage, idx) => {
       const cum = cumulative[stage] || { count: 0, value: 0 };
       const pct = totalInquiries > 0 ? (cum.count / totalInquiries) * 100 : 0;
-      
+
       let stepPct = 100;
       if (idx > 0) {
         const prevStage = STAGES[idx - 1];
@@ -157,7 +157,7 @@ function AnalyticsTab({ reportPeriod, setReportPeriod }: { reportPeriod: string;
     // 1. Drop-off bottleneck: Lowest conversion rate from previous stage
     let lowestStepPct = 101;
     let dropOffStage = "";
-    
+
     // Ignore index 0 (Inquiry) as it's the start
     for (let i = 1; i < funnelData.length; i++) {
       const step = funnelData[i];
@@ -167,7 +167,7 @@ function AnalyticsTab({ reportPeriod, setReportPeriod }: { reportPeriod: string;
         const idx = STAGES.indexOf((d.stage as any) || "Inquiry");
         return idx >= i - 1;
       });
-      
+
       if (hasPrevDeals && step.stepPctVal < lowestStepPct) {
         lowestStepPct = step.stepPctVal;
         dropOffStage = step.stage;
@@ -236,7 +236,7 @@ function AnalyticsTab({ reportPeriod, setReportPeriod }: { reportPeriod: string;
     let cumulativePercent = 0;
     return sources.map((source, i) => {
       const sharePct = totalCount > 0 ? (counts[i] / totalCount) * 100 : 0;
-      
+
       // SVG strokeDasharray and strokeDashoffset for donut chart representation
       const strokeDasharray = `${sharePct} ${100 - sharePct}`;
       const strokeDashoffset = 100 - cumulativePercent + 25; // 25 is rotation to start top center
@@ -259,7 +259,7 @@ function AnalyticsTab({ reportPeriod, setReportPeriod }: { reportPeriod: string;
   // Group and compile agent performance benchmarks
   const agents = useMemo(() => {
     const map: Record<string, { name: string; activeCount: number; wonCount: number; lostCount: number; val: number }> = {};
-    
+
     filteredDeals.forEach(deal => {
       const owner = (deal.owner as string) || "Unassigned";
       if (!map[owner]) {
@@ -271,7 +271,7 @@ function AnalyticsTab({ reportPeriod, setReportPeriod }: { reportPeriod: string;
           val: 0
         };
       }
-      
+
       if (deal.status === "active") {
         map[owner].activeCount += 1;
         map[owner].val += (Number(deal.value) || 0);
@@ -286,7 +286,7 @@ function AnalyticsTab({ reportPeriod, setReportPeriod }: { reportPeriod: string;
     return Object.values(map).map(agent => {
       const closed = agent.wonCount + agent.lostCount;
       const ratio = closed > 0 ? (agent.wonCount / closed) * 100 : 0;
-      
+
       // Simulate/approximate agent speed realistically
       const nameLength = agent.name.length;
       const mockSpeed = ((nameLength % 3) * 0.7 + 1.1).toFixed(1) + " Hours";
@@ -942,11 +942,10 @@ export function ReportingScreen() {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${
-              activeTab === tab.key
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${activeTab === tab.key
                 ? "border-blue-600 text-blue-700"
                 : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-            }`}
+              }`}
           >
             {tab.icon}
             {tab.label}
