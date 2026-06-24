@@ -31,7 +31,7 @@ public class GetDashboardSummaryUseCase {
 
     /**
      * Stage display names in pipeline order.
-     * Must match the mapping used in {@link com.novax.leadora.application.usecase.ManageDealUseCase}.
+     * Must match the mapping used in {@link com.novax.leadora.application.usecase.deal.DealMapper}.
      */
     private static final List<String> PIPELINE_STAGES = List.of(
             "Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed"
@@ -114,7 +114,7 @@ public class GetDashboardSummaryUseCase {
                 .build();
     }
 
-    // ── Private helpers (mirrored from ManageDealUseCase) ─────────────────────
+    // ── Private helpers (mirrored from DealMapper) ─────────────────────
 
     private String mapStageToString(DealPipelineStage stage, DealStatus status) {
         if (stage == null) return "Inquiry";
