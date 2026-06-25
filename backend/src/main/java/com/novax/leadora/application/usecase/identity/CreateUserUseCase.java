@@ -42,6 +42,11 @@ public class CreateUserUseCase {
         RoleEntity role = roleRepository.findById(request.getRoleId())
                 .orElseThrow(() -> new ResourceNotFoundException("Role", request.getRoleId()));
 
+        // Admin accounts are not provisioned through this form — only Staff/Manager can be assigned.
+        if ("ADMIN".equalsIgnoreCase(role.getRoleName())) {
+            throw new IllegalStateException("The Admin role cannot be assigned to a new account.");
+        }
+
         validatePasswordComplexity(request.getPassword());
 
         UserEntity user = UserEntity.builder()

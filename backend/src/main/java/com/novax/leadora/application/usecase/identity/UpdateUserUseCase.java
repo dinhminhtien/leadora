@@ -72,6 +72,13 @@ public class UpdateUserUseCase {
         }
         UserStatus newStatus = request.getStatus() != null ? request.getStatus() : user.getStatus();
 
+        // A non-admin cannot be promoted to Admin through this form (existing admins keep their role).
+        boolean promotingToAdmin = ADMIN_ROLE.equalsIgnoreCase(newRole.getRoleName())
+                && !ADMIN_ROLE.equalsIgnoreCase(user.getRole().getRoleName());
+        if (promotingToAdmin) {
+            throw new IllegalStateException("A user cannot be promoted to the Admin role.");
+        }
+
         guardLastActiveAdmin(user, newRole, newStatus);
 
         user.setRole(newRole);
