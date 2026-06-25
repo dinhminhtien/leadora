@@ -108,10 +108,13 @@ public class CurrentUserProvider {
     }
 
     private UserEntity requireActiveUser(UserEntity user) {
-        if (user.getStatus() != UserStatus.ACTIVE) {
+        // Only LOCKED accounts are blocked. INACTIVE is a reversible "dormant" state (from the
+        // 7-day idle job) — it is allowed through and is reactivated to ACTIVE on explicit login
+        // (see LoginActivityService). This keeps a dormant user from being bounced out of the app.
+        if (user.getStatus() == UserStatus.LOCKED) {
             throw new BusinessException(
-                    "ACCOUNT_INACTIVE",
-                    "Your account is deactivated or locked. Please contact your administrator.",
+                    "ACCOUNT_LOCKED",
+                    "Your account has been locked. Please contact the Admin for assistance.",
                     HttpStatus.FORBIDDEN);
         }
         return user;

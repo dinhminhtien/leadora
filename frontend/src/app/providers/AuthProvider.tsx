@@ -59,8 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const errorCode = axiosError.response?.data?.errorCode;
         if (errorCode === "ACCOUNT_NOT_PROVISIONED") {
           router.replace(`${ROUTE_PATHS.login}?error=access_denied`);
-        } else if (errorCode === "ACCOUNT_INACTIVE") {
-          router.replace(`${ROUTE_PATHS.login}?error=account_inactive`);
+        } else if (errorCode === "ACCOUNT_LOCKED") {
+          router.replace(`${ROUTE_PATHS.login}?error=account_locked`);
         }
       } finally {
         setLoading(false);
