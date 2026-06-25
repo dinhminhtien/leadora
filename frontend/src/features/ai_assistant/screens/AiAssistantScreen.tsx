@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useChatStore } from "@/stores/chat_store";
+import { useAuthStore } from "@/stores/auth_store";
+import { getUserRole } from "@/shared/auth/access";
 import type { ChatMessage } from "@/services/chat_assistant_service";
 import {
   useChatMessages,
@@ -67,6 +69,10 @@ export function AiAssistantScreen() {
   const documentsQuery = useCompanyDocuments();
   const uploadDocument = useUploadDocument();
   const deleteDocument = useDeleteDocument();
+
+  // Only a Manager may add/remove company documents (backend enforces this too).
+  const currentUser = useAuthStore((s) => s.user);
+  const canManageDocs = getUserRole(currentUser) === "MANAGER";
 
   const [inputVal, setInputVal] = useState("");
   const [pendingUserText, setPendingUserText] = useState<string | null>(null);
@@ -327,28 +333,36 @@ export function AiAssistantScreen() {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex min-h-0 flex-1 flex-col space-y-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.docx,.doc,.txt,.md"
-                onChange={handleUpload}
-                className="hidden"
-              />
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadDocument.isPending}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 py-2 text-[11px] font-semibold text-slate-600 hover:border-blue-300 hover:text-blue-700"
-              >
-                {uploadDocument.isPending ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Upload className="size-3.5" />
-                )}
-                Tải tài liệu lên
-              </Button>
-              {uploadDocument.isError && (
-                <p className="text-[10px] text-red-500">
-                  Tải lên thất bại. Kiểm tra định dạng tệp và thử lại.
+              {canManageDocs ? (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.docx,.doc,.txt,.md"
+                    onChange={handleUpload}
+                    className="hidden"
+                  />
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadDocument.isPending}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 py-2 text-[11px] font-semibold text-slate-600 hover:border-blue-300 hover:text-blue-700"
+                  >
+                    {uploadDocument.isPending ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="size-3.5" />
+                    )}
+                    Tải tài liệu lên
+                  </Button>
+                  {uploadDocument.isError && (
+                    <p className="text-[10px] text-red-500">
+                      Tải lên thất bại. Kiểm tra định dạng tệp và thử lại.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-2 py-2 text-[10px] text-slate-400">
+                  Chỉ Quản lý (Manager) mới được tải lên hoặc xoá tài liệu công ty.
                 </p>
               )}
               <div className="custom-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto">
@@ -366,22 +380,24 @@ export function AiAssistantScreen() {
                       {doc.title}{" "}
                       <span className="text-slate-300">({doc.chunkCount} chunk)</span>
                     </span>
-                    <button
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `Xoá tài liệu "${doc.title}"?\nToàn bộ ${doc.chunkCount} chunk của nó sẽ bị xoá khỏi bộ nhớ chat (không thể hoàn tác).`,
-                          )
-                        ) {
-                          deleteDocument.mutate(doc.documentId);
-                        }
-                      }}
-                      disabled={deleteDocument.isPending}
-                      className="ml-1 flex shrink-0 items-center text-slate-400 transition hover:text-red-500 disabled:opacity-40"
-                      title="Xoá tài liệu (xoá luôn toàn bộ chunk khỏi bộ nhớ chat)"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
+                    {canManageDocs && (
+                      <button
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Xoá tài liệu "${doc.title}"?\nToàn bộ ${doc.chunkCount} chunk của nó sẽ bị xoá khỏi bộ nhớ chat (không thể hoàn tác).`,
+                            )
+                          ) {
+                            deleteDocument.mutate(doc.documentId);
+                          }
+                        }}
+                        disabled={deleteDocument.isPending}
+                        className="ml-1 flex shrink-0 items-center text-slate-400 transition hover:text-red-500 disabled:opacity-40"
+                        title="Xoá tài liệu (xoá luôn toàn bộ chunk khỏi bộ nhớ chat)"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
