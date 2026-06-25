@@ -4,8 +4,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Search, Plus, X, Handshake, Users, TrendingUp, Percent,
   Phone, Building2, User, ArrowUpRight, ChevronLeft, ChevronRight,
-  Loader2, AlertCircle, SlidersHorizontal, CalendarDays, ArrowUpDown,
-  ArrowUp, ArrowDown, ArrowDownWideNarrow, ChevronDown, Maximize2, Minimize2, ServerCrash,
+  Loader2, AlertCircle, AlertTriangle, SlidersHorizontal, CalendarDays, ArrowUpDown,
+  ArrowUp, ArrowDown, ArrowDownWideNarrow, ChevronDown, ServerCrash,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -57,18 +57,30 @@ const TYPE_SEGMENTS: { value: string; label: string; icon?: React.ElementType }[
 
 type FormErrors = { fullName?: string; email?: string; phone?: string; companyName?: string };
 
+// Name: letters (any language, incl. Vietnamese), spaces and the few punctuation
+// marks real names use (hyphen, apostrophe, period). Digits and other symbols are rejected.
+const NAME_ALLOWED = /^[\p{L}\s.'-]+$/u;
+
 function validateForm(f: CreateLeadPayload): FormErrors {
   const err: FormErrors = {};
-  if (!f.fullName.trim()) {
+  const name = f.fullName.trim();
+  if (!name) {
     err.fullName = "Full name is required";
-  } else if (/\d/.test(f.fullName)) {
+  } else if (/\d/.test(name)) {
     err.fullName = "Full name cannot contain numbers";
+  } else if (!NAME_ALLOWED.test(name)) {
+    err.fullName = "Full name cannot contain special characters";
   }
   if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) {
-    err.email = "Invalid email format (must contain @)";
+    err.email = "Invalid email format (e.g. name@domain.com)";
   }
-  if (f.phone && !/^\d{10,11}$/.test(f.phone.replace(/\s/g, ""))) {
-    err.phone = "Phone number must be 10–11 digits";
+  if (f.phone) {
+    const digits = f.phone.replace(/\s/g, "");
+    if (/[^\d]/.test(digits)) {
+      err.phone = "Phone number can only contain digits (no letters or symbols)";
+    } else if (!/^\d{10,11}$/.test(digits)) {
+      err.phone = "Phone number must be 10–11 digits";
+    }
   }
   // Organization leads must name the company; individuals don't need one.
   if (f.isCorporate && !f.companyName?.trim()) {
@@ -139,6 +151,9 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<CreateLeadPayload>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [serverError, setServerError] = useState("");
+  // A duplicate (same email/phone) is shown as a warning with a link to the existing lead,
+  // not as a generic server error.
+  const [duplicate, setDuplicate] = useState<{ message: string; leadId?: string } | null>(null);
   const createMutation = useCreateLead();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -146,13 +161,22 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
     const errs = validateForm(form);
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
+    setServerError("");
+    setDuplicate(null);
     createMutation.mutate(form, {
       onSuccess: onClose,
       onError: (err: any) => {
-        if (err?.response?.status >= 500) {
+        const data = err?.response?.data;
+        const status = err?.response?.status;
+        if (status === 409 || data?.errorCode === "DUPLICATE_LEAD") {
+          setDuplicate({
+            message: data?.message || "A lead with these contact details already exists.",
+            leadId: data?.details || undefined,
+          });
+        } else if (status >= 500) {
           setServerError("Server error — please contact your Admin.");
         } else {
-          setServerError(err?.response?.data?.message || "Failed to create lead. Please try again.");
+          setServerError(data?.message || "Failed to create lead. Please try again.");
         }
       },
     });
@@ -161,6 +185,8 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
   const field = (key: keyof CreateLeadPayload, value: string) => {
     setForm(f => ({ ...f, [key]: value }));
     if (errors[key as keyof FormErrors]) setErrors(e => ({ ...e, [key]: undefined }));
+    // Editing a contact field clears a stale duplicate warning.
+    if (duplicate && (key === "email" || key === "phone")) setDuplicate(null);
   };
 
   return (
@@ -190,6 +216,22 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
+          {duplicate && (
+            <div className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+              <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-500" />
+              <div className="space-y-1">
+                <p className="font-semibold">Possible duplicate lead</p>
+                <p className="text-amber-700">{duplicate.message}</p>
+                {duplicate.leadId && (
+                  <Link href={`/leads/${duplicate.leadId}`}
+                    className="inline-flex items-center gap-1 font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-950">
+                    View the existing lead <ArrowUpRight className="size-3" />
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-600">Full Name *</label>
             <Input placeholder="e.g. John Smith" value={form.fullName}
@@ -208,7 +250,7 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-600">Phone Number</label>
-              <Input placeholder="0901234567" value={form.phone}
+              <Input placeholder="e.g. 09xxxxxxxx" value={form.phone}
                 onChange={e => field("phone", e.target.value)}
                 error={errors.phone}
                 className="py-1.5 text-xs" />
@@ -284,7 +326,17 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ── Lead Table (shared between normal + fullscreen) ───────────────────────────
+// Fixed column widths (sum = 100%). Combined with `table-fixed` these keep the
+// header and body columns aligned regardless of content length or which status
+// tab is active — the layout no longer reflows when switching tabs.
+const COL_WIDTHS = ["4%", "16%", "13%", "11%", "13%", "10%", "11%", "9%", "9%", "4%"];
+
+// Rows per page. The table always renders this many row slots (real rows + invisible
+// fillers) so its height — and therefore the pagination bar pinned below it — stays
+// fixed regardless of how many leads the current page actually holds.
+const PAGE_SIZE = 10;
+
+// ── Lead Table ────────────────────────────────────────────────────────────────
 
 function LeadTable({
   isLoading, isError, leads, totalPages, totalElements, page, onPageChange, onClearFilters, hasFilters,
@@ -324,7 +376,10 @@ function LeadTable({
 
   return (
     <>
-      <Table>
+      <Table className="table-fixed">
+        <colgroup>
+          {COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
+        </colgroup>
         <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
           <TableRow hoverable={false}>
             {[
@@ -350,7 +405,7 @@ function LeadTable({
             <TableRow key={lead.leadId}
               className="group hover:bg-blue-50/40 transition-colors border-b border-slate-100">
               <TableCell className="py-3 px-4 text-xs text-slate-400 font-mono border-b-0">
-                {page * 10 + idx + 1}
+                {page * PAGE_SIZE + idx + 1}
               </TableCell>
               <TableCell className="py-3 px-4 border-b-0">
                 <Link href={`/leads/${lead.leadId}`}
@@ -402,6 +457,17 @@ function LeadTable({
               </TableCell>
             </TableRow>
           ))}
+          {/* Invisible filler rows pad the body to PAGE_SIZE so the table height — and the
+              pagination bar below — never shifts between a full page and a partial last page.
+              The hidden two-line content mirrors a real Name/Contact cell's height exactly. */}
+          {Array.from({ length: Math.max(0, PAGE_SIZE - leads.length) }).map((_, i) => (
+            <TableRow key={`filler-${i}`} hoverable={false} className="border-b border-slate-100">
+              <TableCell colSpan={COL_WIDTHS.length} className="py-3 px-4 border-b-0" aria-hidden="true">
+                <span className="invisible block text-sm font-semibold">.</span>
+                <span className="invisible block text-[11px] mt-0.5">.</span>
+              </TableCell>
+            </TableRow>
+          ))}
         </TableBody>
       </Table>
 
@@ -450,8 +516,11 @@ export function LeadListScreen() {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [page,        setPage]        = useState(0);
   const [drawerOpen,  setDrawer]      = useState(false);
-  const [fullScreen,  setFullScreen]  = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
+
+  // Block an inverted range (From later than To). Date inputs hold "YYYY-MM-DD",
+  // which compares correctly as plain strings.
+  const dateRangeInvalid = !!dateFrom && !!dateTo && dateFrom > dateTo;
 
   // Debounce search
   useEffect(() => {
@@ -468,13 +537,6 @@ export function LeadListScreen() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Escape key closes fullscreen
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setFullScreen(false); };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, []);
-
   const resetPage = useCallback(() => setPage(0), []);
   const [sortBy, sortDir] = sortOption.split("_") as [string, "asc" | "desc"];
 
@@ -485,10 +547,11 @@ export function LeadListScreen() {
     isCorporate: typeFilter === "" ? undefined : typeFilter === "corporate",
     sortBy,
     sortDir,
-    dateFrom: dateFrom      || undefined,
-    dateTo:   dateTo        || undefined,
+    // Don't query with an invalid range — wait until the user fixes it.
+    dateFrom: !dateRangeInvalid ? (dateFrom || undefined) : undefined,
+    dateTo:   !dateRangeInvalid ? (dateTo   || undefined) : undefined,
     page,
-    size: 10,
+    size: PAGE_SIZE,
   });
 
   const pageData      = resp?.data;
@@ -610,31 +673,40 @@ export function LeadListScreen() {
 
       {/* Advanced panel */}
       {showAdvanced && (
-        <div className="border-t border-slate-100 px-4 py-3 bg-slate-50/60 flex flex-wrap items-end gap-4">
-          <div className="flex items-end gap-2">
-            <div>
-              <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                <CalendarDays className="size-3" /> From date
-              </label>
-              <input type="date" value={dateFrom}
-                onChange={e => { setDateFrom(e.target.value); resetPage(); }}
-                className="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:border-blue-400 focus:outline-none" />
+        <div className="border-t border-slate-100 px-4 py-3 bg-slate-50/60">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex items-end gap-2">
+              <div>
+                <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                  <CalendarDays className="size-3" /> From date
+                </label>
+                <input type="date" value={dateFrom} max={dateTo || undefined}
+                  onChange={e => { setDateFrom(e.target.value); resetPage(); }}
+                  className={`px-3 py-2 text-xs border rounded-lg bg-white focus:outline-none
+                    ${dateRangeInvalid ? "border-rose-300 focus:border-rose-400" : "border-slate-200 focus:border-blue-400"}`} />
+              </div>
+              <span className="text-slate-400 text-xs pb-2.5">→</span>
+              <div>
+                <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                  <CalendarDays className="size-3" /> To date
+                </label>
+                <input type="date" value={dateTo} min={dateFrom || undefined}
+                  onChange={e => { setDateTo(e.target.value); resetPage(); }}
+                  className={`px-3 py-2 text-xs border rounded-lg bg-white focus:outline-none
+                    ${dateRangeInvalid ? "border-rose-300 focus:border-rose-400" : "border-slate-200 focus:border-blue-400"}`} />
+              </div>
             </div>
-            <span className="text-slate-400 text-xs pb-2.5">→</span>
-            <div>
-              <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                <CalendarDays className="size-3" /> To date
-              </label>
-              <input type="date" value={dateTo}
-                onChange={e => { setDateTo(e.target.value); resetPage(); }}
-                className="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:border-blue-400 focus:outline-none" />
-            </div>
+            {hasFilters && (
+              <button type="button" onClick={clearAll}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition">
+                <X className="size-3" /> Clear all
+              </button>
+            )}
           </div>
-          {hasFilters && (
-            <button type="button" onClick={clearAll}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition">
-              <X className="size-3" /> Clear all
-            </button>
+          {dateRangeInvalid && (
+            <p className="mt-2 flex items-center gap-1 text-xs text-rose-500">
+              <AlertCircle className="size-3" /> “From date” must be on or before “To date”.
+            </p>
           )}
         </div>
       )}
@@ -652,50 +724,7 @@ export function LeadListScreen() {
     </div>
   );
 
-  // ── Full-screen overlay ───────────────────────────────────────────────────
-  if (fullScreen) {
-    return (
-      <div className="fixed inset-0 z-50 bg-white flex flex-col">
-        {/* Compact header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="font-bold text-slate-800 text-sm">Leads Register</span>
-            <span className="text-xs text-slate-400">{totalElements} results</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="primary" size="sm" onClick={() => setDrawer(true)}
-              leftIcon={<Plus className="size-3.5" />}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold">
-              New Lead
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setFullScreen(false)}
-              leftIcon={<Minimize2 className="size-3.5" />}
-              className="border-slate-200 text-slate-600 text-xs"
-              title="Exit fullscreen (Esc)">
-              Collapse
-            </Button>
-          </div>
-        </div>
-
-        {/* Filter bar */}
-        <div className="shrink-0 border-b border-slate-100">{filterBar}</div>
-
-        {/* Table — scrollable */}
-        <div className="flex-1 overflow-auto">
-          <LeadTable
-            isLoading={isLoading} isError={isError} leads={leads}
-            totalPages={totalPages} totalElements={totalElements}
-            page={page} onPageChange={setPage}
-            onClearFilters={clearAll} hasFilters={hasFilters}
-          />
-        </div>
-
-        {drawerOpen && <CreateLeadDrawer onClose={() => setDrawer(false)} />}
-      </div>
-    );
-  }
-
-  // ── Normal view ───────────────────────────────────────────────────────────
+  // ── View ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
 
@@ -706,12 +735,6 @@ export function LeadListScreen() {
           <p className="text-xs text-slate-400">Track and convert potential customers into bookings</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setFullScreen(true)}
-            leftIcon={<Maximize2 className="size-3.5" />}
-            className="border-slate-200 text-slate-600 text-xs font-semibold"
-            title="View fullscreen">
-            Fullscreen
-          </Button>
           <Button variant="primary" size="sm" onClick={() => setDrawer(true)}
             leftIcon={<Plus className="size-3.5" />}
             className="bg-blue-600 hover:bg-blue-700 font-semibold text-xs text-white">

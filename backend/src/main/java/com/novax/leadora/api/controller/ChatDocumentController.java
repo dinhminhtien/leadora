@@ -16,11 +16,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 /** Company-document knowledge base for the chat assistant's RAG (shared across users). */
 @RestController
 @RequestMapping("/api/v1/chat/documents")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('SALES','MANAGER')")
 public class ChatDocumentController {
 
     private final CurrentUserProvider currentUserProvider;

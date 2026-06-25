@@ -21,6 +21,13 @@ export function useLeadDetail(leadId: string | undefined) {
     queryKey: ["leads", leadId],
     queryFn: () => leadService.getById(leadId!),
     enabled: !!leadId,
+    // Never retry client errors (403 forbidden, 404 not found, malformed id) — retrying
+    // them just delays the error state and looks like a stuck loading spinner.
+    retry: (failureCount, error: any) => {
+      const status = error?.response?.status;
+      if (status && status >= 400 && status < 500) return false;
+      return failureCount < 1;
+    },
   });
 }
 

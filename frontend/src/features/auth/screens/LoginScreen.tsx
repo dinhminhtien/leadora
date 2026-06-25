@@ -11,6 +11,7 @@ import { authService } from "@/services/auth_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { supabaseAuthService } from "@/services/supabase_auth_service";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { getUserRole, dashboardPathForRole } from "@/shared/auth/access";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
@@ -69,7 +70,10 @@ export function LoginScreen() {
       }
       
       setUser(response.data.user);
-      router.push(nextPath);
+      // Send the user to their role-specific dashboard. If they were deep-linked
+      // to a specific protected page (next=…), honour that instead.
+      const roleHome = dashboardPathForRole(getUserRole(response.data.user));
+      router.push(nextPath && nextPath !== ROUTE_PATHS.dashboard ? nextPath : roleHome);
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || err.message || "Invalid email or password";
       setError(errorMsg);
