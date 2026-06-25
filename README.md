@@ -9,14 +9,13 @@ leadora/
   backend/        Spring Boot modular monolith
   frontend/       Next.js web dashboard workspace
   mobile/         Flutter mobile sales app workspace
-  ai-service/     Python/FastAPI internal AI service workspace
   docs/           Architecture notes and package diagrams
 ```
 
 ## Current Status
 
 - `backend/` contains the existing Spring Boot application and Maven build.
-- `frontend/`, `mobile/`, and `ai-service/` are reserved workspaces for the client and AI runtimes.
+- `frontend/` and `mobile/` are the client workspaces. The internal AI chat assistant runs inside `backend/` (Spring AI + Gemini), so the separate `ai-service/` placeholder has been removed.
 - `docs/architecture/package-diagrams.md` records the intended package boundaries from the architecture diagrams.
 
 ## Backend Commands
