@@ -56,8 +56,8 @@ export async function GET(request: Request) {
       const body = (await verifyResponse.json()) as ApiErrorBody;
       if (body.errorCode === "ACCOUNT_NOT_PROVISIONED") {
         loginError = "access_denied";
-      } else if (body.errorCode === "ACCOUNT_INACTIVE") {
-        loginError = "account_inactive";
+      } else if (body.errorCode === "ACCOUNT_LOCKED") {
+        loginError = "account_locked";
       }
     } catch {
       // keep default login error

@@ -5,6 +5,8 @@ import com.novax.leadora.api.dto.request.ForgotPasswordRequest;
 import com.novax.leadora.api.dto.request.ResetPasswordRequest;
 import com.novax.leadora.api.dto.response.LoginResponse;
 import com.novax.leadora.application.usecase.identity.LoginUseCase;
+import com.novax.leadora.application.usecase.identity.LoginActivityService;
+import com.novax.leadora.application.usecase.identity.EffectivePermissionsService;
 import com.novax.leadora.application.usecase.identity.ForgotPasswordUseCase;
 import com.novax.leadora.application.usecase.identity.ResetPasswordUseCase;
 import com.novax.leadora.common.response.ApiResponse;
@@ -28,6 +30,8 @@ public class AuthController {
     private final ResetPasswordUseCase resetPasswordUseCase;
     private final CurrentUserProvider currentUserProvider;
     private final TokenBlacklistService tokenBlacklistService;
+    private final LoginActivityService loginActivityService;
+    private final EffectivePermissionsService effectivePermissionsService;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@RequestBody LoginRequest request) {
@@ -64,7 +68,10 @@ public class AuthController {
     /** Called after Google OAuth callback — rejects emails not provisioned by Admin. */
     @GetMapping("/oauth/verify")
     public ResponseEntity<ApiResponse<LoginResponse.UserInfo>> verifyOAuthAccess() {
-        return ResponseEntity.ok(ApiResponse.success(buildUserInfo(currentUserProvider.resolve(null))));
+        UserEntity user = currentUserProvider.resolve(null);
+        // Same sign-in policy as email login: LOCKED → reject, INACTIVE → reactivate, stamp last-login.
+        loginActivityService.recordLogin(user.getUserId());
+        return ResponseEntity.ok(ApiResponse.success(buildUserInfo(user)));
     }
 
     private LoginResponse.UserInfo buildUserInfo(UserEntity user) {
@@ -73,6 +80,7 @@ public class AuthController {
                 .email(user.getEmail())
                 .name(user.getFullName())
                 .roles(List.of(user.getRole() != null ? user.getRole().getRoleName() : "STAFF"))
+                .permissions(effectivePermissionsService.forUser(user))
                 .build();
     }
 }

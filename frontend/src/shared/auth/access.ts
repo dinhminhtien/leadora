@@ -1,12 +1,13 @@
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 
 /**
- * Role-based access control (frontend).
+ * Role + permission based access control (frontend).
  *
- * The backend `roles` table only contains three codes — ADMIN, SALES, MANAGER
- * (see the RBAC matrix). Everything else (SALES_STAFF/STAFF/…) is normalised to
- * SALES. Each role lands on its own dashboard and may only reach the routes
- * granted by the Screen Authorization matrix.
+ * Roles (as-built DB codes): ADMIN, SALES, MANAGER. Each lands on its own dashboard.
+ * - ADMIN is gated by role (account/role administration + payment oversight only).
+ * - SALES / MANAGER are gated by their **effective permissions** (configured by Admin in
+ *   Roles & Permissions). A screen is reachable only if the user holds its VIEW permission,
+ *   so hiding a permission also blocks the route — sidebar item AND direct URL.
  */
 export type AppRole = "SALES" | "MANAGER" | "ADMIN";
 
@@ -14,7 +15,6 @@ export function getUserRole(user?: { roles?: string[] } | null): AppRole {
   const raw = (user?.roles?.[0] ?? "").toUpperCase();
   if (raw === "ADMIN") return "ADMIN";
   if (raw === "MANAGER") return "MANAGER";
-  // SALES, SALES_STAFF, STAFF or anything unknown → treat as Sales Staff.
   return "SALES";
 }
 
@@ -29,72 +29,73 @@ export function dashboardPathForRole(role: AppRole): string {
   return DASHBOARD_PATHS[role];
 }
 
-// Sales Staff: the full sales-to-operations workflow, but only their own records
-// (record-level scoping is enforced by the backend, e.g. lead owner-scoping).
-const SALES_ROUTES: string[] = [
-  DASHBOARD_PATHS.SALES,
-  ROUTE_PATHS.leads,
-  ROUTE_PATHS.customerProfiles,
-  ROUTE_PATHS.followUpTasks,
-  ROUTE_PATHS.salesPipeline,
-  ROUTE_PATHS.deals,
-  ROUTE_PATHS.interactionTimeline,
-  ROUTE_PATHS.manageFollowUpTasks,
-  ROUTE_PATHS.quotations,
-  ROUTE_PATHS.bookingConfirmation,
-  ROUTE_PATHS.reservationStatus,
-  ROUTE_PATHS.operationalHandover,
-  ROUTE_PATHS.frontOfficeHandover,
-  ROUTE_PATHS.depositPayment,
-  ROUTE_PATHS.notifications,
-  ROUTE_PATHS.reminders,
-  ROUTE_PATHS.aiAssistant,
-];
-
-// Sales Manager: everything a Sales Staff can reach (team-wide), plus approvals,
-// team task management, reporting, SLA configuration and feedback review.
-const MANAGER_ROUTES: string[] = [
-  DASHBOARD_PATHS.MANAGER,
-  ...SALES_ROUTES.filter((r) => r !== DASHBOARD_PATHS.SALES),
-  ROUTE_PATHS.manageFollowUpTasks,
-  ROUTE_PATHS.reporting,
-  ROUTE_PATHS.sla,
-  ROUTE_PATHS.customerFeedback,
-];
-
-// Admin: account/role administration and payment oversight only — no sales workflow.
+// Admin (role-based): account/role administration + payment oversight only.
 const ADMIN_ROUTES: string[] = [
   DASHBOARD_PATHS.ADMIN,
   ROUTE_PATHS.identityAccess,
   ROUTE_PATHS.depositPayment,
 ];
 
-export const ROLE_ROUTES: Record<AppRole, string[]> = {
-  SALES: SALES_ROUTES,
-  MANAGER: MANAGER_ROUTES,
-  ADMIN: ADMIN_ROUTES,
+// Maps each protected route to the permission code that gates it (the screen's VIEW
+// permission; the quotation approvals queue needs the dedicated APPROVE permission).
+// Longest match wins, so /quotations/pending-approvals resolves to QUOTATION_APPROVE
+// rather than the parent /quotations → QUOTATION_VIEW.
+const ROUTE_PERMISSION: Record<string, string> = {
+  [ROUTE_PATHS.leads]: "LEAD_VIEW",
+  [ROUTE_PATHS.customerProfiles]: "CUSTOMER_VIEW",
+  [ROUTE_PATHS.followUpTasks]: "TASK_VIEW",
+  [ROUTE_PATHS.manageFollowUpTasks]: "TASK_VIEW",
+  [ROUTE_PATHS.salesPipeline]: "PIPELINE_VIEW",
+  [ROUTE_PATHS.deals]: "DEAL_VIEW",
+  [ROUTE_PATHS.pendingApprovals]: "QUOTATION_APPROVE",
+  [ROUTE_PATHS.quotations]: "QUOTATION_VIEW",
+  [ROUTE_PATHS.interactionTimeline]: "INTERACTION_VIEW",
+  [ROUTE_PATHS.bookingConfirmation]: "BOOKING_VIEW",
+  [ROUTE_PATHS.reservationStatus]: "RESERVATION_VIEW",
+  [ROUTE_PATHS.operationalHandover]: "HANDOVER_VIEW",
+  [ROUTE_PATHS.frontOfficeHandover]: "HANDOVER_VIEW",
+  [ROUTE_PATHS.depositPayment]: "PAYMENT_VIEW",
+  [ROUTE_PATHS.notifications]: "NOTIFICATION_VIEW",
+  [ROUTE_PATHS.reminders]: "REMINDER_VIEW",
+  [ROUTE_PATHS.reporting]: "REPORTING_VIEW",
+  [ROUTE_PATHS.sla]: "SLA_VIEW",
+  [ROUTE_PATHS.customerFeedback]: "FEEDBACK_VIEW",
+  [ROUTE_PATHS.aiAssistant]: "CHAT_VIEW",
 };
 
-// Sub-paths that fall under a route a Sales Staff can otherwise reach (e.g. the
-// quotations module) but are reserved for managers — quotation approval. Denied
-// to SALES even though the parent prefix is allowed.
-const MANAGER_ONLY_PATHS: string[] = [ROUTE_PATHS.pendingApprovals];
+// Keys ordered longest-first for specific-match-wins resolution.
+const ROUTE_PERMISSION_KEYS = Object.keys(ROUTE_PERMISSION).sort((a, b) => b.length - a.length);
 
-/**
- * Whether `role` may open `pathname`. Matches a route exactly or as a path
- * prefix (so `/leads/123` is covered by `/leads`). The bare `/dashboard`
- * dispatcher is allowed for everyone — it only redirects to the role home.
- */
-export function canAccessPath(role: AppRole, pathname: string): boolean {
-  if (pathname === ROUTE_PATHS.dashboard) return true;
-  // Manager-only sub-paths are denied to Sales Staff despite the allowed parent prefix.
-  if (
-    role === "SALES" &&
-    MANAGER_ONLY_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))
-  ) {
-    return false;
-  }
-  return ROLE_ROUTES[role].some(
+/** The permission required to open a route, or null if the route isn't permission-gated. */
+export function requiredPermissionFor(pathname: string): string | null {
+  const key = ROUTE_PERMISSION_KEYS.find(
     (p) => pathname === p || pathname.startsWith(p + "/"),
   );
+  return key ? ROUTE_PERMISSION[key] : null;
+}
+
+function matchesAny(routes: string[], pathname: string): boolean {
+  return routes.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
+/**
+ * Whether the user may open `pathname`. ADMIN is role-gated; SALES/MANAGER are gated by
+ * their effective `permissions`. The bare `/dashboard` dispatcher and the user's own
+ * dashboard home are always allowed.
+ */
+export function canAccessPath(
+  role: AppRole,
+  pathname: string,
+  permissions: string[] = [],
+): boolean {
+  if (pathname === ROUTE_PATHS.dashboard) return true;
+  if (pathname === DASHBOARD_PATHS[role]) return true;
+
+  if (role === "ADMIN") {
+    return matchesAny(ADMIN_ROUTES, pathname);
+  }
+
+  // SALES / MANAGER — permission driven.
+  const required = requiredPermissionFor(pathname);
+  return required != null && permissions.includes(required);
 }

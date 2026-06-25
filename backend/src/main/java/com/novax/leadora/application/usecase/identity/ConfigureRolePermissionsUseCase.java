@@ -52,6 +52,22 @@ public class ConfigureRolePermissionsUseCase {
             }
         }
 
+        // Dependency cascade (server-side integrity): a WRITE/APPROVE permission cannot be granted
+        // without its prerequisite VIEW. Drop any permission whose `depends_on` is not also granted,
+        // repeating until stable. This enforces "no View → no Write" even if a client sends an
+        // inconsistent set.
+        java.util.Map<Integer, Integer> dependsOn = new java.util.HashMap<>();
+        for (var p : permissionRepository.findAll()) {
+            dependsOn.put(p.getPermissionId(), p.getDependsOnId());
+        }
+        boolean changed = true;
+        while (changed) {
+            changed = desired.removeIf(id -> {
+                Integer parent = dependsOn.get(id);
+                return parent != null && !desired.contains(parent);
+            });
+        }
+
         List<RolePermissionEntity> current = rolePermissionRepository.findByRole_RoleId(roleId);
         Set<Integer> currentIds = new HashSet<>();
         for (RolePermissionEntity rp : current) {

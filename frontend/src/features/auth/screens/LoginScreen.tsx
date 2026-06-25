@@ -38,8 +38,8 @@ export function LoginScreen() {
     switch (callbackError) {
       case "access_denied":
         return "You do not have access to this system. Please contact your administrator.";
-      case "account_inactive":
-        return "Your account is deactivated or locked. Please contact your administrator.";
+      case "account_locked":
+        return "Your account has been locked. Please contact the Admin for assistance.";
       case "auth_callback_failed":
         return "Failed to complete Google sign-in. Please try again.";
       default:

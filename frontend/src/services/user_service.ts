@@ -51,6 +51,10 @@ export type Permission = {
   permissionId: number;
   permissionCode: string;
   description: string | null;
+  module: string | null;
+  action: string | null;
+  label: string | null;
+  dependsOnId: number | null;
 };
 
 export type Role = {

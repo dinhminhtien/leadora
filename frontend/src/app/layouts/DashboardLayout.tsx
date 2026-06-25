@@ -118,12 +118,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
-  // ── Role-based access control (frontend) ───────────────────────────────────
+  // ── Role + permission based access control (frontend) ──────────────────────
   const role = getUserRole(user);
   const roleDashboard = dashboardPathForRole(role);
+  const permissions = user?.permissions ?? [];
+  const permKey = permissions.join(",");
 
-  // Sidebar shows only the screens this role may open; the generic "Dashboard"
-  // link points at the role-specific home so highlighting and navigation match.
+  // Sidebar shows only the screens this user may open (permission-gated for
+  // SALES/MANAGER, role-gated for ADMIN). The generic "Dashboard" link points at
+  // the role-specific home so highlighting and navigation match.
   const visibleGroups = useMemo(() => {
     return navigationGroups
       .map((group) => ({
@@ -133,21 +136,23 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             ...item,
             href: item.href === ROUTE_PATHS.dashboard ? roleDashboard : item.href,
           }))
-          .filter((item) => canAccessPath(role, item.href)),
+          .filter((item) => canAccessPath(role, item.href, permissions)),
       }))
       .filter((group) => group.items.length > 0);
-  }, [role, roleDashboard]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, roleDashboard, permKey]);
 
-  // Guard: a user landing on a route their role can't access (deep link, stale
-  // tab, or the bare /dashboard dispatcher) is sent to their own dashboard.
+  // Guard: a user landing on a route they may not access (deep link, stale tab,
+  // or the bare /dashboard dispatcher) is sent to their own dashboard.
   useEffect(() => {
     if (isLoading || !user) return;
     if (pathname === ROUTE_PATHS.dashboard) {
       router.replace(roleDashboard);
-    } else if (!canAccessPath(role, pathname)) {
+    } else if (!canAccessPath(role, pathname, permissions)) {
       router.replace(roleDashboard);
     }
-  }, [isLoading, user, pathname, role, roleDashboard, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, user, pathname, role, roleDashboard, permKey, router]);
 
   const handleLogout = async () => {
     setIsUserDropdownOpen(false);
