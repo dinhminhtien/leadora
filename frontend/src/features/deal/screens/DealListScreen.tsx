@@ -220,7 +220,7 @@ export function DealListScreen() {
       const matchesSearch =
         titleLower.includes(searchTerm.toLowerCase()) ||
         contactLower.includes(searchTerm.toLowerCase());
-      
+
       const matchesStage = stageFilter === "all" || deal.stage === stageFilter;
       const matchesStatus = statusFilter === "all" || deal.status === statusFilter;
 
@@ -407,7 +407,7 @@ export function DealListScreen() {
     <div className="space-y-6">
       {/* Toast Banners */}
       {errorMessage && (
-        <div className="fixed top-4 right-4 z-[100] bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
+        <div className="fixed top-4 right-4 z-100 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
           <AlertCircle className="size-4 shrink-0" />
           <span className="text-xs font-semibold">{errorMessage}</span>
           <button type="button" onClick={() => setErrorMessage(null)} className="ml-2 hover:text-red-900">
@@ -417,7 +417,7 @@ export function DealListScreen() {
       )}
 
       {successMessage && (
-        <div className="fixed top-4 right-4 z-[100] bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
+        <div className="fixed top-4 right-4 z-100 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
           <CheckCircle2 className="size-4 shrink-0" />
           <span className="text-xs font-semibold">{successMessage}</span>
           <button type="button" onClick={() => setSuccessMessage(null)} className="ml-2 hover:text-emerald-900">
@@ -479,7 +479,7 @@ export function DealListScreen() {
                 className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
               />
             </div>
-            
+
             {/* Stage Selector */}
             <div className="w-full md:w-40 flex items-center gap-1.5">
               <span className="text-[10px] text-slate-400 font-bold shrink-0">Stage:</span>
@@ -493,7 +493,7 @@ export function DealListScreen() {
                 <option value="Confirmed">Confirmed</option>
               </Select>
             </div>
-            
+
             {/* Status Selector */}
             <div className="w-full md:w-40 flex items-center gap-1.5">
               <span className="text-[10px] text-slate-400 font-bold shrink-0">Status:</span>
@@ -573,8 +573,8 @@ export function DealListScreen() {
                         deal.status === "won"
                           ? "success"
                           : deal.status === "active"
-                          ? "primary"
-                          : "danger"
+                            ? "primary"
+                            : "danger"
                       }
                       size="sm"
                       className="font-bold text-[10px] uppercase"
@@ -659,11 +659,10 @@ export function DealListScreen() {
                 <button
                   key={p}
                   onClick={() => setCurrentPage(p)}
-                  className={`size-8 rounded-lg font-bold transition flex items-center justify-center ${
-                    isCurrent
+                  className={`size-8 rounded-lg font-bold transition flex items-center justify-center ${isCurrent
                       ? "bg-blue-600 text-white shadow-xs"
                       : "text-slate-600 hover:bg-slate-100"
-                  }`}
+                    }`}
                 >
                   {p}
                 </button>
@@ -911,13 +910,12 @@ export function DealListScreen() {
                         type="button"
                         onClick={() => !isDisabled && handleStageClick(stg)}
                         disabled={isDisabled}
-                        className={`flex-1 text-center py-1.5 px-0.5 rounded text-[9px] font-bold transition-all duration-200 border ${
-                          isCurrent
+                        className={`flex-1 text-center py-1.5 px-0.5 rounded text-[9px] font-bold transition-all duration-200 border ${isCurrent
                             ? "bg-blue-600 border-blue-600 text-white shadow-xs"
                             : isPast
-                            ? "bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100"
-                            : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                        } ${isDisabled ? "cursor-not-allowed opacity-80" : ""}`}
+                              ? "bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                              : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          } ${isDisabled ? "cursor-not-allowed opacity-80" : ""}`}
                       >
                         {stg}
                       </button>

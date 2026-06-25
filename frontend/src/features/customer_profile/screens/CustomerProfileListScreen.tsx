@@ -46,14 +46,14 @@ function useDebounce<T>(value: T, delay = 300): T {
 
 const TYPE_BADGE: Record<CustomerType, string> = {
   INDIVIDUAL: "bg-blue-100 text-blue-700",
-  CORPORATE:  "bg-purple-100 text-purple-700",
+  CORPORATE: "bg-purple-100 text-purple-700",
 };
 const TYPE_LABEL: Record<CustomerType, string> = {
   INDIVIDUAL: "Individual",
-  CORPORATE:  "Corporate",
+  CORPORATE: "Corporate",
 };
 const STATUS_BADGE: Record<"ACTIVE" | "INACTIVE", import("@/components/ui/Badge").BadgeVariant> = {
-  ACTIVE:   "success",
+  ACTIVE: "success",
   INACTIVE: "default",
 };
 
@@ -154,11 +154,10 @@ function CreateCustomerDrawer({
                   key={type}
                   type="button"
                   onClick={() => set("customerType", type)}
-                  className={`py-2 rounded-xl text-xs font-semibold border transition ${
-                    form.customerType === type
+                  className={`py-2 rounded-xl text-xs font-semibold border transition ${form.customerType === type
                       ? "border-blue-500 bg-blue-50 text-blue-700"
                       : "border-slate-200 text-slate-600 hover:border-slate-300"
-                  }`}
+                    }`}
                 >
                   {type === "INDIVIDUAL" ? "Individual" : "Corporate / Org"}
                 </button>
@@ -324,10 +323,10 @@ export function CustomerProfileListScreen() {
   const users = usersData?.data?.content ?? [];
 
   const stats = {
-    total:      statsData?.data?.total      ?? totalElements,
-    active:     statsData?.data?.active     ?? 0,
+    total: statsData?.data?.total ?? totalElements,
+    active: statsData?.data?.active ?? 0,
     individual: statsData?.data?.individual ?? 0,
-    corporate:  statsData?.data?.corporate  ?? 0,
+    corporate: statsData?.data?.corporate ?? 0,
   };
 
   function handlePageChange(newPage: number) {
@@ -359,9 +358,9 @@ export function CustomerProfileListScreen() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: "Total Customers", value: totalElements, icon: <Users className="size-4 text-slate-400" />, color: "text-slate-800" },
-          { label: "Active",          value: stats.active, icon: <div className="size-2 rounded-full bg-green-500 mt-1" />, color: "text-green-700" },
-          { label: "Individual",      value: stats.individual, icon: <Users className="size-4 text-blue-400" />, color: "text-blue-700" },
-          { label: "Corporate",       value: stats.corporate, icon: <Building2 className="size-4 text-purple-400" />, color: "text-purple-700" },
+          { label: "Active", value: stats.active, icon: <div className="size-2 rounded-full bg-green-500 mt-1" />, color: "text-green-700" },
+          { label: "Individual", value: stats.individual, icon: <Users className="size-4 text-blue-400" />, color: "text-blue-700" },
+          { label: "Corporate", value: stats.corporate, icon: <Building2 className="size-4 text-purple-400" />, color: "text-purple-700" },
         ].map(stat => (
           <div key={stat.label} className="bg-white rounded-xl border border-slate-100 shadow-sm px-4 py-3">
             <div className="flex items-center justify-between mb-1">
@@ -393,9 +392,8 @@ export function CustomerProfileListScreen() {
               <button
                 key={val}
                 onClick={() => { setTypeFilter(val as CustomerType | ""); setPage(0); }}
-                className={`px-3 py-1 rounded-md text-[11px] font-semibold transition ${
-                  typeFilter === val ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
-                }`}
+                className={`px-3 py-1 rounded-md text-[11px] font-semibold transition ${typeFilter === val ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"
+                  }`}
               >
                 {label}
               </button>

@@ -34,6 +34,19 @@ export function LoginScreen() {
   const callbackError = searchParams.get("error");
   const setUser = useAuthStore((s) => s.setUser);
 
+  const callbackErrorMessage = (() => {
+    switch (callbackError) {
+      case "access_denied":
+        return "You do not have access to this system. Please contact your administrator.";
+      case "account_inactive":
+        return "Your account is deactivated or locked. Please contact your administrator.";
+      case "auth_callback_failed":
+        return "Failed to complete Google sign-in. Please try again.";
+      default:
+        return callbackError ? "Authentication failed." : null;
+    }
+  })();
+
   const {
     register,
     handleSubmit,
@@ -109,14 +122,11 @@ export function LoginScreen() {
         </p>
       </div>
 
-      {(error || callbackError) && (
+      {(error || callbackErrorMessage) && (
         <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-danger/10 p-3 text-xs text-danger border border-danger/15">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
           <p className="font-semibold leading-relaxed">
-            {error ||
-              (callbackError === "auth_callback_failed"
-                ? "Failed to complete Google sign-in. Please try again."
-                : "Authentication failed.")}
+            {error || callbackErrorMessage}
           </p>
         </div>
       )}
