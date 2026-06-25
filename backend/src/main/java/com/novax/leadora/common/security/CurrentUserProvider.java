@@ -1,9 +1,12 @@
 package com.novax.leadora.common.security;
 
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.UserStatus;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -54,17 +57,19 @@ public class CurrentUserProvider {
             if (StringUtils.hasText(subject)) {
                 UserEntity user = tryLoad(subject);
                 if (user != null) {
-                    return user;
+                    return requireActiveUser(user);
                 }
             }
 
-            // Fallback: try loading by verified email claim from JWT
+            // OAuth / SSO: resolve by verified email — account must be pre-provisioned by Admin.
             String email = jwt.getClaimAsString("email");
             if (StringUtils.hasText(email)) {
-                UserEntity user = userRepository.findWithRoleByEmailIgnoreCase(email.trim()).orElse(null);
-                if (user != null) {
-                    return user;
-                }
+                return userRepository.findWithRoleByEmailIgnoreCase(email.trim())
+                        .map(this::requireActiveUser)
+                        .orElseThrow(() -> new BusinessException(
+                                "ACCOUNT_NOT_PROVISIONED",
+                                "You do not have access to this system. Please contact your administrator.",
+                                HttpStatus.FORBIDDEN));
             }
         }
 
@@ -72,7 +77,7 @@ public class CurrentUserProvider {
         if (StringUtils.hasText(headerUserId)) {
             UserEntity user = tryLoad(headerUserId);
             if (user != null) {
-                return user;
+                return requireActiveUser(user);
             }
         }
 
@@ -85,7 +90,7 @@ public class CurrentUserProvider {
         if (isDevProfile && StringUtils.hasText(devUserId)) {
             UserEntity user = tryLoad(devUserId);
             if (user != null) {
-                return user;
+                return requireActiveUser(user);
             }
         }
 
@@ -100,5 +105,15 @@ public class CurrentUserProvider {
         } catch (IllegalArgumentException ex) {
             return null; // not a UUID — ignore and fall through
         }
+    }
+
+    private UserEntity requireActiveUser(UserEntity user) {
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException(
+                    "ACCOUNT_INACTIVE",
+                    "Your account is deactivated or locked. Please contact your administrator.",
+                    HttpStatus.FORBIDDEN);
+        }
+        return user;
     }
 }

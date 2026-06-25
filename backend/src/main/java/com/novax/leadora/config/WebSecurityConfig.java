@@ -19,6 +19,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.novax.leadora.common.security.TokenBlacklistService;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -50,6 +51,9 @@ public class WebSecurityConfig {
     @Autowired
     @Lazy
     private UserRepository userRepository;
+
+    @Autowired
+    private TokenBlacklistService tokenBlacklistService;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -113,6 +117,9 @@ public class WebSecurityConfig {
 
         // 3. Return a delegating decoder based on the JWT header algorithm
         return token -> {
+            if (tokenBlacklistService.isBlacklisted(token)) {
+                throw new JwtException("Token is blacklisted");
+            }
             try {
                 var jwt = JWTParser.parse(token);
                 if (jwt instanceof SignedJWT signedJwt) {

@@ -44,20 +44,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!token) {
         clearUser();
+        setLoading(false);
         return;
       }
 
       try {
         const response = await authService.getProfile();
         setUser(response.data);
-      } catch (e) {
+      } catch (e: unknown) {
         supabaseAuthService.clearLocalSession();
         clearUser();
+
+        const axiosError = e as { response?: { status?: number; data?: { errorCode?: string } } };
+        const errorCode = axiosError.response?.data?.errorCode;
+        if (errorCode === "ACCOUNT_NOT_PROVISIONED") {
+          router.replace(`${ROUTE_PATHS.login}?error=access_denied`);
+        } else if (errorCode === "ACCOUNT_INACTIVE") {
+          router.replace(`${ROUTE_PATHS.login}?error=account_inactive`);
+        }
+      } finally {
+        setLoading(false);
       }
     };
 
     checkSession();
-  }, [setUser, clearUser, setLoading]);
+  }, [setUser, clearUser, setLoading, router]);
 
   // Enforce redirection to login screen for unauthenticated users accessing protected routes
   useEffect(() => {
