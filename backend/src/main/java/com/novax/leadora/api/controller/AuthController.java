@@ -58,13 +58,21 @@ public class AuthController {
     @GetMapping("/profile")
     public ResponseEntity<ApiResponse<LoginResponse.UserInfo>> getProfile(
             @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        UserEntity user = currentUserProvider.resolve(userId);
-        LoginResponse.UserInfo userInfo = LoginResponse.UserInfo.builder()
+        return ResponseEntity.ok(ApiResponse.success(buildUserInfo(currentUserProvider.resolve(userId))));
+    }
+
+    /** Called after Google OAuth callback — rejects emails not provisioned by Admin. */
+    @GetMapping("/oauth/verify")
+    public ResponseEntity<ApiResponse<LoginResponse.UserInfo>> verifyOAuthAccess() {
+        return ResponseEntity.ok(ApiResponse.success(buildUserInfo(currentUserProvider.resolve(null))));
+    }
+
+    private LoginResponse.UserInfo buildUserInfo(UserEntity user) {
+        return LoginResponse.UserInfo.builder()
                 .id(user.getUserId().toString())
                 .email(user.getEmail())
                 .name(user.getFullName())
                 .roles(List.of(user.getRole() != null ? user.getRole().getRoleName() : "STAFF"))
                 .build();
-        return ResponseEntity.ok(ApiResponse.success(userInfo));
     }
 }
