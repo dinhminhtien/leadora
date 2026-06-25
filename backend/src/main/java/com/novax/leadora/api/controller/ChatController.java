@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 /**
  * Internal Sales Role-Based Chat Assistant.
@@ -34,6 +35,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/chat")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('SALES','MANAGER')")
 public class ChatController {
 
     private final CurrentUserProvider currentUserProvider;

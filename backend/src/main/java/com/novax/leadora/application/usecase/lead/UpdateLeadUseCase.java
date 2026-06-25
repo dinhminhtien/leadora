@@ -66,6 +66,12 @@ public class UpdateLeadUseCase {
             lead.setAssignedUser(assignedUser);
         }
 
+        // BR: an organization lead must name its company. Validate the resulting state,
+        // since either isCorporate or companyName may have just changed.
+        if (Boolean.TRUE.equals(lead.getIsCorporate()) && !StringUtils.hasText(lead.getCompanyName())) {
+            throw new IllegalArgumentException("Company name is required for an organization lead.");
+        }
+
         return LeadResponse.from(leadRepository.save(lead));
     }
 

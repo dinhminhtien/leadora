@@ -5,6 +5,8 @@ export type User = {
   email: string;
   name: string;
   roles: Role[];
+  /** Effective permission codes (e.g. LEAD_VIEW) used for frontend gating. */
+  permissions?: string[];
 };
 
 export type AuthSession = {

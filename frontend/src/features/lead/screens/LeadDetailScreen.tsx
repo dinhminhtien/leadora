@@ -5,7 +5,7 @@ import {
   ChevronLeft, Mail, Phone, Building2, User, Calendar,
   FileText, Clock, MessageSquare, Sparkles, CheckCircle2,
   Circle, Edit3, X, Loader2, Save, AlertCircle, UserPlus,
-  ArrowRight, ShieldCheck, ShieldAlert,
+  ArrowRight, ShieldCheck, ShieldAlert, Lock,
   BadgeCheck, Building, ServerCrash,
 } from "lucide-react";
 import Link from "next/link";
@@ -57,6 +57,9 @@ function allowedStatusOptions(current: LeadStatus): LeadStatus[] {
 const SOURCE_OPTIONS = [
   "Website Inquiry", "Referral", "Social Media", "Cold Call", "Walk-in", "Event",
 ];
+
+// Letters (any language), spaces and basic name punctuation — no digits/symbols.
+const NAME_ALLOWED = /^[\p{L}\s.'-]+$/u;
 
 // ── Mock interaction data ─────────────────────────────────────────────────────
 
@@ -278,7 +281,7 @@ function ConvertModal({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function LeadDetailScreen({ leadId }: { leadId: string }) {
-  const { data: resp, isLoading, isError } = useLeadDetail(leadId);
+  const { data: resp, isLoading, isError, error } = useLeadDetail(leadId);
   const updateMutation = useUpdateLead(leadId);
 
   const [editOpen, setEditOpen]       = useState(false);
@@ -298,11 +301,44 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
     </div>
   );
 
-  if (isError || !lead) return (
-    <div className="flex items-center justify-center h-64 gap-2 text-rose-500">
-      <AlertCircle className="size-5" /> Lead not found.
-    </div>
-  );
+  // Distinguish "no permission" (403) from "doesn't exist" (404 / malformed id) so the
+  // user gets a clear Access Denied screen instead of an indefinite loading state.
+  if (isError || !lead) {
+    const status = (error as any)?.response?.status;
+    if (status === 403) {
+      return (
+        <div className="flex flex-col items-center justify-center h-[60vh] text-center px-6">
+          <div className="flex items-center justify-center size-16 rounded-full bg-rose-50 mb-5">
+            <Lock className="size-7 text-rose-500" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-800">Access Denied</h2>
+          <p className="text-sm text-slate-500 mt-1.5 max-w-sm">
+            You don’t have permission to view this lead. It may belong to another sales
+            representative. Contact your Sales Manager if you believe this is a mistake.
+          </p>
+          <Link href="/leads"
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition">
+            <ChevronLeft className="size-4" /> Back to Leads
+          </Link>
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center px-6">
+        <div className="flex items-center justify-center size-16 rounded-full bg-slate-100 mb-5">
+          <AlertCircle className="size-7 text-slate-400" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-800">Lead not found</h2>
+        <p className="text-sm text-slate-500 mt-1.5 max-w-sm">
+          This lead doesn’t exist or may have been removed.
+        </p>
+        <Link href="/leads"
+          className="mt-6 inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition">
+          <ChevronLeft className="size-4" /> Back to Leads
+        </Link>
+      </div>
+    );
+  }
 
   const openEdit = () => {
     setEditForm({
@@ -318,16 +354,24 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
 
   const validateEdit = (): boolean => {
     const errs: typeof editErrors = {};
-    if (!editForm.fullName?.trim()) {
+    const name = editForm.fullName?.trim() ?? "";
+    if (!name) {
       errs.fullName = "Full name is required";
-    } else if (/\d/.test(editForm.fullName)) {
+    } else if (/\d/.test(name)) {
       errs.fullName = "Full name cannot contain numbers";
+    } else if (!NAME_ALLOWED.test(name)) {
+      errs.fullName = "Full name cannot contain special characters";
     }
     if (editForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.email)) {
-      errs.email = "Invalid email format (must contain @)";
+      errs.email = "Invalid email format (e.g. name@domain.com)";
     }
-    if (editForm.phone && !/^\d{10,11}$/.test((editForm.phone ?? "").replace(/\s/g, ""))) {
-      errs.phone = "Phone number must be 10–11 digits";
+    if (editForm.phone) {
+      const digits = editForm.phone.replace(/\s/g, "");
+      if (/[^\d]/.test(digits)) {
+        errs.phone = "Phone number can only contain digits (no letters or symbols)";
+      } else if (!/^\d{10,11}$/.test(digits)) {
+        errs.phone = "Phone number must be 10–11 digits";
+      }
     }
     if (editForm.isCorporate && !editForm.companyName?.trim()) {
       errs.companyName = "Company name is required for an organization";
@@ -632,7 +676,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-700">Phone Number</label>
-                  <input value={editForm.phone ?? ""}
+                  <input value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
                     onChange={e => { setEditForm(f => ({ ...f, phone: e.target.value })); setEditErrors(er => ({ ...er, phone: undefined })); }}
                     className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
                       ${editErrors.phone ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />

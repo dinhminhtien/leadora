@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useNotifications } from "@/features/notification/hooks/use_notifications";
+import { getUserRole, canAccessPath, dashboardPathForRole } from "@/shared/auth/access";
 import {
   Bell,
   Bot,
@@ -111,11 +112,47 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { sidebarOpen, toggleSidebar } = useUiStore();
-  const { user, clearUser } = useAuthStore();
+  const { user, clearUser, isLoading } = useAuthStore();
   const { data: unreadNotifications } = useNotifications(user?.id, true);
   const unreadCount = unreadNotifications?.length ?? 0;
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+
+  // ── Role + permission based access control (frontend) ──────────────────────
+  const role = getUserRole(user);
+  const roleDashboard = dashboardPathForRole(role);
+  const permissions = user?.permissions ?? [];
+  const permKey = permissions.join(",");
+
+  // Sidebar shows only the screens this user may open (permission-gated for
+  // SALES/MANAGER, role-gated for ADMIN). The generic "Dashboard" link points at
+  // the role-specific home so highlighting and navigation match.
+  const visibleGroups = useMemo(() => {
+    return navigationGroups
+      .map((group) => ({
+        ...group,
+        items: group.items
+          .map((item) => ({
+            ...item,
+            href: item.href === ROUTE_PATHS.dashboard ? roleDashboard : item.href,
+          }))
+          .filter((item) => canAccessPath(role, item.href, permissions)),
+      }))
+      .filter((group) => group.items.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, roleDashboard, permKey]);
+
+  // Guard: a user landing on a route they may not access (deep link, stale tab,
+  // or the bare /dashboard dispatcher) is sent to their own dashboard.
+  useEffect(() => {
+    if (isLoading || !user) return;
+    if (pathname === ROUTE_PATHS.dashboard) {
+      router.replace(roleDashboard);
+    } else if (!canAccessPath(role, pathname, permissions)) {
+      router.replace(roleDashboard);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, user, pathname, role, roleDashboard, permKey, router]);
 
   const handleLogout = async () => {
     setIsUserDropdownOpen(false);
@@ -179,7 +216,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
         {/* Scrollable Navigation */}
         <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4 custom-scrollbar">
-          {navigationGroups.map((group, idx) => (
+          {visibleGroups.map((group, idx) => (
             <div key={idx} className="space-y-1">
               {sidebarOpen && (
                 <p className="px-3 text-[9px] font-bold text-zinc-400 dark:text-zinc-600 uppercase tracking-widest mb-1.5">
@@ -206,7 +243,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   </Link>
                 );
               })}
-              {sidebarOpen && idx < navigationGroups.length - 1 && (
+              {sidebarOpen && idx < visibleGroups.length - 1 && (
                 <hr className="border-zinc-200 dark:border-zinc-900 my-2.5 opacity-40" />
               )}
             </div>
@@ -355,7 +392,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                       <p className="text-[10px] text-muted-foreground">{user.email}</p>
                       <div className="mt-1.5 flex gap-1">
                         <Badge variant="primary" className="text-[9px] py-0 px-1.5 font-semibold">
-                          Sales Manager
+                          {role === "ADMIN" ? "Admin" : role === "MANAGER" ? "Sales Manager" : "Sales Staff"}
                         </Badge>
                       </div>
                     </div>

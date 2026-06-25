@@ -32,10 +32,10 @@ public class QuotationClosureLogEntity extends BaseEntity {
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
-    @Column(name = "closed_by_name", length = 255)
+    @Column(name = "closed_by_name", length = 50)
     private String closedByName;
 
-    @Column(name = "closed_by_role", length = 100)
+    @Column(name = "closed_by_role", length = 50)
     private String closedByRole;
 
     @Column(name = "previous_status", length = 30)

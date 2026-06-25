@@ -7,9 +7,11 @@ import com.novax.leadora.common.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.stream.Collectors;
@@ -33,6 +35,36 @@ public class GlobalExceptionHandler {
         log.warn("Resource not found: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ApiResponse.businessError("RESOURCE_NOT_FOUND", ex.getMessage(), null));
+    }
+
+    /**
+     * A path variable that fails to bind to its target type — most commonly a
+     * malformed UUID such as {@code /leads/999}. Without this handler such requests
+     * fall through to {@link #handleAllExceptions} and return a misleading HTTP 500.
+     * Treating it as 404 lets the UI render a proper "not found" state instead of
+     * hanging or showing a server-crash banner.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        log.warn("Malformed path/parameter '{}': {}", ex.getName(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.businessError("RESOURCE_NOT_FOUND",
+                        "The requested resource does not exist.", null));
+    }
+
+    /**
+     * Authorization failures raised in the service layer (e.g. a Sales Staff trying
+     * to open a lead that is not theirs). Method-security denials are handled by the
+     * security filter chain, but a manually thrown {@link AccessDeniedException} from
+     * a use case reaches here — map it to 403 so the UI can show "Access Denied".
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.businessError("ACCESS_DENIED",
+                        ex.getMessage() != null ? ex.getMessage()
+                                : "You do not have permission to access this resource.", null));
     }
 
     @ExceptionHandler(BusinessException.class)

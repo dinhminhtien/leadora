@@ -108,7 +108,11 @@ public class SendChatMessageUseCase {
     private String buildReferenceBlock(ChatIntent intent, UserEntity user, String content) {
         return switch (intent) {
             case ASSIGNED_DATA -> crmContextService.assignedContext(user);
-            case TEAM_SUMMARY -> crmContextService.teamSummary();
+            // Team-wide summary is a Manager/Admin privilege; a Sales Staff is downgraded to
+            // their own scope so they can never see the whole team's data via this intent.
+            case TEAM_SUMMARY -> crmContextService.canSeeAllData(user)
+                    ? crmContextService.teamSummary()
+                    : crmContextService.assignedContext(user);
             case DOC_QUERY -> ragService.retrieveContext(content);
             case GENERAL_BUSINESS -> {
                 // Light blend: company docs + the user's own data.

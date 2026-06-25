@@ -21,7 +21,7 @@ public class ProductServiceEntity extends BaseEntity {
     @Column(name = "product_id")
     private UUID productId;
 
-    @Column(name = "name", nullable = false, length = 255)
+    @Column(name = "name", nullable = false, length = 100)
     private String name;
 
     @Enumerated(EnumType.STRING)
