@@ -36,11 +36,26 @@ function loadSharedEnv(): void {
 
 loadSharedEnv();
 
+// Same-origin API proxy. The browser calls relative "/api/v1/*"
+// (NEXT_PUBLIC_API_BASE_URL=/api/v1 in .env.local, needed for ngrok/same-origin),
+// and Next forwards those to the real backend. Without this rewrite the calls hit
+// the Next dev server itself and 404. The target is the Spring Boot origin.
+const API_PROXY_TARGET =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8085";
+
 const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
   turbopack: {},
+  async rewrites() {
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${API_PROXY_TARGET}/api/v1/:path*`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

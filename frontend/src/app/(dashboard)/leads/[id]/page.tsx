@@ -4,10 +4,13 @@ type LeadDetailPageProps = {
   params: Promise<{
     id: string;
   }>;
+  searchParams: Promise<{ mode?: string }>;
 };
 
-export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
+export default async function LeadDetailPage({ params, searchParams }: LeadDetailPageProps) {
   const { id } = await params;
+  const { mode } = await searchParams;
 
-  return <LeadDetailScreen leadId={id} />;
+  // ?mode=edit (set by the "Created by me" list rows) → restricted edit-only screen.
+  return <LeadDetailScreen leadId={id} editMode={mode === "edit"} />;
 }

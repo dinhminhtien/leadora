@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@/services/supabase/server";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8085/api/v1";
+// This handler runs server-side, where fetch() requires an ABSOLUTE URL — the
+// browser's relative "/api/v1" (used for the same-origin proxy) won't work here.
+// If NEXT_PUBLIC_API_BASE_URL is absolute (e.g. on Vercel) use it directly;
+// otherwise build it from the backend origin (NEXT_PUBLIC_API_URL).
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.startsWith("http")
+  ? process.env.NEXT_PUBLIC_API_BASE_URL
+  : `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8085"}/api/v1`;
 
 type ApiErrorBody = {
   errorCode?: string;

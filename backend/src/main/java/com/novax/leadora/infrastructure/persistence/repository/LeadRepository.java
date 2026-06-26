@@ -43,10 +43,10 @@ public interface LeadRepository
     default Page<LeadEntity> searchLeads(
             String search, LeadStatus status, String source, Boolean isCorporate,
             OffsetDateTime dateFrom, OffsetDateTime dateTo,
-            boolean unscoped, UUID ownerId, Pageable pageable
+            boolean unscoped, UUID ownerId, boolean createdByMe, Pageable pageable
     ) {
         return findAll(Spec.filter(search, status, source, isCorporate,
-                dateFrom, dateTo, unscoped, ownerId), pageable);
+                dateFrom, dateTo, unscoped, ownerId, createdByMe), pageable);
     }
 
     /**
@@ -60,11 +60,11 @@ public interface LeadRepository
     default Page<LeadEntity> searchLeadsByStatusPriority(
             String search, LeadStatus status, String source, Boolean isCorporate,
             OffsetDateTime dateFrom, OffsetDateTime dateTo,
-            boolean unscoped, UUID ownerId, Pageable pageable
+            boolean unscoped, UUID ownerId, boolean createdByMe, Pageable pageable
     ) {
         List<LeadEntity> all = findAll(
                 Spec.filter(search, status, source, isCorporate,
-                        dateFrom, dateTo, unscoped, ownerId),
+                        dateFrom, dateTo, unscoped, ownerId, createdByMe),
                 Sort.unsorted()
         );
 
@@ -137,7 +137,8 @@ public interface LeadRepository
                 OffsetDateTime dateFrom,
                 OffsetDateTime dateTo,
                 boolean unscoped,
-                UUID ownerId
+                UUID ownerId,
+                boolean createdByMe
         ) {
             return (root, query, cb) -> {
 
@@ -166,15 +167,20 @@ public interface LeadRepository
                 if (dateFrom   != null)              predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), dateFrom));
                 if (dateTo     != null)              predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"),   dateTo));
 
-                // Owner scope: skip when unscoped (admin/manager); otherwise
-                // the lead must be assigned to OR created by the caller.
+                // Owner scope: skip when unscoped (admin/manager). For a scoped caller
+                // (SALES) the two views are mutually exclusive:
+                //   createdByMe=false (default) → leads ASSIGNED to the caller
+                //   createdByMe=true            → leads the caller CREATED
+                // A self-created lead is unassigned by default, so it only appears under
+                // the "Created by me" view — exactly as the staff workflow requires.
                 if (!unscoped && ownerId != null) {
-                    var auJoin = root.join("assignedUser", JoinType.LEFT);
-                    var cbJoin = root.join("createdBy",    JoinType.LEFT);
-                    predicates.add(cb.or(
-                            cb.equal(auJoin.get("userId"), ownerId),
-                            cb.equal(cbJoin.get("userId"), ownerId)
-                    ));
+                    if (createdByMe) {
+                        var cbJoin = root.join("createdBy", JoinType.LEFT);
+                        predicates.add(cb.equal(cbJoin.get("userId"), ownerId));
+                    } else {
+                        var auJoin = root.join("assignedUser", JoinType.LEFT);
+                        predicates.add(cb.equal(auJoin.get("userId"), ownerId));
+                    }
                 }
 
                 return cb.and(predicates.toArray(new Predicate[0]));
