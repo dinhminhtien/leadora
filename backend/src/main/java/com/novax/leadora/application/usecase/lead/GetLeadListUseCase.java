@@ -32,7 +32,7 @@ public class GetLeadListUseCase {
     @Transactional(readOnly = true)
     public Page<LeadResponse> execute(String search, String status, String source, Boolean isCorporate,
                                       String dateFrom, String dateTo,
-                                      String sortBy, String sortDir, int page, int size) {
+                                      String sortBy, String sortDir, String scope, int page, int size) {
         boolean asc = "asc".equalsIgnoreCase(sortDir);
 
         // Pass "" (not null) so Hibernate 6 binds as varchar instead of bytea
@@ -56,12 +56,16 @@ public class GetLeadListUseCase {
         UUID ownerId = leadAccessPolicy.listScopeOwnerId(currentUser);
         boolean unscoped = (ownerId == null);
 
+        // scope only matters for a scoped (SALES) caller: "created" → leads they created,
+        // anything else (default "assigned") → leads assigned to them. Ignored when unscoped.
+        boolean createdByMe = "created".equalsIgnoreCase(scope);
+
         // "status" sorts by pipeline priority (Converted → … → New), not alphabetically.
         // Always high→low — the only ordering the UI offers for status.
         if ("status".equals(sortBy)) {
             Pageable pageable = PageRequest.of(page, size);
             return leadRepository.searchLeadsByStatusPriority(
-                            searchParam, statusParam, sourceParam, isCorporate, dateFromParam, dateToParam, unscoped, ownerId, pageable)
+                            searchParam, statusParam, sourceParam, isCorporate, dateFromParam, dateToParam, unscoped, ownerId, createdByMe, pageable)
                     .map(LeadResponse::from);
         }
 
@@ -70,7 +74,7 @@ public class GetLeadListUseCase {
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
 
         return leadRepository.searchLeads(
-                        searchParam, statusParam, sourceParam, isCorporate, dateFromParam, dateToParam, unscoped, ownerId, pageable)
+                        searchParam, statusParam, sourceParam, isCorporate, dateFromParam, dateToParam, unscoped, ownerId, createdByMe, pageable)
                 .map(LeadResponse::from);
     }
 

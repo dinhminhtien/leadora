@@ -76,6 +76,12 @@ export type LeadListParams = {
   sortDir?: "asc" | "desc";
   dateFrom?: string;
   dateTo?: string;
+  /**
+   * Owner view for a SALES caller (ignored for MANAGER/ADMIN, who see all leads):
+   *   "assigned" (default) → leads assigned to me
+   *   "created"            → leads I created (incl. the unassigned ones I just added)
+   */
+  scope?: "assigned" | "created";
   page?: number;
   size?: number;
 };

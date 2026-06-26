@@ -52,10 +52,11 @@ public class LeadController {
             @RequestParam(required = false) String dateTo,
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir,
+            @RequestParam(defaultValue = "assigned") String scope,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
-        Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, isCorporate, dateFrom, dateTo, sortBy, sortDir, page, size);
+        Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, isCorporate, dateFrom, dateTo, sortBy, sortDir, scope, page, size);
         return ResponseEntity.ok(ApiResponse.success(leads));
     }
 

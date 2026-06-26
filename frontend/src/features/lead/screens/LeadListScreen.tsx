@@ -6,6 +6,7 @@ import {
   Phone, Building2, User, ArrowUpRight, ChevronLeft, ChevronRight,
   Loader2, AlertCircle, AlertTriangle, SlidersHorizontal, CalendarDays, ArrowUpDown,
   ArrowUp, ArrowDown, ArrowDownWideNarrow, ChevronDown, ServerCrash,
+  UserCheck, PenLine, UserCog,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -14,6 +15,10 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { useLeads, useCreateLead } from "@/features/lead/hooks/use_leads";
+import { useUsers } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
+import type { UserSummary } from "@/services/follow_up_task_service";
+import { useAuthStore } from "@/stores/auth_store";
+import { getUserRole } from "@/shared/auth/access";
 import type { LeadStatus, CreateLeadPayload } from "@/services/lead_service";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -147,7 +152,7 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
 
 // ── Create Lead Drawer ────────────────────────────────────────────────────────
 
-function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
+function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; canAssign: boolean; users: UserSummary[] }) {
   const [form, setForm] = useState<CreateLeadPayload>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [serverError, setServerError] = useState("");
@@ -163,7 +168,10 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
     setErrors({});
     setServerError("");
     setDuplicate(null);
-    createMutation.mutate(form, {
+    // Empty assignee ("") must go out as undefined — the backend field is a UUID
+    // and an empty string would fail to deserialize.
+    const payload: CreateLeadPayload = { ...form, assignedUserId: form.assignedUserId || undefined };
+    createMutation.mutate(payload, {
       onSuccess: onClose,
       onError: (err: any) => {
         const data = err?.response?.data;
@@ -264,6 +272,20 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
             </Select>
           </div>
 
+          {/* Manager only: assign the new lead to a sales staff member.
+              Staff leave this blank — their lead is created unassigned and shows under "Created by me". */}
+          {canAssign && (
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                <UserCog className="size-3.5 text-slate-400" /> Assign To
+              </label>
+              <Select value={form.assignedUserId ?? ""} onChange={e => field("assignedUserId", e.target.value)} className="py-1.5">
+                <option value="">Unassigned</option>
+                {users.map(u => <option key={u.userId} value={u.userId}>{u.fullName}</option>)}
+              </Select>
+            </div>
+          )}
+
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-600">Address</label>
             <Input placeholder="e.g. 12 Nguyen Hue, District 1, HCMC" value={form.address}
@@ -329,7 +351,7 @@ function CreateLeadDrawer({ onClose }: { onClose: () => void }) {
 // Fixed column widths (sum = 100%). Combined with `table-fixed` these keep the
 // header and body columns aligned regardless of content length or which status
 // tab is active — the layout no longer reflows when switching tabs.
-const COL_WIDTHS = ["4%", "16%", "13%", "11%", "13%", "10%", "11%", "9%", "9%", "4%"];
+const COL_WIDTHS = ["4%", "15%", "11%", "10%", "11%", "8%", "10%", "10%", "8%", "9%", "4%"];
 
 // Rows per page. The table always renders this many row slots (real rows + invisible
 // fillers) so its height — and therefore the pagination bar pinned below it — stays
@@ -339,12 +361,14 @@ const PAGE_SIZE = 10;
 // ── Lead Table ────────────────────────────────────────────────────────────────
 
 function LeadTable({
-  isLoading, isError, leads, totalPages, totalElements, page, onPageChange, onClearFilters, hasFilters,
+  isLoading, isError, leads, totalPages, totalElements, page, onPageChange, onClearFilters, hasFilters, editMode,
 }: {
   isLoading: boolean; isError: boolean;
   leads: any[]; totalPages: number; totalElements: number;
   page: number; onPageChange: (p: number) => void;
   onClearFilters: () => void; hasFilters: boolean;
+  // When true (staff viewing "Created by me"), rows link to the edit-only screen.
+  editMode: boolean;
 }) {
   if (isLoading) return (
     <div className="flex items-center justify-center py-20 gap-2 text-slate-400">
@@ -374,6 +398,9 @@ function LeadTable({
   const pageStart = Math.max(0, Math.min(page - 2, totalPages - 5));
   const pageNumbers = Array.from({ length: Math.min(5, totalPages) }, (_, i) => pageStart + i);
 
+  // "Created by me" rows open the edit-only screen; everything else opens full detail.
+  const hrefFor = (id: string) => (editMode ? `/leads/${id}?mode=edit` : `/leads/${id}`);
+
   return (
     <>
       <Table className="table-fixed">
@@ -390,6 +417,7 @@ function LeadTable({
               { label: "Address", w: "" },
               { label: "Source", w: "" },
               { label: "Owner", w: "" },
+              { label: "Created by", w: "" },
               { label: "Status", w: "" },
               { label: "Created", w: "" },
               { label: "", w: "w-8" },
@@ -408,7 +436,7 @@ function LeadTable({
                 {page * PAGE_SIZE + idx + 1}
               </TableCell>
               <TableCell className="py-3 px-4 border-b-0">
-                <Link href={`/leads/${lead.leadId}`}
+                <Link href={hrefFor(lead.leadId)}
                   className="block group-hover:underline decoration-blue-300 underline-offset-2">
                   <Truncate text={lead.fullName} width={130}
                     className="font-semibold text-sm text-slate-800 group-hover:text-blue-600 transition-colors" />
@@ -445,12 +473,17 @@ function LeadTable({
                   ? <div className="flex items-center gap-2"><Avatar name={lead.assignedUserName} /><Truncate text={lead.assignedUserName} width={90} className="text-xs text-slate-600" /></div>
                   : <span className="text-xs text-slate-300 italic">Unassigned</span>}
               </TableCell>
+              <TableCell className="py-3 px-4 border-b-0">
+                {lead.createdByName
+                  ? <div className="flex items-center gap-2"><Avatar name={lead.createdByName} /><Truncate text={lead.createdByName} width={90} className="text-xs text-slate-600" /></div>
+                  : <span className="text-xs text-slate-300 italic">—</span>}
+              </TableCell>
               <TableCell className="py-3 px-4 border-b-0"><StatusBadge status={lead.status} /></TableCell>
               <TableCell className="py-3 px-4 text-xs text-slate-400 whitespace-nowrap border-b-0">
                 {lead.createdAt ? new Date(lead.createdAt).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
               </TableCell>
               <TableCell className="py-3 px-4 border-b-0">
-                <Link href={`/leads/${lead.leadId}`}
+                <Link href={hrefFor(lead.leadId)}
                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity hover:text-blue-800">
                   <ArrowUpRight className="size-3.5" />
                 </Link>
@@ -504,6 +537,11 @@ function LeadTable({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function LeadListScreen() {
+  const user = useAuthStore(s => s.user);
+  const role = getUserRole(user);
+  const isStaff = role === "SALES";
+  const canAssign = role === "MANAGER";
+
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -511,6 +549,8 @@ export function LeadListScreen() {
   const [typeFilter, setTypeFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  // Staff-only owner view: "assigned" (default) vs "created" (leads I created).
+  const [ownerView, setOwnerView] = useState<"assigned" | "created">("assigned");
   const [sortOption, setSortOption] = useState("status_desc");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -540,6 +580,13 @@ export function LeadListScreen() {
   const resetPage = useCallback(() => setPage(0), []);
   const [sortBy, sortDir] = sortOption.split("_") as [string, "asc" | "desc"];
 
+  // Sales staff to populate the Manager's "Assign To" dropdown. Cached; only the
+  // SALES-role users are offered as assignees.
+  const { data: usersResp } = useUsers();
+  const salesUsers: UserSummary[] = (usersResp?.data ?? []).filter(
+    u => (u.roleName ?? "").toUpperCase() === "SALES",
+  );
+
   const { data: resp, isLoading, isError } = useLeads({
     search: search || undefined,
     status: statusFilter || undefined,
@@ -550,6 +597,8 @@ export function LeadListScreen() {
     // Don't query with an invalid range — wait until the user fixes it.
     dateFrom: !dateRangeInvalid ? (dateFrom || undefined) : undefined,
     dateTo:   !dateRangeInvalid ? (dateTo   || undefined) : undefined,
+    // Owner view is a staff concept; managers/admins are unscoped server-side.
+    scope: isStaff ? ownerView : undefined,
     page,
     size: PAGE_SIZE,
   });
@@ -591,6 +640,30 @@ export function LeadListScreen() {
             onChange={e => setSearchInput(e.target.value)}
             className="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:outline-none transition" />
         </div>
+
+        {/* Staff-only owner view: Assigned to me (default) vs Created by me.
+            Managers/Admins see every lead, so the toggle is hidden for them. */}
+        {isStaff && (
+          <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+            {([
+              { value: "assigned", label: "Assigned to me", icon: UserCheck },
+              { value: "created", label: "Created by me", icon: PenLine },
+            ] as const).map(seg => {
+              const active = ownerView === seg.value;
+              return (
+                <button key={seg.value} type="button"
+                  onClick={() => { setOwnerView(seg.value); resetPage(); }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition
+                    ${active
+                      ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200"
+                      : "text-slate-500 hover:text-slate-700"}`}>
+                  <seg.icon className="size-3.5" />
+                  {seg.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Status */}
         <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); resetPage(); }}
@@ -783,10 +856,11 @@ export function LeadListScreen() {
           totalPages={totalPages} totalElements={totalElements}
           page={page} onPageChange={setPage}
           onClearFilters={clearAll} hasFilters={hasFilters}
+          editMode={isStaff && ownerView === "created"}
         />
       </div>
 
-      {drawerOpen && <CreateLeadDrawer onClose={() => setDrawer(false)} />}
+      {drawerOpen && <CreateLeadDrawer onClose={() => setDrawer(false)} canAssign={canAssign} users={salesUsers} />}
     </div>
   );
 }
