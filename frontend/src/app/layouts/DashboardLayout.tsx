@@ -7,7 +7,6 @@ import { useNotifications } from "@/features/notification/hooks/use_notification
 import { getUserRole, canAccessPath, dashboardPathForRole } from "@/shared/auth/access";
 import {
   Bell,
-  Bot,
   BriefcaseBusiness,
   CalendarCheck,
   ChartNoAxesCombined,
@@ -48,6 +47,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { authService } from "@/services/auth_service";
 import { supabaseAuthService } from "@/services/supabase_auth_service";
 import { ToastContainer } from "@/components/ui/ToastContainer";
+import { FloatingAssistant } from "@/features/ai_assistant/components/FloatingAssistant";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -103,7 +103,6 @@ const navigationGroups: NavGroup[] = [
       { href: ROUTE_PATHS.customerFeedback, label: "Feedback", Icon: MessageSquareText },
       { href: ROUTE_PATHS.notifications, label: "Alerts", Icon: Bell },
       { href: ROUTE_PATHS.identityAccess, label: "User Access", Icon: KeyRound },
-      { href: ROUTE_PATHS.aiAssistant, label: "AI Copilot", Icon: Bot },
     ],
   },
 ];
@@ -423,6 +422,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </main>
       </div>
       <ToastContainer />
+      {/* Lia — draggable floating assistant, available on every dashboard screen. */}
+      <FloatingAssistant />
     </div>
   );
 }

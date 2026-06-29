@@ -56,7 +56,7 @@ public class SendChatMessageUseCase {
 
         // History BEFORE this turn (for the LLM's conversational context).
         List<AiChatMessageEntity> history =
-                messageRepository.findBySession_SessionIdOrderByCreatedAtAsc(sessionId);
+                messageRepository.findSessionMessagesOrdered(sessionId, ChatRole.USER);
 
         // Auto-title the session from the first user message.
         boolean firstTurn = history.isEmpty();

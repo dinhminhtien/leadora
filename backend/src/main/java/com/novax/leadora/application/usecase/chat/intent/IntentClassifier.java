@@ -21,83 +21,119 @@ public class IntentClassifier {
 
     // Always-refuse verbs: destructive or irreversible, blocked regardless of object.
     private static final List<String> HARD_MUTATION_VERBS = List.of(
-            "xoa", "delete", "remove", "drop", "huy don", "huy bo", "xoa bo");
+            "xoa", "delete", "remove", "drop", "huy don", "huy bo", "xoa bo",
+            "xoa het", "xoa tat ca", "purge", "wipe", "destroy", "truncate");
 
     // Action verbs that mutate data — blocked when aimed at a CRM object.
     private static final List<String> SOFT_MUTATION_VERBS = List.of(
-            "tao ", "them ", "create", "add ", "insert",
+            "tao ", "tao moi", "khoi tao", "them ", "create", "add ", "insert", "nhap ", "import",
             "gui ", "send", "duyet", "phe duyet", "approve",
-            "tu choi", "reject", "xac nhan", "confirm",
-            "gan", "assign", "reassign", "chuyen giao",
-            "chinh sua", "cap nhat", "update", "sua ", "edit", "modify",
-            "thay doi", "doi ", "huy", "cancel", "luu lai");
+            "tu choi", "reject", "xac nhan", "confirm", "chap nhan", "accept",
+            "gan", "assign", "reassign", "chuyen giao", "phan cong", "ban giao cho",
+            "chinh sua", "cap nhat", "update", "sua ", "edit", "modify", "ghi de", "ghi lai",
+            "thay doi", "doi ", "huy", "cancel", "luu lai", "luu ", "save",
+            "dat lai", "reset", "khoa ", "lock", "mo khoa", "unlock",
+            "kich hoat", "activate", "vo hieu hoa", "deactivate",
+            "gia han", "extend", "keo ", "move ", "chuyen sang", "dong deal", "chot deal");
 
     // Imperative markers — a request only counts as a mutation command when phrased like an order.
     private static final List<String> COMMAND_MARKERS = List.of(
-            "hay ", "giup toi", "giup minh", "giup em", "lam on", "vui long",
-            "please", "can you", "could you");
+            "hay ", "giup toi", "giup minh", "giup em", "giup ", "lam on", "vui long",
+            "lam giup", "thuc hien", "tien hanh", "ho toi", "gium toi", "gium minh",
+            "please", "can you", "could you", "would you", "i want you to", "let's");
 
     // Question / read markers — if present, the verb is part of a question, not a command
     // ("lead nào được tạo cuối cùng?", "ai đã xóa..."). Deliberately excludes the bare "cho toi"
     // because that also appears in real commands ("xóa ... cho tôi").
     private static final List<String> QUESTION_READ_MARKERS = List.of(
             "?", "cho toi biet", "cho toi xem", "cho minh biet", "cho biet", "liet ke", "danh sach",
-            "bao nhieu", "la ai", "la gi", "nao ", "khi nao", "the nao", "ngay tao", "luc nao",
+            "bao nhieu", "co bao nhieu", "dem ", "la ai", "la gi", "nao ", "khi nao", "the nao",
+            "ngay tao", "luc nao", "o dau", "tai sao", "vi sao", "co phai", "phai khong", "dung khong",
             "ai tao", "ai them", "nguoi tao", "tinh hinh", "tom tat", "tong hop", "thong ke", "bao cao",
-            "how many", "list", "show", "what", "which", "who", "when", "summary", "report", "tell me");
+            "chi tiet", "thong tin", "tra cuu", "tim ", "tim kiem", "hien thi", "co nhung", "gom ",
+            "how many", "how much", "list", "show", "what", "which", "who", "when", "where", "why",
+            "summary", "report", "tell me", "are there", "do i have", "find", "search", "display");
 
     // Verbs that, when a message STARTS with them, indicate an imperative command.
     private static final List<String> START_VERBS = List.of(
-            "xoa", "delete", "remove", "drop", "huy",
-            "tao ", "them ", "create", "add ", "insert", "sua ", "chinh sua", "cap nhat", "update",
-            "edit", "modify", "gui ", "send", "duyet", "phe duyet", "approve", "tu choi", "reject",
-            "xac nhan", "confirm", "gan ", "assign", "doi ", "thay doi", "change");
+            "xoa", "delete", "remove", "drop", "huy", "purge",
+            "tao ", "them ", "create", "add ", "insert", "nhap ", "import",
+            "sua ", "chinh sua", "cap nhat", "update", "edit", "modify",
+            "gui ", "send", "duyet", "phe duyet", "approve", "tu choi", "reject",
+            "xac nhan", "confirm", "gan ", "assign", "phan cong", "doi ", "thay doi", "change",
+            "khoa ", "lock", "mo khoa", "unlock", "kich hoat", "vo hieu hoa", "reset", "dat lai");
 
     private static final List<String> CRM_OBJECTS = List.of(
-            "lead", "khach hang", "khach", "deal", "co hoi", "giao dich", "thuong vu",
-            "task", "cong viec", "nhiem vu", "bao gia", "quotation", "booking", "dat phong",
-            "dat cho", "thanh toan", "payment", "feedback", "phan hoi", "handover", "ban giao",
-            "reminder", "nhac", "sla", "nguoi dung", "tai khoan", "ho so");
+            "lead", "khach hang tiem nang", "khach hang", "khach", "client", "deal", "co hoi",
+            "co hoi ban hang", "giao dich", "thuong vu", "opportunity", "hop dong",
+            "task", "cong viec", "nhiem vu", "viec can lam", "cong viec can lam",
+            "lich hen", "cuoc hen", "appointment",
+            "bao gia", "quotation", "quote", "booking", "dat phong", "dat cho", "don dat phong",
+            "thanh toan", "payment", "hoa don", "invoice", "tien coc", "dat coc", "deposit",
+            "feedback", "phan hoi", "danh gia", "review", "handover", "ban giao",
+            "reminder", "nhac", "loi nhac", "nhac nho", "sla",
+            "nguoi dung", "tai khoan", "user", "account", "ho so",
+            "san pham", "dich vu", "product", "service", "lien he", "contact", "nguoi lien he",
+            "tuong tac", "interaction", "timeline", "dong thoi gian", "lich su tuong tac");
 
     private static final List<String> BUSINESS_KEYWORDS = List.of(
             // CRM objects are business keywords too
-            "lead", "khach", "deal", "co hoi", "giao dich", "task", "cong viec", "bao gia",
-            "quotation", "booking", "dat phong", "thanh toan", "payment", "feedback", "handover",
-            "ban giao", "reminder", "sla",
+            "lead", "khach", "client", "deal", "co hoi", "giao dich", "opportunity", "hop dong",
+            "task", "cong viec", "nhiem vu", "lich hen", "bao gia", "quotation", "quote",
+            "booking", "dat phong", "dat cho", "thanh toan", "payment", "hoa don", "tien coc",
+            "deposit", "feedback", "phan hoi", "danh gia", "handover", "ban giao", "reminder",
+            "nhac", "sla", "san pham", "dich vu", "lien he", "contact", "tuong tac", "interaction",
             // sales / pipeline vocabulary
-            "doanh so", "doanh thu", "revenue", "sales", "ban hang", "pipeline", "chot", "close",
-            "won", "lost", "thang", "thua", "qua han", "overdue", "ty le", "conversion", "chuyen doi",
-            "muc tieu", "target", "hieu suat", "performance", "tien do",
+            "doanh so", "doanh thu", "revenue", "sales", "ban hang", "pipeline", "chot",
+            "close", "won", "lost", "thang", "thua", "qua han", "overdue", "ty le", "conversion",
+            "chuyen doi", "muc tieu", "target", "kpi", "chi tieu", "hieu suat", "performance",
+            "tien do", "loi nhuan", "profit", "gia tri", "value", "tang truong", "growth",
+            "cham soc", "follow up", "theo doi", "trang thai", "status", "giai doan", "stage",
+            "uu tien", "priority", "han chot", "deadline", "lich su", "phan tich", "thong ke",
+            "bao cao", "dashboard", "bang dieu khien",
             // company knowledge / docs
             "cong ty", "noi quy", "quy dinh", "chinh sach", "policy", "tai lieu", "document",
-            "huong dan", "quy trinh", "process", "so tay", "handbook");
+            "huong dan", "quy trinh", "process", "so tay", "handbook", "quy che", "bieu mau", "sop");
 
     private static final List<String> TEAM_KEYWORDS = List.of(
-            "team", "nhom", "doi", "ca team", "ca nhom", "toan team", "toan bo nhan vien",
-            "moi nguoi", "everyone", "tat ca nhan vien", "xep hang", "ranking", "top ",
-            "nhieu nhat", "cao nhat", "trung binh", "average", "tung nhan vien", "moi nhan vien",
-            "theo nhan vien", "per rep", "so sanh", "tong cong ty", "toan cong ty");
+            "team", "nhom", "doi", "ca team", "ca nhom", "ca doi", "toan team", "toan doi",
+            "toan bo nhan vien", "toan the", "phong ban", "department", "dong nghiep",
+            "moi nguoi", "everyone", "tat ca nhan vien", "ai dang", "ai co", "nhan vien nao",
+            "ban nao", "xep hang", "ranking", "top ", "best", "gioi nhat", "kem nhat",
+            "nhieu nhat", "cao nhat", "thap nhat", "it nhat", "trung binh", "average",
+            "tung nhan vien", "moi nhan vien", "theo nhan vien", "per rep", "so sanh", "compare",
+            "tong cong ty", "toan cong ty", "tong so", "toan bo");
 
     private static final List<String> ASSIGNED_KEYWORDS = List.of(
-            "cua toi", "cua minh", "toi co", "minh co", "toi dang", "duoc giao cho toi",
-            "assigned to me", "my ", "i have", "toi phu trach", "minh phu trach", "cua em");
+            "cua toi", "cua minh", "cua em", "cua tao", "toi co", "minh co", "em co", "toi dang",
+            "minh dang", "em dang", "duoc giao cho toi", "giao cho toi", "toi phu trach",
+            "minh phu trach", "em phu trach", "toi quan ly", "minh quan ly", "do toi", "thuoc ve toi",
+            "assigned to me", "my ", "mine", "my own", "i have", "i am handling", "i manage");
 
     private static final List<String> DOC_KEYWORDS = List.of(
             "noi quy", "quy dinh", "chinh sach", "policy", "tai lieu", "document", "huong dan",
-            "quy trinh", "so tay", "handbook", "dieu khoan", "theo cong ty", "quy che");
+            "quy trinh", "process", "so tay", "handbook", "dieu khoan", "theo cong ty", "quy che",
+            "bieu mau", "mau don", "form", "tieu chuan", "standard", "sop", "cam nang", "thoa thuan",
+            "faq", "cau hoi thuong gap", "huong dan su dung", "theo noi quy", "theo quy dinh",
+            "theo chinh sach", "theo tai lieu");
 
     // Clear off-topic signals (only used when NO business keyword is present).
     private static final List<String> OFF_TOPIC_SIGNALS = List.of(
             "tinh giup", "tinh ho", "giai phuong trinh", "phuong trinh", "bai toan", "phep tinh",
             "dao ham", "tich phan", "can bac", "math", "calculate", "solve",
-            "viet code", "lap trinh", "thuat toan", "code giup", "debug",
-            "dich giup", "translate", "thoi tiet", "weather", "nau an", "cong thuc nau",
-            "lam tho", "ke chuyen", "ke mot cau chuyen", "joke", "bong da", "ty so", "game",
-            "ai la ai trong phim", "nghia la gi tieng");
+            "viet code", "lap trinh", "thuat toan", "code giup", "debug", "ham python", "javascript",
+            "dich giup", "dich sang", "translate", "song ngu", "thoi tiet", "weather",
+            "nau an", "cong thuc nau", "mon an", "recipe",
+            "lam tho", "viet van", "viet bai", "sang tac", "ke chuyen", "ke mot cau chuyen",
+            "joke", "ke chuyen cuoi", "bong da", "ty so", "game", "tro choi",
+            "phim", "ca si", "bai hat", "lyrics", "loi bai hat", "dien vien", "tin tuc", "news",
+            "chinh tri", "politics", "tu vi", "boi toan", "horoscope", "y nghia cuoc song",
+            "tinh yeu", "nguoi yeu", "ai la ai trong phim", "nghia la gi tieng");
 
     private static final List<String> GREETINGS = List.of(
-            "xin chao", "chao", "hello", "hi ", "hey", "ban la ai", "ban co the lam gi",
-            "giup gi", "help", "huong dan su dung", "ban giup");
+            "xin chao", "chao", "hello", "hi ", "hey", "ban la ai", "ban ten gi", "ban co the lam gi",
+            "ban lam duoc gi", "giup gi", "giup duoc gi", "help", "huong dan su dung", "ban giup",
+            "gioi thieu", "cam on", "thanks", "thank you", "good morning", "chao buoi");
 
     public IntentResult classify(String rawMessage) {
         return classify(rawMessage, null);
