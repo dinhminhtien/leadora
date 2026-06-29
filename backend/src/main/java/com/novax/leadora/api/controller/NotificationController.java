@@ -6,6 +6,7 @@ import com.novax.leadora.application.usecase.notification.GetNotificationsUseCas
 import com.novax.leadora.application.usecase.notification.MarkAllReadUseCase;
 import com.novax.leadora.application.usecase.notification.MarkNotificationReadUseCase;
 import com.novax.leadora.common.response.ApiResponse;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -25,12 +26,13 @@ public class NotificationController {
     private final GetNotificationByIdUseCase getNotificationByIdUseCase;
     private final MarkNotificationReadUseCase markNotificationReadUseCase;
     private final MarkAllReadUseCase markAllReadUseCase;
+    private final CurrentUserProvider currentUserProvider;
 
-    /** UC-15.1 — List notifications for a user */
+    /** UC-15.1 — List notifications for the authenticated user */
     @GetMapping
     public ResponseEntity<ApiResponse<List<NotificationResponse>>> getNotifications(
-            @RequestParam UUID userId,
             @RequestParam(required = false, defaultValue = "false") Boolean unreadOnly) {
+        UUID userId = currentUserProvider.resolve(null).getUserId();
         List<NotificationResponse> list = getNotificationsUseCase.execute(userId, unreadOnly);
         return ResponseEntity.ok(ApiResponse.success(list));
     }
@@ -51,9 +53,10 @@ public class NotificationController {
         return ResponseEntity.ok(ApiResponse.success(response, "Notification updated"));
     }
 
-    /** UC-15.1 — Mark all notifications as read for a user */
+    /** UC-15.1 — Mark all notifications as read for the authenticated user */
     @PatchMapping("/mark-all-read")
-    public ResponseEntity<ApiResponse<Map<String, Integer>>> markAllRead(@RequestParam UUID userId) {
+    public ResponseEntity<ApiResponse<Map<String, Integer>>> markAllRead() {
+        UUID userId = currentUserProvider.resolve(null).getUserId();
         Map<String, Integer> result = markAllReadUseCase.execute(userId);
         return ResponseEntity.ok(ApiResponse.success(result, "All notifications marked as read"));
     }

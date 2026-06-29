@@ -112,8 +112,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { sidebarOpen, toggleSidebar } = useUiStore();
-  const { user, clearUser, isLoading } = useAuthStore();
-  const { data: unreadNotifications } = useNotifications(user?.id, true);
+  const { user, clearUser } = useAuthStore();
+  const { data: unreadNotifications } = useNotifications(true);
   const unreadCount = unreadNotifications?.length ?? 0;
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);

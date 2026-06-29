@@ -16,7 +16,6 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { useAuthStore } from "@/stores/auth_store";
 import {
   useNotifications,
   useMarkNotificationRead,
@@ -63,7 +62,7 @@ function getRelatedRoute(n: Notification): string | null {
   if (!n.relatedEntity || !n.relatedId) return null;
   const entity = n.relatedEntity.toUpperCase();
   if (entity === "LEAD") return ROUTE_PATHS.leadDetail(n.relatedId);
-  if (entity === "QUOTATION") return ROUTE_PATHS.quotations;
+  if (entity === "QUOTATION") return ROUTE_PATHS.quotationDetail(n.relatedId);
   if (entity === "BOOKING") return ROUTE_PATHS.bookingConfirmation;
   if (entity === "REMINDER") return ROUTE_PATHS.reminders;
   if (entity === "TASK") return ROUTE_PATHS.followUpTasks;
@@ -91,13 +90,11 @@ function formatTime(iso: string): string {
 
 export function NotificationListScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
-  const userId = user?.id;
 
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [typeFilter, setTypeFilter] = useState("");
 
-  const { data: notifications = [], isLoading, isError } = useNotifications(userId, unreadOnly);
+  const { data: notifications = [], isLoading, isError } = useNotifications(unreadOnly);
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllRead();
 
@@ -121,8 +118,7 @@ export function NotificationListScreen() {
   };
 
   const handleMarkAllRead = async () => {
-    if (!userId) return;
-    await markAllRead.mutateAsync(userId);
+    await markAllRead.mutateAsync();
   };
 
   return (
