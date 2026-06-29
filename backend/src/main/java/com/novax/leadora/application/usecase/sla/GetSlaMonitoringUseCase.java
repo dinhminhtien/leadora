@@ -43,7 +43,7 @@ public class GetSlaMonitoringUseCase {
                 // Most urgent first: BREACHED → WARNING → WITHIN_SLA, then by deadlineAt ASC
                 .sorted(Comparator
                         .comparingInt((SlaMonitoringResponse r) -> displayStatusOrder(r.getDisplayStatus()))
-                        .thenComparing(SlaMonitoringResponse::getDeadlineAt))
+                        .thenComparing(r -> r.getDeadlineAt()))
                 .toList();
     }
 

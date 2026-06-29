@@ -54,11 +54,11 @@ public class GetDashboardSummaryUseCase {
         List<DealEntity> activeDeals = dealRepository.findByStatus(DealStatus.OPEN);
         BigDecimal activeDealsValue = activeDeals.stream()
                 .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         BigDecimal totalDealsValue = allDeals.stream()
                 .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         // Weighted pipeline = Σ(deal.value × stage_probability / 100)
         BigDecimal weightedPipelineValue = allDeals.stream()
@@ -68,7 +68,7 @@ public class GetDashboardSummaryUseCase {
                     return value.multiply(BigDecimal.valueOf(prob)).divide(BigDecimal.valueOf(100), 2,
                             RoundingMode.HALF_UP);
                 })
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         // ── Task KPIs ─────────────────────────────────────────────────────────
         List<TaskStatus> excludedTaskStatuses = List.of(TaskStatus.COMPLETED, TaskStatus.CANCELLED);

@@ -72,7 +72,7 @@ public class SendChatMessageUseCase {
         String lastIntentName = history.stream()
                 .filter(m -> m.getRole() == ChatRole.ASSISTANT && m.getIntentMatched() != null)
                 .reduce((first, second) -> second) // last assistant turn
-                .map(AiChatMessageEntity::getIntentMatched)
+                .map(msg -> msg.getIntentMatched())
                 .orElse(null);
         IntentResult intent = intentClassifier.classify(content, lastIntentName);
         if (intent.blocked()) {
