@@ -66,15 +66,16 @@ public class UpdateHandoverReadinessUseCase {
                 newReadiness == ReadinessStatus.NEED_CLARIFICATION ? note.trim() : null);
         handover.setUpdatedBy(actor);
 
-        // First FO touch on a freshly submitted handover = acknowledgement.
-        if (handover.getStatus() == HandoverStatus.SUBMITTED) {
-            handover.setStatus(HandoverStatus.ACKNOWLEDGED);
+        // Stamp the acknowledgement once, on the first FO action.
+        if (handover.getAcknowledgedAt() == null) {
             handover.setAcknowledgedAt(OffsetDateTime.now());
         }
-        // Room/arrival fully prepared.
-        if (newReadiness == ReadinessStatus.READY_FOR_ARRIVAL) {
-            handover.setStatus(HandoverStatus.READY);
-        }
+        // Keep the Sales→FO status in sync with the FO readiness:
+        //  READY_FOR_ARRIVAL → READY (room prepared); otherwise the FO has it in hand → ACKNOWLEDGED
+        //  (so a handover sent back to NEED_CLARIFICATION is no longer shown as READY).
+        handover.setStatus(newReadiness == ReadinessStatus.READY_FOR_ARRIVAL
+                ? HandoverStatus.READY
+                : HandoverStatus.ACKNOWLEDGED);
 
         OpHandoverEntity saved = opHandoverRepository.save(handover);
 

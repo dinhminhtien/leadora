@@ -83,6 +83,16 @@ function fmtDate(iso?: string) {
   return new Date(iso).toLocaleDateString("vi-VN");
 }
 
+function fmtDateTime(iso?: string) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function FrontOfficeHandoverScreen() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -113,6 +123,7 @@ export function FrontOfficeHandoverScreen() {
     [listQuery.data],
   );
   const totalPages = listQuery.data?.data?.totalPages ?? 1;
+  const totalElements = listQuery.data?.data?.totalElements ?? rows.length;
 
   return (
     <div className="space-y-5">
@@ -127,7 +138,10 @@ export function FrontOfficeHandoverScreen() {
             Bàn giao đã gửi tới Lễ tân để chuẩn bị đón khách — xem chi tiết và cập nhật trạng thái sẵn sàng.
           </p>
         </div>
-        <Pill text="Front Office" className="bg-blue-100 text-blue-800" />
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs font-semibold text-slate-500">{totalElements} bàn giao</span>
+          <Pill text="Front Office" className="bg-blue-100 text-blue-800" />
+        </div>
       </div>
 
       {/* Toolbar */}
@@ -309,11 +323,19 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
       <div className="relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-200">
         {/* header */}
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
               Chi tiết bàn giao
             </p>
             <h2 className="text-sm font-bold text-slate-800">{detail?.bookingCode || "—"}</h2>
+            {detail?.readinessStatus && (
+              <div className="mt-1">
+                <Pill
+                  text={READINESS_LABELS[detail.readinessStatus] ?? detail.readinessStatus}
+                  className={readinessClass(detail.readinessStatus)}
+                />
+              </div>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -353,6 +375,12 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
                   value={detail.paymentReference}
                   icon={<CreditCard className="size-3.5 text-slate-400" />}
                 />
+                {detail.submittedAt && (
+                  <InfoRow label="Gửi tới Lễ tân" value={fmtDateTime(detail.submittedAt)} />
+                )}
+                {detail.acknowledgedAt && (
+                  <InfoRow label="Tiếp nhận lúc" value={fmtDateTime(detail.acknowledgedAt)} />
+                )}
               </section>
 
               {/* Room / service breakdown */}

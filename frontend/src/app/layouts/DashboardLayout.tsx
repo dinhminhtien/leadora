@@ -18,7 +18,6 @@ import {
   Gauge,
   Handshake,
   Headphones,
-  Home,
   Hotel,
   KeyRound,
   LayoutDashboard,
@@ -130,6 +129,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   // SALES/MANAGER, role-gated for ADMIN). The generic "Dashboard" link points at
   // the role-specific home so highlighting and navigation match.
   const visibleGroups = useMemo(() => {
+    const seen = new Set<string>();
     return navigationGroups
       .map((group) => ({
         ...group,
@@ -138,7 +138,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             ...item,
             href: item.href === ROUTE_PATHS.dashboard ? roleDashboard : item.href,
           }))
-          .filter((item) => canAccessPath(role, item.href, permissions)),
+          .filter((item) => canAccessPath(role, item.href, permissions))
+          // De-duplicate links that resolve to the same route (e.g. for FO the generic
+          // "Dashboard" maps to the handover screen, which is also its own nav item).
+          .filter((item) => {
+            if (seen.has(item.href)) return false;
+            seen.add(item.href);
+            return true;
+          }),
       }))
       .filter((group) => group.items.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -294,7 +301,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Leadora Workspace</span>
               <h2 className="text-xs font-bold text-foreground flex items-center gap-1.5 mt-0.5">
                 <Sparkles className="size-3.5 text-primary" />
-                Hotel Sales Dashboard
+                {isFrontOffice ? "Front Office Desk" : "Hotel Sales Dashboard"}
               </h2>
             </div>
           </div>
