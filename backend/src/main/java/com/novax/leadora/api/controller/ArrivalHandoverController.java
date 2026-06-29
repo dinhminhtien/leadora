@@ -27,7 +27,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/arrival-handovers")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('FRONT_OFFICE','MANAGER','ADMIN')")
+@PreAuthorize("hasAnyRole('FO','FRONT_OFFICE','MANAGER','ADMIN')")
 public class ArrivalHandoverController {
 
     private final GetArrivalHandoverListUseCase getArrivalHandoverListUseCase;

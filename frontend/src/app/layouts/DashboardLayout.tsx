@@ -120,6 +120,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   // ── Role + permission based access control (frontend) ──────────────────────
   const role = getUserRole(user);
+  // Front Office gets a stripped-down desk: no sales search / quick-add.
+  const isFrontOffice = role === "FO";
   const roleDashboard = dashboardPathForRole(role);
   const permissions = user?.permissions ?? [];
   const permKey = permissions.join(",");
@@ -297,7 +299,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           </div>
 
-          {/* Center: Search Lead/Deals */}
+          {/* Center: Search Lead/Deals (hidden for Front Office) */}
+          {!isFrontOffice && (
           <div className="flex-1 max-w-sm mx-6 hidden md:block">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
@@ -308,10 +311,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               />
             </div>
           </div>
+          )}
 
           {/* Right: Actions (Quick Add, Notification, Profile) */}
-          <div className="flex items-center gap-3.5">
-            {/* Quick Add Button */}
+          <div className="ml-auto flex items-center gap-3.5">
+            {/* Quick Add Button (hidden for Front Office) */}
+            {!isFrontOffice && (
             <div className="relative">
               <Button
                 variant="primary"
@@ -356,6 +361,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 </>
               )}
             </div>
+            )}
 
             {/* Theme Toggle */}
             <ThemeToggle className="shadow-none border-none bg-transparent hover:bg-muted text-muted-foreground dark:hover:bg-muted/80" />
@@ -392,7 +398,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                       <p className="text-[10px] text-muted-foreground">{user.email}</p>
                       <div className="mt-1.5 flex gap-1">
                         <Badge variant="primary" className="text-[9px] py-0 px-1.5 font-semibold">
-                          {role === "ADMIN" ? "Admin" : role === "MANAGER" ? "Sales Manager" : "Sales Staff"}
+                          {role === "ADMIN" ? "Admin" : role === "MANAGER" ? "Sales Manager" : role === "FO" ? "Front Office" : "Sales Staff"}
                         </Badge>
                       </div>
                     </div>
