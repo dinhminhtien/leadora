@@ -27,11 +27,14 @@ public class UpdateDealUseCase {
     private final UserRepository userRepository;
     private final DealMapper dealMapper;
     private final DealValidation dealValidation;
+    private final DealAccessPolicy dealAccessPolicy;
 
     @Transactional
     public DealResponse execute(UUID id, DealRequest request) {
         DealEntity deal = dealRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Deal", id));
+
+        dealAccessPolicy.assertCanView(dealAccessPolicy.currentUser(), deal);
 
         if (deal.getStatus() != DealStatus.OPEN) {
             throw new BusinessRuleException("Closed deals cannot be modified.");
@@ -95,6 +98,8 @@ public class UpdateDealUseCase {
     public DealResponse updateDealStatus(UUID id, String status) {
         DealEntity deal = dealRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Deal", id));
+
+        dealAccessPolicy.assertCanView(dealAccessPolicy.currentUser(), deal);
 
         if (deal.getStatus() != DealStatus.OPEN) {
             throw new BusinessRuleException("Closed deals cannot be modified.");
