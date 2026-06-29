@@ -14,6 +14,9 @@ import {
   Send,
   Plus,
   Trash2,
+  Pencil,
+  MessageSquare,
+  History,
   FileText,
   Upload,
   Loader2,
@@ -31,9 +34,12 @@ import { getUserRole } from "@/shared/auth/access";
 import type { ChatMessage } from "@/services/chat_assistant_service";
 import {
   useChatMessages,
+  useChatSessions,
   useCompanyDocuments,
   useCreateChatSession,
+  useDeleteChatSession,
   useDeleteDocument,
+  useRenameChatSession,
   useSendChatMessage,
   useUploadDocument,
 } from "@/features/ai_assistant/hooks/use_chat_sessions";
@@ -211,8 +217,11 @@ function AssistantPanel({
   const { selectedSessionId, setSelectedSessionId, clearSelectedSession } = useChatStore();
 
   const messagesQuery = useChatMessages(selectedSessionId);
+  const sessionsQuery = useChatSessions();
   const createSession = useCreateChatSession();
   const sendMessage = useSendChatMessage();
+  const renameSession = useRenameChatSession();
+  const deleteSession = useDeleteChatSession();
 
   const documentsQuery = useCompanyDocuments();
   const uploadDocument = useUploadDocument();
@@ -222,10 +231,14 @@ function AssistantPanel({
   const [inputVal, setInputVal] = useState("");
   const [pendingUserText, setPendingUserText] = useState<string | null>(null);
   const [animateId, setAnimateId] = useState<string | null>(null);
-  const [view, setView] = useState<"chat" | "docs">("chat");
+  const [view, setView] = useState<"chat" | "history" | "docs">("chat");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
+  const sessions = useMemo(
+    () => sessionsQuery.data?.data ?? [],
+    [sessionsQuery.data],
+  );
   const messages: ChatMessage[] = useMemo(
     () => messagesQuery.data?.data ?? [],
     [messagesQuery.data],
@@ -281,6 +294,26 @@ function AssistantPanel({
     setView("chat");
   };
 
+  // Resume an older conversation from history.
+  const handleSelectSession = (sessionId: string) => {
+    setSelectedSessionId(sessionId);
+    setPendingUserText(null);
+    setView("chat");
+  };
+
+  const handleRenameSession = async (sessionId: string, currentTitle?: string) => {
+    const next = window.prompt("Đổi tên cuộc trò chuyện:", currentTitle ?? "");
+    const title = next?.trim();
+    if (!title || title === currentTitle) return;
+    await renameSession.mutateAsync({ sessionId, title });
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    // If we're deleting the active conversation, fall back to a blank chat.
+    if (sessionId === selectedSessionId) clearSelectedSession();
+    await deleteSession.mutateAsync(sessionId);
+  };
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -309,6 +342,13 @@ function AssistantPanel({
         <HeaderBtn title="Cuộc trò chuyện mới" onClick={handleNewChat}>
           <Plus className="size-4" />
         </HeaderBtn>
+        <HeaderBtn
+          title="Lịch sử trò chuyện"
+          onClick={() => setView(view === "history" ? "chat" : "history")}
+          active={view === "history"}
+        >
+          <History className="size-4" />
+        </HeaderBtn>
         {canManageDocs && (
           <HeaderBtn
             title="Tài liệu công ty"
@@ -324,7 +364,16 @@ function AssistantPanel({
       </div>
 
       {/* Body */}
-      {view === "docs" ? (
+      {view === "history" ? (
+        <HistoryView
+          sessions={sessions}
+          loading={sessionsQuery.isLoading}
+          selectedId={selectedSessionId}
+          onSelect={handleSelectSession}
+          onRename={handleRenameSession}
+          onDelete={handleDeleteSession}
+        />
+      ) : view === "docs" ? (
         <DocsView
           documents={documents}
           uploading={uploadDocument.isPending}
@@ -461,6 +510,69 @@ function EmptyState({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function HistoryView({
+  sessions,
+  loading,
+  selectedId,
+  onSelect,
+  onRename,
+  onDelete,
+}: {
+  sessions: { sessionId: string; title?: string }[];
+  loading: boolean;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onRename: (id: string, title?: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="flex-1 space-y-1 overflow-y-auto bg-slate-50/60 p-2 custom-scrollbar">
+      {loading && <p className="p-2 text-[11px] text-slate-400">Đang tải…</p>}
+      {!loading && sessions.length === 0 && (
+        <p className="p-2 text-[11px] text-slate-400">Chưa có cuộc trò chuyện nào.</p>
+      )}
+      {sessions.map((s) => (
+        <div
+          key={s.sessionId}
+          onClick={() => onSelect(s.sessionId)}
+          className={`group flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 text-[11px] transition ${
+            s.sessionId === selectedId
+              ? "bg-teal-50 text-teal-700"
+              : "bg-white text-slate-600 hover:bg-slate-100"
+          }`}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <MessageSquare className="size-3.5 shrink-0" />
+            <span className="truncate">{s.title || "Cuộc trò chuyện"}</span>
+          </span>
+          <span className="ml-1 flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRename(s.sessionId, s.title);
+              }}
+              className="text-slate-400 transition hover:text-teal-600"
+              title="Đổi tên"
+            >
+              <Pencil className="size-3.5" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(s.sessionId);
+              }}
+              className="text-slate-400 transition hover:text-rose-500"
+              title="Xoá"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
