@@ -41,6 +41,10 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
     @Query("SELECT u FROM UserEntity u ORDER BY u.fullName ASC")
     List<UserEntity> findAllWithRole();
 
+    @EntityGraph(attributePaths = {"role"})
+    @Query("SELECT u FROM UserEntity u WHERE u.role.roleName = :roleName")
+    List<UserEntity> findByRoleName(@Param("roleName") String roleName);
+
     /**
      * UC-6.1 management list — paged search/filter.
      * Pass {@code ""} (never {@code null}) for {@code search}: Hibernate 6 binds a null String
