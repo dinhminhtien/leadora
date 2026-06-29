@@ -41,6 +41,10 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
     @Query("SELECT u FROM UserEntity u ORDER BY u.fullName ASC")
     List<UserEntity> findAllWithRole();
 
+    /** Active users (with role) — used by the idle-account inactivation scheduler. */
+    @EntityGraph(attributePaths = {"role"})
+    List<UserEntity> findByStatus(UserStatus status);
+
     @EntityGraph(attributePaths = {"role"})
     @Query("SELECT u FROM UserEntity u WHERE u.role.roleName = :roleName")
     List<UserEntity> findByRoleName(@Param("roleName") String roleName);
