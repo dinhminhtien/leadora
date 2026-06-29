@@ -1,5 +1,11 @@
 "use client";
 
+/*
+ * Seeding the editable readiness/note from the freshly fetched detail is a legitimate
+ * external-system sync that the react-hooks/set-state-in-effect rule flags as a false positive.
+ */
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Headphones,
@@ -11,6 +17,7 @@ import {
   Star,
   BedDouble,
   ClipboardList,
+  CreditCard,
   Save,
 } from "lucide-react";
 import {
@@ -38,9 +45,10 @@ import type {
 const PAGE_SIZE = 10;
 
 const READINESS_LABELS: Record<string, string> = {
-  PENDING: "Chưa chuẩn bị",
-  IN_PROGRESS: "Đang chuẩn bị",
-  READY: "Sẵn sàng",
+  PENDING_REVIEW: "Chưa xem xét",
+  REVIEWED: "Đã xem xét",
+  READY_FOR_ARRIVAL: "Sẵn sàng đón khách",
+  NEED_CLARIFICATION: "Cần làm rõ",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -51,23 +59,14 @@ const STATUS_LABELS: Record<string, string> = {
 
 function readinessClass(value?: string) {
   switch (value) {
-    case "READY":
+    case "READY_FOR_ARRIVAL":
       return "bg-emerald-100 text-emerald-700";
-    case "IN_PROGRESS":
+    case "REVIEWED":
       return "bg-blue-100 text-blue-700";
+    case "NEED_CLARIFICATION":
+      return "bg-rose-100 text-rose-700";
     default:
       return "bg-amber-100 text-amber-700";
-  }
-}
-
-function statusClass(value?: string) {
-  switch (value) {
-    case "READY":
-      return "bg-emerald-100 text-emerald-700";
-    case "ACKNOWLEDGED":
-      return "bg-indigo-100 text-indigo-700";
-    default:
-      return "bg-slate-100 text-slate-600";
   }
 }
 
@@ -88,6 +87,7 @@ export function FrontOfficeHandoverScreen() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [readinessFilter, setReadinessFilter] = useState("");
+  const [arrivalDate, setArrivalDate] = useState("");
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -103,6 +103,7 @@ export function FrontOfficeHandoverScreen() {
   const listQuery = useArrivalHandovers({
     search: search || undefined,
     readinessStatus: readinessFilter || undefined,
+    arrivalDate: arrivalDate || undefined,
     page,
     size: PAGE_SIZE,
   });
@@ -123,7 +124,7 @@ export function FrontOfficeHandoverScreen() {
             Bàn giao khách đến (Lễ tân)
           </h1>
           <p className="text-xs text-slate-400">
-            Danh sách bàn giao đã gửi tới Lễ tân để chuẩn bị đón khách — cập nhật trạng thái sẵn sàng phòng.
+            Bàn giao đã gửi tới Lễ tân để chuẩn bị đón khách — xem chi tiết và cập nhật trạng thái sẵn sàng.
           </p>
         </div>
         <Pill text="Front Office" className="bg-blue-100 text-blue-800" />
@@ -131,7 +132,7 @@ export function FrontOfficeHandoverScreen() {
 
       {/* Toolbar */}
       <Card className="border-slate-100 bg-white shadow-sm">
-        <CardContent className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
+        <CardContent className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <Input
@@ -141,7 +142,18 @@ export function FrontOfficeHandoverScreen() {
               className="pl-9"
             />
           </div>
-          <div className="sm:w-56">
+          <div className="lg:w-44">
+            <Input
+              type="date"
+              value={arrivalDate}
+              onChange={(e) => {
+                setArrivalDate(e.target.value);
+                setPage(0);
+              }}
+              title="Lọc theo ngày đến"
+            />
+          </div>
+          <div className="lg:w-56">
             <Select
               value={readinessFilter}
               onChange={(e) => {
@@ -150,9 +162,10 @@ export function FrontOfficeHandoverScreen() {
               }}
             >
               <option value="">Tất cả trạng thái sẵn sàng</option>
-              <option value="PENDING">Chưa chuẩn bị</option>
-              <option value="IN_PROGRESS">Đang chuẩn bị</option>
-              <option value="READY">Sẵn sàng</option>
+              <option value="PENDING_REVIEW">Chưa xem xét</option>
+              <option value="REVIEWED">Đã xem xét</option>
+              <option value="READY_FOR_ARRIVAL">Sẵn sàng đón khách</option>
+              <option value="NEED_CLARIFICATION">Cần làm rõ</option>
             </Select>
           </div>
         </CardContent>
@@ -166,9 +179,9 @@ export function FrontOfficeHandoverScreen() {
               <TableRow>
                 <TableHead>Mã booking</TableHead>
                 <TableHead>Khách</TableHead>
-                <TableHead>Nhận phòng</TableHead>
-                <TableHead>Trả phòng</TableHead>
-                <TableHead>Trạng thái</TableHead>
+                <TableHead>Ngày đến</TableHead>
+                <TableHead>Phòng / Dịch vụ</TableHead>
+                <TableHead>Yêu cầu đặc biệt</TableHead>
                 <TableHead>Sẵn sàng</TableHead>
               </TableRow>
             </TableHeader>
@@ -183,7 +196,7 @@ export function FrontOfficeHandoverScreen() {
               {!listQuery.isLoading && rows.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="py-8 text-center text-xs text-slate-400">
-                    Không có bàn giao nào phù hợp.
+                    Không tìm thấy bàn giao nào.
                   </TableCell>
                 </TableRow>
               )}
@@ -198,9 +211,11 @@ export function FrontOfficeHandoverScreen() {
                   </TableCell>
                   <TableCell>{h.customerName || "—"}</TableCell>
                   <TableCell>{fmtDate(h.checkInDate)}</TableCell>
-                  <TableCell>{fmtDate(h.checkOutDate)}</TableCell>
-                  <TableCell>
-                    <Pill text={STATUS_LABELS[h.status ?? ""] ?? h.status ?? "—"} className={statusClass(h.status)} />
+                  <TableCell className="max-w-[180px] truncate" title={h.roomSummary}>
+                    {h.roomSummary || "—"}
+                  </TableCell>
+                  <TableCell className="max-w-[180px] truncate text-slate-500" title={h.specialRequests}>
+                    {h.specialRequests?.trim() ? h.specialRequests : "—"}
                   </TableCell>
                   <TableCell>
                     <Pill
@@ -256,18 +271,34 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
   const detail = detailQuery.data?.data;
 
   const [readiness, setReadiness] = useState<ReadinessStatus | "">("");
+  const [note, setNote] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Seed the editable readiness from the freshly loaded detail (external-system sync).
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (detail?.readinessStatus) setReadiness(detail.readinessStatus as ReadinessStatus);
-  }, [detail?.readinessStatus]);
+    // Seed editable fields from the freshly loaded detail (external-system sync).
+    if (!detail) return;
+    setReadiness((detail.readinessStatus as ReadinessStatus) ?? "");
+    setNote(detail.clarificationNote ?? "");
+  }, [detail]);
 
-  const dirty = !!readiness && readiness !== detail?.readinessStatus;
+  const needsClarification = readiness === "NEED_CLARIFICATION";
+  const dirty =
+    !!readiness &&
+    (readiness !== detail?.readinessStatus ||
+      (needsClarification && note.trim() !== (detail?.clarificationNote ?? "")));
 
   const handleSave = async () => {
+    setLocalError(null);
     if (!readiness || !dirty) return;
-    await updateReadiness.mutateAsync({ id, readinessStatus: readiness });
+    if (needsClarification && !note.trim()) {
+      setLocalError("Vui lòng nhập nội dung cần làm rõ.");
+      return;
+    }
+    await updateReadiness.mutateAsync({
+      id,
+      readinessStatus: readiness,
+      clarificationNote: needsClarification ? note.trim() : undefined,
+    });
   };
 
   return (
@@ -282,9 +313,7 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
               Chi tiết bàn giao
             </p>
-            <h2 className="text-sm font-bold text-slate-800">
-              {detail?.bookingCode || "—"}
-            </h2>
+            <h2 className="text-sm font-bold text-slate-800">{detail?.bookingCode || "—"}</h2>
           </div>
           <button
             onClick={onClose}
@@ -318,33 +347,45 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
                   value={`${fmtDate(detail.checkInDate)} → ${fmtDate(detail.checkOutDate)}`}
                   icon={<CalendarCheck className="size-3.5 text-slate-400" />}
                 />
+                <InfoRow label="Trạng thái" value={STATUS_LABELS[detail.status ?? ""] ?? detail.status} />
                 <InfoRow
-                  label="Trạng thái"
-                  value={STATUS_LABELS[detail.status ?? ""] ?? detail.status}
+                  label="Thanh toán / cọc"
+                  value={detail.paymentReference}
+                  icon={<CreditCard className="size-3.5 text-slate-400" />}
                 />
               </section>
 
+              {/* Room / service breakdown */}
+              <section className="space-y-1">
+                <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <BedDouble className="size-3.5 text-blue-500" />
+                  Phòng / Dịch vụ
+                </p>
+                <div className="space-y-1 rounded-lg border border-slate-100 bg-white p-2">
+                  {detail.rooms && detail.rooms.length > 0 ? (
+                    detail.rooms.map((r, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs text-slate-600">
+                        <span className="font-medium text-slate-700">
+                          {r.productName || "Dịch vụ"}
+                          {r.roomNumber ? ` · Phòng ${r.roomNumber}` : ""}
+                        </span>
+                        <span className="text-slate-400">
+                          x{r.quantity ?? 1}
+                          {r.nights ? ` · ${r.nights} đêm` : ""}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-400">—</p>
+                  )}
+                </div>
+              </section>
+
               {/* Handover notes (read-only for FO) */}
-              <NoteBlock
-                icon={<Star className="size-3.5 text-amber-500" />}
-                title="Ghi chú VIP"
-                text={detail.vipNotes}
-              />
-              <NoteBlock
-                icon={<BedDouble className="size-3.5 text-blue-500" />}
-                title="Yêu cầu phòng"
-                text={detail.roomPreferences}
-              />
-              <NoteBlock
-                icon={<ClipboardList className="size-3.5 text-slate-500" />}
-                title="Yêu cầu đặc biệt"
-                text={detail.specialRequests}
-              />
-              <NoteBlock
-                icon={<ClipboardList className="size-3.5 text-slate-500" />}
-                title="Ghi chú vận hành"
-                text={detail.operationalNotes}
-              />
+              <NoteBlock icon={<Star className="size-3.5 text-amber-500" />} title="Ghi chú VIP" text={detail.vipNotes} />
+              <NoteBlock icon={<BedDouble className="size-3.5 text-blue-500" />} title="Yêu cầu phòng" text={detail.roomPreferences} />
+              <NoteBlock icon={<ClipboardList className="size-3.5 text-slate-500" />} title="Yêu cầu đặc biệt" text={detail.specialRequests} />
+              <NoteBlock icon={<ClipboardList className="size-3.5 text-slate-500" />} title="Ghi chú vận hành" text={detail.operationalNotes} />
 
               {/* Readiness update (UC-22.3) */}
               <section className="space-y-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
@@ -353,20 +394,41 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
                 </p>
                 <Select
                   value={readiness}
-                  onChange={(e) => setReadiness(e.target.value as ReadinessStatus)}
+                  onChange={(e) => {
+                    setReadiness(e.target.value as ReadinessStatus);
+                    setLocalError(null);
+                  }}
                 >
-                  <option value="PENDING">Chưa chuẩn bị</option>
-                  <option value="IN_PROGRESS">Đang chuẩn bị</option>
-                  <option value="READY">Sẵn sàng</option>
+                  <option value="PENDING_REVIEW" disabled>
+                    Chưa xem xét
+                  </option>
+                  <option value="REVIEWED">Đã xem xét</option>
+                  <option value="READY_FOR_ARRIVAL">Sẵn sàng đón khách</option>
+                  <option value="NEED_CLARIFICATION">Cần làm rõ</option>
                 </Select>
-                {updateReadiness.isError && (
+
+                {needsClarification && (
+                  <textarea
+                    rows={3}
+                    value={note}
+                    onChange={(e) => {
+                      setNote(e.target.value);
+                      setLocalError(null);
+                    }}
+                    placeholder="Nội dung cần Sales/Đặt phòng làm rõ…"
+                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none"
+                  />
+                )}
+
+                {(localError || updateReadiness.isError) && (
                   <p className="text-[11px] text-rose-500">
-                    Cập nhật thất bại. Vui lòng thử lại.
+                    {localError || "Cập nhật thất bại. Vui lòng thử lại."}
                   </p>
                 )}
-                {updateReadiness.isSuccess && !dirty && (
+                {updateReadiness.isSuccess && !dirty && !localError && (
                   <p className="text-[11px] text-emerald-600">Đã cập nhật.</p>
                 )}
+
                 <Button
                   size="sm"
                   className="w-full"
@@ -377,6 +439,11 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
                 >
                   Lưu trạng thái
                 </Button>
+                {needsClarification && (
+                  <p className="text-[10px] text-slate-400">
+                    Khi chọn “Cần làm rõ”, hệ thống sẽ gửi thông báo cho Sales/Đặt phòng phụ trách.
+                  </p>
+                )}
               </section>
 
               {detail.updatedByName && (

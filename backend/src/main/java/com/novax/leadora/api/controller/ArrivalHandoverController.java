@@ -40,13 +40,14 @@ public class ArrivalHandoverController {
     public ResponseEntity<ApiResponse<Page<ArrivalHandoverResponse>>> list(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String readinessStatus,
+            @RequestParam(required = false) String arrivalDate,
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
         Page<ArrivalHandoverResponse> result =
-                getArrivalHandoverListUseCase.execute(search, readinessStatus, sortBy, sortDir, page, size);
+                getArrivalHandoverListUseCase.execute(search, readinessStatus, arrivalDate, sortBy, sortDir, page, size);
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 

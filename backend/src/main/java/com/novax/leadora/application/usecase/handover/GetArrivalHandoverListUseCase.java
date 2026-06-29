@@ -1,8 +1,10 @@
 package com.novax.leadora.application.usecase.handover;
 
 import com.novax.leadora.api.dto.response.ArrivalHandoverResponse;
+import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.OpHandoverEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ReadinessStatus;
+import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.OpHandoverRepository;
 import com.novax.leadora.infrastructure.persistence.specification.OpHandoverSpecification;
 import lombok.RequiredArgsConstructor;
@@ -15,24 +17,51 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 /** UC-22.1 — View Arrival Handover List (Front Office). */
 @Service
 @RequiredArgsConstructor
 public class GetArrivalHandoverListUseCase {
 
     private final OpHandoverRepository opHandoverRepository;
+    private final BookingDetailRepository bookingDetailRepository;
 
     @Transactional(readOnly = true)
-    public Page<ArrivalHandoverResponse> execute(String search, String readinessStatus,
+    public Page<ArrivalHandoverResponse> execute(String search, String readinessStatus, String arrivalDate,
                                                  String sortBy, String sortDir, int page, int size) {
         String sortField = StringUtils.hasText(sortBy) ? sortBy : "createdAt";
         Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
 
         ReadinessStatus readinessFilter = parseReadiness(readinessStatus);
-        Specification<OpHandoverEntity> spec = OpHandoverSpecification.forFrontOffice(search, readinessFilter);
+        LocalDate arrivalFilter = parseDate(arrivalDate);
+        Specification<OpHandoverEntity> spec =
+                OpHandoverSpecification.forFrontOffice(search, readinessFilter, arrivalFilter);
 
-        return opHandoverRepository.findAll(spec, pageable).map(ArrivalHandoverResponse::from);
+        Page<OpHandoverEntity> handovers = opHandoverRepository.findAll(spec, pageable);
+
+        // Batch-load room/service lines for the page to build the summary without N+1.
+        List<UUID> bookingIds = handovers.getContent().stream()
+                .map(h -> h.getBooking() != null ? h.getBooking().getBookingId() : null)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toList());
+
+        final Map<UUID, List<BookingDetailEntity>> detailsByBooking = bookingIds.isEmpty()
+                ? Collections.emptyMap()
+                : bookingDetailRepository.findByBooking_BookingIdIn(bookingIds).stream()
+                        .collect(Collectors.groupingBy(d -> d.getBooking().getBookingId()));
+
+        return handovers.map(h -> {
+            UUID bookingId = h.getBooking() != null ? h.getBooking().getBookingId() : null;
+            List<BookingDetailEntity> details = detailsByBooking.getOrDefault(bookingId, Collections.emptyList());
+            return ArrivalHandoverResponse.fromList(h, details);
+        });
     }
 
     private ReadinessStatus parseReadiness(String value) {
@@ -43,6 +72,17 @@ public class GetArrivalHandoverListUseCase {
             return ReadinessStatus.valueOf(value.trim().toUpperCase());
         } catch (IllegalArgumentException ignored) {
             return null; // unknown filter value → no readiness constraint
+        }
+    }
+
+    private LocalDate parseDate(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value.trim());
+        } catch (Exception ignored) {
+            return null; // invalid date → no date constraint
         }
     }
 }

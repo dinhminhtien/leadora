@@ -9,7 +9,10 @@ import lombok.Setter;
 @Setter
 public class UpdateReadinessStatusRequest {
 
-    /** ReadinessStatus: PENDING | IN_PROGRESS | READY. */
+    /** ReadinessStatus: REVIEWED | READY_FOR_ARRIVAL | NEED_CLARIFICATION. */
     @NotBlank(message = "Trạng thái sẵn sàng không được để trống")
     private String readinessStatus;
+
+    /** Required when readinessStatus = NEED_CLARIFICATION (UC-22.3, E7.2). */
+    private String clarificationNote;
 }

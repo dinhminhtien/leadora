@@ -28,8 +28,15 @@ export function useArrivalHandoverDetail(id: string | null) {
 export function useUpdateReadiness() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, readinessStatus }: { id: string; readinessStatus: ReadinessStatus }) =>
-      arrivalHandoverService.updateReadiness(id, readinessStatus),
+    mutationFn: ({
+      id,
+      readinessStatus,
+      clarificationNote,
+    }: {
+      id: string;
+      readinessStatus: ReadinessStatus;
+      clarificationNote?: string;
+    }) => arrivalHandoverService.updateReadiness(id, readinessStatus, clarificationNote),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [LIST_KEY] });
       queryClient.invalidateQueries({ queryKey: [LIST_KEY, "detail", variables.id] });
