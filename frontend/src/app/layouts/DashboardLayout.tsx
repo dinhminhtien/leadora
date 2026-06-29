@@ -7,7 +7,6 @@ import { useNotifications } from "@/features/notification/hooks/use_notification
 import { getUserRole, canAccessPath, dashboardPathForRole } from "@/shared/auth/access";
 import {
   Bell,
-  Bot,
   BriefcaseBusiness,
   CalendarCheck,
   ChartNoAxesCombined,
@@ -104,7 +103,6 @@ const navigationGroups: NavGroup[] = [
       { href: ROUTE_PATHS.customerFeedback, label: "Feedback", Icon: MessageSquareText },
       { href: ROUTE_PATHS.notifications, label: "Alerts", Icon: Bell },
       { href: ROUTE_PATHS.identityAccess, label: "User Access", Icon: KeyRound },
-      { href: ROUTE_PATHS.aiAssistant, label: "Trợ lý Lia", Icon: Bot },
     ],
   },
 ];

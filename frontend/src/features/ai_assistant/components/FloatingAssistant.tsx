@@ -14,12 +14,9 @@ import {
   Send,
   Plus,
   Trash2,
-  Pencil,
   FileText,
   Upload,
   Loader2,
-  MessageSquare,
-  History,
   Minus,
   ShieldAlert,
   Bot,
@@ -34,12 +31,9 @@ import { getUserRole } from "@/shared/auth/access";
 import type { ChatMessage } from "@/services/chat_assistant_service";
 import {
   useChatMessages,
-  useChatSessions,
   useCompanyDocuments,
   useCreateChatSession,
-  useDeleteChatSession,
   useDeleteDocument,
-  useRenameChatSession,
   useSendChatMessage,
   useUploadDocument,
 } from "@/features/ai_assistant/hooks/use_chat_sessions";
@@ -214,18 +208,11 @@ function AssistantPanel({
   userName?: string;
   onClose: () => void;
 }) {
-  const {
-    selectedSessionId,
-    setSelectedSessionId,
-    clearSelectedSession,
-  } = useChatStore();
+  const { selectedSessionId, setSelectedSessionId, clearSelectedSession } = useChatStore();
 
-  const sessionsQuery = useChatSessions();
   const messagesQuery = useChatMessages(selectedSessionId);
   const createSession = useCreateChatSession();
   const sendMessage = useSendChatMessage();
-  const renameSession = useRenameChatSession();
-  const deleteSession = useDeleteChatSession();
 
   const documentsQuery = useCompanyDocuments();
   const uploadDocument = useUploadDocument();
@@ -235,35 +222,15 @@ function AssistantPanel({
   const [inputVal, setInputVal] = useState("");
   const [pendingUserText, setPendingUserText] = useState<string | null>(null);
   const [animateId, setAnimateId] = useState<string | null>(null);
-  const [view, setView] = useState<"chat" | "history" | "docs">("chat");
+  const [view, setView] = useState<"chat" | "docs">("chat");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
-  const sessions = useMemo(
-    () => sessionsQuery.data?.data ?? [],
-    [sessionsQuery.data],
-  );
   const messages: ChatMessage[] = useMemo(
     () => messagesQuery.data?.data ?? [],
     [messagesQuery.data],
   );
   const documents = documentsQuery.data?.data ?? [];
-
-  // Keep the selection valid (auto-pick newest, drop a deleted one).
-  useEffect(() => {
-    if (sessionsQuery.isLoading) return;
-    const exists =
-      !!selectedSessionId && sessions.some((s) => s.sessionId === selectedSessionId);
-    if (exists) return;
-    if (sessions.length > 0) setSelectedSessionId(sessions[0].sessionId);
-    else if (selectedSessionId) clearSelectedSession();
-  }, [
-    selectedSessionId,
-    sessions,
-    sessionsQuery.isLoading,
-    setSelectedSessionId,
-    clearSelectedSession,
-  ]);
 
   const scrollToBottom = useCallback(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
@@ -273,6 +240,14 @@ function AssistantPanel({
     scrollToBottom();
   }, [messages, pendingUserText, sendMessage.isPending, scrollToBottom]);
 
+  // If the persisted session can't be loaded (deleted, different user after re-login,
+  // or a reset DB), drop it and fall back to a fresh blank chat.
+  useEffect(() => {
+    if (selectedSessionId && messagesQuery.isError) clearSelectedSession();
+  }, [selectedSessionId, messagesQuery.isError, clearSelectedSession]);
+
+  // Create the conversation on the first message; the id is then kept for the whole
+  // tab session (chat_store → sessionStorage), so toggling/reloading resumes it.
   const ensureSession = async (): Promise<string | null> => {
     if (selectedSessionId) return selectedSessionId;
     const created = await createSession.mutateAsync(undefined);
@@ -298,28 +273,12 @@ function AssistantPanel({
     }
   };
 
-  const handleNewChat = async () => {
+  // Start a fresh blank conversation (abandons the current one for this tab).
+  const handleNewChat = () => {
     clearSelectedSession();
     setPendingUserText(null);
+    setInputVal("");
     setView("chat");
-    const created = await createSession.mutateAsync(undefined);
-    if (created.data?.sessionId) setSelectedSessionId(created.data.sessionId);
-  };
-
-  const handleDeleteSession = async (sessionId: string) => {
-    if (sessionId === selectedSessionId) {
-      const remaining = sessions.filter((s) => s.sessionId !== sessionId);
-      if (remaining.length > 0) setSelectedSessionId(remaining[0].sessionId);
-      else clearSelectedSession();
-    }
-    await deleteSession.mutateAsync(sessionId);
-  };
-
-  const handleRenameSession = async (sessionId: string, currentTitle?: string) => {
-    const next = window.prompt("Đổi tên cuộc trò chuyện:", currentTitle ?? "");
-    const title = next?.trim();
-    if (!title || title === currentTitle) return;
-    await renameSession.mutateAsync({ sessionId, title });
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -331,6 +290,8 @@ function AssistantPanel({
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
+
+  const showEmpty = !selectedSessionId || (messages.length === 0 && !pendingUserText);
 
   return (
     <>
@@ -345,15 +306,8 @@ function AssistantPanel({
             Trợ lý chăm sóc &amp; follow-up lead của bạn
           </p>
         </div>
-        <HeaderBtn title="Cuộc trò chuyện mới" onClick={handleNewChat} disabled={createSession.isPending}>
+        <HeaderBtn title="Cuộc trò chuyện mới" onClick={handleNewChat}>
           <Plus className="size-4" />
-        </HeaderBtn>
-        <HeaderBtn
-          title="Lịch sử trò chuyện"
-          onClick={() => setView(view === "history" ? "chat" : "history")}
-          active={view === "history"}
-        >
-          <History className="size-4" />
         </HeaderBtn>
         {canManageDocs && (
           <HeaderBtn
@@ -370,19 +324,7 @@ function AssistantPanel({
       </div>
 
       {/* Body */}
-      {view === "history" ? (
-        <HistoryView
-          sessions={sessions}
-          loading={sessionsQuery.isLoading}
-          selectedId={selectedSessionId}
-          onSelect={(id) => {
-            setSelectedSessionId(id);
-            setView("chat");
-          }}
-          onRename={handleRenameSession}
-          onDelete={handleDeleteSession}
-        />
-      ) : view === "docs" ? (
+      {view === "docs" ? (
         <DocsView
           documents={documents}
           uploading={uploadDocument.isPending}
@@ -403,22 +345,25 @@ function AssistantPanel({
         />
       ) : (
         <div ref={feedRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-3 custom-scrollbar">
-          {messages.length === 0 && !pendingUserText && (
+          {showEmpty ? (
             <EmptyState userName={userName} onPick={handleSend} />
-          )}
-          {messages.map((msg) => (
-            <MessageBubble
-              key={msg.messageId}
-              message={msg}
-              animate={msg.role === "ASSISTANT" && msg.messageId === animateId}
-              onType={scrollToBottom}
-            />
-          ))}
-          {pendingUserText && <RawBubble role="USER" text={pendingUserText} />}
-          {sendMessage.isPending && (
-            <div className="flex items-center gap-2 pl-1 text-[11px] text-teal-600">
-              <Loader2 className="size-3.5 animate-spin" /> Lia đang soạn câu trả lời…
-            </div>
+          ) : (
+            <>
+              {messages.map((msg) => (
+                <MessageBubble
+                  key={msg.messageId}
+                  message={msg}
+                  animate={msg.role === "ASSISTANT" && msg.messageId === animateId}
+                  onType={scrollToBottom}
+                />
+              ))}
+              {pendingUserText && <RawBubble role="USER" text={pendingUserText} />}
+              {sendMessage.isPending && (
+                <div className="flex items-center gap-2 pl-1 text-[11px] text-teal-600">
+                  <Loader2 className="size-3.5 animate-spin" /> Lia đang soạn câu trả lời…
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -516,69 +461,6 @@ function EmptyState({
           </button>
         ))}
       </div>
-    </div>
-  );
-}
-
-function HistoryView({
-  sessions,
-  loading,
-  selectedId,
-  onSelect,
-  onRename,
-  onDelete,
-}: {
-  sessions: { sessionId: string; title?: string }[];
-  loading: boolean;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  onRename: (id: string, title?: string) => void;
-  onDelete: (id: string) => void;
-}) {
-  return (
-    <div className="flex-1 space-y-1 overflow-y-auto bg-slate-50/60 p-2 custom-scrollbar">
-      {loading && <p className="p-2 text-[11px] text-slate-400">Đang tải…</p>}
-      {!loading && sessions.length === 0 && (
-        <p className="p-2 text-[11px] text-slate-400">Chưa có cuộc trò chuyện nào.</p>
-      )}
-      {sessions.map((s) => (
-        <div
-          key={s.sessionId}
-          onClick={() => onSelect(s.sessionId)}
-          className={`group flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 text-[11px] transition ${
-            s.sessionId === selectedId
-              ? "bg-teal-50 text-teal-700"
-              : "bg-white text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <MessageSquare className="size-3.5 shrink-0" />
-            <span className="truncate">{s.title || "Cuộc trò chuyện"}</span>
-          </span>
-          <span className="ml-1 flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRename(s.sessionId, s.title);
-              }}
-              className="text-slate-400 transition hover:text-teal-600"
-              title="Đổi tên"
-            >
-              <Pencil className="size-3.5" />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(s.sessionId);
-              }}
-              className="text-slate-400 transition hover:text-rose-500"
-              title="Xoá"
-            >
-              <Trash2 className="size-3.5" />
-            </button>
-          </span>
-        </div>
-      ))}
     </div>
   );
 }
@@ -705,7 +587,8 @@ function MessageBubble({
   animate?: boolean;
   onType?: () => void;
 }) {
-  const isUser = message.role === "USER";
+  // Normalise casing defensively so role alignment never flips on a backend quirk.
+  const isUser = (message.role ?? "").toUpperCase() === "USER";
   const blocked =
     message.intentMatched === "MUTATION_BLOCKED" || message.intentMatched === "OFF_TOPIC";
   if (isUser) return <RawBubble role="USER" text={message.content} />;
