@@ -50,7 +50,7 @@ public class BackfillSlaTrackingUseCase {
 
         Set<UUID> alreadyTracked = slaTrackingRepository.findByEntityType("QUOTATION")
                 .stream()
-                .map(SlaTrackingEntity::getEntityId)
+                .map(t -> t.getEntityId())
                 .collect(Collectors.toSet());
 
         List<QuotationEntity> untracked = quotationRepository.findAll()

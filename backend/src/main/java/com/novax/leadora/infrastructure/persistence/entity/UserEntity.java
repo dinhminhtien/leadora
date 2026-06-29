@@ -3,6 +3,7 @@ package com.novax.leadora.infrastructure.persistence.entity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.UserStatus;
 import jakarta.persistence.*;
 import lombok.*;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
@@ -28,7 +29,7 @@ public class UserEntity extends BaseEntity {
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
-    @Column(name = "phone", length = 20)
+    @Column(name = "phone", length = 15)
     private String phone;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -41,4 +42,8 @@ public class UserEntity extends BaseEntity {
 
     @Column(name = "avatar_url", length = 500)
     private String avatarUrl;
+
+    /** Last successful sign-in (email or OAuth). Drives the 7-day idle → INACTIVE job. */
+    @Column(name = "last_login_at")
+    private OffsetDateTime lastLoginAt;
 }

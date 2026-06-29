@@ -1,27 +1,79 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-
-import { customerProfileService } from "@/services/customer_profile_service";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  customerProfileService,
+  type CustomerListParams,
+  type CreateCustomerPayload,
+  type UpdateCustomerPayload,
+} from "@/services/customer_profile_service";
 import { taskService } from "@/services/follow_up_task_service";
-import type { ListQuery } from "@/shared/types/api";
 
-export function useCustomerProfiles(params?: ListQuery) {
+/** Autocomplete — lightweight search for dropdowns. */
+export function useCustomerProfiles(params?: { search?: string; size?: number }) {
   return useQuery({
-    queryKey: ["customer-profiles", params],
+    queryKey: ["customer-search", params],
     queryFn: () => customerProfileService.getList(params),
+  });
+}
+
+/** Global counts — total, active, inactive, individual, corporate. */
+export function useCustomerStats() {
+  return useQuery({
+    queryKey: ["customer-stats"],
+    queryFn: () => customerProfileService.getStats(),
+    staleTime: 30_000,
+  });
+}
+
+/** Full paginated list for the Customer Profiles screen. */
+export function useCustomers(params?: CustomerListParams) {
+  return useQuery({
+    queryKey: ["customers", params],
+    queryFn: () => customerProfileService.getCustomers(params),
   });
 }
 
 export function useCustomerDetail(customerId: string | undefined) {
   return useQuery({
-    queryKey: ["customer-profiles", customerId],
+    queryKey: ["customers", customerId],
     queryFn: () => customerProfileService.getById(customerId!),
     enabled: !!customerId,
   });
 }
 
-/** Fetch all tasks linked to a specific customer (server-side filter). */
+export function useCreateCustomer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateCustomerPayload) => customerProfileService.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+    },
+  });
+}
+
+export function useUpdateCustomer(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: UpdateCustomerPayload) =>
+      customerProfileService.update(customerId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["customers", customerId] });
+    },
+  });
+}
+
+/** Full activity history — deals, bookings, quotations — sorted newest first. */
+export function useCustomerHistory(customerId: string | undefined) {
+  return useQuery({
+    queryKey: ["customer-history", customerId],
+    queryFn: () => customerProfileService.getHistory(customerId!),
+    enabled: !!customerId,
+  });
+}
+
+/** Tasks linked to a specific customer — used in the service history tab. */
 export function useCustomerTasks(customerId: string | undefined) {
   return useQuery({
     queryKey: ["tasks", { customerId }],

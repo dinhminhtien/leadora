@@ -8,11 +8,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 /** UC-6.4 — the permission catalogue the Admin assigns to roles. */
 @RestController
 @RequestMapping("/api/v1/permissions")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class PermissionController {
 
     private final GetPermissionListUseCase getPermissionListUseCase;

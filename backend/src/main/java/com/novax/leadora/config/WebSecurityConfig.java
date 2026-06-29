@@ -19,6 +19,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.novax.leadora.common.security.TokenBlacklistService;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -35,6 +36,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+
 @Configuration
 @EnableWebSecurity
 @org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
@@ -46,8 +48,12 @@ public class WebSecurityConfig {
     @Value("${SUPABASE_URL}")
     private String supabaseUrl;
 
-    @Autowired @Lazy
+    @Autowired
+    @Lazy
     private UserRepository userRepository;
+
+    @Autowired
+    private TokenBlacklistService tokenBlacklistService;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -111,6 +117,9 @@ public class WebSecurityConfig {
 
         // 3. Return a delegating decoder based on the JWT header algorithm
         return token -> {
+            if (tokenBlacklistService.isBlacklisted(token)) {
+                throw new JwtException("Token is blacklisted");
+            }
             try {
                 var jwt = JWTParser.parse(token);
                 if (jwt instanceof SignedJWT signedJwt) {
@@ -128,8 +137,10 @@ public class WebSecurityConfig {
     }
 
     /**
-     * Extracts the application role from the users table using the email claim in the Supabase JWT.
-     * Supabase's built-in "role" claim always returns "authenticated", not the app role.
+     * Extracts the application role from the users table using the email claim in
+     * the Supabase JWT.
+     * Supabase's built-in "role" claim always returns "authenticated", not the app
+     * role.
      */
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
@@ -139,12 +150,8 @@ public class WebSecurityConfig {
             if (email == null || email.isBlank()) {
                 return List.of(new SimpleGrantedAuthority("ROLE_authenticated"));
             }
-            Collection<GrantedAuthority> authorities = userRepository.findWithRoleByEmailIgnoreCase(email)
-                    .filter(u -> u.getRole() != null)
-                    .map(u -> {
-                        String roleName = u.getRole().getRoleName().toUpperCase();
-                        return (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + roleName);
-                    })
+            Collection<GrantedAuthority> authorities = userRepository.findRoleNameByEmailIgnoreCase(email.trim())
+                    .map(roleName -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + roleName))
                     .map(a -> (Collection<GrantedAuthority>) List.<GrantedAuthority>of(a))
                     .orElse(List.of(new SimpleGrantedAuthority("ROLE_authenticated")));
             return authorities;

@@ -24,16 +24,16 @@ public class LeadEntity extends BaseEntity {
     @JoinColumn(name = "assigned_user_id")
     private UserEntity assignedUser;
 
-    @Column(name = "full_name", nullable = false, length = 255)
+    @Column(name = "full_name", nullable = false, length = 40)
     private String fullName;
 
-    @Column(name = "email", length = 255)
+    @Column(name = "email", length = 40)
     private String email;
 
-    @Column(name = "phone", length = 20)
+    @Column(name = "phone", length = 15)
     private String phone;
 
-    @Column(name = "company_name", length = 255)
+    @Column(name = "company_name", length = 40)
     private String companyName;
 
     @Column(name = "address", columnDefinition = "TEXT")
@@ -44,7 +44,7 @@ public class LeadEntity extends BaseEntity {
     @Column(name = "is_corporate", nullable = false, columnDefinition = "boolean default false")
     private Boolean isCorporate = false;
 
-    @Column(name = "source", length = 100)
+    @Column(name = "source", length = 40)
     private String source;
 
     @Enumerated(EnumType.STRING)

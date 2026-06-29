@@ -14,11 +14,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 /** UC-6.4 — Configure Role Permissions. */
 @RestController
 @RequestMapping("/api/v1/roles")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class RoleController {
 
     private final GetRoleListUseCase getRoleListUseCase;

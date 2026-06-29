@@ -37,6 +37,13 @@ public class ConvertLeadUseCase {
             throw new IllegalStateException("This lead has already been converted to a customer.");
         }
 
+        // 3a. A lead must be assigned to a sales rep (by a Manager) before conversion.
+        //     Unassigned leads are drafts that never progress past NEW.
+        if (lead.getAssignedUser() == null) {
+            throw new IllegalStateException(
+                    "Lead must be assigned to a sales rep before it can be converted.");
+        }
+
         // 3. BR-07: status must be QUALIFIED
         if (lead.getStatus() != LeadStatus.QUALIFIED) {
             throw new IllegalStateException(

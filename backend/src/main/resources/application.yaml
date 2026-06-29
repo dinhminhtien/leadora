@@ -1,5 +1,9 @@
 server:
   port: ${PORT:8085}
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json,application/xml
+    min-response-size: 2048
 
 spring:
   application:
@@ -44,11 +48,11 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:secret}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:3}
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:5}
       minimum-idle: 1
-      connection-timeout: 10000
-      idle-timeout: 60000
-      keepalive-time: 30000
+      connection-timeout: 30000
+      idle-timeout: 300000
+      max-lifetime: 1800000
 
   jpa:
     hibernate:
@@ -78,15 +82,15 @@ spring:
             enable: true
             required: true
 
-  # # Redis Configuration for caching and HTTP session management
-  # data:
-  #   redis:
-  #     host: ${REDIS_HOST:localhost}
-  #     port: ${REDIS_PORT:6379}
-  #     password: ${REDIS_PASSWORD:}
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
 
-  # session:
-  #   store-type: redis
+  cache:
+    type: ${SPRING_CACHE_TYPE:simple}
+    redis:
+      time-to-live: 3600000 # 1 hour
+      cache-null-values: false
 
   # Spring Security / JWT configuration:
   # JWT validation is handled by the custom HS256 JwtDecoder bean in WebSecurityConfig.

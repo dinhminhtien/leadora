@@ -26,7 +26,7 @@ public class QuotationApprovalHistoryEntity extends BaseEntity {
     @Column(name = "action", nullable = false, length = 50)
     private String action; // APPROVED | REJECTED | REVISION_REQUESTED
 
-    @Column(name = "decided_by_name", nullable = false, length = 255)
+    @Column(name = "decided_by_name", nullable = false, length = 50)
     private String decidedByName;
 
     @Column(name = "decided_by_role", length = 50)

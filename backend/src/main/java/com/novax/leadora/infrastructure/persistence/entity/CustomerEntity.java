@@ -24,19 +24,19 @@ public class CustomerEntity extends BaseEntity {
     @Column(name = "customer_type", nullable = false, length = 20)
     private CustomerType customerType;
 
-    @Column(name = "full_name", nullable = false, length = 255)
+    @Column(name = "full_name", nullable = false, length = 40)
     private String fullName;
 
-    @Column(name = "email", length = 255)
+    @Column(name = "email", length = 40)
     private String email;
 
-    @Column(name = "phone", length = 20)
+    @Column(name = "phone", length = 15)
     private String phone;
 
-    @Column(name = "company_name", length = 255)
+    @Column(name = "company_name", length = 40)
     private String companyName;
 
-    @Column(name = "tax_code", length = 50)
+    @Column(name = "tax_code", length = 25)
     private String taxCode;
 
     @Column(name = "address", columnDefinition = "TEXT")

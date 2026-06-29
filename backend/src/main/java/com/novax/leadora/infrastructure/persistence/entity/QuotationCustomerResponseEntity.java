@@ -26,16 +26,16 @@ public class QuotationCustomerResponseEntity extends BaseEntity {
     @Column(name = "customer_response", nullable = false, length = 50)
     private String customerResponse; // ACCEPTED | REJECTED | INTERESTED | NEED_REVISION
 
-    @Column(name = "lost_reason", length = 255)
+    @Column(name = "lost_reason", length = 100)
     private String lostReason;
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
-    @Column(name = "recorded_by_name", length = 255)
+    @Column(name = "recorded_by_name", length = 50)
     private String recordedByName;
 
-    @Column(name = "recorded_by_role", length = 100)
+    @Column(name = "recorded_by_role", length = 50)
     private String recordedByRole;
 
     @Column(name = "previous_status", length = 30)

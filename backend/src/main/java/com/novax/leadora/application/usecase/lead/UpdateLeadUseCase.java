@@ -53,17 +53,32 @@ public class UpdateLeadUseCase {
         if (request.getNotes() != null) {
             lead.setNotes(request.getNotes());
         }
+        // Apply (re)assignment BEFORE the status check, so assigning and advancing a
+        // lead in the same request is allowed (the assignee is already set when the
+        // status guard below runs).
+        if (request.getAssignedUserId() != null) {
+            UserEntity assignedUser = userRepository.findById(request.getAssignedUserId()).orElse(null);
+            lead.setAssignedUser(assignedUser);
+        }
         if (request.getStatus() != null) {
             LeadStatus newStatus = request.getStatus();
+            // BR: an unassigned lead is a draft — it stays NEW until a Manager assigns it
+            // to a sales rep. Only then can its status move through the pipeline.
+            if (newStatus != lead.getStatus() && lead.getAssignedUser() == null) {
+                throw new IllegalStateException(
+                        "Lead must be assigned to a sales rep before its status can change.");
+            }
             validateStatusTransition(lead.getStatus(), newStatus);
             lead.setStatus(newStatus);
             if (newStatus == LeadStatus.CONVERTED && lead.getConvertedAt() == null) {
                 lead.setConvertedAt(OffsetDateTime.now());
             }
         }
-        if (request.getAssignedUserId() != null) {
-            UserEntity assignedUser = userRepository.findById(request.getAssignedUserId()).orElse(null);
-            lead.setAssignedUser(assignedUser);
+
+        // BR: an organization lead must name its company. Validate the resulting state,
+        // since either isCorporate or companyName may have just changed.
+        if (Boolean.TRUE.equals(lead.getIsCorporate()) && !StringUtils.hasText(lead.getCompanyName())) {
+            throw new IllegalArgumentException("Company name is required for an organization lead.");
         }
 
         return LeadResponse.from(leadRepository.save(lead));
