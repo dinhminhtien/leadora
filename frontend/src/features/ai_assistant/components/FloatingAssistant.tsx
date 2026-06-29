@@ -21,6 +21,8 @@ import {
   Upload,
   Loader2,
   Minus,
+  Maximize2,
+  Minimize2,
   ShieldAlert,
   Bot,
 } from "lucide-react";
@@ -72,6 +74,7 @@ export function FloatingAssistant() {
   const [mounted, setMounted] = useState(false);
   const [pos, setPos] = useState<Pos | null>(null);
   const [vp, setVp] = useState({ w: 1280, h: 800 });
+  const [fullscreen, setFullscreen] = useState(false);
   const dragRef = useRef<{
     startX: number;
     startY: number;
@@ -168,22 +171,34 @@ export function FloatingAssistant() {
     Math.max(MARGIN, vp.h - panelH - MARGIN),
   );
 
+  const closePanel = () => {
+    setFullscreen(false);
+    closeAssistant();
+  };
+
   return (
     <>
       {isOpen && (
         <div
-          style={{ left: panelLeft, top: panelTop, width: PANEL_W, height: panelH }}
-          className="fixed z-[60] flex flex-col overflow-hidden rounded-3xl border border-teal-100 bg-white shadow-2xl shadow-teal-900/15 animate-in fade-in zoom-in-95 duration-200"
+          style={fullscreen ? undefined : { left: panelLeft, top: panelTop, width: PANEL_W, height: panelH }}
+          className={
+            fullscreen
+              ? "fixed inset-3 z-[62] flex flex-col overflow-hidden rounded-2xl border border-teal-100 bg-white shadow-2xl shadow-teal-900/15 animate-in fade-in zoom-in-95 duration-200"
+              : "fixed z-[60] flex flex-col overflow-hidden rounded-3xl border border-teal-100 bg-white shadow-2xl shadow-teal-900/15 animate-in fade-in zoom-in-95 duration-200"
+          }
         >
           <AssistantPanel
             role={role}
             userName={currentUser?.name}
-            onClose={closeAssistant}
+            onClose={closePanel}
+            isFullscreen={fullscreen}
+            onToggleFullscreen={() => setFullscreen((f) => !f)}
           />
         </div>
       )}
 
-      {/* Draggable Lia launcher */}
+      {/* Draggable Lia launcher (hidden while the panel is in fullscreen) */}
+      {!fullscreen && (
       <button
         type="button"
         onPointerDown={onPointerDown}
@@ -199,6 +214,7 @@ export function FloatingAssistant() {
           <span className="absolute -right-0.5 -top-0.5 size-3.5 rounded-full border-2 border-white bg-pink-400" />
         )}
       </button>
+      )}
     </>
   );
 }
@@ -209,10 +225,14 @@ function AssistantPanel({
   role,
   userName,
   onClose,
+  isFullscreen,
+  onToggleFullscreen,
 }: {
   role: string;
   userName?: string;
   onClose: () => void;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
 }) {
   const { selectedSessionId, setSelectedSessionId, clearSelectedSession } = useChatStore();
 
@@ -358,6 +378,12 @@ function AssistantPanel({
             <FileText className="size-4" />
           </HeaderBtn>
         )}
+        <HeaderBtn
+          title={isFullscreen ? "Thu nhỏ cửa sổ" : "Toàn màn hình"}
+          onClick={onToggleFullscreen}
+        >
+          {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+        </HeaderBtn>
         <HeaderBtn title="Thu nhỏ" onClick={onClose}>
           <Minus className="size-4" />
         </HeaderBtn>
@@ -393,11 +419,13 @@ function AssistantPanel({
           onFileChange={handleUpload}
         />
       ) : (
-        <div ref={feedRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-3 custom-scrollbar">
+        <div ref={feedRef} className="flex-1 overflow-y-auto bg-slate-50/60 custom-scrollbar">
           {showEmpty ? (
-            <EmptyState userName={userName} onPick={handleSend} />
+            <div className={`h-full p-3 ${isFullscreen ? "mx-auto w-full max-w-3xl" : ""}`}>
+              <EmptyState userName={userName} onPick={handleSend} />
+            </div>
           ) : (
-            <>
+            <div className={`space-y-3 p-3 ${isFullscreen ? "mx-auto w-full max-w-3xl" : ""}`}>
               {messages.map((msg) => (
                 <MessageBubble
                   key={msg.messageId}
@@ -412,7 +440,7 @@ function AssistantPanel({
                   <Loader2 className="size-3.5 animate-spin" /> Lia đang soạn câu trả lời…
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       )}
@@ -420,6 +448,7 @@ function AssistantPanel({
       {/* Input (chat view only) */}
       {view === "chat" && (
         <div className="border-t border-slate-100 bg-white p-2.5">
+         <div className={isFullscreen ? "mx-auto w-full max-w-3xl" : ""}>
           <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 focus-within:border-teal-400 focus-within:bg-white transition">
             <textarea
               rows={1}
@@ -447,6 +476,7 @@ function AssistantPanel({
           <p className="mt-1 text-center text-[9px] text-slate-400">
             Lia chỉ đọc dữ liệu — không thực hiện thao tác thay đổi.
           </p>
+         </div>
         </div>
       )}
     </>
