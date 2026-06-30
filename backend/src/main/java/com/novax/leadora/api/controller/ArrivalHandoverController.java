@@ -2,8 +2,10 @@ package com.novax.leadora.api.controller;
 
 import com.novax.leadora.api.dto.request.UpdateReadinessStatusRequest;
 import com.novax.leadora.api.dto.response.ArrivalHandoverResponse;
+import com.novax.leadora.api.dto.response.ArrivalHandoverSummaryResponse;
 import com.novax.leadora.application.usecase.handover.GetArrivalHandoverDetailUseCase;
 import com.novax.leadora.application.usecase.handover.GetArrivalHandoverListUseCase;
+import com.novax.leadora.application.usecase.handover.GetArrivalHandoverSummaryUseCase;
 import com.novax.leadora.application.usecase.handover.UpdateHandoverReadinessUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import com.novax.leadora.common.security.CurrentUserProvider;
@@ -32,8 +34,15 @@ public class ArrivalHandoverController {
 
     private final GetArrivalHandoverListUseCase getArrivalHandoverListUseCase;
     private final GetArrivalHandoverDetailUseCase getArrivalHandoverDetailUseCase;
+    private final GetArrivalHandoverSummaryUseCase getArrivalHandoverSummaryUseCase;
     private final UpdateHandoverReadinessUseCase updateHandoverReadinessUseCase;
     private final CurrentUserProvider currentUserProvider;
+
+    /** UC-22.1 — Front Office desk summary (counts by readiness). */
+    @GetMapping("/summary")
+    public ResponseEntity<ApiResponse<ArrivalHandoverSummaryResponse>> summary() {
+        return ResponseEntity.ok(ApiResponse.success(getArrivalHandoverSummaryUseCase.execute()));
+    }
 
     /** UC-22.1 — View Arrival Handover List. */
     @GetMapping

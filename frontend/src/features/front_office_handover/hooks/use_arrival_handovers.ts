@@ -17,6 +17,15 @@ export function useArrivalHandovers(params?: ArrivalHandoverQuery) {
   });
 }
 
+export function useArrivalHandoverSummary() {
+  return useQuery({
+    queryKey: [LIST_KEY, "summary"],
+    queryFn: () => arrivalHandoverService.getSummary(),
+    select: (res) => res.data,
+    staleTime: 15_000,
+  });
+}
+
 export function useArrivalHandoverDetail(id: string | null) {
   return useQuery({
     queryKey: [LIST_KEY, "detail", id],

@@ -51,9 +51,24 @@ export type ArrivalHandoverQuery = {
   size?: number;
 };
 
+export type ArrivalHandoverSummary = {
+  total: number;
+  pendingReview: number;
+  reviewed: number;
+  readyForArrival: number;
+  needClarification: number;
+};
+
 const ENDPOINT = "/arrival-handovers";
 
 export const arrivalHandoverService = {
+  async getSummary() {
+    const response = await apiClient.get<ApiResponse<ArrivalHandoverSummary>>(
+      `${ENDPOINT}/summary`,
+    );
+    return response.data;
+  },
+
   async getList(params?: ArrivalHandoverQuery) {
     const response = await apiClient.get<ApiResponse<PageResponse<ArrivalHandover>>>(
       ENDPOINT,

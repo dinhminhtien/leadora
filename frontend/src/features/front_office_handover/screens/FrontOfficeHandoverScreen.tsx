@@ -19,6 +19,11 @@ import {
   ClipboardList,
   CreditCard,
   Save,
+  Inbox,
+  Clock3,
+  CheckCircle2,
+  AlertTriangle,
+  ConciergeBell,
 } from "lucide-react";
 import {
   Table,
@@ -35,6 +40,7 @@ import { Select } from "@/components/ui/Select";
 import {
   useArrivalHandovers,
   useArrivalHandoverDetail,
+  useArrivalHandoverSummary,
   useUpdateReadiness,
 } from "@/features/front_office_handover/hooks/use_arrival_handovers";
 import type {
@@ -78,6 +84,48 @@ function Pill({ text, className }: { text: string; className: string }) {
   );
 }
 
+const SUMMARY_COLORS: Record<string, { ring: string; chip: string; text: string }> = {
+  amber: { ring: "ring-amber-300", chip: "bg-amber-100 text-amber-600", text: "text-amber-600" },
+  blue: { ring: "ring-blue-300", chip: "bg-blue-100 text-blue-600", text: "text-blue-600" },
+  emerald: { ring: "ring-emerald-300", chip: "bg-emerald-100 text-emerald-600", text: "text-emerald-600" },
+  rose: { ring: "ring-rose-300", chip: "bg-rose-100 text-rose-600", text: "text-rose-600" },
+};
+
+function SummaryCard({
+  label,
+  value,
+  icon,
+  color,
+  active,
+  onClick,
+}: {
+  label: string;
+  value?: number;
+  icon: React.ReactNode;
+  color: keyof typeof SUMMARY_COLORS;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const c = SUMMARY_COLORS[color];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-3 rounded-2xl border bg-white p-3.5 text-left shadow-sm transition hover:shadow-md ${
+        active ? `border-transparent ring-2 ${c.ring}` : "border-slate-100"
+      }`}
+    >
+      <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${c.chip}`}>
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className={`block text-lg font-extrabold ${c.text}`}>{value ?? "—"}</span>
+        <span className="block truncate text-[11px] font-medium text-slate-500">{label}</span>
+      </span>
+    </button>
+  );
+}
+
 function fmtDate(iso?: string) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("vi-VN");
@@ -118,12 +166,21 @@ export function FrontOfficeHandoverScreen() {
     size: PAGE_SIZE,
   });
 
+  const summaryQuery = useArrivalHandoverSummary();
+  const summary = summaryQuery.data;
+
   const rows: ArrivalHandover[] = useMemo(
     () => listQuery.data?.data?.content ?? [],
     [listQuery.data],
   );
   const totalPages = listQuery.data?.data?.totalPages ?? 1;
-  const totalElements = listQuery.data?.data?.totalElements ?? rows.length;
+  const totalElements = summary?.total ?? listQuery.data?.data?.totalElements ?? rows.length;
+
+  // Clicking a KPI card filters the list by that readiness.
+  const filterBy = (readiness: string) => {
+    setReadinessFilter((cur) => (cur === readiness ? "" : readiness));
+    setPage(0);
+  };
 
   return (
     <div className="space-y-5">
@@ -139,9 +196,45 @@ export function FrontOfficeHandoverScreen() {
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <span className="text-xs font-semibold text-slate-500">{totalElements} bàn giao</span>
+          <span className="text-xs font-semibold text-slate-500">{totalElements} yêu cầu</span>
           <Pill text="Front Office" className="bg-blue-100 text-blue-800" />
         </div>
+      </div>
+
+      {/* KPI cards — customer arrival requests by readiness */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <SummaryCard
+          label="Chưa xem xét"
+          value={summary?.pendingReview}
+          icon={<Inbox className="size-4" />}
+          color="amber"
+          active={readinessFilter === "PENDING_REVIEW"}
+          onClick={() => filterBy("PENDING_REVIEW")}
+        />
+        <SummaryCard
+          label="Đã xem xét"
+          value={summary?.reviewed}
+          icon={<Clock3 className="size-4" />}
+          color="blue"
+          active={readinessFilter === "REVIEWED"}
+          onClick={() => filterBy("REVIEWED")}
+        />
+        <SummaryCard
+          label="Sẵn sàng đón khách"
+          value={summary?.readyForArrival}
+          icon={<CheckCircle2 className="size-4" />}
+          color="emerald"
+          active={readinessFilter === "READY_FOR_ARRIVAL"}
+          onClick={() => filterBy("READY_FOR_ARRIVAL")}
+        />
+        <SummaryCard
+          label="Cần làm rõ"
+          value={summary?.needClarification}
+          icon={<AlertTriangle className="size-4" />}
+          color="rose"
+          active={readinessFilter === "NEED_CLARIFICATION"}
+          onClick={() => filterBy("NEED_CLARIFICATION")}
+        />
       </div>
 
       {/* Toolbar */}
@@ -209,8 +302,20 @@ export function FrontOfficeHandoverScreen() {
               )}
               {!listQuery.isLoading && rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-xs text-slate-400">
-                    Không tìm thấy bàn giao nào.
+                  <TableCell colSpan={6} className="py-12">
+                    <div className="flex flex-col items-center justify-center gap-2 text-center">
+                      <span className="flex size-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                        <ConciergeBell className="size-6" />
+                      </span>
+                      <p className="text-sm font-semibold text-slate-600">
+                        {readinessFilter || search || arrivalDate
+                          ? "Không có yêu cầu nào khớp bộ lọc"
+                          : "Chưa có yêu cầu khách đến nào"}
+                      </p>
+                      <p className="max-w-xs text-xs text-slate-400">
+                        Các bàn giao được Sales/Đặt phòng gửi sang sau khi xác nhận booking sẽ hiển thị ở đây để Lễ tân chuẩn bị đón khách.
+                      </p>
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
