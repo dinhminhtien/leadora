@@ -28,8 +28,10 @@ public class DealController {
     private final UpdateDealUseCase updateDealUseCase;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<DealResponse>>> getAllDeals() {
-        List<DealResponse> deals = getDealListUseCase.execute();
+    public ResponseEntity<ApiResponse<List<DealResponse>>> getAllDeals(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) UUID ownerId) {
+        List<DealResponse> deals = getDealListUseCase.execute(search, ownerId);
         return ResponseEntity.ok(ApiResponse.success(deals));
     }
 

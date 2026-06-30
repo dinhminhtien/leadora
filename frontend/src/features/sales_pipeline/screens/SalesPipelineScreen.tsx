@@ -92,6 +92,7 @@ export function SalesPipelineScreen() {
   const queryClient = useQueryClient();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [ownerFilter, setOwnerFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -131,20 +132,30 @@ export function SalesPipelineScreen() {
     "Confirmed"
   ];
 
-  // Fetch deals and users on mount
-  React.useEffect(() => {
-    const fetchDeals = async () => {
-      try {
-        const response = await dealService.getList();
-        if (response && response.success && response.data) {
-          setDeals(response.data as Deal[]);
-        }
-      } catch (err) {
-        console.error("Failed to fetch deals", err);
-      } finally {
-        setLoading(false);
+  // Fetch deals helper (UC-11.2)
+  const fetchDeals = async (searchVal: string, ownerVal: string) => {
+    setLoading(true);
+    try {
+      const params: any = {};
+      if (searchVal.trim()) {
+        params.search = searchVal.trim();
       }
-    };
+      if (ownerVal && ownerVal !== "all") {
+        params.ownerId = ownerVal;
+      }
+      const response = await dealService.getList(params);
+      if (response && response.success && response.data) {
+        setDeals(response.data as Deal[]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch deals", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch users on mount
+  React.useEffect(() => {
     const fetchUsers = async () => {
       try {
         const response = await taskUserService.getAll();
@@ -155,9 +166,17 @@ export function SalesPipelineScreen() {
         console.error("Failed to fetch users", err);
       }
     };
-    fetchDeals();
     fetchUsers();
   }, []);
+
+  // Fetch deals when search term or owner filter changes (debounced)
+  React.useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetchDeals(searchTerm, ownerFilter);
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm, ownerFilter]);
 
   const handleOpenEditDrawer = async (deal: Deal) => {
     try {
@@ -230,6 +249,7 @@ export function SalesPipelineScreen() {
         queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
         queryClient.invalidateQueries({ queryKey: ["deals-for-report"] });
         showSuccess("Deal updated successfully!");
+        fetchDeals(searchTerm, ownerFilter);
       } else {
         showError(response?.message || "Failed to update deal");
       }
@@ -274,6 +294,7 @@ export function SalesPipelineScreen() {
         queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
         queryClient.invalidateQueries({ queryKey: ["deals-for-report"] });
         showSuccess(`Moved deal "${deal.title}" to ${nextStage}`);
+        fetchDeals(searchTerm, ownerFilter);
       } else {
         showError(response?.message || "Failed to update deal stage");
       }
@@ -311,6 +332,7 @@ export function SalesPipelineScreen() {
         queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
         queryClient.invalidateQueries({ queryKey: ["deals-for-report"] });
         showSuccess(`Moved deal "${deal.title}" to ${targetStage}`);
+        fetchDeals(searchTerm, ownerFilter);
       } else {
         showError(response?.message || "Failed to update deal stage");
       }
@@ -321,11 +343,49 @@ export function SalesPipelineScreen() {
     }
   };
 
-  // Filter deals by Owner
-  const filteredDeals = useMemo(() => {
-    if (ownerFilter === "all") return deals;
-    return deals.filter(d => d.owner === ownerFilter);
-  }, [deals, ownerFilter]);
+  // Mark deal status (won/lost) - UC-12.8 Close Deal
+  const handleUpdateStatus = async (dealId: string, newStatus: Deal["status"]) => {
+    const dealToUpdate = deals.find(d => d.id === dealId);
+    if (!dealToUpdate) return;
+
+    const updatedStage = newStatus === "won" ? "Confirmed" : dealToUpdate.stage;
+    const payload = {
+      title: dealToUpdate.title,
+      contactName: dealToUpdate.contactName,
+      email: dealToUpdate.email || "",
+      phone: dealToUpdate.phone || "",
+      value: dealToUpdate.value,
+      stage: updatedStage,
+      status: newStatus,
+      expectedClose: dealToUpdate.expectedClose || new Date().toISOString().split("T")[0],
+      owner: dealToUpdate.owner,
+      notes: dealToUpdate.notes || ""
+    };
+
+    try {
+      const response = await dealService.update(dealId, payload);
+      if (response && response.success && response.data) {
+        setDeals(prev =>
+          prev.map(deal =>
+            deal.id === dealId ? (response.data as Deal) : deal
+          )
+        );
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+        queryClient.invalidateQueries({ queryKey: ["deals-for-report"] });
+        showSuccess(`Deal marked as ${newStatus.toUpperCase()}!`);
+        fetchDeals(searchTerm, ownerFilter);
+      } else {
+        showError(response?.message || "Failed to update status");
+      }
+    } catch (err: any) {
+      console.error("Error updating status", err);
+      const errMsg = err.response?.data?.message || err.message || "An error occurred.";
+      showError(errMsg);
+    }
+  };
+
+  // Since search & filter logic is handled on the backend (UC-11.2), filteredDeals is just the deals array
+  const filteredDeals = deals;
 
   // Statistics
   const pipelineStats = useMemo(() => {
@@ -401,18 +461,35 @@ export function SalesPipelineScreen() {
           <p className="text-xs text-slate-400">Drag or shift contract deals across hotel booking sales stages</p>
         </div>
 
-        {/* Owner filter dropdown */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-400">Filter Owner:</span>
-          <select
-            value={ownerFilter}
-            onChange={e => setOwnerFilter(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none"
-          >
-            <option value="all">All Sales Agents</option>
-            <option value="John Doe">John Doe</option>
-            <option value="Sarah Connor">Sarah Connor</option>
-          </select>
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+          {/* Search bar - UC-11.2 Search and Filter Pipeline Deals */}
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search deal name, contact..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+            />
+          </div>
+
+          {/* Owner filter dropdown - UC-11.2 Search and Filter Pipeline Deals */}
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            <span className="text-xs font-semibold text-slate-400">Filter Owner:</span>
+            <select
+              value={ownerFilter}
+              onChange={e => setOwnerFilter(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none w-full sm:w-auto"
+            >
+              <option value="all">All Sales Agents</option>
+              {users.map(u => (
+                <option key={u.userId} value={u.userId}>
+                  {u.fullName}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -554,6 +631,24 @@ export function SalesPipelineScreen() {
                             <ChevronRight className="size-3" />
                           </button>
                         </div>
+
+                        {/* Quick Status Update / Close Deal (UC-12.8) */}
+                        {deal.status === "active" && (
+                          <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-slate-100">
+                            <button
+                              onClick={() => handleUpdateStatus(deal.id, "won")}
+                              className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[9px] font-bold hover:bg-emerald-100 transition"
+                            >
+                              Won
+                            </button>
+                            <button
+                              onClick={() => handleUpdateStatus(deal.id, "lost")}
+                              className="px-1.5 py-0.5 bg-red-50 text-red-700 rounded text-[9px] font-bold hover:bg-red-100 transition"
+                            >
+                              Lost
+                            </button>
+                          </div>
+                        )}
 
                         {/* Owner / Assignee */}
                         <div className="flex items-center justify-between text-[9px] text-slate-400 pt-1">

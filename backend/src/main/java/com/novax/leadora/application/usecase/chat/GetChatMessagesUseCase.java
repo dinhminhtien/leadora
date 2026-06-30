@@ -4,6 +4,7 @@ import com.novax.leadora.api.dto.response.ChatMessageResponse;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.AiChatSessionEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ChatRole;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ChatSessionStatus;
 import com.novax.leadora.infrastructure.persistence.repository.AiChatMessageRepository;
 import com.novax.leadora.infrastructure.persistence.repository.AiChatSessionRepository;
@@ -33,7 +34,7 @@ public class GetChatMessagesUseCase {
             throw new ResourceNotFoundException("Chat session", sessionId);
         }
 
-        return messageRepository.findBySession_SessionIdOrderByCreatedAtAsc(sessionId)
+        return messageRepository.findSessionMessagesOrdered(sessionId, ChatRole.USER)
                 .stream()
                 .map(ChatMessageResponse::from)
                 .toList();

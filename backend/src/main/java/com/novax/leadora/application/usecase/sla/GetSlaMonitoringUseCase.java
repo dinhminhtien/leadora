@@ -19,7 +19,7 @@ public class GetSlaMonitoringUseCase {
 
     private final SlaTrackingRepository slaTrackingRepository;
 
-    private static final List<SlaStatus> TRACKED_STATUSES = List.of(SlaStatus.ACTIVE, SlaStatus.BREACHED, SlaStatus.RESOLVED);
+    private static final List<SlaStatus> TRACKED_STATUSES = List.of(SlaStatus.ACTIVE, SlaStatus.BREACHED);
 
     /**
      * @param entityType    optional filter — LEAD | QUOTATION | BOOKING | TASK
@@ -29,7 +29,7 @@ public class GetSlaMonitoringUseCase {
     public List<SlaMonitoringResponse> execute(String entityType, String displayStatus) {
         OffsetDateTime now = OffsetDateTime.now();
 
-        // Push status + entityType filter to DB — avoid loading RESOLVED records
+        // Only load ACTIVE and BREACHED records — RESOLVED records are excluded from monitoring
         List<SlaTrackingEntity> records = StringUtils.hasText(entityType)
                 ? slaTrackingRepository.findByStatusInAndEntityType(TRACKED_STATUSES, entityType.toUpperCase())
                 : slaTrackingRepository.findByStatusIn(TRACKED_STATUSES);
@@ -43,7 +43,7 @@ public class GetSlaMonitoringUseCase {
                 // Most urgent first: BREACHED → WARNING → WITHIN_SLA, then by deadlineAt ASC
                 .sorted(Comparator
                         .comparingInt((SlaMonitoringResponse r) -> displayStatusOrder(r.getDisplayStatus()))
-                        .thenComparing(SlaMonitoringResponse::getDeadlineAt))
+                        .thenComparing(r -> r.getDeadlineAt()))
                 .toList();
     }
 
@@ -52,8 +52,7 @@ public class GetSlaMonitoringUseCase {
             case "BREACHED"   -> 0;
             case "WARNING"    -> 1;
             case "WITHIN_SLA" -> 2;
-            case "RESOLVED"   -> 3;
-            default           -> 4;
+            default           -> 3;
         };
     }
 }

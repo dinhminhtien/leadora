@@ -2,7 +2,11 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { quotationService } from "@/services/quotation_service";
-import { reportingService, type ReportLogPayload } from "@/services/reporting_service";
+import {
+  reportingService,
+  type ReportLogPayload,
+  type ReportRangeParams,
+} from "@/services/reporting_service";
 import { dealService } from "@/services/deal_service";
 
 // Fetch all quotations for the discount report tab
@@ -40,5 +44,25 @@ export function useDashboardSummary() {
 export function useSaveReportLog() {
   return useMutation({
     mutationFn: (payload: ReportLogPayload) => reportingService.saveReportLog(payload),
+  });
+}
+
+// UC-23.1 — Sales Performance Statistics Report
+export function useSalesPerformanceReport(params: ReportRangeParams) {
+  return useQuery({
+    queryKey: ["sales-performance-report", params],
+    queryFn: () => reportingService.getSalesPerformance(params),
+    select: (res) => res.data,
+    staleTime: 30_000,
+  });
+}
+
+// UC-23.2 — Follow-up Task Performance Report
+export function useTaskPerformanceReport(params: ReportRangeParams) {
+  return useQuery({
+    queryKey: ["task-performance-report", params],
+    queryFn: () => reportingService.getTaskPerformance(params),
+    select: (res) => res.data,
+    staleTime: 30_000,
   });
 }

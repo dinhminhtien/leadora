@@ -56,7 +56,7 @@ public class SendChatMessageUseCase {
 
         // History BEFORE this turn (for the LLM's conversational context).
         List<AiChatMessageEntity> history =
-                messageRepository.findBySession_SessionIdOrderByCreatedAtAsc(sessionId);
+                messageRepository.findSessionMessagesOrdered(sessionId, ChatRole.USER);
 
         // Auto-title the session from the first user message.
         boolean firstTurn = history.isEmpty();
@@ -72,7 +72,7 @@ public class SendChatMessageUseCase {
         String lastIntentName = history.stream()
                 .filter(m -> m.getRole() == ChatRole.ASSISTANT && m.getIntentMatched() != null)
                 .reduce((first, second) -> second) // last assistant turn
-                .map(AiChatMessageEntity::getIntentMatched)
+                .map(msg -> msg.getIntentMatched())
                 .orElse(null);
         IntentResult intent = intentClassifier.classify(content, lastIntentName);
         if (intent.blocked()) {

@@ -81,13 +81,13 @@ public class CrmContextService {
 
         // Leads — counts by status + an actual listing so the assistant can enumerate them.
         Map<Object, Long> leadByStatus = leads.stream()
-                .collect(Collectors.groupingBy(LeadEntity::getStatus, Collectors.counting()));
+                .collect(Collectors.groupingBy(l -> l.getStatus(), Collectors.counting()));
         sb.append("Leads: tổng ").append(leads.size())
                 .append(" ").append(leadByStatus).append("\n");
         if (!leads.isEmpty()) {
             sb.append("Danh sách lead (mới nhất trước, tối đa ").append(MAX_LEADS).append("):\n");
             leads.stream()
-                    .sorted(Comparator.comparing(LeadEntity::getCreatedAt,
+                    .sorted(Comparator.comparing((LeadEntity l) -> l.getCreatedAt(),
                             Comparator.nullsFirst(Comparator.naturalOrder())).reversed())
                     .limit(MAX_LEADS)
                     .forEach(l -> sb.append("  - \"").append(l.getFullName())
@@ -104,12 +104,12 @@ public class CrmContextService {
         long openDeals = deals.stream().filter(d -> d.getStatus() == DealStatus.OPEN).count();
         BigDecimal openValue = deals.stream()
                 .filter(d -> d.getStatus() == DealStatus.OPEN && d.getExpectedRevenue() != null)
-                .map(DealEntity::getExpectedRevenue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(d -> d.getExpectedRevenue())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
         BigDecimal wonValue = deals.stream()
                 .filter(d -> d.getStatus() == DealStatus.WON && d.getExpectedRevenue() != null)
-                .map(DealEntity::getExpectedRevenue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(d -> d.getExpectedRevenue())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
         sb.append("Deals: tổng ").append(deals.size())
                 .append(", đang mở ").append(openDeals)
                 .append(", giá trị kỳ vọng (OPEN) ").append(openValue)
@@ -152,12 +152,12 @@ public class CrmContextService {
         long lostDeals = deals.stream().filter(d -> d.getStatus() == DealStatus.LOST).count();
         BigDecimal wonValue = deals.stream()
                 .filter(d -> d.getStatus() == DealStatus.WON && d.getExpectedRevenue() != null)
-                .map(DealEntity::getExpectedRevenue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(d -> d.getExpectedRevenue())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
         BigDecimal openValue = deals.stream()
                 .filter(d -> d.getStatus() == DealStatus.OPEN && d.getExpectedRevenue() != null)
-                .map(DealEntity::getExpectedRevenue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(d -> d.getExpectedRevenue())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         StringBuilder sb = new StringBuilder();
         sb.append("== Tổng hợp toàn đội bán hàng ==\n");
@@ -184,8 +184,8 @@ public class CrmContextService {
             long won = rep.stream().filter(d -> d.getStatus() == DealStatus.WON).count();
             BigDecimal value = rep.stream()
                     .filter(d -> d.getStatus() == DealStatus.WON && d.getExpectedRevenue() != null)
-                    .map(DealEntity::getExpectedRevenue)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    .map(d -> d.getExpectedRevenue())
+                    .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
             sb.append("  - ").append(e.getKey())
                     .append(": deals mở ").append(open)
                     .append(", thắng ").append(won)

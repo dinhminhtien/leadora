@@ -7,7 +7,6 @@ import { useNotifications } from "@/features/notification/hooks/use_notification
 import { getUserRole, canAccessPath, dashboardPathForRole } from "@/shared/auth/access";
 import {
   Bell,
-  Bot,
   BriefcaseBusiness,
   CalendarCheck,
   ChartNoAxesCombined,
@@ -18,7 +17,6 @@ import {
   Gauge,
   Handshake,
   Headphones,
-  Home,
   Hotel,
   KeyRound,
   LayoutDashboard,
@@ -48,6 +46,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { authService } from "@/services/auth_service";
 import { supabaseAuthService } from "@/services/supabase_auth_service";
 import { ToastContainer } from "@/components/ui/ToastContainer";
+import { FloatingAssistant } from "@/features/ai_assistant/components/FloatingAssistant";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -103,7 +102,6 @@ const navigationGroups: NavGroup[] = [
       { href: ROUTE_PATHS.customerFeedback, label: "Feedback", Icon: MessageSquareText },
       { href: ROUTE_PATHS.notifications, label: "Alerts", Icon: Bell },
       { href: ROUTE_PATHS.identityAccess, label: "User Access", Icon: KeyRound },
-      { href: ROUTE_PATHS.aiAssistant, label: "AI Copilot", Icon: Bot },
     ],
   },
 ];
@@ -113,13 +111,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const { sidebarOpen, toggleSidebar } = useUiStore();
   const { user, clearUser, isLoading } = useAuthStore();
-  const { data: unreadNotifications } = useNotifications(user?.id, true);
+  const { data: unreadNotifications } = useNotifications(true);
   const unreadCount = unreadNotifications?.length ?? 0;
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
   // ── Role + permission based access control (frontend) ──────────────────────
   const role = getUserRole(user);
+  // Front Office gets a stripped-down desk: no sales search / quick-add.
+  const isFrontOffice = role === "FO";
   const roleDashboard = dashboardPathForRole(role);
   const permissions = user?.permissions ?? [];
   const permKey = permissions.join(",");
@@ -128,6 +128,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   // SALES/MANAGER, role-gated for ADMIN). The generic "Dashboard" link points at
   // the role-specific home so highlighting and navigation match.
   const visibleGroups = useMemo(() => {
+    const seen = new Set<string>();
     return navigationGroups
       .map((group) => ({
         ...group,
@@ -136,7 +137,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             ...item,
             href: item.href === ROUTE_PATHS.dashboard ? roleDashboard : item.href,
           }))
-          .filter((item) => canAccessPath(role, item.href, permissions)),
+          .filter((item) => canAccessPath(role, item.href, permissions))
+          // De-duplicate links that resolve to the same route (e.g. for FO the generic
+          // "Dashboard" maps to the handover screen, which is also its own nav item).
+          .filter((item) => {
+            if (seen.has(item.href)) return false;
+            seen.add(item.href);
+            return true;
+          }),
       }))
       .filter((group) => group.items.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -292,12 +300,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Leadora Workspace</span>
               <h2 className="text-xs font-bold text-foreground flex items-center gap-1.5 mt-0.5">
                 <Sparkles className="size-3.5 text-primary" />
-                Hotel Sales Dashboard
+                {isFrontOffice ? "Front Office Desk" : "Hotel Sales Dashboard"}
               </h2>
             </div>
           </div>
 
-          {/* Center: Search Lead/Deals */}
+          {/* Center: Search Lead/Deals (hidden for Front Office) */}
+          {!isFrontOffice && (
           <div className="flex-1 max-w-sm mx-6 hidden md:block">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
@@ -308,10 +317,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               />
             </div>
           </div>
+          )}
 
           {/* Right: Actions (Quick Add, Notification, Profile) */}
-          <div className="flex items-center gap-3.5">
-            {/* Quick Add Button */}
+          <div className="ml-auto flex items-center gap-3.5">
+            {/* Quick Add Button (hidden for Front Office) */}
+            {!isFrontOffice && (
             <div className="relative">
               <Button
                 variant="primary"
@@ -356,6 +367,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 </>
               )}
             </div>
+            )}
 
             {/* Theme Toggle */}
             <ThemeToggle className="shadow-none border-none bg-transparent hover:bg-muted text-muted-foreground dark:hover:bg-muted/80" />
@@ -392,7 +404,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                       <p className="text-[10px] text-muted-foreground">{user.email}</p>
                       <div className="mt-1.5 flex gap-1">
                         <Badge variant="primary" className="text-[9px] py-0 px-1.5 font-semibold">
-                          {role === "ADMIN" ? "Admin" : role === "MANAGER" ? "Sales Manager" : "Sales Staff"}
+                          {role === "ADMIN" ? "Admin" : role === "MANAGER" ? "Sales Manager" : role === "FO" ? "Front Office" : "Sales Staff"}
                         </Badge>
                       </div>
                     </div>
@@ -423,6 +435,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </main>
       </div>
       <ToastContainer />
+      {/* Lia — draggable floating assistant, available on every dashboard screen. */}
+      <FloatingAssistant />
     </div>
   );
 }
