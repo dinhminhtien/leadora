@@ -71,7 +71,10 @@ export function useDeleteChatSession() {
   return useMutation({
     mutationFn: (sessionId: string) =>
       chatAssistantService.deleteSession(sessionId),
-    onSuccess: () => {
+    onSuccess: (_data, sessionId) => {
+      // Drop the deleted session's cached messages so they can't be re-rendered
+      // if the selection briefly points back at it before the list refetches.
+      queryClient.removeQueries({ queryKey: ["chat-messages", sessionId] });
       queryClient.invalidateQueries({ queryKey: SESSIONS_KEY });
     },
   });
