@@ -247,7 +247,7 @@ public class SemanticChunker {
     /** Token-splitter fallback: returns the chunk texts produced by Spring AI's TokenTextSplitter. */
     private List<String> tokenSplit(String text) {
         return fallback.apply(List.of(new Document(text)))
-                .stream().map(Document::getText).toList();
+                .stream().map(doc -> doc.getText()).toList();
     }
 
     private static double cosine(float[] a, float[] b) {
@@ -269,7 +269,7 @@ public class SemanticChunker {
             return Double.MAX_VALUE; // no distances → no breakpoints
         }
         List<Double> sorted = new ArrayList<>(values);
-        sorted.sort(Double::compareTo);
+        sorted.sort((a, b) -> a.compareTo(b));
         int idx = (int) Math.ceil(pct / 100.0 * sorted.size()) - 1;
         idx = Math.max(0, Math.min(sorted.size() - 1, idx));
         return sorted.get(idx);

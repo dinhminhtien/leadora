@@ -67,7 +67,7 @@ public class GetRemindersUseCase {
             records = records.stream()
                     .sorted(Comparator
                             .comparingInt((ReminderEntity r) -> priorityOrder(r.getPriority()))
-                            .thenComparing(ReminderEntity::getRemindAt))
+                            .thenComparing(r -> r.getRemindAt()))
                     .toList();
         }
 
