@@ -52,6 +52,7 @@ import { toast } from "@/stores/toast_store";
 import { getApiErrorMessage } from "@/lib/api_error";
 import { leadService, type Lead } from "@/services/lead_service";
 import { customerProfileService } from "@/services/customer_profile_service";
+import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
 
 // ── Activity Types (Pipedrive-style) ─────────────────────────────────────────
 
@@ -787,6 +788,7 @@ function TaskDetailDrawer({
                     Linked Deal
                   </Badge>
                 )}
+                <SlaStatusBadge entityId={task.taskId} entityType="TASK" />
               </div>
 
               {/* Overdue warning banner */}
@@ -1807,6 +1809,11 @@ export function FollowUpTaskListScreen() {
           </div>
         </td>
 
+        {/* SLA */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          <SlaStatusBadge entityId={task.taskId} entityType="TASK" />
+        </td>
+
         {/* Row actions — appear on hover */}
         <td className="px-3 py-3 w-[120px]" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
@@ -2166,6 +2173,7 @@ export function FollowUpTaskListScreen() {
                     <th className="w-[90px] px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Schedule</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Assigned To</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Priority / Status</th>
+                    <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">SLA</th>
                     <th className="w-[120px] px-3 py-2.5" />
                   </tr>
                 </thead>

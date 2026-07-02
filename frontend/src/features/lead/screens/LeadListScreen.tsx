@@ -20,6 +20,7 @@ import type { UserSummary } from "@/services/follow_up_task_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
 import type { LeadStatus, CreateLeadPayload } from "@/services/lead_service";
+import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -351,7 +352,7 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
 // Fixed column widths (sum = 100%). Combined with `table-fixed` these keep the
 // header and body columns aligned regardless of content length or which status
 // tab is active — the layout no longer reflows when switching tabs.
-const COL_WIDTHS = ["4%", "15%", "11%", "10%", "11%", "8%", "10%", "10%", "8%", "9%", "4%"];
+const COL_WIDTHS = ["4%", "12%", "9%", "10%", "9%", "8%", "10%", "10%", "8%", "7%", "9%", "4%"];
 
 // Rows per page. The table always renders this many row slots (real rows + invisible
 // fillers) so its height — and therefore the pagination bar pinned below it — stays
@@ -419,6 +420,7 @@ function LeadTable({
               { label: "Owner", w: "" },
               { label: "Created by", w: "" },
               { label: "Status", w: "" },
+              { label: "SLA", w: "" },
               { label: "Created", w: "" },
               { label: "", w: "w-8" },
             ].map((h, i) => (
@@ -479,6 +481,9 @@ function LeadTable({
                   : <span className="text-xs text-slate-300 italic">—</span>}
               </TableCell>
               <TableCell className="py-3 px-4 border-b-0"><StatusBadge status={lead.status} /></TableCell>
+              <TableCell className="py-3 px-4 border-b-0">
+                <SlaStatusBadge entityId={lead.leadId} entityType="LEAD" />
+              </TableCell>
               <TableCell className="py-3 px-4 text-xs text-slate-400 whitespace-nowrap border-b-0">
                 {lead.createdAt ? new Date(lead.createdAt).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
               </TableCell>
