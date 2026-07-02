@@ -99,6 +99,9 @@ export function canAccessPath(
   if (pathname === ROUTE_PATHS.dashboard) return true;
   if (pathname === DASHBOARD_PATHS[role]) return true;
 
+  // Profile page is self-service — every authenticated user may access it regardless of role.
+  if (pathname === ROUTE_PATHS.profile || pathname.startsWith(ROUTE_PATHS.profile + "/")) return true;
+
   if (role === "ADMIN") {
     return matchesAny(ADMIN_ROUTES, pathname);
   }
