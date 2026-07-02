@@ -32,4 +32,5 @@ export const ROUTE_PATHS = {
   frontOfficeHandover: "/front-office-handover",
   reporting: "/reporting",
   aiAssistant: "/ai-assistant",
+  profile: "/profile",
 } as const;
