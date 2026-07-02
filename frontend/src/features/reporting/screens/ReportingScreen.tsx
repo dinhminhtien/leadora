@@ -11,6 +11,9 @@ import { Select } from "@/components/ui/Select";
 import type { Quotation } from "@/services/quotation_service";
 import { useQuotationsForReport, useSaveReportLog, useDealsForReport } from "@/features/reporting/hooks/use_reporting";
 import { useAuthStore } from "@/stores/auth_store";
+import { getUserRole } from "@/shared/auth/access";
+import { SalesPerformanceTab } from "@/features/reporting/components/SalesPerformanceTab";
+import { TaskPerformanceTab } from "@/features/reporting/components/TaskPerformanceTab";
 
 export interface ReportLog {
   id: string;
@@ -914,14 +917,25 @@ function DiscountReportTab() {
 
 // ── Main Screen ──────────────────────────────────────────────────────────────
 
-type Tab = "analytics" | "discount-report";
+type Tab = "analytics" | "sales-performance" | "task-performance" | "discount-report";
 
 export function ReportingScreen() {
   const [activeTab, setActiveTab] = useState<Tab>("analytics");
   const [reportPeriod, setReportPeriod] = useState("this-quarter");
 
+  // Performance statistics (UC-23.1/23.2) are Sales-Manager reports.
+  const user = useAuthStore((s) => s.user);
+  const role = getUserRole(user);
+  const canSeePerformance = role === "MANAGER" || role === "ADMIN";
+
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "analytics", label: "Sales Analytics", icon: <BarChart2 className="size-3.5" /> },
+    ...(canSeePerformance
+      ? ([
+          { key: "sales-performance", label: "Sales Performance", icon: <TrendingUp className="size-3.5" /> },
+          { key: "task-performance", label: "Task Performance", icon: <ClipboardList className="size-3.5" /> },
+        ] as { key: Tab; label: string; icon: React.ReactNode }[])
+      : []),
     { key: "discount-report", label: "Discount Reports", icon: <FileText className="size-3.5" /> },
   ];
 
@@ -956,6 +970,8 @@ export function ReportingScreen() {
       {activeTab === "analytics" && (
         <AnalyticsTab reportPeriod={reportPeriod} setReportPeriod={setReportPeriod} />
       )}
+      {activeTab === "sales-performance" && <SalesPerformanceTab />}
+      {activeTab === "task-performance" && <TaskPerformanceTab />}
       {activeTab === "discount-report" && <DiscountReportTab />}
     </div>
   );
