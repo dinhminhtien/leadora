@@ -308,19 +308,22 @@ export function InteractionTimelineScreen() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Interaction History</h1>
-          <p className="text-xs text-slate-400">Chronological feed of guest communications, emails, and call touchpoints</p>
+          <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <MessageSquare className="size-5 text-[#185FA5]" />
+            Interaction History
+          </h1>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Chronological feed of guest communications, emails, and call touchpoints</p>
         </div>
         <Button 
           id="btn-log-interaction"
           variant="primary" 
+          size="sm"
           onClick={handleOpenCreateDrawer}
-          className="flex items-center gap-1.5 text-xs font-semibold py-2 shadow-sm transition hover:scale-[1.02] active:scale-[0.98] bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4"
+          leftIcon={<Plus className="size-4" />}
         >
-          <Plus className="size-4" />
           Log Interaction
         </Button>
       </div>
@@ -335,7 +338,7 @@ export function InteractionTimelineScreen() {
               placeholder="Search descriptions, guests, agents..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
             />
           </div>
 
@@ -353,7 +356,7 @@ export function InteractionTimelineScreen() {
                 onClick={() => setTypeFilter(tab.id)}
                 className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${
                   typeFilter === tab.id
-                    ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                    ? "bg-[#185FA5] text-[#E6F1FB] border-[#0C447C] shadow-xs"
                     : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
                 }`}
               >
@@ -368,7 +371,7 @@ export function InteractionTimelineScreen() {
             <select
               value={agentFilter}
               onChange={e => setAgentFilter(e.target.value)}
-              className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+              className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
             >
               <option value="all">All Agents</option>
               {agents.map(agent => (
@@ -389,7 +392,7 @@ export function InteractionTimelineScreen() {
         <CardContent className="px-6 py-8">
           {loading ? (
             <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-2 text-xs">
-              <Loader2 className="size-6 animate-spin text-blue-600" />
+              <Loader2 className="size-6 animate-spin text-[#185FA5]" />
               <span>Fetching timeline records...</span>
             </div>
           ) : error ? (
@@ -401,24 +404,33 @@ export function InteractionTimelineScreen() {
               {interactions.map((item) => (
                 <div key={item.id} className="relative group animate-in fade-in duration-200">
                   {/* Timeline icon */}
-                  <span className="absolute left-[-45px] top-0.5 flex size-8 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm transition group-hover:border-blue-500 group-hover:scale-105">
-                    {item.type === "call" && <Phone className="size-4 text-blue-500" />}
-                    {item.type === "email" && <Mail className="size-4 text-emerald-500" />}
-                    {item.type === "meeting" && <Calendar className="size-4 text-purple-500" />}
-                    {item.type === "note" && <FileText className="size-4 text-amber-500" />}
+                  <span className={`absolute left-[-45px] top-0.5 flex size-8 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm transition group-hover:scale-105 ${
+                    item.type === "call" ? "group-hover:border-green-500 group-hover:bg-green-50/50" :
+                    item.type === "email" ? "group-hover:border-blue-500 group-hover:bg-blue-50/50" :
+                    item.type === "meeting" ? "group-hover:border-purple-500 group-hover:bg-purple-50/50" :
+                    "group-hover:border-amber-500 group-hover:bg-amber-50/50"
+                  }`}>
+                    {item.type === "call" && <Phone className="size-4 text-green-600" />}
+                    {item.type === "email" && <Mail className="size-4 text-blue-600" />}
+                    {item.type === "meeting" && <Calendar className="size-4 text-purple-600" />}
+                    {item.type === "note" && <FileText className="size-4 text-amber-600" />}
                   </span>
 
                   <div>
                     <div className="flex justify-between items-center text-xs">
-                      <p className="font-bold text-slate-800">
-                        {item.type.toUpperCase()} Logged for{" "}
-                        <span className="text-blue-600 hover:underline cursor-pointer" onClick={() => handleOpenDetail(item.id)}>
+                      <div className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                        <span className="capitalize">{item.type}</span> Logged for{" "}
+                        <span className="text-[#185FA5] hover:text-[#0C447C] hover:underline cursor-pointer" onClick={() => handleOpenDetail(item.id)}>
                           {item.linkedName}
                         </span>
-                        <span className="ml-2 text-[10px] font-normal text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border capitalize ${
+                          item.linkedType === "lead" ? "bg-[#E6F1FB] text-[#0C447C] border-[#85B7EB]" :
+                          item.linkedType === "customer" ? "bg-[#EAF3DE] text-[#3B6D11] border-[#C0DD97]" :
+                          "bg-[#FAEEDA] text-[#854F0B] border-[#FAC775]"
+                        }`}>
                           {item.linkedType}
                         </span>
-                      </p>
+                      </div>
                       <span className="text-slate-400 text-[10px] flex items-center gap-1 font-semibold">
                         <Clock className="size-3" />
                         {formatDate(item.occurredAt)}
@@ -434,7 +446,7 @@ export function InteractionTimelineScreen() {
                     
                     <div className="flex items-center justify-between mt-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="size-5 rounded-full bg-blue-100 text-blue-700 text-[9px] font-bold flex items-center justify-center">
+                        <span className="size-5 rounded-full bg-[#E6F1FB] text-[#0C447C] text-[9px] font-bold flex items-center justify-center">
                           {item.agentName.slice(0, 2).toUpperCase()}
                         </span>
                         <span className="text-[10px] text-slate-400">
@@ -444,7 +456,7 @@ export function InteractionTimelineScreen() {
                       
                       <button
                         onClick={() => handleOpenDetail(item.id)}
-                        className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold transition"
+                        className="text-[10px] text-[#185FA5] hover:text-[#0C447C] font-semibold transition"
                       >
                         View Details →
                       </button>
@@ -474,7 +486,7 @@ export function InteractionTimelineScreen() {
               {/* Header */}
               <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-                  <Plus className="size-4 text-blue-600" />
+                  <Plus className="size-4 text-[#185FA5]" />
                   Log New Interaction
                 </h2>
                 <button 
@@ -494,10 +506,10 @@ export function InteractionTimelineScreen() {
                     <label className="text-xs font-semibold text-slate-600 block">Interaction Type *</label>
                     <div className="grid grid-cols-4 gap-2">
                       {[
-                        { id: "call", label: "Call", icon: Phone, color: "text-blue-500 border-blue-200 bg-blue-50/40" },
-                        { id: "email", label: "Email", icon: Mail, color: "text-emerald-500 border-emerald-200 bg-emerald-50/40" },
-                        { id: "meeting", label: "Meeting", icon: Calendar, color: "text-purple-500 border-purple-200 bg-purple-50/40" },
-                        { id: "note", label: "Note", icon: FileText, color: "text-amber-500 border-amber-200 bg-amber-50/40" }
+                        { id: "call", label: "Call", icon: Phone, color: "text-green-700 border-green-200 bg-green-50/50", ringColor: "ring-green-400" },
+                        { id: "email", label: "Email", icon: Mail, color: "text-blue-700 border-blue-200 bg-blue-50/50", ringColor: "ring-blue-400" },
+                        { id: "meeting", label: "Meeting", icon: Calendar, color: "text-purple-700 border-purple-200 bg-purple-50/50", ringColor: "ring-purple-400" },
+                        { id: "note", label: "Note", icon: FileText, color: "text-amber-700 border-amber-200 bg-amber-50/50", ringColor: "ring-amber-400" }
                       ].map(option => {
                         const Icon = option.icon;
                         const isSelected = formType === option.id;
@@ -508,7 +520,7 @@ export function InteractionTimelineScreen() {
                             onClick={() => setFormType(option.id as any)}
                             className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs transition duration-200 ${
                               isSelected 
-                                ? `${option.color} ring-1 ring-blue-400 font-bold scale-[1.03]`
+                                ? `${option.color} ring-1 ${option.ringColor} font-bold scale-[1.03]`
                                 : "border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500"
                             }`}
                           >
@@ -528,7 +540,7 @@ export function InteractionTimelineScreen() {
                       required
                       value={formOccurredAt}
                       onChange={e => setFormOccurredAt(e.target.value)}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
                     />
                   </div>
 
@@ -556,7 +568,7 @@ export function InteractionTimelineScreen() {
                           }}
                           className={`flex-1 px-3 py-1.5 text-center transition ${
                             searchEntityType === tab.id 
-                              ? "bg-blue-600 text-white font-bold" 
+                              ? "bg-[#185FA5] text-white font-bold" 
                               : "text-slate-500 hover:bg-slate-50"
                           }`}
                         >
@@ -567,16 +579,16 @@ export function InteractionTimelineScreen() {
 
                     {/* Display Selected Entity if any */}
                     {(selectedLead || selectedCustomer || selectedDeal) ? (
-                      <div className="p-3 rounded-lg border border-blue-100 bg-blue-50/50 flex items-center justify-between text-xs animate-in fade-in duration-200">
+                      <div className="p-3 rounded-lg border border-[#85B7EB] bg-[#E6F1FB] flex items-center justify-between text-xs animate-in fade-in duration-200">
                         <div className="flex items-center gap-2">
-                          {selectedLead && <User className="size-4 text-blue-500" />}
-                          {selectedCustomer && <Building2 className="size-4 text-emerald-500" />}
-                          {selectedDeal && <Briefcase className="size-4 text-purple-500" />}
+                          {selectedLead && <User className="size-4 text-[#185FA5]" />}
+                          {selectedCustomer && <Building2 className="size-4 text-[#185FA5]" />}
+                          {selectedDeal && <Briefcase className="size-4 text-[#185FA5]" />}
                           <div>
-                            <p className="font-semibold text-slate-800">
+                            <p className="font-semibold text-[#0C447C]">
                               {selectedLead?.fullName || selectedCustomer?.name || selectedDeal?.title}
                             </p>
-                            <p className="text-[10px] text-slate-400">
+                            <p className="text-[10px] text-[#185FA5]">
                               {selectedLead && `Lead · ${selectedLead.phone || selectedLead.email || ""}`}
                               {selectedCustomer && `Customer · ${selectedCustomer.phone || selectedCustomer.email || ""}`}
                               {selectedDeal && `Deal · ${selectedDeal.status || ""}`}
@@ -591,7 +603,7 @@ export function InteractionTimelineScreen() {
                             setSelectedDeal(null);
                             setSearchQuery("");
                           }}
-                          className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition"
+                          className="p-1 rounded text-[#185FA5] hover:text-[#A32D2D] hover:bg-white/50 transition"
                         >
                           <X className="size-3.5" />
                         </button>
@@ -607,7 +619,7 @@ export function InteractionTimelineScreen() {
                           onChange={e => {
                             setSearchQuery(e.target.value);
                           }}
-                          className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition"
+                          className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 transition"
                         />
 
                         {/* Search Results Dropdown */}
@@ -615,7 +627,7 @@ export function InteractionTimelineScreen() {
                           <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg z-20 divide-y divide-slate-100">
                             {searchLoading ? (
                               <div className="p-3 text-center text-xs text-slate-400 flex items-center justify-center gap-1.5">
-                                <Loader2 className="size-3.5 animate-spin" />
+                                <Loader2 className="size-3.5 animate-spin text-[#185FA5]" />
                                 Searching...
                               </div>
                             ) : searchResults.length > 0 ? (
@@ -629,9 +641,9 @@ export function InteractionTimelineScreen() {
                                     if (searchEntityType === "deal") setSelectedDeal(item);
                                     setSearchQuery("");
                                   }}
-                                  className="w-full text-left px-3 py-2 hover:bg-slate-50 flex flex-col"
+                                  className="w-full text-left px-3 py-2 hover:bg-[#E6F1FB] flex flex-col transition"
                                 >
-                                  <span className="text-xs font-semibold text-slate-700">
+                                  <span className="text-xs font-semibold text-slate-700 hover:text-[#0C447C]">
                                     {item.fullName || item.name || item.title}
                                   </span>
                                   <span className="text-[10px] text-slate-400 truncate">
@@ -659,7 +671,7 @@ export function InteractionTimelineScreen() {
                       value={formDescription}
                       onChange={e => setFormDescription(e.target.value)}
                       placeholder="Summarize the core details of the phone call, meeting discussion, email outcome, or general notes..."
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition resize-none leading-relaxed"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition resize-none leading-relaxed"
                     />
                   </div>
 
@@ -678,7 +690,7 @@ export function InteractionTimelineScreen() {
                     type="submit" 
                     variant="primary" 
                     disabled={createLoading || (!selectedLead && !selectedCustomer && !selectedDeal)}
-                    className="flex-1 text-xs font-semibold py-2 bg-blue-600 text-white rounded-lg"
+                    className="flex-1 text-xs py-2"
                   >
                     {createLoading ? (
                       <span className="flex items-center justify-center gap-1.5">
@@ -688,9 +700,9 @@ export function InteractionTimelineScreen() {
                   </Button>
                   <Button 
                     type="button" 
-                    variant="outline" 
+                    variant="ghost" 
                     onClick={() => setShowCreateDrawer(false)}
-                    className="flex-1 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100"
+                    className="flex-1 text-xs py-2"
                   >
                     Cancel
                   </Button>
@@ -716,7 +728,7 @@ export function InteractionTimelineScreen() {
               {/* Header */}
               <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-                  <MessageSquare className="size-4 text-blue-600" />
+                  <MessageSquare className="size-4 text-[#185FA5]" />
                   {isEditingDetail ? "Edit Interaction Log" : "Interaction Detail"}
                 </h2>
                 <div className="flex items-center gap-1.5">
@@ -749,10 +761,10 @@ export function InteractionTimelineScreen() {
                       <label className="text-xs font-semibold text-slate-600 block">Interaction Type *</label>
                       <div className="grid grid-cols-4 gap-2">
                         {[
-                          { id: "call", label: "Call", icon: Phone, color: "text-blue-500 border-blue-200 bg-blue-50/40" },
-                          { id: "email", label: "Email", icon: Mail, color: "text-emerald-500 border-emerald-200 bg-emerald-50/40" },
-                          { id: "meeting", label: "Meeting", icon: Calendar, color: "text-purple-500 border-purple-200 bg-purple-50/40" },
-                          { id: "note", label: "Note", icon: FileText, color: "text-amber-500 border-amber-200 bg-amber-50/40" }
+                          { id: "call", label: "Call", icon: Phone, color: "text-green-700 border-green-200 bg-green-50/50", ringColor: "ring-green-400" },
+                          { id: "email", label: "Email", icon: Mail, color: "text-blue-700 border-blue-200 bg-blue-50/50", ringColor: "ring-blue-400" },
+                          { id: "meeting", label: "Meeting", icon: Calendar, color: "text-purple-700 border-purple-200 bg-purple-50/50", ringColor: "ring-purple-400" },
+                          { id: "note", label: "Note", icon: FileText, color: "text-amber-700 border-amber-200 bg-amber-50/50", ringColor: "ring-amber-400" }
                         ].map(option => {
                           const Icon = option.icon;
                           const isSelected = editType === option.id;
@@ -763,7 +775,7 @@ export function InteractionTimelineScreen() {
                               onClick={() => setEditType(option.id as any)}
                               className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs transition duration-200 ${
                                 isSelected 
-                                  ? `${option.color} ring-1 ring-blue-400 font-bold scale-[1.03]`
+                                  ? `${option.color} ring-1 ${option.ringColor} font-bold scale-[1.03]`
                                   : "border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500"
                               }`}
                             >
@@ -783,7 +795,7 @@ export function InteractionTimelineScreen() {
                         required
                         value={editOccurredAt}
                         onChange={e => setEditOccurredAt(e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
                       />
                     </div>
 
@@ -795,7 +807,7 @@ export function InteractionTimelineScreen() {
                         required
                         value={editDescription}
                         onChange={e => setEditDescription(e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition resize-none leading-relaxed"
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition resize-none leading-relaxed"
                       />
                     </div>
 
@@ -813,7 +825,7 @@ export function InteractionTimelineScreen() {
                       type="submit" 
                       variant="primary" 
                       disabled={editLoading}
-                      className="flex-1 text-xs font-semibold py-2 bg-blue-600 text-white rounded-lg"
+                      className="flex-1 text-xs py-2"
                     >
                       {editLoading ? (
                         <span className="flex items-center justify-center gap-1.5">
@@ -823,9 +835,9 @@ export function InteractionTimelineScreen() {
                     </Button>
                     <Button 
                       type="button" 
-                      variant="outline" 
+                      variant="ghost" 
                       onClick={() => setIsEditingDetail(false)}
-                      className="flex-1 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100"
+                      className="flex-1 text-xs py-2"
                     >
                       Cancel
                     </Button>
@@ -838,15 +850,15 @@ export function InteractionTimelineScreen() {
                   <div className="space-y-4">
                     <div className="flex items-center gap-3">
                       <span className="flex size-10 items-center justify-center rounded-full bg-slate-50 border border-slate-200">
-                        {selectedInteraction.type === "call" && <Phone className="size-5 text-blue-500" />}
-                        {selectedInteraction.type === "email" && <Mail className="size-5 text-emerald-500" />}
-                        {selectedInteraction.type === "meeting" && <Calendar className="size-5 text-purple-500" />}
-                        {selectedInteraction.type === "note" && <FileText className="size-5 text-amber-500" />}
+                        {selectedInteraction.type === "call" && <Phone className="size-5 text-green-600" />}
+                        {selectedInteraction.type === "email" && <Mail className="size-5 text-blue-600" />}
+                        {selectedInteraction.type === "meeting" && <Calendar className="size-5 text-purple-600" />}
+                        {selectedInteraction.type === "note" && <FileText className="size-5 text-amber-600" />}
                       </span>
                       <div>
                         <Badge className={
-                          selectedInteraction.type === "call" ? "bg-blue-100 text-blue-800 hover:bg-blue-100 border-none font-bold" :
-                          selectedInteraction.type === "email" ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-none font-bold" :
+                          selectedInteraction.type === "call" ? "bg-green-100 text-green-800 hover:bg-green-100 border-none font-bold" :
+                          selectedInteraction.type === "email" ? "bg-blue-100 text-blue-800 hover:bg-blue-100 border-none font-bold" :
                           selectedInteraction.type === "meeting" ? "bg-purple-100 text-purple-800 hover:bg-purple-100 border-none font-bold" :
                           "bg-amber-100 text-amber-800 hover:bg-amber-100 border-none font-bold"
                         }>
@@ -881,7 +893,7 @@ export function InteractionTimelineScreen() {
                       </div>
                       <div className="space-y-1 col-span-2">
                         <span className="text-[10px] text-slate-400 font-bold block">LINKED RECORD ({selectedInteraction.linkedType?.toUpperCase()})</span>
-                        <span className="text-xs font-semibold text-blue-600">
+                        <span className="text-xs font-semibold text-[#185FA5]">
                           {selectedInteraction.linkedName}
                         </span>
                       </div>
@@ -894,9 +906,9 @@ export function InteractionTimelineScreen() {
               {!isEditingDetail && (
                 <div className="px-6 py-4 border-t border-slate-100 flex justify-end bg-slate-50/50">
                   <Button 
-                    variant="outline" 
+                    variant="ghost" 
                     onClick={() => setSelectedInteraction(null)}
-                    className="text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100"
+                    className="text-xs py-1.5 px-4"
                   >
                     Close Details
                   </Button>
