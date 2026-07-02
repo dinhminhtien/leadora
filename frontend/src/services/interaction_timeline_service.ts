@@ -19,7 +19,20 @@ export type InteractionTimelineQuery = ListQuery & {
   agentId?: string;
 };
 
-export type InteractionTimelinePayload = Record<string, unknown>;
+export type CreateInteractionTimelinePayload = {
+  type: "call" | "email" | "meeting" | "note";
+  description: string;
+  occurredAt: string; // ISO datetime
+  leadId?: string;
+  customerId?: string;
+  dealId?: string;
+};
+
+export type UpdateInteractionTimelinePayload = {
+  type: "call" | "email" | "meeting" | "note";
+  description: string;
+  occurredAt: string; // ISO datetime
+};
 
 const ENDPOINT = "/interaction-timeline";
 
@@ -39,7 +52,7 @@ export const interactionTimelineService = {
     return response.data;
   },
 
-  async create(payload: InteractionTimelinePayload) {
+  async create(payload: CreateInteractionTimelinePayload) {
     const response = await apiClient.post<ApiResponse<InteractionTimelineEntry>>(
       ENDPOINT,
       payload,
@@ -47,7 +60,7 @@ export const interactionTimelineService = {
     return response.data;
   },
 
-  async update(id: string, payload: InteractionTimelinePayload) {
+  async update(id: string, payload: UpdateInteractionTimelinePayload) {
     const response = await apiClient.put<ApiResponse<InteractionTimelineEntry>>(
       `${ENDPOINT}/${id}`,
       payload,
@@ -55,3 +68,4 @@ export const interactionTimelineService = {
     return response.data;
   },
 };
+
