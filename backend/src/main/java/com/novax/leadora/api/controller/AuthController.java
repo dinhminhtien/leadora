@@ -81,6 +81,7 @@ public class AuthController {
                 .name(user.getFullName())
                 .roles(List.of(user.getRole() != null ? user.getRole().getRoleName() : "STAFF"))
                 .permissions(effectivePermissionsService.forUser(user))
+                .avatarUrl(user.getAvatarUrl())
                 .build();
     }
 }

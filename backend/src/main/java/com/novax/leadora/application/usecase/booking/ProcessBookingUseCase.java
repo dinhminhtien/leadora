@@ -3,12 +3,14 @@ package com.novax.leadora.application.usecase.booking;
 import com.novax.leadora.api.dto.request.ProcessBookingRequest;
 import com.novax.leadora.api.dto.response.BookingDetailResponse;
 import com.novax.leadora.api.dto.response.BookingResponse;
+import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,12 +20,14 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProcessBookingUseCase {
 
     private final BookingRepository bookingRepository;
     private final BookingDetailRepository bookingDetailRepository;
+    private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
 
     @Transactional
     public BookingResponse execute(UUID bookingId, ProcessBookingRequest request) {
@@ -51,6 +55,13 @@ public class ProcessBookingUseCase {
         }
 
         BookingEntity saved = bookingRepository.save(booking);
+
+        // UC-17.2: booking confirmation decision made — auto-resolve BOOKING_CONFIRM SLA tracking
+        try {
+            resolveSlaBreachUseCase.executeByEntity("BOOKING", bookingId);
+        } catch (Exception e) {
+            log.warn("SLA auto-resolve failed for booking {}: {}", bookingId, e.getMessage());
+        }
 
         List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(bookingId);
         List<BookingDetailResponse> detailResponses = details.stream()
