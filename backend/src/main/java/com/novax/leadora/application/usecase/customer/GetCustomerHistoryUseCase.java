@@ -95,7 +95,7 @@ public class GetCustomerHistoryUseCase {
 
         // Sort newest first
         history.sort(Comparator.comparing(
-                CustomerHistoryItem::createdAt,
+                item -> item.createdAt(),
                 Comparator.nullsLast(Comparator.reverseOrder())
         ));
 

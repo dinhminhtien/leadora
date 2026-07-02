@@ -9,6 +9,7 @@ type AuthStore = {
   setUser: (user: User) => void;
   clearUser: () => void;
   setLoading: (loading: boolean) => void;
+  updateUserFields: (fields: Partial<Pick<User, "name" | "avatarUrl">>) => void;
 };
 
 export const useAuthStore = create<AuthStore>((set) => ({
@@ -19,4 +20,8 @@ export const useAuthStore = create<AuthStore>((set) => ({
   clearUser: () =>
     set({ user: null, isAuthenticated: false, isLoading: false }),
   setLoading: (isLoading) => set({ isLoading }),
+  updateUserFields: (fields) =>
+    set((state) => ({
+      user: state.user ? { ...state.user, ...fields } : null,
+    })),
 }));

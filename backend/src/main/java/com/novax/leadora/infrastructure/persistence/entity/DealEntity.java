@@ -30,11 +30,11 @@ public class DealEntity extends BaseEntity {
     @JoinColumn(name = "assigned_user_id")
     private UserEntity assignedUser;
 
-    @Column(name = "deal_name", nullable = false, length = 20)
+    @Column(name = "deal_name", nullable = false, length = 50)
     private String dealName;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "pipeline_stage", nullable = false, length = 10)
+    @Column(name = "pipeline_stage", nullable = false, length = 30)
     private DealPipelineStage pipelineStage;
 
     @Column(name = "expected_revenue", precision = 15, scale = 2)

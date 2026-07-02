@@ -19,10 +19,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/v1/leads")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('SALES','MANAGER')")
 public class LeadController {
 
     private final CreateLeadUseCase createLeadUseCase;
@@ -46,12 +48,15 @@ public class LeadController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String source,
             @RequestParam(required = false) Boolean isCorporate,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir,
+            @RequestParam(defaultValue = "assigned") String scope,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
-        Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, isCorporate, sortBy, sortDir, page, size);
+        Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, isCorporate, dateFrom, dateTo, sortBy, sortDir, scope, page, size);
         return ResponseEntity.ok(ApiResponse.success(leads));
     }
 

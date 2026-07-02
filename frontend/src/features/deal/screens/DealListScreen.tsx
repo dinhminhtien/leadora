@@ -26,6 +26,25 @@ import { userService as taskUserService, type UserSummary } from "@/services/fol
 
 const STAGES_ORDER: Deal["stage"][] = ["Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed"];
 
+const getStageBadgeStyles = (stage: Deal["stage"]) => {
+  switch (stage) {
+    case "Inquiry":
+      return "!bg-slate-100 !text-slate-700 border !border-slate-200";
+    case "Site Visit":
+      return "!bg-blue-50 !text-blue-700 border !border-blue-200/50";
+    case "Proposal":
+      return "!bg-amber-50 !text-amber-700 border !border-amber-200/50";
+    case "Negotiation":
+      return "!bg-orange-50 !text-orange-700 border !border-orange-200/50";
+    case "Contract":
+      return "!bg-indigo-50 !text-indigo-700 border !border-indigo-200/50";
+    case "Confirmed":
+      return "!bg-emerald-50 !text-emerald-700 border !border-emerald-200/50";
+    default:
+      return "!bg-slate-100 !text-slate-700 border !border-slate-200";
+  }
+};
+
 export type Deal = {
   id: string;
   title: string;
@@ -50,6 +69,17 @@ export function DealListScreen() {
   const [isNewDealDrawerOpen, setIsNewDealDrawerOpen] = useState(false);
   const [isEditDealDrawerOpen, setIsEditDealDrawerOpen] = useState(false);
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
+
+  // Pagination States
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const isAlreadyClosed = useMemo(() => {
+    if (!editingDeal) return false;
+    const orig = deals.find(d => d.id === editingDeal.id);
+    return orig ? orig.status !== "active" : false;
+  }, [editingDeal, deals]);
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -190,13 +220,25 @@ export function DealListScreen() {
       const matchesSearch =
         titleLower.includes(searchTerm.toLowerCase()) ||
         contactLower.includes(searchTerm.toLowerCase());
-      
+
       const matchesStage = stageFilter === "all" || deal.stage === stageFilter;
       const matchesStatus = statusFilter === "all" || deal.status === statusFilter;
 
       return matchesSearch && matchesStage && matchesStatus;
     });
   }, [deals, searchTerm, stageFilter, statusFilter]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, stageFilter, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredDeals.length / pageSize));
+
+  const paginatedDeals = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredDeals.slice(startIndex, startIndex + pageSize);
+  }, [filteredDeals, currentPage, pageSize]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -365,7 +407,7 @@ export function DealListScreen() {
     <div className="space-y-6">
       {/* Toast Banners */}
       {errorMessage && (
-        <div className="fixed top-4 right-4 z-[100] bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
+        <div className="fixed top-4 right-4 z-100 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
           <AlertCircle className="size-4 shrink-0" />
           <span className="text-xs font-semibold">{errorMessage}</span>
           <button type="button" onClick={() => setErrorMessage(null)} className="ml-2 hover:text-red-900">
@@ -375,7 +417,7 @@ export function DealListScreen() {
       )}
 
       {successMessage && (
-        <div className="fixed top-4 right-4 z-[100] bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
+        <div className="fixed top-4 right-4 z-100 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
           <CheckCircle2 className="size-4 shrink-0" />
           <span className="text-xs font-semibold">{successMessage}</span>
           <button type="button" onClick={() => setSuccessMessage(null)} className="ml-2 hover:text-emerald-900">
@@ -386,8 +428,8 @@ export function DealListScreen() {
       {/* Header and Quick stats */}
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Deals register</h1>
-          <p className="text-xs text-slate-400">Manage contract sizes, closing forecast probabilities, and bookings</p>
+          <h1 className="text-xl font-bold text-slate-800">Deals Register</h1>
+          <p className="text-xs text-slate-400">Manage contract sizes, closing forecast probabilities, and bookings.</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -437,12 +479,12 @@ export function DealListScreen() {
                 className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
               />
             </div>
-            
+
             {/* Stage Selector */}
-            <div className="w-full md:w-44 flex items-center gap-1.5">
+            <div className="w-full md:w-40 flex items-center gap-1.5">
               <span className="text-[10px] text-slate-400 font-bold shrink-0">Stage:</span>
               <Select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="w-full py-1.5">
-                <option value="all">All Stages</option>
+                <option value="all">All</option>
                 <option value="Inquiry">Inquiry</option>
                 <option value="Site Visit">Site Visit</option>
                 <option value="Proposal">Proposal</option>
@@ -453,19 +495,19 @@ export function DealListScreen() {
             </div>
 
             {/* Status Selector */}
-            <div className="w-full md:w-44 flex items-center gap-1.5">
+            <div className="w-full md:w-40 flex items-center gap-1.5">
               <span className="text-[10px] text-slate-400 font-bold shrink-0">Status:</span>
               <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full py-1.5">
-                <option value="all">All (Active & Closed)</option>
-                <option value="active">Active Only</option>
-                <option value="won">Won Only</option>
-                <option value="lost">Lost Only</option>
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="won">Won</option>
+                <option value="lost">Lost</option>
               </Select>
             </div>
 
             {/* Active Count indicator */}
             <div className="md:ml-auto text-xs text-slate-400">
-              Showing <strong className="text-slate-700">{filteredDeals.length}</strong> of {deals.length} entries
+              Filtered <strong className="text-slate-700">{filteredDeals.length}</strong> of {deals.length} entries
             </div>
           </div>
         </CardContent>
@@ -488,8 +530,8 @@ export function DealListScreen() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredDeals.length > 0 ? (
-              filteredDeals.map(deal => (
+            {paginatedDeals.length > 0 ? (
+              paginatedDeals.map(deal => (
                 <TableRow key={deal.id} className="hover:bg-slate-50/70 border-b border-slate-100 transition">
                   <TableCell className="py-3 px-4 font-bold text-slate-800 text-xs">
                     <button
@@ -504,13 +546,12 @@ export function DealListScreen() {
                     <div className="text-[10px] text-slate-400 mt-0.5">{deal.email}</div>
                   </TableCell>
                   <TableCell className="py-3 px-4">
-                    <Badge variant="info" className="font-bold text-[10px]">
+                    <Badge variant="default" className={`font-bold text-[10px] ${getStageBadgeStyles(deal.stage)}`}>
                       {deal.stage}
                     </Badge>
                   </TableCell>
                   <TableCell className="py-3 px-4 text-center">
-                    <div className="inline-flex items-center gap-1 text-xs text-slate-700 font-bold">
-                      <Percent className="size-3 text-slate-400" />
+                    <div className="inline-flex items-center justify-center gap-1 text-xs text-slate-700 font-bold w-full">
                       {deal.probability}%
                     </div>
                   </TableCell>
@@ -532,8 +573,8 @@ export function DealListScreen() {
                         deal.status === "won"
                           ? "success"
                           : deal.status === "active"
-                          ? "primary"
-                          : "danger"
+                            ? "primary"
+                            : "danger"
                       }
                       size="sm"
                       className="font-bold text-[10px] uppercase"
@@ -589,6 +630,55 @@ export function DealListScreen() {
             )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Pagination Controls */}
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white px-6 py-4 rounded-xl border border-slate-100 shadow-sm text-xs">
+        <div className="text-slate-500 font-medium">
+          Showing <strong className="text-slate-700">{filteredDeals.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}</strong> to{" "}
+          <strong className="text-slate-700">
+            {Math.min(currentPage * pageSize, filteredDeals.length)}
+          </strong>{" "}
+          of <strong className="text-slate-700">{filteredDeals.length}</strong> entries
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            className="border-slate-200 text-slate-600 font-bold px-3 py-1.5 h-8 disabled:opacity-50"
+          >
+            Previous
+          </Button>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }).map((_, idx) => {
+              const p = idx + 1;
+              const isCurrent = p === currentPage;
+              return (
+                <button
+                  key={p}
+                  onClick={() => setCurrentPage(p)}
+                  className={`size-8 rounded-lg font-bold transition flex items-center justify-center ${isCurrent
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                >
+                  {p}
+                </button>
+              );
+            })}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+            disabled={currentPage === totalPages}
+            className="border-slate-200 text-slate-600 font-bold px-3 py-1.5 h-8 disabled:opacity-50"
+          >
+            Next
+          </Button>
+        </div>
       </div>
 
       {/* Slide-over Drawer for adding Deal */}
@@ -799,7 +889,7 @@ export function DealListScreen() {
 
             {/* Form */}
             <form onSubmit={handleUpdateDeal} className="flex-1 overflow-y-auto p-6 space-y-4">
-              {editingDeal.status !== "active" && (
+              {isAlreadyClosed && (
                 <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-2 mb-4 animate-in fade-in duration-255">
                   <AlertCircle className="size-4 shrink-0 text-amber-600" />
                   <span>This deal is closed and cannot be modified.</span>
@@ -813,20 +903,19 @@ export function DealListScreen() {
                   {STAGES_ORDER.map((stg, idx) => {
                     const isCurrent = editingDeal.stage === stg;
                     const isPast = STAGES_ORDER.indexOf(editingDeal.stage) > idx;
-                    const isDisabled = editingDeal.status !== "active";
+                    const isDisabled = isAlreadyClosed;
                     return (
                       <button
                         key={stg}
                         type="button"
                         onClick={() => !isDisabled && handleStageClick(stg)}
                         disabled={isDisabled}
-                        className={`flex-1 text-center py-1.5 px-0.5 rounded text-[9px] font-bold transition-all duration-200 border ${
-                          isCurrent
+                        className={`flex-1 text-center py-1.5 px-0.5 rounded text-[9px] font-bold transition-all duration-200 border ${isCurrent
                             ? "bg-blue-600 border-blue-600 text-white shadow-xs"
                             : isPast
-                            ? "bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100"
-                            : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                        } ${isDisabled ? "cursor-not-allowed opacity-80" : ""}`}
+                              ? "bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                              : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          } ${isDisabled ? "cursor-not-allowed opacity-80" : ""}`}
                       >
                         {stg}
                       </button>
@@ -839,7 +928,7 @@ export function DealListScreen() {
                 <label className="text-xs font-semibold text-slate-600">Deal Title *</label>
                 <Input
                   required
-                  disabled={editingDeal.status !== "active"}
+                  disabled={isAlreadyClosed}
                   placeholder="e.g. Wedding Catering Block, Corporate Conference..."
                   value={editingDeal.title || ""}
                   onChange={e => setEditingDeal({ ...editingDeal, title: e.target.value })}
@@ -851,7 +940,7 @@ export function DealListScreen() {
                 <label className="text-xs font-semibold text-slate-600">Primary Contact Person *</label>
                 <Input
                   required
-                  disabled={editingDeal.status !== "active"}
+                  disabled={isAlreadyClosed}
                   placeholder="e.g. Alice Jenkins"
                   value={editingDeal.contactName || ""}
                   onChange={e => setEditingDeal({ ...editingDeal, contactName: e.target.value })}
@@ -864,7 +953,7 @@ export function DealListScreen() {
                   <label className="text-xs font-semibold text-slate-600">Email Address</label>
                   <Input
                     type="email"
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     placeholder="contact@gmail.com"
                     value={editingDeal.email || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, email: e.target.value })}
@@ -874,7 +963,7 @@ export function DealListScreen() {
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Phone Number</label>
                   <Input
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     placeholder="+1 555-0100"
                     value={editingDeal.phone || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, phone: e.target.value })}
@@ -888,7 +977,7 @@ export function DealListScreen() {
                   <label className="text-xs font-semibold text-slate-600">Deal Value ($)</label>
                   <Input
                     type="number"
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     placeholder="e.g. 15000"
                     value={editingDeal.value || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, value: Number(e.target.value) })}
@@ -899,7 +988,7 @@ export function DealListScreen() {
                   <label className="text-xs font-semibold text-slate-600">Sales Stage</label>
                   <Select
                     value={editingDeal.stage || "Inquiry"}
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     onChange={e => setEditingDeal({ ...editingDeal, stage: e.target.value as Deal["stage"] })}
                     className="py-1.5"
                   >
@@ -920,7 +1009,7 @@ export function DealListScreen() {
                     type="number"
                     min="0"
                     max="100"
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     placeholder="50"
                     value={editingDeal.probability || 0}
                     onChange={e => setEditingDeal({ ...editingDeal, probability: Number(e.target.value) })}
@@ -931,7 +1020,7 @@ export function DealListScreen() {
                   <label className="text-xs font-semibold text-slate-600">Est. Close Date</label>
                   <Input
                     type="date"
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     value={editingDeal.expectedClose || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, expectedClose: e.target.value })}
                     className="py-1.5 text-xs"
@@ -944,8 +1033,17 @@ export function DealListScreen() {
                   <label className="text-xs font-semibold text-slate-600">Status</label>
                   <Select
                     value={editingDeal.status || "active"}
-                    disabled={editingDeal.status !== "active"}
-                    onChange={e => setEditingDeal({ ...editingDeal, status: e.target.value as Deal["status"] })}
+                    disabled={isAlreadyClosed}
+                    onChange={e => {
+                      const newStatus = e.target.value as Deal["status"];
+                      let newStage = editingDeal.stage;
+                      if (newStatus === "won") {
+                        newStage = "Confirmed";
+                      } else if (newStatus === "active" && editingDeal.stage === "Confirmed") {
+                        newStage = "Contract";
+                      }
+                      setEditingDeal({ ...editingDeal, status: newStatus, stage: newStage });
+                    }}
                     className="py-1.5"
                   >
                     <option value="active">Active</option>
@@ -957,7 +1055,7 @@ export function DealListScreen() {
                   <label className="text-xs font-semibold text-slate-600">Owner</label>
                   <Select
                     value={editingDeal.owner || ""}
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     onChange={e => setEditingDeal({ ...editingDeal, owner: e.target.value })}
                     className="py-1.5"
                   >
@@ -976,14 +1074,14 @@ export function DealListScreen() {
                 <textarea
                   placeholder="Describe deal requirements, guest details, notes, etc..."
                   value={editingDeal.notes || ""}
-                  disabled={editingDeal.status !== "active"}
+                  disabled={isAlreadyClosed}
                   onChange={e => setEditingDeal({ ...editingDeal, notes: e.target.value })}
                   className="w-full min-h-[100px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
                 />
               </div>
 
               <div className="pt-4 flex gap-3 border-t border-slate-100">
-                {editingDeal.status === "active" ? (
+                {!isAlreadyClosed ? (
                   <>
                     <Button
                       type="submit"

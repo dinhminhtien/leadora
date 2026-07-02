@@ -18,6 +18,7 @@ import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -44,37 +45,49 @@ public class CrmContextService {
     private final TaskRepository taskRepository;
 
     /**
-     * Top-privilege mode: login/RBAC isn't wired yet and the assistant is granted full access,
-     * so "my data" questions see ALL records (not just one arbitrary fallback user). Set
-     * {@code AI_CHAT_TOP_PRIVILEGE=false} to scope strictly to the acting user once login lands.
+     * Roles allowed to see ALL CRM records via chat. A Sales Staff (or any other role) is scoped
+     * to their own assigned records only — so "show me the leads" returns just their leads, while
+     * a Manager/Admin sees the whole team's. Optionally widened by {@code AI_CHAT_TOP_PRIVILEGE}
+     * (dev escape hatch) — default false now that login/RBAC is wired.
      */
-    @Value("${AI_CHAT_TOP_PRIVILEGE:true}")
+    private static final Set<String> FULL_SCOPE_ROLES = Set.of("MANAGER", "ADMIN");
+
+    @Value("${AI_CHAT_TOP_PRIVILEGE:false}")
     private boolean topPrivilege;
 
-    /** Facts about leads/deals/tasks the user may view (all records in top-privilege mode). */
+    /** Whether {@code user}'s role may read every record (team-wide), vs only their own. */
+    public boolean canSeeAllData(UserEntity user) {
+        if (topPrivilege) return true;
+        String role = (user.getRole() != null && user.getRole().getRoleName() != null)
+                ? user.getRole().getRoleName().trim().toUpperCase() : "";
+        return FULL_SCOPE_ROLES.contains(role);
+    }
+
+    /** Facts about leads/deals/tasks the user may view (team-wide for Manager/Admin, else own). */
     public String assignedContext(UserEntity user) {
         UUID userId = user.getUserId();
-        List<LeadEntity> leads = topPrivilege
+        boolean all = canSeeAllData(user);
+        List<LeadEntity> leads = all
                 ? leadRepository.findAll() : leadRepository.findByAssignedUser_UserId(userId);
-        List<DealEntity> deals = topPrivilege
+        List<DealEntity> deals = all
                 ? dealRepository.findAll() : dealRepository.findByAssignedUser_UserId(userId);
-        List<TaskEntity> tasks = topPrivilege
+        List<TaskEntity> tasks = all
                 ? taskRepository.findAll() : taskRepository.findByAssignedUser_UserId(userId);
 
         StringBuilder sb = new StringBuilder();
-        sb.append(topPrivilege
-                ? "== Dữ liệu CRM (chế độ toàn quyền — chưa bật phân quyền) ==\n"
+        sb.append(all
+                ? "== Dữ liệu CRM toàn bộ (quyền quản lý) ==\n"
                 : "== Dữ liệu CRM được giao cho " + user.getFullName() + " ==\n");
 
         // Leads — counts by status + an actual listing so the assistant can enumerate them.
         Map<Object, Long> leadByStatus = leads.stream()
-                .collect(Collectors.groupingBy(LeadEntity::getStatus, Collectors.counting()));
+                .collect(Collectors.groupingBy(l -> l.getStatus(), Collectors.counting()));
         sb.append("Leads: tổng ").append(leads.size())
                 .append(" ").append(leadByStatus).append("\n");
         if (!leads.isEmpty()) {
             sb.append("Danh sách lead (mới nhất trước, tối đa ").append(MAX_LEADS).append("):\n");
             leads.stream()
-                    .sorted(Comparator.comparing(LeadEntity::getCreatedAt,
+                    .sorted(Comparator.comparing((LeadEntity l) -> l.getCreatedAt(),
                             Comparator.nullsFirst(Comparator.naturalOrder())).reversed())
                     .limit(MAX_LEADS)
                     .forEach(l -> sb.append("  - \"").append(l.getFullName())
@@ -91,12 +104,12 @@ public class CrmContextService {
         long openDeals = deals.stream().filter(d -> d.getStatus() == DealStatus.OPEN).count();
         BigDecimal openValue = deals.stream()
                 .filter(d -> d.getStatus() == DealStatus.OPEN && d.getExpectedRevenue() != null)
-                .map(DealEntity::getExpectedRevenue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(d -> d.getExpectedRevenue())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
         BigDecimal wonValue = deals.stream()
                 .filter(d -> d.getStatus() == DealStatus.WON && d.getExpectedRevenue() != null)
-                .map(DealEntity::getExpectedRevenue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(d -> d.getExpectedRevenue())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
         sb.append("Deals: tổng ").append(deals.size())
                 .append(", đang mở ").append(openDeals)
                 .append(", giá trị kỳ vọng (OPEN) ").append(openValue)
@@ -139,12 +152,12 @@ public class CrmContextService {
         long lostDeals = deals.stream().filter(d -> d.getStatus() == DealStatus.LOST).count();
         BigDecimal wonValue = deals.stream()
                 .filter(d -> d.getStatus() == DealStatus.WON && d.getExpectedRevenue() != null)
-                .map(DealEntity::getExpectedRevenue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(d -> d.getExpectedRevenue())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
         BigDecimal openValue = deals.stream()
                 .filter(d -> d.getStatus() == DealStatus.OPEN && d.getExpectedRevenue() != null)
-                .map(DealEntity::getExpectedRevenue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(d -> d.getExpectedRevenue())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         StringBuilder sb = new StringBuilder();
         sb.append("== Tổng hợp toàn đội bán hàng ==\n");
@@ -171,8 +184,8 @@ public class CrmContextService {
             long won = rep.stream().filter(d -> d.getStatus() == DealStatus.WON).count();
             BigDecimal value = rep.stream()
                     .filter(d -> d.getStatus() == DealStatus.WON && d.getExpectedRevenue() != null)
-                    .map(DealEntity::getExpectedRevenue)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    .map(d -> d.getExpectedRevenue())
+                    .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
             sb.append("  - ").append(e.getKey())
                     .append(": deals mở ").append(open)
                     .append(", thắng ").append(won)

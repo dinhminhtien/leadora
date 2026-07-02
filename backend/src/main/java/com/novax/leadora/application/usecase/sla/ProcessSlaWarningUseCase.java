@@ -1,11 +1,7 @@
 package com.novax.leadora.application.usecase.sla;
 
-import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
-import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
-import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.SlaTrackingEntity;
-import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.SlaStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
@@ -55,7 +51,8 @@ public class ProcessSlaWarningUseCase {
         List<SlaTrackingEntity> pendingWarnings = slaTrackingRepository
                 .findByStatusAndWarningAtBeforeAndWarningNotifiedFalse(SlaStatus.ACTIVE, OffsetDateTime.now());
 
-        if (pendingWarnings.isEmpty()) return 0;
+        if (pendingWarnings.isEmpty())
+            return 0;
 
         List<UserEntity> managers = userRepository.findAllWithRole().stream()
                 .filter(u -> {
@@ -71,12 +68,14 @@ public class ProcessSlaWarningUseCase {
             Set<UUID> seen = new HashSet<>();
             List<UserEntity> recipients = new ArrayList<>();
             for (UserEntity m : managers) {
-                if (seen.add(m.getUserId())) recipients.add(m);
+                if (seen.add(m.getUserId()))
+                    recipients.add(m);
             }
             UserEntity assigned = resolveAssignedUser(tracking);
-            if (assigned != null && seen.add(assigned.getUserId())) recipients.add(assigned);
+            if (assigned != null && seen.add(assigned.getUserId()))
+                recipients.add(assigned);
 
-            String title   = "SLA Warning: " + activityLabel(tracking.getActivityType());
+            String title = "SLA Warning: " + activityLabel(tracking.getActivityType());
             String message = String.format(
                     "%s SLA deadline is approaching for %s. Take action now to avoid a breach.",
                     activityLabel(tracking.getActivityType()),
@@ -105,21 +104,21 @@ public class ProcessSlaWarningUseCase {
     private UserEntity resolveAssignedUser(SlaTrackingEntity tracking) {
         try {
             return switch (tracking.getEntityType()) {
-                case "LEAD"      -> leadRepository.findById(tracking.getEntityId())
-                                        .map(LeadEntity::getAssignedUser).orElse(null);
-                case "BOOKING"   -> bookingRepository.findById(tracking.getEntityId())
-                                        .map(BookingEntity::getAssignedUser).orElse(null);
-                case "TASK"      -> taskRepository.findById(tracking.getEntityId())
-                                        .map(TaskEntity::getAssignedUser).orElse(null);
+                case "LEAD" -> leadRepository.findById(tracking.getEntityId())
+                        .map(l -> l.getAssignedUser()).orElse(null);
+                case "BOOKING" -> bookingRepository.findById(tracking.getEntityId())
+                        .map(b -> b.getAssignedUser()).orElse(null);
+                case "TASK" -> taskRepository.findById(tracking.getEntityId())
+                        .map(t -> t.getAssignedUser()).orElse(null);
                 case "QUOTATION" -> quotationRepository.findById(tracking.getEntityId())
-                                        .map(QuotationEntity::getCreatedBy).orElse(null);
-                case "PAYMENT"   -> paymentRepository.findById(tracking.getEntityId())
-                                        .map(p -> p.getBooking() != null ? p.getBooking().getAssignedUser() : null)
-                                        .orElse(null);
-                case "HANDOVER"  -> opHandoverRepository.findById(tracking.getEntityId())
-                                        .map(h -> h.getBooking() != null ? h.getBooking().getAssignedUser() : null)
-                                        .orElse(null);
-                default          -> null;
+                        .map(q -> q.getCreatedBy()).orElse(null);
+                case "PAYMENT" -> paymentRepository.findById(tracking.getEntityId())
+                        .map(p -> p.getBooking() != null ? p.getBooking().getAssignedUser() : null)
+                        .orElse(null);
+                case "HANDOVER" -> opHandoverRepository.findById(tracking.getEntityId())
+                        .map(h -> h.getBooking() != null ? h.getBooking().getAssignedUser() : null)
+                        .orElse(null);
+                default -> null;
             };
         } catch (Exception e) {
             log.warn("Could not resolve assigned user for {}/{}: {}",
@@ -130,25 +129,25 @@ public class ProcessSlaWarningUseCase {
 
     private static String activityLabel(String activityType) {
         return switch (activityType) {
-            case "LEAD_RESPONSE"              -> "Lead Response";
-            case "QUOTATION_SENT"             -> "Quotation Dispatch";
-            case "FOLLOW_UP_TASK"             -> "Follow-up Task";
-            case "BOOKING_CONFIRM"            -> "Booking Confirmation";
-            case "PAYMENT_DEPOSIT"            -> "Payment Deposit";
-            case "HANDOVER_SUBMISSION"        -> "Handover Submission";
-            case "QUOTATION_APPROVAL"         -> "Quotation Approval";
+            case "LEAD_RESPONSE" -> "Lead Response";
+            case "QUOTATION_SENT" -> "Quotation Dispatch";
+            case "FOLLOW_UP_TASK" -> "Follow-up Task";
+            case "BOOKING_CONFIRM" -> "Booking Confirmation";
+            case "PAYMENT_DEPOSIT" -> "Payment Deposit";
+            case "HANDOVER_SUBMISSION" -> "Handover Submission";
+            case "QUOTATION_APPROVAL" -> "Quotation Approval";
             case "CUSTOMER_FEEDBACK_RESPONSE" -> "Customer Feedback Response";
-            default                           -> activityType;
+            default -> activityType;
         };
     }
 
     private static String entityLabel(String entityType) {
         return switch (entityType) {
-            case "LEAD"      -> "Lead";
+            case "LEAD" -> "Lead";
             case "QUOTATION" -> "Quotation";
-            case "BOOKING"   -> "Booking";
-            case "TASK"      -> "Task";
-            default          -> entityType;
+            case "BOOKING" -> "Booking";
+            case "TASK" -> "Task";
+            default -> entityType;
         };
     }
 }

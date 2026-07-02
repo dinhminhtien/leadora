@@ -49,7 +49,20 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID>, JpaSpec
     @Query("SELECT u FROM UserEntity u ORDER BY u.fullName ASC")
     List<UserEntity> findAllWithRole();
 
-    @Override
+    /** Active users (with role) — used by the idle-account inactivation scheduler. */
+    @EntityGraph(attributePaths = {"role"})
+    List<UserEntity> findByStatus(UserStatus status);
+
+    @EntityGraph(attributePaths = {"role"})
+    @Query("SELECT u FROM UserEntity u WHERE u.role.roleName = :roleName")
+    List<UserEntity> findByRoleName(@Param("roleName") String roleName);
+
+    /**
+     * UC-6.1 management list — paged search/filter.
+     * Pass {@code ""} (never {@code null}) for {@code search}: Hibernate 6 binds a null String
+     * as {@code bytea}, which breaks {@code LOWER(...)} (see backend/CLAUDE.md). {@code roleId}
+     * and {@code status} are nullable to mean "no filter".
+     */
     @EntityGraph(attributePaths = {"role"})
     Page<UserEntity> findAll(Specification<UserEntity> spec, Pageable pageable);
 }

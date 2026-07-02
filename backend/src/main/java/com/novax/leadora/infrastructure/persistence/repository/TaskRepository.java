@@ -57,4 +57,8 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
         List<TaskEntity> findByCustomer_CustomerId(UUID customerId);
 
         List<TaskEntity> findByLead_LeadId(UUID leadId);
+
+        long countByStatusNotIn(List<TaskStatus> statuses);
+
+        long countByStatusNotInAndEndAtBefore(List<TaskStatus> statuses, OffsetDateTime endAt);
 }

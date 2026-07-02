@@ -54,8 +54,7 @@ apiClient.interceptors.request.use(async (config) => {
     const isPublicAuth = config.url && (
       config.url.endsWith("/auth/login") ||
       config.url.endsWith("/auth/forgot-password") ||
-      config.url.endsWith("/auth/reset-password") ||
-      config.url.endsWith("/auth/logout")
+      config.url.endsWith("/auth/reset-password")
     );
 
     if (!isPublicAuth) {

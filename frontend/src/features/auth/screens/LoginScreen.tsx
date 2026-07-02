@@ -11,6 +11,7 @@ import { authService } from "@/services/auth_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { supabaseAuthService } from "@/services/supabase_auth_service";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { getUserRole, dashboardPathForRole } from "@/shared/auth/access";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
@@ -32,6 +33,19 @@ export function LoginScreen() {
   const nextPath = searchParams.get("next") ?? ROUTE_PATHS.dashboard;
   const callbackError = searchParams.get("error");
   const setUser = useAuthStore((s) => s.setUser);
+
+  const callbackErrorMessage = (() => {
+    switch (callbackError) {
+      case "access_denied":
+        return "You do not have access to this system. Please contact your administrator.";
+      case "account_locked":
+        return "Your account has been locked. Please contact the Admin for assistance.";
+      case "auth_callback_failed":
+        return "Failed to complete Google sign-in. Please try again.";
+      default:
+        return callbackError ? "Authentication failed." : null;
+    }
+  })();
 
   const {
     register,
@@ -69,7 +83,10 @@ export function LoginScreen() {
       }
       
       setUser(response.data.user);
-      router.push(nextPath);
+      // Send the user to their role-specific dashboard. If they were deep-linked
+      // to a specific protected page (next=…), honour that instead.
+      const roleHome = dashboardPathForRole(getUserRole(response.data.user));
+      router.push(nextPath && nextPath !== ROUTE_PATHS.dashboard ? nextPath : roleHome);
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || err.message || "Invalid email or password";
       setError(errorMsg);
@@ -105,14 +122,11 @@ export function LoginScreen() {
         </p>
       </div>
 
-      {(error || callbackError) && (
+      {(error || callbackErrorMessage) && (
         <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-danger/10 p-3 text-xs text-danger border border-danger/15">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
           <p className="font-semibold leading-relaxed">
-            {error ||
-              (callbackError === "auth_callback_failed"
-                ? "Failed to complete Google sign-in. Please try again."
-                : "Authentication failed.")}
+            {error || callbackErrorMessage}
           </p>
         </div>
       )}

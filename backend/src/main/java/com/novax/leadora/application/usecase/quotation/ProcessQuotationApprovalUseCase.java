@@ -2,24 +2,30 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.ProcessApprovalRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
+import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationApprovalHistoryEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
+import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationApprovalHistoryRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProcessQuotationApprovalUseCase {
 
     private final QuotationRepository quotationRepository;
     private final QuotationApprovalHistoryRepository historyRepository;
+    private final NotificationRepository notificationRepository;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, ProcessApprovalRequest request) {
@@ -69,6 +75,27 @@ public class ProcessQuotationApprovalUseCase {
                 .newStatus(newStatus.name())
                 .build();
         historyRepository.save(historyEntry);
+
+        // BR-37: Notify the Sales Staff who created the quotation of the manager decision
+        UserEntity creator = quotation.getCreatedBy();
+        if (creator != null) {
+            String notifTitle = "Quotation " + historyAction + ": " + quotationId.toString().substring(0, 8).toUpperCase();
+            String notifMsg = String.format("Your quotation was %s by %s (%s).%s",
+                    historyAction.toLowerCase().replace("_", " "),
+                    request.getManagerName(),
+                    request.getManagerRole(),
+                    request.getNotes() != null ? " Notes: " + request.getNotes() : "");
+            NotificationEntity notification = NotificationEntity.builder()
+                    .user(creator)
+                    .title(notifTitle)
+                    .message(notifMsg)
+                    .type("QUOTATION_APPROVAL")
+                    .relatedEntity("QUOTATION")
+                    .relatedId(quotationId)
+                    .build();
+            notificationRepository.save(notification);
+            log.info("Quotation approval notification sent to userId={}", creator.getUserId());
+        }
 
         return QuotationResponse.from(saved);
     }
