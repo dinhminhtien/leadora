@@ -2,8 +2,10 @@ package com.novax.leadora.api.controller;
 
 import com.novax.leadora.api.dto.request.CreateInteractionTimelineRequest;
 import com.novax.leadora.api.dto.request.UpdateInteractionTimelineRequest;
+import com.novax.leadora.api.dto.response.InteractionAuditLogResponse;
 import com.novax.leadora.api.dto.response.InteractionTimelineResponse;
 import com.novax.leadora.application.usecase.timeline.CreateInteractionTimelineUseCase;
+import com.novax.leadora.application.usecase.timeline.GetInteractionAuditLogsUseCase;
 import com.novax.leadora.application.usecase.timeline.GetInteractionTimelineDetailUseCase;
 import com.novax.leadora.application.usecase.timeline.GetInteractionTimelineListUseCase;
 import com.novax.leadora.application.usecase.timeline.UpdateInteractionTimelineUseCase;
@@ -28,6 +30,7 @@ public class InteractionTimelineController {
     private final GetInteractionTimelineDetailUseCase getDetailUseCase;
     private final CreateInteractionTimelineUseCase createUseCase;
     private final UpdateInteractionTimelineUseCase updateUseCase;
+    private final GetInteractionAuditLogsUseCase getAuditLogsUseCase;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<InteractionTimelineResponse>>> getTimeline(
@@ -58,6 +61,12 @@ public class InteractionTimelineController {
             @Valid @RequestBody UpdateInteractionTimelineRequest request) {
         InteractionTimelineResponse updated = updateUseCase.execute(id, request);
         return ResponseEntity.ok(ApiResponse.success(updated, "Interaction updated successfully"));
+    }
+
+    @GetMapping("/{id}/audit-logs")
+    public ResponseEntity<ApiResponse<List<InteractionAuditLogResponse>>> getAuditLogs(@PathVariable UUID id) {
+        List<InteractionAuditLogResponse> logs = getAuditLogsUseCase.execute(id);
+        return ResponseEntity.ok(ApiResponse.success(logs));
     }
 }
 

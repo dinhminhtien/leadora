@@ -1,17 +1,17 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { 
-  Phone, 
-  Mail, 
-  Calendar, 
-  FileText, 
-  Search, 
-  Plus, 
-  Filter, 
-  MessageSquare, 
-  Clock, 
-  Loader2, 
+import {
+  Phone,
+  Mail,
+  Calendar,
+  FileText,
+  Search,
+  Plus,
+  Filter,
+  MessageSquare,
+  Clock,
+  Loader2,
   X,
   Edit2,
   AlertCircle,
@@ -22,15 +22,16 @@ import {
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { 
-  interactionTimelineService, 
+import {
+  interactionTimelineService,
   type InteractionTimelineEntry,
   type CreateInteractionTimelinePayload,
-  type UpdateInteractionTimelinePayload
+  type UpdateInteractionTimelinePayload,
+  type InteractionAuditLog
 } from "@/services/interaction_timeline_service";
-import { 
-  userService, 
-  type UserSummary 
+import {
+  userService,
+  type UserSummary
 } from "@/services/follow_up_task_service";
 import { leadService } from "@/services/lead_service";
 import { customerProfileService } from "@/services/customer_profile_service";
@@ -40,14 +41,14 @@ import { toast } from "@/stores/toast_store";
 export function InteractionTimelineScreen() {
   const [interactions, setInteractions] = useState<InteractionTimelineEntry[]>([]);
   const [agents, setAgents] = useState<UserSummary[]>([]);
-  
+
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [agentFilter, setAgentFilter] = useState("all");
-  
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Detail Drawer state
   const [selectedInteraction, setSelectedInteraction] = useState<InteractionTimelineEntry | null>(null);
   const [isEditingDetail, setIsEditingDetail] = useState(false);
@@ -56,6 +57,12 @@ export function InteractionTimelineScreen() {
   const [editOccurredAt, setEditOccurredAt] = useState("");
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+
+  // Audit state
+  const [detailTab, setDetailTab] = useState<"details" | "audit">("details");
+  const [auditLogs, setAuditLogs] = useState<InteractionAuditLog[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   // Create Drawer state
   const [showCreateDrawer, setShowCreateDrawer] = useState(false);
@@ -178,7 +185,7 @@ export function InteractionTimelineScreen() {
         } else if (searchEntityType === "deal") {
           const res = await dealService.getList();
           if (res && res.success && res.data) {
-            const filtered = res.data.filter((d: any) => 
+            const filtered = res.data.filter((d: any) =>
               d.title?.toLowerCase().includes(searchQuery.toLowerCase())
             );
             setSearchResults(filtered.slice(0, 8));
@@ -201,6 +208,7 @@ export function InteractionTimelineScreen() {
       if (response && response.success && response.data) {
         setSelectedInteraction(response.data);
         setIsEditingDetail(false);
+        setDetailTab("details");
         setEditError(null);
         // Prep edit fields
         setEditType(response.data.type);
@@ -212,6 +220,31 @@ export function InteractionTimelineScreen() {
     }
   };
 
+  // Fetch audit logs when tab is selected
+  const fetchAuditLogs = async (id: string) => {
+    setAuditLoading(true);
+    setAuditError(null);
+    try {
+      const res = await interactionTimelineService.getAuditLogs(id);
+      if (res && res.success && res.data) {
+        setAuditLogs(res.data);
+      } else {
+        setAuditError(res.message || "Failed to load audit logs.");
+      }
+    } catch (err: any) {
+      console.error("Failed to load audit logs", err);
+      setAuditError(err?.response?.data?.message || "An unexpected error occurred.");
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedInteraction && detailTab === "audit") {
+      fetchAuditLogs(selectedInteraction.id);
+    }
+  }, [selectedInteraction, detailTab]);
+
   // Open creation drawer
   const handleOpenCreateDrawer = () => {
     setFormType("call");
@@ -219,7 +252,7 @@ export function InteractionTimelineScreen() {
     const now = new Date();
     const offset = now.getTimezoneOffset() * 60000;
     setFormOccurredAt(new Date(now.getTime() - offset).toISOString().slice(0, 16));
-    
+
     setSelectedLead(null);
     setSelectedCustomer(null);
     setSelectedDeal(null);
@@ -317,9 +350,9 @@ export function InteractionTimelineScreen() {
           </h1>
           <p className="text-[10px] text-muted-foreground mt-0.5">Chronological feed of guest communications, emails, and call touchpoints</p>
         </div>
-        <Button 
+        <Button
           id="btn-log-interaction"
-          variant="primary" 
+          variant="primary"
           size="sm"
           onClick={handleOpenCreateDrawer}
           leftIcon={<Plus className="size-4" />}
@@ -354,11 +387,10 @@ export function InteractionTimelineScreen() {
               <button
                 key={tab.id}
                 onClick={() => setTypeFilter(tab.id)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${
-                  typeFilter === tab.id
-                    ? "bg-[#185FA5] text-[#E6F1FB] border-[#0C447C] shadow-xs"
-                    : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                }`}
+                className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${typeFilter === tab.id
+                  ? "bg-[#185FA5] text-[#E6F1FB] border-[#0C447C] shadow-xs"
+                  : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                  }`}
               >
                 {tab.label}
               </button>
@@ -404,12 +436,11 @@ export function InteractionTimelineScreen() {
               {interactions.map((item) => (
                 <div key={item.id} className="relative group animate-in fade-in duration-200">
                   {/* Timeline icon */}
-                  <span className={`absolute left-[-45px] top-0.5 flex size-8 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm transition group-hover:scale-105 ${
-                    item.type === "call" ? "group-hover:border-green-500 group-hover:bg-green-50/50" :
+                  <span className={`absolute left-[-45px] top-0.5 flex size-8 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm transition group-hover:scale-105 ${item.type === "call" ? "group-hover:border-green-500 group-hover:bg-green-50/50" :
                     item.type === "email" ? "group-hover:border-blue-500 group-hover:bg-blue-50/50" :
-                    item.type === "meeting" ? "group-hover:border-purple-500 group-hover:bg-purple-50/50" :
-                    "group-hover:border-amber-500 group-hover:bg-amber-50/50"
-                  }`}>
+                      item.type === "meeting" ? "group-hover:border-purple-500 group-hover:bg-purple-50/50" :
+                        "group-hover:border-amber-500 group-hover:bg-amber-50/50"
+                    }`}>
                     {item.type === "call" && <Phone className="size-4 text-green-600" />}
                     {item.type === "email" && <Mail className="size-4 text-blue-600" />}
                     {item.type === "meeting" && <Calendar className="size-4 text-purple-600" />}
@@ -423,11 +454,10 @@ export function InteractionTimelineScreen() {
                         <span className="text-[#185FA5] hover:text-[#0C447C] hover:underline cursor-pointer" onClick={() => handleOpenDetail(item.id)}>
                           {item.linkedName}
                         </span>
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border capitalize ${
-                          item.linkedType === "lead" ? "bg-[#E6F1FB] text-[#0C447C] border-[#85B7EB]" :
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border capitalize ${item.linkedType === "lead" ? "bg-[#E6F1FB] text-[#0C447C] border-[#85B7EB]" :
                           item.linkedType === "customer" ? "bg-[#EAF3DE] text-[#3B6D11] border-[#C0DD97]" :
-                          "bg-[#FAEEDA] text-[#854F0B] border-[#FAC775]"
-                        }`}>
+                            "bg-[#FAEEDA] text-[#854F0B] border-[#FAC775]"
+                          }`}>
                           {item.linkedType}
                         </span>
                       </div>
@@ -436,14 +466,14 @@ export function InteractionTimelineScreen() {
                         {formatDate(item.occurredAt)}
                       </span>
                     </div>
-                    
-                    <p 
+
+                    <p
                       onClick={() => handleOpenDetail(item.id)}
                       className="text-xs text-slate-600 mt-1.5 leading-relaxed bg-slate-50 hover:bg-slate-100/70 p-3 rounded-lg border border-slate-100/50 cursor-pointer transition"
                     >
                       {item.description}
                     </p>
-                    
+
                     <div className="flex items-center justify-between mt-2">
                       <div className="flex items-center gap-1.5">
                         <span className="size-5 rounded-full bg-[#E6F1FB] text-[#0C447C] text-[9px] font-bold flex items-center justify-center">
@@ -453,7 +483,7 @@ export function InteractionTimelineScreen() {
                           Logged by <strong className="text-slate-600">{item.agentName}</strong>
                         </span>
                       </div>
-                      
+
                       <button
                         onClick={() => handleOpenDetail(item.id)}
                         className="text-[10px] text-[#185FA5] hover:text-[#0C447C] font-semibold transition"
@@ -476,20 +506,20 @@ export function InteractionTimelineScreen() {
       {/* Log Interaction Drawer */}
       {showCreateDrawer && (
         <div className="fixed inset-0 z-50 overflow-hidden">
-          <div 
+          <div
             className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity duration-300"
             onClick={() => setShowCreateDrawer(false)}
           />
           <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
             <div className="w-screen max-w-md bg-white shadow-2xl border-l border-slate-100 flex flex-col animate-in slide-in-from-right duration-300">
-              
+
               {/* Header */}
               <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
                   <Plus className="size-4 text-[#185FA5]" />
                   Log New Interaction
                 </h2>
-                <button 
+                <button
                   onClick={() => setShowCreateDrawer(false)}
                   className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
                 >
@@ -500,7 +530,7 @@ export function InteractionTimelineScreen() {
               {/* Form */}
               <form onSubmit={handleCreateSubmit} className="flex-1 flex flex-col justify-between overflow-hidden">
                 <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                  
+
                   {/* Interaction Type Selection */}
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-slate-600 block">Interaction Type *</label>
@@ -518,11 +548,10 @@ export function InteractionTimelineScreen() {
                             key={option.id}
                             type="button"
                             onClick={() => setFormType(option.id as any)}
-                            className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs transition duration-200 ${
-                              isSelected 
-                                ? `${option.color} ring-1 ${option.ringColor} font-bold scale-[1.03]`
-                                : "border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500"
-                            }`}
+                            className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs transition duration-200 ${isSelected
+                              ? `${option.color} ring-1 ${option.ringColor} font-bold scale-[1.03]`
+                              : "border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500"
+                              }`}
                           >
                             <Icon className="size-4 mb-1" />
                             {option.label}
@@ -566,11 +595,10 @@ export function InteractionTimelineScreen() {
                             setSearchQuery("");
                             setSearchResults([]);
                           }}
-                          className={`flex-1 px-3 py-1.5 text-center transition ${
-                            searchEntityType === tab.id 
-                              ? "bg-[#185FA5] text-white font-bold" 
-                              : "text-slate-500 hover:bg-slate-50"
-                          }`}
+                          className={`flex-1 px-3 py-1.5 text-center transition ${searchEntityType === tab.id
+                            ? "bg-[#185FA5] text-white font-bold"
+                            : "text-slate-500 hover:bg-slate-50"
+                            }`}
                         >
                           {tab.label}
                         </button>
@@ -686,9 +714,9 @@ export function InteractionTimelineScreen() {
 
                 {/* Footer buttons */}
                 <div className="px-6 py-4 border-t border-slate-100 flex gap-3 bg-slate-50/50">
-                  <Button 
-                    type="submit" 
-                    variant="primary" 
+                  <Button
+                    type="submit"
+                    variant="primary"
                     disabled={createLoading || (!selectedLead && !selectedCustomer && !selectedDeal)}
                     className="flex-1 text-xs py-2"
                   >
@@ -698,9 +726,9 @@ export function InteractionTimelineScreen() {
                       </span>
                     ) : "Save Log"}
                   </Button>
-                  <Button 
-                    type="button" 
-                    variant="ghost" 
+                  <Button
+                    type="button"
+                    variant="ghost"
                     onClick={() => setShowCreateDrawer(false)}
                     className="flex-1 text-xs py-2"
                   >
@@ -718,13 +746,13 @@ export function InteractionTimelineScreen() {
       {selectedInteraction && (
         <div className="fixed inset-0 z-50 overflow-hidden">
           {/* Backdrop */}
-          <div 
+          <div
             className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity duration-300"
             onClick={() => setSelectedInteraction(null)}
           />
           <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
             <div className="w-screen max-w-md bg-white shadow-2xl border-l border-slate-100 flex flex-col animate-in slide-in-from-right duration-300">
-              
+
               {/* Header */}
               <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
@@ -742,7 +770,7 @@ export function InteractionTimelineScreen() {
                       Edit
                     </button>
                   )}
-                  <button 
+                  <button
                     onClick={() => setSelectedInteraction(null)}
                     className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
                   >
@@ -751,11 +779,35 @@ export function InteractionTimelineScreen() {
                 </div>
               </div>
 
+              {/* Tabs */}
+              {!isEditingDetail && (
+                <div className="flex border-b border-slate-100 text-xs font-semibold bg-slate-50/20">
+                  <button
+                    onClick={() => setDetailTab("details")}
+                    className={`flex-1 py-3 text-center border-b-2 transition ${detailTab === "details"
+                      ? "border-[#185FA5] text-[#185FA5] font-bold"
+                      : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                      }`}
+                  >
+                    Details
+                  </button>
+                  <button
+                    onClick={() => setDetailTab("audit")}
+                    className={`flex-1 py-3 text-center border-b-2 transition ${detailTab === "audit"
+                      ? "border-[#185FA5] text-[#185FA5] font-bold"
+                      : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                      }`}
+                  >
+                    Audit History
+                  </button>
+                </div>
+              )}
+
               {isEditingDetail ? (
                 /* Edit Form Mode */
                 <form onSubmit={handleEditSubmit} className="flex-1 flex flex-col justify-between overflow-hidden">
                   <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                    
+
                     {/* Interaction Type */}
                     <div className="space-y-2">
                       <label className="text-xs font-semibold text-slate-600 block">Interaction Type *</label>
@@ -773,11 +825,10 @@ export function InteractionTimelineScreen() {
                               key={option.id}
                               type="button"
                               onClick={() => setEditType(option.id as any)}
-                              className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs transition duration-200 ${
-                                isSelected 
-                                  ? `${option.color} ring-1 ${option.ringColor} font-bold scale-[1.03]`
-                                  : "border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500"
-                              }`}
+                              className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs transition duration-200 ${isSelected
+                                ? `${option.color} ring-1 ${option.ringColor} font-bold scale-[1.03]`
+                                : "border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500"
+                                }`}
                             >
                               <Icon className="size-4 mb-1" />
                               {option.label}
@@ -821,9 +872,9 @@ export function InteractionTimelineScreen() {
 
                   {/* Footer buttons */}
                   <div className="px-6 py-4 border-t border-slate-100 flex gap-3 bg-slate-50/50">
-                    <Button 
-                      type="submit" 
-                      variant="primary" 
+                    <Button
+                      type="submit"
+                      variant="primary"
                       disabled={editLoading}
                       className="flex-1 text-xs py-2"
                     >
@@ -833,9 +884,9 @@ export function InteractionTimelineScreen() {
                         </span>
                       ) : "Save Changes"}
                     </Button>
-                    <Button 
-                      type="button" 
-                      variant="ghost" 
+                    <Button
+                      type="button"
+                      variant="ghost"
                       onClick={() => setIsEditingDetail(false)}
                       className="flex-1 text-xs py-2"
                     >
@@ -843,8 +894,8 @@ export function InteractionTimelineScreen() {
                     </Button>
                   </div>
                 </form>
-              ) : (
-                /* View Mode */
+              ) : detailTab === "details" ? (
+                /* View Mode Details */
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
                   {/* Main Info */}
                   <div className="space-y-4">
@@ -858,9 +909,9 @@ export function InteractionTimelineScreen() {
                       <div>
                         <Badge className={
                           selectedInteraction.type === "call" ? "bg-green-100 text-green-800 hover:bg-green-100 border-none font-bold" :
-                          selectedInteraction.type === "email" ? "bg-blue-100 text-blue-800 hover:bg-blue-100 border-none font-bold" :
-                          selectedInteraction.type === "meeting" ? "bg-purple-100 text-purple-800 hover:bg-purple-100 border-none font-bold" :
-                          "bg-amber-100 text-amber-800 hover:bg-amber-100 border-none font-bold"
+                            selectedInteraction.type === "email" ? "bg-blue-100 text-blue-800 hover:bg-blue-100 border-none font-bold" :
+                              selectedInteraction.type === "meeting" ? "bg-purple-100 text-purple-800 hover:bg-purple-100 border-none font-bold" :
+                                "bg-amber-100 text-amber-800 hover:bg-amber-100 border-none font-bold"
                         }>
                           {selectedInteraction.type.toUpperCase()}
                         </Badge>
@@ -881,7 +932,7 @@ export function InteractionTimelineScreen() {
                   {/* Metadata Grid */}
                   <div className="border-t border-slate-100 pt-6 space-y-4">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Metadata & Relationships</h3>
-                    
+
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <span className="text-[10px] text-slate-400 font-bold block">LOGGED BY</span>
@@ -900,13 +951,87 @@ export function InteractionTimelineScreen() {
                     </div>
                   </div>
                 </div>
+              ) : (
+                /* View Mode Audit History */
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                  {auditLoading ? (
+                    <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-2 text-xs">
+                      <Loader2 className="size-5 animate-spin text-[#185FA5]" />
+                      <span>Loading audit history...</span>
+                    </div>
+                  ) : auditError ? (
+                    <div className="py-12 text-center text-red-500 text-xs font-medium">
+                      {auditError}
+                    </div>
+                  ) : auditLogs.length > 0 ? (
+                    <div className="relative border-l border-slate-200 ml-4 pl-6 space-y-5">
+                      {auditLogs.map((log) => (
+                        <div key={log.auditId} className="relative group text-xs">
+                          {/* Timeline dot */}
+                          <span className={`absolute left-[-31px] top-1 flex size-4 items-center justify-center rounded-full border bg-white ${log.action === "CREATED" ? "border-green-500" : "border-[#185FA5]"
+                            }`}>
+                            <span className={`size-1.5 rounded-full ${log.action === "CREATED" ? "bg-green-500" : "bg-[#185FA5]"
+                              }`} />
+                          </span>
+
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold text-slate-700">
+                                {log.action === "CREATED" ? "Created Interaction" : "Updated Field"}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                {formatDate(log.timestamp)}
+                              </span>
+                            </div>
+
+                            <div className="text-[10px] text-slate-400">
+                              By <strong className="text-slate-600">{log.changedByName}</strong> ({log.changedByRole || "N/A"})
+                            </div>
+
+                            {log.action === "CREATED" ? (
+                              <p className="mt-1 text-[11px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded border border-slate-100">
+                                {log.newValue}
+                              </p>
+                            ) : (
+                              <div className="mt-2 space-y-1 bg-slate-50 p-2.5 rounded border border-slate-100">
+                                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wide">
+                                  {log.fieldName === "interactionType" ? "Interaction Type" :
+                                    log.fieldName === "description" ? "Description / Notes" :
+                                      log.fieldName === "occurredAt" ? "Interaction Date" :
+                                        log.fieldName === "lead" ? "Linked Lead" :
+                                          log.fieldName === "customer" ? "Linked Customer" :
+                                            log.fieldName === "deal" ? "Linked Deal" :
+                                              log.fieldName}
+                                </div>
+                                <div className="grid grid-cols-1 gap-1 text-[11px]">
+                                  {log.oldValue && (
+                                    <div className="text-red-600 line-through bg-red-50 px-1.5 py-0.5 rounded leading-relaxed wrap-break-word">
+                                      {log.oldValue}
+                                    </div>
+                                  )}
+                                  <div className="text-green-700 bg-green-50 px-1.5 py-0.5 rounded font-medium leading-relaxed wrap-break-word">
+                                    {log.newValue || "(none)"}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-12 text-center text-slate-400 text-xs">
+                      No audit history found.
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* View Mode Footer */}
               {!isEditingDetail && (
                 <div className="px-6 py-4 border-t border-slate-100 flex justify-end bg-slate-50/50">
-                  <Button 
-                    variant="ghost" 
+                  <Button
+                    variant="ghost"
                     onClick={() => setSelectedInteraction(null)}
                     className="text-xs py-1.5 px-4"
                   >
