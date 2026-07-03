@@ -81,7 +81,7 @@ public class GetSalesPerformanceReportUseCase {
                 .filter(b -> CONFIRMED_BOOKINGS.contains(b.getStatus())).count();
         BigDecimal revenue = paidPayments.stream()
                 .map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         return SalesPerformanceReportResponse.builder()
                 .dateFrom(from)
@@ -144,7 +144,7 @@ public class GetSalesPerformanceReportUseCase {
                     .revenue(a.revenue)
                     .build());
         }
-        rows.sort(Comparator.comparing(RepRow::getRevenue, Comparator.nullsLast(Comparator.reverseOrder())));
+        rows.sort(Comparator.comparing(r -> r.getRevenue(), Comparator.nullsLast(Comparator.reverseOrder())));
         return rows.size() > MAX_REPS ? rows.subList(0, MAX_REPS) : rows;
     }
 
@@ -162,7 +162,7 @@ public class GetSalesPerformanceReportUseCase {
     private BigDecimal sumRevenue(List<DealEntity> deals) {
         return deals.stream()
                 .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
     }
 
     private boolean inRange(OffsetDateTime at, LocalDate from, LocalDate to) {

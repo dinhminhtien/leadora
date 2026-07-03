@@ -91,7 +91,7 @@ public class GetTaskPerformanceReportUseCase {
                     .completionRate(rate(a.completed, a.total))
                     .build());
         }
-        rows.sort(Comparator.comparingLong(StaffRow::getTotal).reversed());
+        rows.sort(Comparator.comparingLong((StaffRow r) -> r.getTotal()).reversed());
         return rows.size() > MAX_STAFF ? rows.subList(0, MAX_STAFF) : rows;
     }
 
