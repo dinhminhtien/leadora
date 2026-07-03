@@ -19,6 +19,7 @@ public class UpdateInteractionTimelineUseCase {
     private final InteractTimelineRepository interactTimelineRepository;
     private final InteractionTimelineMapper mapper;
     private final InteractionTimelineAccessPolicy accessPolicy;
+    private final InteractionAuditService interactionAuditService;
 
     @Transactional
     public InteractionTimelineResponse execute(UUID id, UpdateInteractionTimelineRequest request) {
@@ -28,11 +29,24 @@ public class UpdateInteractionTimelineUseCase {
         UserEntity currentUser = accessPolicy.currentUser();
         accessPolicy.assertCanView(currentUser, entity);
 
+        InteractTimelineEntity oldSnapshot = InteractTimelineEntity.builder()
+                .interactionId(entity.getInteractionId())
+                .user(entity.getUser())
+                .interactionType(entity.getInteractionType())
+                .description(entity.getDescription())
+                .occurredAt(entity.getOccurredAt())
+                .lead(entity.getLead())
+                .customer(entity.getCustomer())
+                .deal(entity.getDeal())
+                .createdAt(entity.getCreatedAt())
+                .build();
+
         entity.setInteractionType(request.getType());
         entity.setDescription(request.getDescription());
         entity.setOccurredAt(request.getOccurredAt());
 
         InteractTimelineEntity saved = interactTimelineRepository.save(entity);
+        interactionAuditService.logUpdate(oldSnapshot, saved, currentUser);
         return mapper.mapToResponse(saved);
     }
 }

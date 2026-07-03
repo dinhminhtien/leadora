@@ -26,6 +26,7 @@ public class CreateInteractionTimelineUseCase {
     private final DealRepository dealRepository;
     private final InteractionTimelineMapper mapper;
     private final InteractionTimelineAccessPolicy accessPolicy;
+    private final InteractionAuditService interactionAuditService;
 
     @Transactional
     public InteractionTimelineResponse execute(CreateInteractionTimelineRequest request) {
@@ -70,6 +71,7 @@ public class CreateInteractionTimelineUseCase {
                 .build();
 
         InteractTimelineEntity saved = interactTimelineRepository.save(entity);
+        interactionAuditService.logCreation(saved, currentUser);
         return mapper.mapToResponse(saved);
     }
 }

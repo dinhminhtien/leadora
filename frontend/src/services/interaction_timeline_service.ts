@@ -34,6 +34,17 @@ export type UpdateInteractionTimelinePayload = {
   occurredAt: string; // ISO datetime
 };
 
+export type InteractionAuditLog = {
+  auditId: string;
+  action: "CREATED" | "UPDATED";
+  changedByName: string;
+  changedByRole: string;
+  timestamp: string;
+  fieldName: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+};
+
 const ENDPOINT = "/interaction-timeline";
 
 export const interactionTimelineService = {
@@ -64,6 +75,13 @@ export const interactionTimelineService = {
     const response = await apiClient.put<ApiResponse<InteractionTimelineEntry>>(
       `${ENDPOINT}/${id}`,
       payload,
+    );
+    return response.data;
+  },
+
+  async getAuditLogs(interactionId: string) {
+    const response = await apiClient.get<ApiResponse<InteractionAuditLog[]>>(
+      `${ENDPOINT}/${interactionId}/audit-logs`,
     );
     return response.data;
   },
