@@ -13,6 +13,22 @@ class ApiPaths {
   static const String resetPassword = '/auth/reset-password';
   static const String profile = '/auth/profile';
 
+  // --- Self-service profile (ProfileController) ---
+  static const String profileMe = '/profile/me';
+  static const String changePassword = '/profile/me/change-password';
+
+  // --- Reporting / dashboard (ReportingController) ---
+  static const String dashboardSummary = '/reporting/dashboard-summary';
+
+  // --- Leads (LeadController) ---
+  static const String leads = '/leads';
+  static String leadById(String id) => '/leads/$id';
+
+  // --- Follow-up tasks (TaskController) ---
+  static const String tasks = '/tasks';
+  static String taskById(String id) => '/tasks/$id';
+  static String taskResolve(String id) => '/tasks/$id/resolve';
+
   /// NOTE: The backend currently issues a single 24h HS256 access token and
   /// exposes NO refresh endpoint. This constant marks the seam where a real
   /// `/auth/refresh` would live; see [TokenRefresher] for the fallback.
@@ -31,9 +47,9 @@ class ApiPaths {
 
   // --- Notifications (NotificationController) ---
   static const String notifications = '/notifications';
-  static const String notificationsUnreadCount = '/notifications/unread-count';
+  static String notificationById(String id) => '/notifications/$id';
   static String notificationRead(String id) => '/notifications/$id/read';
-  static const String notificationsReadAll = '/notifications/read-all';
+  static const String notificationsMarkAllRead = '/notifications/mark-all-read';
 
   // --- Customers (CustomerController) ---
   static const String customers = '/customers';

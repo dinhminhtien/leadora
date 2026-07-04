@@ -10,14 +10,19 @@ class Routes {
 
   // Dashboard shell + tabs.
   static const String dashboard = '/dashboard';
-  static const String bookings = '/bookings';
+  static const String leads = '/leads';
+  static const String tasks = '/tasks';
   static const String notifications = '/notifications';
   static const String profile = '/profile';
 
-  // Detail routes (deep-linkable). Nested under the bookings tab branch.
-  static String bookingDetailPath(String id) => '/bookings/detail/$id';
-  static String paymentPath(String bookingId) =>
-      '/bookings/detail/$bookingId/payment';
+  // Full-screen routes rendered over the shell (relative sub-paths).
+  static const String leadCreateSub = 'new';
+  static const String leadDetailSub = 'detail/:id';
+  static const String taskDetailSub = 'detail/:id';
+  static const String changePasswordSub = 'change-password';
+
+  static String leadDetailPath(String id) => '/leads/detail/$id';
+  static String taskDetailPath(String id) => '/tasks/detail/$id';
 }
 
 /// Route *names* (stable identifiers independent of path shape).
@@ -27,10 +32,14 @@ class RouteNames {
   static const String splash = 'splash';
   static const String login = 'login';
   static const String forgotPassword = 'forgotPassword';
+
   static const String dashboard = 'dashboard';
-  static const String bookings = 'bookings';
-  static const String bookingDetail = 'bookingDetail';
-  static const String payment = 'payment';
+  static const String leads = 'leads';
+  static const String leadCreate = 'leadCreate';
+  static const String leadDetail = 'leadDetail';
+  static const String tasks = 'tasks';
+  static const String taskDetail = 'taskDetail';
   static const String notifications = 'notifications';
   static const String profile = 'profile';
+  static const String changePassword = 'changePassword';
 }
