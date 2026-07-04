@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 
 import '../../../core/constants/api_paths.dart';
 import '../../../core/constants/storage_keys.dart';
@@ -18,13 +21,19 @@ class AuthRepository {
     required ApiClient client,
     required TokenStore tokenStore,
     required SecureStorage secureStorage,
+    GoogleSignIn? googleSignIn,
+    supabase.SupabaseClient? supabaseClient,
   })  : _client = client,
         _tokenStore = tokenStore,
-        _secure = secureStorage;
+        _secure = secureStorage,
+        _googleSignIn = googleSignIn ?? GoogleSignIn(scopes: ['email', 'profile']),
+        _supabaseClient = supabaseClient ?? supabase.Supabase.instance.client;
 
   final ApiClient _client;
   final TokenStore _tokenStore;
   final SecureStorage _secure;
+  final GoogleSignIn _googleSignIn;
+  final supabase.SupabaseClient _supabaseClient;
 
   /// `POST /auth/login` → persists the access token, returns the user.
   Future<AuthUser> login({
@@ -38,6 +47,33 @@ class AuthRepository {
     );
     await _tokenStore.saveAccessToken(result.accessToken);
     return result.user;
+  }
+
+  /// Kích hoạt luồng OAuth2 của Supabase đối với Google provider.
+  Future<void> loginWithGoogle() async {
+    final String redirectTo;
+    if (kIsWeb) {
+      // Dynamic local/production web origin (e.g., http://localhost:1000/)
+      redirectTo = '${Uri.base.origin}/';
+    } else {
+      redirectTo = 'com.novax.leadora-mobile://login-callback';
+    }
+
+    await _supabaseClient.auth.signInWithOAuth(
+      supabase.OAuthProvider.google,
+      redirectTo: redirectTo,
+    );
+  }
+
+  /// Xác minh OAuth session token với Spring Boot Backend.
+  Future<AuthUser> verifyOAuthSession(String token) async {
+    return _client.get<AuthUser>(
+      ApiPaths.oauthVerify,
+      headers: {
+        'Authorization': 'Bearer $token',
+      },
+      decode: (data) => AuthUser.fromJson(data as Map<String, dynamic>),
+    );
   }
 
   /// `GET /auth/profile` — used on session restore to rehydrate the current
@@ -61,6 +97,10 @@ class AuthRepository {
     } catch (_) {
       // Best-effort server revocation; ignore failures.
     } finally {
+      try {
+        await _supabaseClient.auth.signOut();
+        await _googleSignIn.signOut();
+      } catch (_) {}
       await _tokenStore.clear();
       await _secure.delete(StorageKeys.biometricEnabled);
     }

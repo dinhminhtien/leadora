@@ -20,7 +20,11 @@ class DashboardScreen extends ConsumerWidget {
     ref.invalidate(dashboardSummaryProvider);
     ref.invalidate(upcomingTasksProvider);
     ref.invalidate(recentNotificationsProvider);
-    await ref.read(dashboardSummaryProvider.future);
+    await Future.wait([
+      ref.read(dashboardSummaryProvider.future),
+      ref.read(upcomingTasksProvider.future),
+      ref.read(recentNotificationsProvider.future),
+    ]);
   }
 
   @override

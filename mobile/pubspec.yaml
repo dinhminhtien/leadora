@@ -36,6 +36,8 @@ dependencies:
 
   # Auth / security
   local_auth: ^2.3.0
+  supabase_flutter: ^2.8.3
+  google_sign_in: ^6.2.1
 
   # Push notifications + monitoring
   firebase_core: ^3.10.0

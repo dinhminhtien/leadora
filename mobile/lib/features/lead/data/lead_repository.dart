@@ -27,7 +27,7 @@ class LeadRepository {
       ApiPaths.leads,
       query: {
         if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
-        if (status != null) 'status': status,
+        'status': ?status,
         'scope': scope,
         'page': page,
         'size': size,

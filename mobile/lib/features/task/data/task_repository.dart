@@ -25,8 +25,8 @@ class TaskRepository {
       ApiPaths.tasks,
       query: {
         if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
-        if (status != null) 'status': status,
-        if (priority != null) 'priority': priority,
+        'status': ?status,
+        'priority': ?priority,
         if (overdue) 'overdue': true,
         'page': page,
         'size': size,

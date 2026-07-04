@@ -28,11 +28,17 @@ class ApiClient {
   Future<T> get<T>(
     String path, {
     Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
     required T Function(Object? data) decode,
     CancelToken? cancelToken,
   }) {
     return _request(
-      () => _dio.get<dynamic>(path, queryParameters: query, cancelToken: cancelToken),
+      () => _dio.get<dynamic>(
+        path,
+        queryParameters: query,
+        options: headers != null ? Options(headers: headers) : null,
+        cancelToken: cancelToken,
+      ),
       decode,
     );
   }
@@ -54,12 +60,18 @@ class ApiClient {
     String path, {
     Object? data,
     Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
     required T Function(Object? data) decode,
     CancelToken? cancelToken,
   }) {
     return _request(
-      () => _dio.post<dynamic>(path,
-          data: data, queryParameters: query, cancelToken: cancelToken),
+      () => _dio.post<dynamic>(
+        path,
+        data: data,
+        queryParameters: query,
+        options: headers != null ? Options(headers: headers) : null,
+        cancelToken: cancelToken,
+      ),
       decode,
     );
   }

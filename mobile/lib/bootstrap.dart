@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/config/env.dart';
 
 /// Composition root. All app entrypoints funnel through here so error handling,
 /// DI (ProviderScope), and platform init live in exactly one place.
@@ -15,6 +17,11 @@ import 'app.dart';
 Future<void> bootstrap() async {
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    await Supabase.initialize(
+      url: Env.supabaseUrl,
+      anonKey: Env.supabaseAnonKey, // ignore: deprecated_member_use
+    );
 
     // Global Flutter framework errors.
     FlutterError.onError = (details) {
