@@ -1,16 +1,14 @@
 package com.novax.leadora.application.usecase.task;
 
 import com.novax.leadora.api.dto.response.TaskResponse;
+import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.ReminderEntity;
-import com.novax.leadora.infrastructure.persistence.entity.SlaTrackingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ReminderStatus;
-import com.novax.leadora.infrastructure.persistence.entity.enums.SlaStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.ReminderRepository;
-import com.novax.leadora.infrastructure.persistence.repository.SlaTrackingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +25,7 @@ import java.util.UUID;
 public class ResolveTaskUseCase {
 
     private final TaskRepository taskRepository;
-    private final SlaTrackingRepository slaTrackingRepository;
+    private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     private final ReminderRepository reminderRepository;
 
     /**
@@ -54,16 +52,11 @@ public class ResolveTaskUseCase {
         task.setStatus(TaskStatus.COMPLETED);
         taskRepository.save(task);
 
-        // Step 4 (POST-2 via SLA): resolve SLA tracking records for this task
-        List<SlaTrackingEntity> trackings =
-                slaTrackingRepository.findByEntityTypeAndEntityId("TASK", taskId);
-        int slaResolved = 0;
-        for (SlaTrackingEntity tracking : trackings) {
-            if (tracking.getStatus() != SlaStatus.RESOLVED) {
-                tracking.setStatus(SlaStatus.RESOLVED);
-                slaTrackingRepository.save(tracking);
-                slaResolved++;
-            }
+        // Step 4 (POST-2): resolve SLA tracking records for this task — non-fatal if none configured
+        try {
+            resolveSlaBreachUseCase.executeByEntity("TASK", taskId);
+        } catch (Exception e) {
+            log.warn("SLA auto-resolve failed for task {}: {}", taskId, e.getMessage());
         }
 
         // Step 5 (POST-2): cancel pending/overdue reminders linked to this task
@@ -80,8 +73,8 @@ public class ResolveTaskUseCase {
         }
 
         // POST-3: audit log
-        log.info("Task resolved (UC-17.5): taskId={}, slaRecordsResolved={}, remindersCancelled={}",
-                taskId, slaResolved, remindersCancelled);
+        log.info("Task resolved (UC-17.5): taskId={}, remindersCancelled={}",
+                taskId, remindersCancelled);
 
         return TaskResponse.from(task);
     }

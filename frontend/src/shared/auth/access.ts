@@ -9,20 +9,22 @@ import { ROUTE_PATHS } from "@/app/routes/route_paths";
  *   Roles & Permissions). A screen is reachable only if the user holds its VIEW permission,
  *   so hiding a permission also blocks the route — sidebar item AND direct URL.
  */
-export type AppRole = "SALES" | "MANAGER" | "ADMIN";
+export type AppRole = "SALES" | "MANAGER" | "ADMIN" | "FO";
 
 export function getUserRole(user?: { roles?: string[] } | null): AppRole {
   const raw = (user?.roles?.[0] ?? "").toUpperCase();
   if (raw === "ADMIN") return "ADMIN";
   if (raw === "MANAGER") return "MANAGER";
+  if (raw === "FO" || raw === "FRONT_OFFICE") return "FO";
   return "SALES";
 }
 
-/** The home dashboard URL for each role. */
+/** The home dashboard URL for each role. Front Office lands directly on its arrival-handover desk. */
 export const DASHBOARD_PATHS: Record<AppRole, string> = {
   SALES: "/dashboard/staff",
   MANAGER: "/dashboard/manager",
   ADMIN: "/dashboard/admin",
+  FO: ROUTE_PATHS.frontOfficeHandover,
 };
 
 export function dashboardPathForRole(role: AppRole): string {
@@ -34,6 +36,12 @@ const ADMIN_ROUTES: string[] = [
   DASHBOARD_PATHS.ADMIN,
   ROUTE_PATHS.identityAccess,
   ROUTE_PATHS.depositPayment,
+];
+
+// Front Office (role-based): a simple, focused desk — arrival handovers + their alerts only.
+const FO_ROUTES: string[] = [
+  ROUTE_PATHS.frontOfficeHandover,
+  ROUTE_PATHS.notifications,
 ];
 
 // Maps each protected route to the permission code that gates it (the screen's VIEW
@@ -91,8 +99,15 @@ export function canAccessPath(
   if (pathname === ROUTE_PATHS.dashboard) return true;
   if (pathname === DASHBOARD_PATHS[role]) return true;
 
+  // Profile page is self-service — every authenticated user may access it regardless of role.
+  if (pathname === ROUTE_PATHS.profile || pathname.startsWith(ROUTE_PATHS.profile + "/")) return true;
+
   if (role === "ADMIN") {
     return matchesAny(ADMIN_ROUTES, pathname);
+  }
+
+  if (role === "FO") {
+    return matchesAny(FO_ROUTES, pathname);
   }
 
   // SALES / MANAGER — permission driven.

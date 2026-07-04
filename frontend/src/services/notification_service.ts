@@ -25,9 +25,9 @@ export type Notification = {
 const ENDPOINT = "/notifications";
 
 export const notificationService = {
-  async getList(userId: string, unreadOnly = false): Promise<ApiResponse<Notification[]>> {
+  async getList(unreadOnly = false): Promise<ApiResponse<Notification[]>> {
     const response = await apiClient.get<ApiResponse<Notification[]>>(ENDPOINT, {
-      params: { userId, unreadOnly },
+      params: { unreadOnly },
     });
     return response.data;
   },
@@ -46,11 +46,10 @@ export const notificationService = {
     return response.data;
   },
 
-  async markAllRead(userId: string): Promise<ApiResponse<{ markedCount: number }>> {
+  async markAllRead(): Promise<ApiResponse<{ markedCount: number }>> {
     const response = await apiClient.patch<ApiResponse<{ markedCount: number }>>(
       `${ENDPOINT}/mark-all-read`,
       null,
-      { params: { userId } },
     );
     return response.data;
   },

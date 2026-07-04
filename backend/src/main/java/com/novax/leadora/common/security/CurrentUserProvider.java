@@ -84,7 +84,7 @@ public class CurrentUserProvider {
         // 3. Dev-only fallback: AI_CHAT_DEV_USER_ID env variable.
         // Intentionally disabled in production to prevent unauthorized access.
         boolean isDevProfile = Arrays.stream(activeProfiles.split(","))
-                .map(String::trim)
+                .map(s -> s.trim())
                 .anyMatch("dev"::equalsIgnoreCase);
 
         if (isDevProfile && StringUtils.hasText(devUserId)) {

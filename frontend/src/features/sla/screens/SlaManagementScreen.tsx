@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Gauge, Plus, AlertTriangle, ShieldOff, ShieldAlert,
   Pencil, Trash2, X, Check, ExternalLink, Activity, CheckCircle,
@@ -83,6 +84,7 @@ function formatHoursRemaining(hours: number): string {
 
 function MonitorTab() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [entityTypeFilter, setEntityTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<SlaDisplayStatus | "">("");
   const [resolvingId, setResolvingId] = useState<string | null>(null);
@@ -105,21 +107,39 @@ function MonitorTab() {
     if (!resolveTarget) return;
     const { trackingId, entityId, isTask } = resolveTarget;
     setResolvingId(trackingId);
+
+    const getStatus = (err: unknown) =>
+      (err as { response?: { status?: number } })?.response?.status;
+
     try {
       if (isTask && entityId) {
         try {
           await resolveTaskMutation.mutateAsync(entityId);
-        } catch (e: unknown) {
-          const status = (e as { response?: { status?: number } })?.response?.status;
-          if (status === 404) {
+          // Task resolved successfully — SLA tracking auto-resolved by backend
+        } catch (taskErr: unknown) {
+          const taskStatus = getStatus(taskErr);
+          // 404 = task deleted; 409 = task already resolved — both are "done", fall through to SLA tracking
+          if (taskStatus !== 404 && taskStatus !== 409) throw taskErr;
+          try {
             await resolveMutation.mutateAsync(trackingId);
-          } else throw e;
+          } catch (slaErr: unknown) {
+            // 409 from SLA tracking = already resolved — treat as success
+            if (getStatus(slaErr) !== 409) throw slaErr;
+          }
         }
         showToast("Task marked as completed. SLA tracking and reminders resolved.");
       } else {
-        await resolveMutation.mutateAsync(trackingId);
+        try {
+          await resolveMutation.mutateAsync(trackingId);
+        } catch (e: unknown) {
+          // 409 = SLA tracking already resolved — treat as success
+          if (getStatus(e) !== 409) throw e;
+        }
         showToast("SLA breach marked as resolved.");
       }
+      // Always invalidate after a successful resolve, even when 409s were treated as success
+      // (onSuccess from mutations only fires when they don't throw)
+      await queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] });
       setResolveTarget(null);
       setResolveError(null);
     } catch (e: unknown) {
@@ -206,11 +226,11 @@ function MonitorTab() {
               record={r}
               onNavigate={(path) => router.push(path)}
               onResolve={
-                r.entityType === "TASK"
-                  ? () => setResolveTarget({ trackingId: r.trackingId, entityId: r.entityId, isTask: true })
-                  : r.displayStatus === "BREACHED"
-                    ? () => setResolveTarget({ trackingId: r.trackingId, isTask: false })
-                    : undefined
+                r.displayStatus === "BREACHED"
+                  ? r.entityType === "TASK"
+                    ? () => setResolveTarget({ trackingId: r.trackingId, entityId: r.entityId, isTask: true })
+                    : () => setResolveTarget({ trackingId: r.trackingId, isTask: false })
+                  : undefined
               }
               resolveLabel={r.entityType === "TASK" ? "Resolve Task" : "Resolve"}
               isResolving={resolvingId === r.trackingId}

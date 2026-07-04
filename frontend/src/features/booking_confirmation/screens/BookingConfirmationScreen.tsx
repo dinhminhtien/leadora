@@ -12,6 +12,7 @@ import { bookingConfirmationService, type Booking, type RoomAvailability } from 
 import { productService, type ProductService } from "@/services/product_service";
 import { customerProfileService, type CustomerProfile } from "@/services/customer_profile_service";
 import { quotationService, type Quotation } from "@/services/quotation_service";
+import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
 
 type TabType = "queue" | "checker";
 
@@ -399,20 +400,21 @@ export function BookingConfirmationScreen() {
               <Table className="w-full table-fixed min-w-[1100px]">
                 <TableHeader>
                   <TableRow hoverable={false}>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[14%] !text-center whitespace-nowrap">Booking Number</TableHead>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[17%] !text-left whitespace-nowrap">Guest Name</TableHead>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[15%] !text-left whitespace-nowrap">Room Type</TableHead>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Check In</TableHead>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Check Out</TableHead>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[10%] !text-center whitespace-nowrap">Total Amount</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[12%] !text-center whitespace-nowrap">Booking Number</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[15%] !text-left whitespace-nowrap">Guest Name</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[13%] !text-left whitespace-nowrap">Room Type</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[10%] !text-center whitespace-nowrap">Check In</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[10%] !text-center whitespace-nowrap">Check Out</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[9%] !text-center whitespace-nowrap">Total Amount</TableHead>
                     <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Status</TableHead>
+                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[9%] !text-center whitespace-nowrap">SLA</TableHead>
                     <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loadingBookings ? (
                     <TableRow hoverable={false}>
-                      <TableCell colSpan={8} className="py-12 text-center text-muted-foreground text-xs">
+                      <TableCell colSpan={9} className="py-12 text-center text-muted-foreground text-xs">
                         <RefreshCw className="size-6 animate-spin mx-auto mb-2 text-primary" />
                         Loading bookings from live server...
                       </TableCell>
@@ -443,6 +445,11 @@ export function BookingConfirmationScreen() {
                           </div>
                         </TableCell>
                         <TableCell className="!py-3.5 !px-4 !text-center whitespace-nowrap">
+                          <div className="flex justify-center">
+                            <SlaStatusBadge entityId={b.bookingId} entityType="BOOKING" />
+                          </div>
+                        </TableCell>
+                        <TableCell className="!py-3.5 !px-4 !text-center whitespace-nowrap">
                           <div className="flex justify-center gap-1.5">
                             <Button
                               variant="outline"
@@ -466,7 +473,7 @@ export function BookingConfirmationScreen() {
                     ))
                   ) : (
                     <TableRow hoverable={false}>
-                      <TableCell colSpan={8} className="py-12 text-center text-muted-foreground text-xs">
+                      <TableCell colSpan={9} className="py-12 text-center text-muted-foreground text-xs">
                         No booking confirmation requests match the filter criteria.
                       </TableCell>
                     </TableRow>
@@ -746,6 +753,7 @@ export function BookingConfirmationScreen() {
                   <Badge variant={getBadgeVariant(selectedBooking.status)} className="uppercase text-[9px] font-bold">
                     {selectedBooking.status}
                   </Badge>
+                  <SlaStatusBadge entityId={selectedBooking.bookingId} entityType="BOOKING" />
                   <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Reservation request</span>
                 </div>
                 <h3 className="text-lg font-bold text-foreground">{selectedBooking.bookingCode}</h3>

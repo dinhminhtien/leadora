@@ -92,6 +92,7 @@ export function SalesPipelineScreen() {
   const queryClient = useQueryClient();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [ownerFilter, setOwnerFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -131,20 +132,30 @@ export function SalesPipelineScreen() {
     "Confirmed"
   ];
 
-  // Fetch deals and users on mount
-  React.useEffect(() => {
-    const fetchDeals = async () => {
-      try {
-        const response = await dealService.getList();
-        if (response && response.success && response.data) {
-          setDeals(response.data as Deal[]);
-        }
-      } catch (err) {
-        console.error("Failed to fetch deals", err);
-      } finally {
-        setLoading(false);
+  // Fetch deals helper (UC-11.2)
+  const fetchDeals = async (searchVal: string, ownerVal: string) => {
+    setLoading(true);
+    try {
+      const params: any = {};
+      if (searchVal.trim()) {
+        params.search = searchVal.trim();
       }
-    };
+      if (ownerVal && ownerVal !== "all") {
+        params.ownerId = ownerVal;
+      }
+      const response = await dealService.getList(params);
+      if (response && response.success && response.data) {
+        setDeals(response.data as Deal[]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch deals", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch users on mount
+  React.useEffect(() => {
     const fetchUsers = async () => {
       try {
         const response = await taskUserService.getAll();
@@ -155,9 +166,17 @@ export function SalesPipelineScreen() {
         console.error("Failed to fetch users", err);
       }
     };
-    fetchDeals();
     fetchUsers();
   }, []);
+
+  // Fetch deals when search term or owner filter changes (debounced)
+  React.useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetchDeals(searchTerm, ownerFilter);
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm, ownerFilter]);
 
   const handleOpenEditDrawer = async (deal: Deal) => {
     try {
@@ -230,6 +249,7 @@ export function SalesPipelineScreen() {
         queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
         queryClient.invalidateQueries({ queryKey: ["deals-for-report"] });
         showSuccess("Deal updated successfully!");
+        fetchDeals(searchTerm, ownerFilter);
       } else {
         showError(response?.message || "Failed to update deal");
       }
@@ -274,6 +294,7 @@ export function SalesPipelineScreen() {
         queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
         queryClient.invalidateQueries({ queryKey: ["deals-for-report"] });
         showSuccess(`Moved deal "${deal.title}" to ${nextStage}`);
+        fetchDeals(searchTerm, ownerFilter);
       } else {
         showError(response?.message || "Failed to update deal stage");
       }
@@ -311,6 +332,7 @@ export function SalesPipelineScreen() {
         queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
         queryClient.invalidateQueries({ queryKey: ["deals-for-report"] });
         showSuccess(`Moved deal "${deal.title}" to ${targetStage}`);
+        fetchDeals(searchTerm, ownerFilter);
       } else {
         showError(response?.message || "Failed to update deal stage");
       }
@@ -321,11 +343,49 @@ export function SalesPipelineScreen() {
     }
   };
 
-  // Filter deals by Owner
-  const filteredDeals = useMemo(() => {
-    if (ownerFilter === "all") return deals;
-    return deals.filter(d => d.owner === ownerFilter);
-  }, [deals, ownerFilter]);
+  // Mark deal status (won/lost) - UC-12.8 Close Deal
+  const handleUpdateStatus = async (dealId: string, newStatus: Deal["status"]) => {
+    const dealToUpdate = deals.find(d => d.id === dealId);
+    if (!dealToUpdate) return;
+
+    const updatedStage = newStatus === "won" ? "Confirmed" : dealToUpdate.stage;
+    const payload = {
+      title: dealToUpdate.title,
+      contactName: dealToUpdate.contactName,
+      email: dealToUpdate.email || "",
+      phone: dealToUpdate.phone || "",
+      value: dealToUpdate.value,
+      stage: updatedStage,
+      status: newStatus,
+      expectedClose: dealToUpdate.expectedClose || new Date().toISOString().split("T")[0],
+      owner: dealToUpdate.owner,
+      notes: dealToUpdate.notes || ""
+    };
+
+    try {
+      const response = await dealService.update(dealId, payload);
+      if (response && response.success && response.data) {
+        setDeals(prev =>
+          prev.map(deal =>
+            deal.id === dealId ? (response.data as Deal) : deal
+          )
+        );
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+        queryClient.invalidateQueries({ queryKey: ["deals-for-report"] });
+        showSuccess(`Deal marked as ${newStatus.toUpperCase()}!`);
+        fetchDeals(searchTerm, ownerFilter);
+      } else {
+        showError(response?.message || "Failed to update status");
+      }
+    } catch (err: any) {
+      console.error("Error updating status", err);
+      const errMsg = err.response?.data?.message || err.message || "An error occurred.";
+      showError(errMsg);
+    }
+  };
+
+  // Since search & filter logic is handled on the backend (UC-11.2), filteredDeals is just the deals array
+  const filteredDeals = deals;
 
   // Statistics
   const pipelineStats = useMemo(() => {
@@ -365,7 +425,7 @@ export function SalesPipelineScreen() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 bg-white rounded-xl border border-slate-100 shadow-xs">
-        <Loader2 className="size-8 text-blue-600 animate-spin mb-3" />
+        <Loader2 className="size-8 text-[#185FA5] animate-spin mb-3" />
         <p className="text-xs text-slate-500 font-bold">Loading sales pipeline board...</p>
       </div>
     );
@@ -396,23 +456,45 @@ export function SalesPipelineScreen() {
 
       {/* Header and Controls */}
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Sales Pipeline Board</h1>
-          <p className="text-xs text-slate-400">Drag or shift contract deals across hotel booking sales stages</p>
+        <div className="flex items-center gap-2.5">
+          <span className="p-2 rounded-lg bg-[#E6F1FB] border border-[#85B7EB]/30">
+            <Briefcase className="size-5 text-[#185FA5]" />
+          </span>
+          <div>
+            <h1 className="text-lg font-bold text-slate-800">Sales Pipeline Board</h1>
+            <p className="text-[11px] text-slate-400">Drag or shift contract deals across hotel booking sales stages</p>
+          </div>
         </div>
 
-        {/* Owner filter dropdown */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-400">Filter Owner:</span>
-          <select
-            value={ownerFilter}
-            onChange={e => setOwnerFilter(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none"
-          >
-            <option value="all">All Sales Agents</option>
-            <option value="John Doe">John Doe</option>
-            <option value="Sarah Connor">Sarah Connor</option>
-          </select>
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+          {/* Search bar - UC-11.2 Search and Filter Pipeline Deals */}
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search deal name, contact..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
+            />
+          </div>
+
+          {/* Owner filter dropdown - UC-11.2 Search and Filter Pipeline Deals */}
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            <span className="text-xs font-semibold text-slate-400">Filter Owner:</span>
+            <select
+              value={ownerFilter}
+              onChange={e => setOwnerFilter(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition w-full sm:w-auto"
+            >
+              <option value="all">All Sales Agents</option>
+              {users.map(u => (
+                <option key={u.userId} value={u.userId}>
+                  {u.fullName}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -428,7 +510,7 @@ export function SalesPipelineScreen() {
         </div>
         <div className="text-center md:text-left px-4">
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Weighted Revenue Forecast</span>
-          <span className="text-lg font-bold text-blue-600 block mt-1">${pipelineStats.weightedValue.toLocaleString('en-US')}</span>
+          <span className="text-lg font-bold text-[#185FA5] block mt-1">${pipelineStats.weightedValue.toLocaleString('en-US')}</span>
         </div>
       </div>
 
@@ -460,7 +542,7 @@ export function SalesPipelineScreen() {
                 }
               }}
               className={`flex-1 min-w-[200px] lg:min-w-0 lg:max-w-none rounded-xl p-2.5 lg:p-2 flex flex-col gap-2.5 lg:gap-2 border transition-all duration-200 ${draggedOverStage === stage
-                  ? "bg-blue-50/50 border-blue-400 border-dashed"
+                  ? "bg-[#E6F1FB]/30 border-[#185FA5]/50 border-dashed"
                   : "bg-slate-100/60 border-slate-200/50"
                 } ${styles.border}`}
             >
@@ -491,17 +573,17 @@ export function SalesPipelineScreen() {
                         e.dataTransfer.setData("text/plain", deal.id);
                         e.dataTransfer.effectAllowed = "move";
                       }}
-                      className={`border-slate-200 bg-white hover:border-blue-400 shadow-xs hover:shadow-md transition group duration-200 ${deal.status === "active" ? "cursor-grab active:cursor-grabbing" : "opacity-80"
+                      className={`border-slate-200 bg-white hover:border-[#185FA5]/50 shadow-xs hover:shadow-md transition group duration-200 ${deal.status === "active" ? "cursor-grab active:cursor-grabbing" : "opacity-80"
                         }`}
                     >
                       <CardContent className="p-2.5 lg:p-2 space-y-2">
                         {/* Title and Value */}
                         <div
-                          className="cursor-pointer group-hover:text-blue-600 transition"
+                          className="cursor-pointer group-hover:text-[#185FA5] transition"
                           onClick={() => handleOpenEditDrawer(deal)}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <h4 className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug group-hover:text-blue-600 transition">
+                            <h4 className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug group-hover:text-[#185FA5] transition">
                               {deal.title}
                             </h4>
                             {deal.status !== "active" && (
@@ -555,10 +637,28 @@ export function SalesPipelineScreen() {
                           </button>
                         </div>
 
+                        {/* Quick Status Update / Close Deal (UC-12.8) */}
+                        {deal.status === "active" && (
+                          <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-slate-100">
+                            <button
+                              onClick={() => handleUpdateStatus(deal.id, "won")}
+                              className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[9px] font-bold hover:bg-emerald-100 transition"
+                            >
+                              Won
+                            </button>
+                            <button
+                              onClick={() => handleUpdateStatus(deal.id, "lost")}
+                              className="px-1.5 py-0.5 bg-red-50 text-red-700 rounded text-[9px] font-bold hover:bg-red-100 transition"
+                            >
+                              Lost
+                            </button>
+                          </div>
+                        )}
+
                         {/* Owner / Assignee */}
                         <div className="flex items-center justify-between text-[9px] text-slate-400 pt-1">
                           <span>Owner: {deal.owner.split(" ")[0]}</span>
-                          <span className="size-4.5 rounded-full bg-blue-100 text-blue-700 text-[8px] font-bold flex items-center justify-center">
+                          <span className="size-4.5 rounded-full bg-[#E6F1FB] text-[#0C447C] border border-[#85B7EB]/20 text-[8px] font-bold flex items-center justify-center">
                             {deal.owner.slice(0, 2).toUpperCase()}
                           </span>
                         </div>
@@ -590,10 +690,10 @@ export function SalesPipelineScreen() {
           {/* Drawer Element */}
           <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl border-l border-slate-200 z-50 flex flex-col animate-in slide-in-from-right duration-300">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
               <div>
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                  <Briefcase className="size-4.5 text-blue-600" />
+                  <Briefcase className="size-4.5 text-[#185FA5]" />
                   Deal Details & Edit
                 </h3>
                 <p className="text-[10px] text-slate-400 mt-0.5">View and update sales deal size, forecast close date, and pipeline stage</p>
@@ -633,7 +733,7 @@ export function SalesPipelineScreen() {
                         onClick={() => !isDisabled && handleStageClick(stg)}
                         disabled={isDisabled}
                         className={`flex-1 text-center py-1.5 px-0.5 rounded text-[9px] font-bold transition-all duration-200 border ${isCurrent
-                            ? "bg-blue-600 border-blue-600 text-white shadow-xs"
+                            ? "bg-[#185FA5] border-[#185FA5] text-white shadow-xs"
                             : isPast
                               ? "bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100"
                               : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
@@ -654,7 +754,7 @@ export function SalesPipelineScreen() {
                   placeholder="e.g. Wedding Catering Block, Corporate Conference..."
                   value={editingDeal.title || ""}
                   onChange={e => setEditingDeal({ ...editingDeal, title: e.target.value })}
-                  className="py-1.5 text-xs"
+                  className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                 />
               </div>
 
@@ -666,7 +766,7 @@ export function SalesPipelineScreen() {
                   placeholder="e.g. Alice Jenkins"
                   value={editingDeal.contactName || ""}
                   onChange={e => setEditingDeal({ ...editingDeal, contactName: e.target.value })}
-                  className="py-1.5 text-xs"
+                  className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                 />
               </div>
 
@@ -679,7 +779,7 @@ export function SalesPipelineScreen() {
                     placeholder="contact@gmail.com"
                     value={editingDeal.email || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, email: e.target.value })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
                 <div className="space-y-1">
@@ -689,7 +789,7 @@ export function SalesPipelineScreen() {
                     placeholder="+1 555-0100"
                     value={editingDeal.phone || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, phone: e.target.value })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
               </div>
@@ -703,7 +803,7 @@ export function SalesPipelineScreen() {
                     placeholder="e.g. 15000"
                     value={editingDeal.value || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, value: Number(e.target.value) })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
                 <div className="space-y-1">
@@ -712,7 +812,7 @@ export function SalesPipelineScreen() {
                     value={editingDeal.stage || "Inquiry"}
                     disabled={isAlreadyClosed}
                     onChange={e => setEditingDeal({ ...editingDeal, stage: e.target.value as Deal["stage"] })}
-                    className="py-1.5"
+                    className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   >
                     <option value="Inquiry">Inquiry</option>
                     <option value="Site Visit">Site Visit</option>
@@ -735,7 +835,7 @@ export function SalesPipelineScreen() {
                     placeholder="50"
                     value={editingDeal.probability || 0}
                     onChange={e => setEditingDeal({ ...editingDeal, probability: Number(e.target.value) })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
                 <div className="space-y-1">
@@ -745,7 +845,7 @@ export function SalesPipelineScreen() {
                     disabled={isAlreadyClosed}
                     value={editingDeal.expectedClose || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, expectedClose: e.target.value })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
               </div>
@@ -766,7 +866,7 @@ export function SalesPipelineScreen() {
                       }
                       setEditingDeal({ ...editingDeal, status: newStatus, stage: newStage });
                     }}
-                    className="py-1.5"
+                    className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   >
                     <option value="active">Active</option>
                     <option value="won">Won</option>
@@ -779,7 +879,7 @@ export function SalesPipelineScreen() {
                     value={editingDeal.owner || ""}
                     disabled={isAlreadyClosed}
                     onChange={e => setEditingDeal({ ...editingDeal, owner: e.target.value })}
-                    className="py-1.5"
+                    className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   >
                     <option value="">Select Deal Owner...</option>
                     {users.map(u => (
@@ -798,7 +898,7 @@ export function SalesPipelineScreen() {
                   value={editingDeal.notes || ""}
                   disabled={isAlreadyClosed}
                   onChange={e => setEditingDeal({ ...editingDeal, notes: e.target.value })}
-                  className="w-full min-h-[100px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                  className="w-full min-h-[100px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white disabled:bg-slate-50 disabled:text-slate-400 transition"
                 />
               </div>
 
@@ -808,18 +908,18 @@ export function SalesPipelineScreen() {
                     <Button
                       type="submit"
                       variant="primary"
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-xs font-semibold"
+                      className="w-full text-xs py-2"
                     >
                       Save Changes
                     </Button>
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="ghost"
                       onClick={() => {
                         setIsEditDealDrawerOpen(false);
                         setEditingDeal(null);
                       }}
-                      className="w-full border-slate-200 text-xs text-slate-600"
+                      className="w-full text-xs py-2"
                     >
                       Cancel
                     </Button>
@@ -832,7 +932,7 @@ export function SalesPipelineScreen() {
                       setIsEditDealDrawerOpen(false);
                       setEditingDeal(null);
                     }}
-                    className="w-full bg-slate-600 hover:bg-slate-700 text-xs font-semibold"
+                    className="w-full text-xs py-2 bg-slate-600 hover:bg-slate-700"
                   >
                     Close Details
                   </Button>

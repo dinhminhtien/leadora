@@ -53,6 +53,10 @@ public class OpHandoverEntity extends BaseEntity {
     @Column(name = "readiness_status", nullable = false, length = 20)
     private ReadinessStatus readinessStatus;
 
+    /** Front Office note when readiness = NEED_CLARIFICATION (UC-22.3). */
+    @Column(name = "clarification_note", columnDefinition = "TEXT")
+    private String clarificationNote;
+
     @Column(name = "submitted_at")
     private OffsetDateTime submittedAt;
 

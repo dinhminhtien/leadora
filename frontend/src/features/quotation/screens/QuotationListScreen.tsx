@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
-import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Clock, XCircle, RotateCcw, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ListFilter } from "lucide-react";
+import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Clock, XCircle, RotateCcw, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ListFilter, Bell } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -13,6 +13,7 @@ import { RecordResponseModal } from "@/features/quotation/components/RecordRespo
 import { ConvertToBookingModal } from "@/features/quotation/components/ConvertToBookingModal";
 import { ExpireCloseModal } from "@/features/quotation/components/ExpireCloseModal";
 import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
+import { CreateReminderModal } from "@/features/reminder/components/CreateReminderModal";
 import type { Quotation } from "@/services/quotation_service";
 export type { Quotation } from "@/services/quotation_service";
 import { useQuotations, useExpireOverdue, useSubmitQuotation } from "@/features/quotation/hooks/use_quotations";
@@ -57,6 +58,7 @@ export function QuotationListScreen() {
   const [closeTarget, setCloseTarget] = useState<Quotation | null>(null);
   const [autoExpireResult, setAutoExpireResult] = useState<number | null>(null);
   const [showClosureLog, setShowClosureLog] = useState(false);
+  const [reminderTarget, setReminderTarget] = useState<Quotation | null>(null);
   const [activeTab, setActiveTab] = useState<"active" | "done">("active");
   const [statusFilter, setStatusFilter] = useState<string>("");
 
@@ -360,6 +362,7 @@ export function QuotationListScreen() {
                     <SlaStatusBadge entityId={q.id} entityType="QUOTATION" />
                   </TableCell>
                   <TableCell className="py-3 px-4 text-center">
+                    <div className="flex flex-col items-center gap-1.5">
                     {q.status === "approved" ? (
                       // UC-14.4: Send to Customer button
                       <Button
@@ -555,6 +558,14 @@ export function QuotationListScreen() {
                     ) : (
                       <span className="text-[10px] text-slate-400 italic">—</span>
                     )}
+                    <button
+                      onClick={() => setReminderTarget(q)}
+                      className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition"
+                      title="Add Reminder"
+                    >
+                      <Bell className="size-2.5" /> Remind
+                    </button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -604,6 +615,15 @@ export function QuotationListScreen() {
           quote={closeTarget}
           onClose={() => setCloseTarget(null)}
           onClosed={handleClosed}
+        />
+      )}
+
+      {/* UC-16.1: Create Reminder pre-filled for this quotation */}
+      {reminderTarget && (
+        <CreateReminderModal
+          defaultRelatedEntity="QUOTATION"
+          defaultRelatedId={reminderTarget.id}
+          onClose={() => setReminderTarget(null)}
         />
       )}
 

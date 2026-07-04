@@ -25,5 +25,6 @@ public class LoginResponse {
         private List<String> roles;
         /** Effective permission codes (e.g. LEAD_VIEW) — drives frontend sidebar/route gating. */
         private List<String> permissions;
+        private String avatarUrl;
     }
 }

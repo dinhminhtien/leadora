@@ -108,10 +108,8 @@ public class SlaController {
     @GetMapping("/report")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'RESERVATION_STAFF', 'FRONT_OFFICE')")
     public ResponseEntity<ApiResponse<SlaReportResponse>> getReport(
-            @RequestParam(defaultValue = "#{T(java.time.LocalDate).now().minusDays(30)}")
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}")
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String activityType,
             @RequestParam(required = false) String entityType) {
         return ResponseEntity.ok(ApiResponse.success(

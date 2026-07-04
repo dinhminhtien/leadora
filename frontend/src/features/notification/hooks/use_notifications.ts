@@ -3,12 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notificationService } from "@/services/notification_service";
 
-export function useNotifications(userId: string | undefined, unreadOnly = false) {
+export function useNotifications(unreadOnly = false) {
   return useQuery({
-    queryKey: ["notifications", userId, unreadOnly],
-    queryFn: () => notificationService.getList(userId!, unreadOnly),
+    queryKey: ["notifications", unreadOnly],
+    queryFn: () => notificationService.getList(unreadOnly),
     select: (res) => res.data ?? [],
-    enabled: !!userId,
   });
 }
 
@@ -35,7 +34,7 @@ export function useMarkNotificationRead() {
 export function useMarkAllRead() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (userId: string) => notificationService.markAllRead(userId),
+    mutationFn: () => notificationService.markAllRead(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },

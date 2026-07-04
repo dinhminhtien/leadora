@@ -1,17 +1,54 @@
 import { apiClient, type ApiResponse } from "@/services/api_client";
 import type { ListQuery } from "@/shared/types/api";
 
-export type InteractionTimelineEntry = Record<string, unknown> & {
+export type InteractionTimelineEntry = {
   id: string;
-  title?: string;
+  type: "call" | "email" | "meeting" | "note";
+  description: string;
+  agentName: string;
+  agentId?: string;
+  linkedName: string;
+  linkedType?: "lead" | "customer" | "deal" | "N/A";
+  linkedId?: string;
+  occurredAt: string;
+  createdAt: string;
 };
 
-export type InteractionTimelinePayload = Record<string, unknown>;
+export type InteractionTimelineQuery = ListQuery & {
+  type?: string;
+  agentId?: string;
+};
+
+export type CreateInteractionTimelinePayload = {
+  type: "call" | "email" | "meeting" | "note";
+  description: string;
+  occurredAt: string; // ISO datetime
+  leadId?: string;
+  customerId?: string;
+  dealId?: string;
+};
+
+export type UpdateInteractionTimelinePayload = {
+  type: "call" | "email" | "meeting" | "note";
+  description: string;
+  occurredAt: string; // ISO datetime
+};
+
+export type InteractionAuditLog = {
+  auditId: string;
+  action: "CREATED" | "UPDATED";
+  changedByName: string;
+  changedByRole: string;
+  timestamp: string;
+  fieldName: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+};
 
 const ENDPOINT = "/interaction-timeline";
 
 export const interactionTimelineService = {
-  async getList(params?: ListQuery) {
+  async getList(params?: InteractionTimelineQuery) {
     const response = await apiClient.get<ApiResponse<InteractionTimelineEntry[]>>(
       ENDPOINT,
       { params },
@@ -26,7 +63,7 @@ export const interactionTimelineService = {
     return response.data;
   },
 
-  async create(payload: InteractionTimelinePayload) {
+  async create(payload: CreateInteractionTimelinePayload) {
     const response = await apiClient.post<ApiResponse<InteractionTimelineEntry>>(
       ENDPOINT,
       payload,
@@ -34,11 +71,19 @@ export const interactionTimelineService = {
     return response.data;
   },
 
-  async update(id: string, payload: InteractionTimelinePayload) {
+  async update(id: string, payload: UpdateInteractionTimelinePayload) {
     const response = await apiClient.put<ApiResponse<InteractionTimelineEntry>>(
       `${ENDPOINT}/${id}`,
       payload,
     );
     return response.data;
   },
+
+  async getAuditLogs(interactionId: string) {
+    const response = await apiClient.get<ApiResponse<InteractionAuditLog[]>>(
+      `${ENDPOINT}/${interactionId}/audit-logs`,
+    );
+    return response.data;
+  },
 };
+

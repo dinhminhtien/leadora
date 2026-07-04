@@ -7,7 +7,6 @@ import { useNotifications } from "@/features/notification/hooks/use_notification
 import { getUserRole, canAccessPath, dashboardPathForRole } from "@/shared/auth/access";
 import {
   Bell,
-  Bot,
   BriefcaseBusiness,
   CalendarCheck,
   ChartNoAxesCombined,
@@ -18,7 +17,6 @@ import {
   Gauge,
   Handshake,
   Headphones,
-  Home,
   Hotel,
   KeyRound,
   LayoutDashboard,
@@ -48,6 +46,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { authService } from "@/services/auth_service";
 import { supabaseAuthService } from "@/services/supabase_auth_service";
 import { ToastContainer } from "@/components/ui/ToastContainer";
+import { FloatingAssistant } from "@/features/ai_assistant/components/FloatingAssistant";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -103,23 +102,67 @@ const navigationGroups: NavGroup[] = [
       { href: ROUTE_PATHS.customerFeedback, label: "Feedback", Icon: MessageSquareText },
       { href: ROUTE_PATHS.notifications, label: "Alerts", Icon: Bell },
       { href: ROUTE_PATHS.identityAccess, label: "User Access", Icon: KeyRound },
-      { href: ROUTE_PATHS.aiAssistant, label: "AI Copilot", Icon: Bot },
     ],
   },
 ];
+
+export function getAvatarSource(avatarUrl: string | null | undefined, userId: string | null | undefined): string | null {
+  if (!avatarUrl) return null;
+  if (avatarUrl.startsWith("local-storage-avatar://") && userId) {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem(`local_avatar_${userId}`) || null;
+    }
+  }
+  return avatarUrl;
+}
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { sidebarOpen, toggleSidebar } = useUiStore();
   const { user, clearUser, isLoading } = useAuthStore();
-  const { data: unreadNotifications } = useNotifications(user?.id, true);
+  const { data: unreadNotifications } = useNotifications(true);
   const unreadCount = unreadNotifications?.length ?? 0;
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
+  const avatarSource = useMemo(() => {
+    return getAvatarSource(user?.avatarUrl, user?.id);
+  }, [user?.avatarUrl, user?.id]);
+
+  // Keyboard accessibility and click-outside for User Dropdown
+  useEffect(() => {
+    if (!isUserDropdownOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsUserDropdownOpen(false);
+        return;
+      }
+      const container = document.getElementById("user-dropdown-menu");
+      if (!container) return;
+      const focusableElements = container.querySelectorAll("button, a");
+      const focusable = Array.from(focusableElements) as HTMLElement[];
+      if (focusable.length === 0) return;
+      const activeEl = document.activeElement as HTMLElement;
+      const currentIndex = focusable.indexOf(activeEl);
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const nextIndex = (currentIndex + 1) % focusable.length;
+        focusable[nextIndex].focus();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const prevIndex = (currentIndex - 1 + focusable.length) % focusable.length;
+        focusable[prevIndex].focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isUserDropdownOpen]);
+
   // ── Role + permission based access control (frontend) ──────────────────────
   const role = getUserRole(user);
+  // Front Office gets a stripped-down desk: no sales search / quick-add.
+  const isFrontOffice = role === "FO";
   const roleDashboard = dashboardPathForRole(role);
   const permissions = user?.permissions ?? [];
   const permKey = permissions.join(",");
@@ -128,6 +171,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   // SALES/MANAGER, role-gated for ADMIN). The generic "Dashboard" link points at
   // the role-specific home so highlighting and navigation match.
   const visibleGroups = useMemo(() => {
+    const seen = new Set<string>();
     return navigationGroups
       .map((group) => ({
         ...group,
@@ -136,7 +180,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             ...item,
             href: item.href === ROUTE_PATHS.dashboard ? roleDashboard : item.href,
           }))
-          .filter((item) => canAccessPath(role, item.href, permissions)),
+          .filter((item) => canAccessPath(role, item.href, permissions))
+          // De-duplicate links that resolve to the same route (e.g. for FO the generic
+          // "Dashboard" maps to the handover screen, which is also its own nav item).
+          .filter((item) => {
+            if (seen.has(item.href)) return false;
+            seen.add(item.href);
+            return true;
+          }),
       }))
       .filter((group) => group.items.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -198,7 +249,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             {sidebarOpen && (
               <div className="flex flex-col">
                 <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100 tracking-wider">Leadora</span>
-                <span className="text-[9px] text-zinc-400 dark:text-zinc-500 font-semibold tracking-widest uppercase">Hotel CRM</span>
+                <span className="text-[9px] text-zinc-400 dark:text-zinc-500 font-semibold tracking-widest uppercase">Hotel Sales</span>
               </div>
             )}
           </button>
@@ -292,12 +343,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Leadora Workspace</span>
               <h2 className="text-xs font-bold text-foreground flex items-center gap-1.5 mt-0.5">
                 <Sparkles className="size-3.5 text-primary" />
-                Hotel Sales Dashboard
+                {isFrontOffice ? "Front Office Desk" : "Hotel Sales Dashboard"}
               </h2>
             </div>
           </div>
 
-          {/* Center: Search Lead/Deals */}
+          {/* Center: Search Lead/Deals (hidden for Front Office) */}
+          {!isFrontOffice && (
           <div className="flex-1 max-w-sm mx-6 hidden md:block">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
@@ -308,10 +360,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               />
             </div>
           </div>
+          )}
 
           {/* Right: Actions (Quick Add, Notification, Profile) */}
-          <div className="flex items-center gap-3.5">
-            {/* Quick Add Button */}
+          <div className="ml-auto flex items-center gap-3.5">
+            {/* Quick Add Button (hidden for Front Office) */}
+            {!isFrontOffice && (
             <div className="relative">
               <Button
                 variant="primary"
@@ -356,6 +410,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 </>
               )}
             </div>
+            )}
 
             {/* Theme Toggle */}
             <ThemeToggle className="shadow-none border-none bg-transparent hover:bg-muted text-muted-foreground dark:hover:bg-muted/80" />
@@ -376,38 +431,91 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="relative">
               <button
                 onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                className="flex items-center gap-2 rounded-full p-0.5 hover:bg-muted transition cursor-pointer"
+                className="flex items-center gap-2 rounded-full p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-primary/45 transition cursor-pointer"
+                aria-label="User Menu"
+                aria-expanded={isUserDropdownOpen}
+                aria-haspopup="true"
               >
-                <div className="flex size-7 items-center justify-center rounded-full bg-primary text-white text-[10px] font-bold shadow-xs">
-                  {user?.name ? user.name.slice(0, 2).toUpperCase() : ""}
-                </div>
+                {avatarSource ? (
+                  <img
+                    src={avatarSource}
+                    alt={user?.name || "User Avatar"}
+                    className="size-7 rounded-full object-cover border border-zinc-200 dark:border-zinc-800"
+                  />
+                ) : (
+                  <div className="flex size-7 items-center justify-center rounded-full bg-primary text-white text-[10px] font-bold shadow-xs">
+                    {user?.name ? user.name.slice(0, 2).toUpperCase() : ""}
+                  </div>
+                )}
               </button>
 
               {isUserDropdownOpen && user && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsUserDropdownOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-border bg-background p-1.5 shadow-lg z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                    <div className="px-2.5 py-2 border-b border-border">
-                      <p className="text-xs font-bold text-foreground">{user.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{user.email}</p>
-                      <div className="mt-1.5 flex gap-1">
-                        <Badge variant="primary" className="text-[9px] py-0 px-1.5 font-semibold">
-                          {role === "ADMIN" ? "Admin" : role === "MANAGER" ? "Sales Manager" : "Sales Staff"}
-                        </Badge>
+                  <div
+                    id="user-dropdown-menu"
+                    role="menu"
+                    aria-orientation="vertical"
+                    className="absolute right-0 mt-2.5 w-60 rounded-xl border border-zinc-200 dark:border-zinc-850 bg-background p-1.5 shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 ease-out focus:outline-none"
+                  >
+                    {/* Header info */}
+                    <div className="flex items-center gap-3 px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-900 mb-1">
+                      {avatarSource ? (
+                        <img
+                          src={avatarSource}
+                          alt={user.name}
+                          className="size-9 rounded-full object-cover border border-zinc-100 dark:border-zinc-800 shrink-0"
+                        />
+                      ) : (
+                        <div className="flex size-9 items-center justify-center rounded-full bg-primary text-white text-xs font-bold shrink-0 shadow-sm">
+                          {user.name.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-foreground truncate">{user.name}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+                        <div className="mt-1 flex">
+                          <Badge variant="primary" className="text-[9px] py-0 px-1.5 font-bold tracking-wide uppercase scale-90 origin-left">
+                            {role === "ADMIN" ? "Admin" : role === "MANAGER" ? "Sales Manager" : "Sales Staff"}
+                          </Badge>
+                        </div>
                       </div>
                     </div>
-                    <div className="p-1">
-                      <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-foreground hover:bg-muted transition cursor-pointer">
-                        <User className="size-3.5 text-muted-foreground" /> Profile Settings
-                      </button>
-                      <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-foreground hover:bg-muted transition cursor-pointer">
-                        <Settings className="size-3.5 text-muted-foreground" /> Admin Console
-                      </button>
-                      <button 
-                        onClick={handleLogout}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-danger hover:bg-rose-500/5 transition border-t border-border mt-1 pt-2 cursor-pointer"
+                    
+                    {/* Menu Options */}
+                    <div className="p-0.5 space-y-0.5">
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setIsUserDropdownOpen(false);
+                          router.push(ROUTE_PATHS.profile);
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-900 transition focus:bg-zinc-100 dark:focus:bg-zinc-900 focus:outline-none cursor-pointer"
                       >
-                        <LogOut className="size-3.5" /> Logout Session
+                        <User className="size-3.5 text-zinc-400 dark:text-zinc-500" />
+                        Profile
+                      </button>
+                      
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setIsUserDropdownOpen(false);
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-900 transition focus:bg-zinc-100 dark:focus:bg-zinc-900 focus:outline-none cursor-pointer"
+                      >
+                        <Settings className="size-3.5 text-zinc-400 dark:text-zinc-500" />
+                        Admin Console
+                      </button>
+                      
+                      <div className="h-px bg-zinc-100 dark:bg-zinc-900 my-1" />
+                      
+                      <button
+                        role="menuitem"
+                        onClick={handleLogout}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition focus:bg-rose-50 dark:focus:bg-rose-950/20 focus:outline-none cursor-pointer"
+                      >
+                        <LogOut className="size-3.5" />
+                        Logout
                       </button>
                     </div>
                   </div>
@@ -423,6 +531,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </main>
       </div>
       <ToastContainer />
+      {/* Lia — draggable floating assistant, available on every dashboard screen. */}
+      <FloatingAssistant />
     </div>
   );
 }

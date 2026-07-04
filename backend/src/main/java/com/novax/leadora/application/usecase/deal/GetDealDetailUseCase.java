@@ -16,11 +16,13 @@ public class GetDealDetailUseCase {
 
     private final DealRepository dealRepository;
     private final DealMapper dealMapper;
+    private final DealAccessPolicy dealAccessPolicy;
 
     @Transactional(readOnly = true)
     public DealResponse execute(UUID id) {
         DealEntity deal = dealRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Deal", id));
+        dealAccessPolicy.assertCanView(dealAccessPolicy.currentUser(), deal);
         return dealMapper.mapToResponse(deal);
     }
 }

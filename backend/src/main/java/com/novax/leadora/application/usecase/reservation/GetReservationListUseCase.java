@@ -53,7 +53,7 @@ public class GetReservationListUseCase {
 
         // Batch load all details for the current page to prevent N+1 Queries
         List<UUID> bookingIds = bookings.getContent().stream()
-                .map(BookingEntity::getBookingId)
+                .map(booking -> booking.getBookingId())
                 .collect(Collectors.toList());
 
         Map<UUID, List<BookingDetailEntity>> detailsByBookingId = Collections.emptyMap();

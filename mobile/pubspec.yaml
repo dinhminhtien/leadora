@@ -1,0 +1,79 @@
+name: leadora_mobile
+description: "Leadora CRM mobile app — enterprise feature-first Flutter client."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management — Riverpod + codegen
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Routing
+  go_router: ^14.6.2
+
+  # Networking
+  dio: ^5.7.0
+  dio_cache_interceptor: ^3.5.0
+  dio_smart_retry: ^7.0.0
+
+  # Serialization / immutability
+  json_annotation: ^4.9.0
+  freezed_annotation: ^2.4.4
+
+  # Local storage
+  flutter_secure_storage: ^9.2.4
+  shared_preferences: ^2.3.5
+
+  # Auth / security
+  local_auth: ^2.3.0
+  supabase_flutter: ^2.8.3
+  google_sign_in: ^6.2.1
+
+  # Push notifications + monitoring
+  firebase_core: ^3.10.0
+  firebase_messaging: ^15.2.0
+  firebase_crashlytics: ^4.3.0
+
+  # Media
+  image_picker: ^1.1.2
+  cached_network_image: ^3.4.1
+
+  # Logging
+  logger: ^2.5.0
+
+  # i18n
+  intl: any
+
+  # Utility
+  uuid: ^4.5.1                 # idempotency keys
+  connectivity_plus: ^6.1.1    # online/offline detection for retry queue
+  mutex: ^3.1.0                # refresh-token mutex lock
+  skeletonizer: ^1.4.3         # skeleton loading states
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+  # Codegen
+  build_runner: ^2.4.14
+  riverpod_generator: ^2.6.3
+  json_serializable: ^6.9.0
+  freezed: ^2.5.7
+
+  # Testing
+  mocktail: ^1.0.4
+
+flutter:
+  uses-material-design: true
+  generate: true              # enable gen-l10n from lib/core/localization/*.arb
