@@ -46,6 +46,9 @@ class Env {
   static const String logLevel =
       String.fromEnvironment('LOG_LEVEL', defaultValue: 'verbose');
 
+  static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+  static const String supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+
   static bool get isDev => flavor == Flavor.dev;
   static bool get isProd => flavor == Flavor.prod;
 }

@@ -12,6 +12,7 @@ class ApiPaths {
   static const String forgotPassword = '/auth/forgot-password';
   static const String resetPassword = '/auth/reset-password';
   static const String profile = '/auth/profile';
+  static const String oauthVerify = '/auth/oauth/verify';
 
   // --- Self-service profile (ProfileController) ---
   static const String profileMe = '/profile/me';

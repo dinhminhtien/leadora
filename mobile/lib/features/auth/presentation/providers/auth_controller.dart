@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/routing/app_session.dart';
@@ -27,6 +28,10 @@ class AuthController extends AsyncNotifier<AuthUser?> {
   Future<AuthUser?> build() async {
     // Populate the in-memory token cache so the auth interceptor can attach it.
     final token = await _tokenStore.restore();
+
+    // Start listening to Supabase auth events (e.g. OAuth redirects)
+    _initSupabaseListener();
+
     if (token == null) {
       _session.update(AuthStatus.unauthenticated);
       return null;
@@ -57,6 +62,31 @@ class AuthController extends AsyncNotifier<AuthUser?> {
     }
   }
 
+  void _initSupabaseListener() {
+    supabase.Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
+      final session = data.session;
+      final event = data.event;
+      if (session != null && session.accessToken != _tokenStore.accessTokenSync) {
+        if (event == supabase.AuthChangeEvent.signedIn ||
+            event == supabase.AuthChangeEvent.initialSession ||
+            event == supabase.AuthChangeEvent.tokenRefreshed) {
+          state = const AsyncLoading<AuthUser?>().copyWithPrevious(state);
+          state = await AsyncValue.guard(() async {
+            try {
+              final user = await _repo.verifyOAuthSession(session.accessToken);
+              await _tokenStore.saveAccessToken(session.accessToken);
+              _session.update(AuthStatus.authenticated);
+              return user;
+            } catch (e) {
+              await _repo.logout();
+              rethrow;
+            }
+          });
+        }
+      }
+    });
+  }
+
   /// Sign in. On success flips the session (router redirects to dashboard).
   /// Errors surface as an [AsyncError] the form renders; the previous state is
   /// preserved so the UI doesn't flash empty on a failed attempt.
@@ -70,6 +100,16 @@ class AuthController extends AsyncNotifier<AuthUser?> {
       _session.update(AuthStatus.authenticated);
       return user;
     });
+  }
+
+  /// Sign in with Google.
+  Future<void> loginWithGoogle() async {
+    state = const AsyncLoading<AuthUser?>().copyWithPrevious(state);
+    try {
+      await _repo.loginWithGoogle();
+    } catch (e) {
+      state = AsyncError(e, StackTrace.current);
+    }
   }
 
   /// Sign out. Always resolves the local session to unauthenticated even if the
