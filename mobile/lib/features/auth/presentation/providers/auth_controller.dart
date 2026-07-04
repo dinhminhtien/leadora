@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/network/api_exception.dart';
 import '../../../../core/routing/app_session.dart';
 import '../../../../core/storage/token_store.dart';
 import '../../data/auth_repository.dart';
@@ -31,13 +32,26 @@ class AuthController extends AsyncNotifier<AuthUser?> {
       return null;
     }
     try {
-      final user = await _repo.fetchProfile();
+      // Bounded so a slow/unreachable backend can never freeze the splash:
+      // whatever the retry interceptor is doing under the hood, we stop waiting
+      // after 8s and fall through to the login screen.
+      final user =
+          await _repo.fetchProfile().timeout(const Duration(seconds: 8));
       _session.update(AuthStatus.authenticated);
       return user;
-    } catch (_) {
-      // Token present but rejected/expired or profile unreachable → treat as
-      // signed out. Clear the dead token so we don't loop on it next boot.
+    } on UnauthorizedException {
+      // Token is genuinely dead (401/403) → clear it so we don't loop on it.
       await _tokenStore.clear();
+      _session.update(AuthStatus.unauthenticated);
+      return null;
+    } on ForbiddenException {
+      await _tokenStore.clear();
+      _session.update(AuthStatus.unauthenticated);
+      return null;
+    } catch (_) {
+      // Network error / timeout / server hiccup: the token may still be valid,
+      // so KEEP it and just show login. The next launch (or a manual sign-in)
+      // retries. This is what turns an indefinite hang into a fast fallback.
       _session.update(AuthStatus.unauthenticated);
       return null;
     }

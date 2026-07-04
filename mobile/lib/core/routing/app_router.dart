@@ -2,10 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/auth/presentation/screens/login_screen.dart';
+import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
+import '../../features/dashboard/presentation/screens/dashboard_shell.dart';
+import '../../features/lead/presentation/screens/create_lead_screen.dart';
+import '../../features/lead/presentation/screens/lead_detail_screen.dart';
+import '../../features/lead/presentation/screens/lead_list_screen.dart';
+import '../../features/notification/presentation/screens/notification_list_screen.dart';
+import '../../features/profile/presentation/screens/change_password_screen.dart';
+import '../../features/profile/presentation/screens/profile_screen.dart';
+import '../../features/task/presentation/screens/task_detail_screen.dart';
+import '../../features/task/presentation/screens/task_list_screen.dart';
 import '../widgets/placeholder_screen.dart';
 import '../widgets/splash_screen.dart';
-import '../../features/auth/presentation/screens/login_screen.dart';
-import '../../features/dashboard/presentation/screens/dashboard_shell.dart';
 import 'app_session.dart';
 import 'routes.dart';
 
@@ -13,7 +22,8 @@ import 'routes.dart';
 /// is isolated per tab.
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 final _shellHomeKey = GlobalKey<NavigatorState>(debugLabel: 'shell-home');
-final _shellBookingsKey = GlobalKey<NavigatorState>(debugLabel: 'shell-bookings');
+final _shellLeadsKey = GlobalKey<NavigatorState>(debugLabel: 'shell-leads');
+final _shellTasksKey = GlobalKey<NavigatorState>(debugLabel: 'shell-tasks');
 final _shellNotifsKey = GlobalKey<NavigatorState>(debugLabel: 'shell-notifs');
 final _shellProfileKey = GlobalKey<NavigatorState>(debugLabel: 'shell-profile');
 
@@ -42,8 +52,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.forgotPassword,
         name: RouteNames.forgotPassword,
-        builder: (_, _) =>
-            const PlaceholderScreen(title: 'Forgot password'),
+        builder: (_, _) => const PlaceholderScreen(title: 'Forgot password'),
       ),
 
       // Authenticated tabbed area.
@@ -51,78 +60,90 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, _, navigationShell) =>
             DashboardShell(navigationShell: navigationShell),
         branches: [
+          // Tab 1 — Dashboard.
           StatefulShellBranch(
             navigatorKey: _shellHomeKey,
             routes: [
               GoRoute(
                 path: Routes.dashboard,
                 name: RouteNames.dashboard,
-                builder: (_, _) => const PlaceholderScreen(
-                  title: 'Dashboard',
-                  icon: Icons.dashboard_rounded,
-                ),
+                builder: (_, _) => const DashboardScreen(),
               ),
             ],
           ),
+          // Tab 2 — Leads (+ full-screen create/detail).
           StatefulShellBranch(
-            navigatorKey: _shellBookingsKey,
+            navigatorKey: _shellLeadsKey,
             routes: [
               GoRoute(
-                path: Routes.bookings,
-                name: RouteNames.bookings,
-                builder: (_, _) => const PlaceholderScreen(
-                  title: 'Bookings',
-                  icon: Icons.event_note_rounded,
-                ),
+                path: Routes.leads,
+                name: RouteNames.leads,
+                builder: (_, _) => const LeadListScreen(),
                 routes: [
                   GoRoute(
-                    path: 'detail/:id', // /bookings/detail/:id
-                    name: RouteNames.bookingDetail,
-                    builder: (_, state) => PlaceholderScreen(
-                      title: 'Booking ${state.pathParameters['id']}',
-                      icon: Icons.receipt_long_rounded,
-                    ),
-                    routes: [
-                      GoRoute(
-                        path: 'payment', // /bookings/detail/:id/payment
-                        name: RouteNames.payment,
-                        parentNavigatorKey: _rootNavigatorKey, // full-screen
-                        builder: (_, state) => PlaceholderScreen(
-                          title: 'Payment',
-                          icon: Icons.qr_code_2_rounded,
-                          subtitle:
-                              'Booking ${state.pathParameters['id']} payment',
-                        ),
-                      ),
-                    ],
+                    path: Routes.leadCreateSub,
+                    name: RouteNames.leadCreate,
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (_, _) => const CreateLeadScreen(),
+                  ),
+                  GoRoute(
+                    path: Routes.leadDetailSub,
+                    name: RouteNames.leadDetail,
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (_, state) =>
+                        LeadDetailScreen(leadId: state.pathParameters['id']!),
                   ),
                 ],
               ),
             ],
           ),
+          // Tab 3 — Follow-up tasks (+ full-screen detail).
+          StatefulShellBranch(
+            navigatorKey: _shellTasksKey,
+            routes: [
+              GoRoute(
+                path: Routes.tasks,
+                name: RouteNames.tasks,
+                builder: (_, _) => const TaskListScreen(),
+                routes: [
+                  GoRoute(
+                    path: Routes.taskDetailSub,
+                    name: RouteNames.taskDetail,
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (_, state) =>
+                        TaskDetailScreen(taskId: state.pathParameters['id']!),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          // Tab 4 — Notifications.
           StatefulShellBranch(
             navigatorKey: _shellNotifsKey,
             routes: [
               GoRoute(
                 path: Routes.notifications,
                 name: RouteNames.notifications,
-                builder: (_, _) => const PlaceholderScreen(
-                  title: 'Notifications',
-                  icon: Icons.notifications_rounded,
-                ),
+                builder: (_, _) => const NotificationListScreen(),
               ),
             ],
           ),
+          // Tab 5 — Profile (+ full-screen change password).
           StatefulShellBranch(
             navigatorKey: _shellProfileKey,
             routes: [
               GoRoute(
                 path: Routes.profile,
                 name: RouteNames.profile,
-                builder: (_, _) => const PlaceholderScreen(
-                  title: 'Profile',
-                  icon: Icons.person_rounded,
-                ),
+                builder: (_, _) => const ProfileScreen(),
+                routes: [
+                  GoRoute(
+                    path: Routes.changePasswordSub,
+                    name: RouteNames.changePassword,
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (_, _) => const ChangePasswordScreen(),
+                  ),
+                ],
               ),
             ],
           ),

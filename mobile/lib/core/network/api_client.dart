@@ -79,11 +79,13 @@ class ApiClient {
   Future<T> patch<T>(
     String path, {
     Object? data,
+    Map<String, dynamic>? query,
     required T Function(Object? data) decode,
     CancelToken? cancelToken,
   }) {
     return _request(
-      () => _dio.patch<dynamic>(path, data: data, cancelToken: cancelToken),
+      () => _dio.patch<dynamic>(path,
+          data: data, queryParameters: query, cancelToken: cancelToken),
       decode,
     );
   }
