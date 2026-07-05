@@ -6,6 +6,7 @@ import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,17 +24,21 @@ public class GetQuotationOutcomeReportUseCase {
 
     private final QuotationRepository quotationRepository;
 
+    @Cacheable(value = "quotation-outcome-report", key = "#from + '_' + #to", unless = "#result == null")
     @Transactional(readOnly = true)
     public QuotationOutcomeReportResponse execute(LocalDate from, LocalDate to) {
-        List<QuotationEntity> quotations = quotationRepository.findAll().stream()
-                .filter(q -> inRange(q.getCreatedAt(), from, to))
-                .toList();
+        OffsetDateTime start = from != null ? from.atStartOfDay().atOffset(java.time.ZoneOffset.UTC)
+                : OffsetDateTime.of(1970, 1, 1, 0, 0, 0, 0, java.time.ZoneOffset.UTC);
+        OffsetDateTime end = to != null ? to.atTime(java.time.LocalTime.MAX).atOffset(java.time.ZoneOffset.UTC)
+                : OffsetDateTime.of(2100, 12, 31, 23, 59, 59, 999999999, java.time.ZoneOffset.UTC);
+
+        List<QuotationEntity> quotations = quotationRepository.findByCreatedAtRange(start, end);
 
         // Count per status.
         Map<QuotationStatus, Long> counts = new EnumMap<>(QuotationStatus.class);
         for (QuotationEntity q : quotations) {
             if (q.getStatus() != null) {
-                counts.merge(q.getStatus(), 1L, Long::sum);
+                counts.put(q.getStatus(), counts.getOrDefault(q.getStatus(), 0L) + 1L);
             }
         }
 
@@ -87,14 +92,6 @@ public class GetQuotationOutcomeReportUseCase {
         };
     }
 
-    private boolean inRange(OffsetDateTime at, LocalDate from, LocalDate to) {
-        if (at == null) {
-            return from == null && to == null;
-        }
-        LocalDate d = at.toLocalDate();
-        if (from != null && d.isBefore(from)) return false;
-        return to == null || !d.isAfter(to);
-    }
 
     private double rate(long part, long whole) {
         if (whole <= 0) return 0;

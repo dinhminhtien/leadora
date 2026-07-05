@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.cache.annotation.Cacheable;
+
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -30,13 +32,17 @@ public class GetPipelineProgressionReportUseCase {
 
     private final DealRepository dealRepository;
 
+    @Cacheable(value = "pipeline-progression-report", key = "#from + '_' + #to", unless = "#result == null")
     @Transactional(readOnly = true)
     public PipelineProgressionReportResponse execute(LocalDate from, LocalDate to) {
         OffsetDateTime now = OffsetDateTime.now();
 
-        List<DealEntity> deals = dealRepository.findAll().stream()
-                .filter(d -> inRange(d.getCreatedAt(), from, to))
-                .toList();
+        OffsetDateTime start = from != null ? from.atStartOfDay().atOffset(java.time.ZoneOffset.UTC)
+                : OffsetDateTime.of(1970, 1, 1, 0, 0, 0, 0, java.time.ZoneOffset.UTC);
+        OffsetDateTime end = to != null ? to.atTime(java.time.LocalTime.MAX).atOffset(java.time.ZoneOffset.UTC)
+                : OffsetDateTime.of(2100, 12, 31, 23, 59, 59, 999999999, java.time.ZoneOffset.UTC);
+
+        List<DealEntity> deals = dealRepository.findByCreatedAtRange(start, end);
 
         long totalDeals = deals.size();
         long closedWon = countStage(deals, DealPipelineStage.CLOSED_WON);
@@ -46,7 +52,7 @@ public class GetPipelineProgressionReportUseCase {
         BigDecimal pipelineValue = deals.stream()
                 .filter(d -> d.getPipelineStage() != null && OPEN_STAGES.contains(d.getPipelineStage()))
                 .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         List<StageRow> stages = new ArrayList<>();
         String bottleneck = null;
@@ -56,7 +62,7 @@ public class GetPipelineProgressionReportUseCase {
                     .filter(d -> d.getPipelineStage() == stage).toList();
             BigDecimal value = inStage.stream()
                     .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
             double avgAge = inStage.stream()
                     .mapToLong(d -> ageDays(d.getCreatedAt(), now))
                     .average().orElse(0);
@@ -112,14 +118,6 @@ public class GetPipelineProgressionReportUseCase {
         };
     }
 
-    private boolean inRange(OffsetDateTime at, LocalDate from, LocalDate to) {
-        if (at == null) {
-            return from == null && to == null;
-        }
-        LocalDate d = at.toLocalDate();
-        if (from != null && d.isBefore(from)) return false;
-        return to == null || !d.isAfter(to);
-    }
 
     private double rate(long part, long whole) {
         if (whole <= 0) return 0;
