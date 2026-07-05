@@ -96,7 +96,9 @@ public class SendChatMessageUseCase {
             }
         } catch (Exception ex) {
             log.error("LLM generation failed for session {}: {}", sessionId, ex.getMessage(), ex);
-            reply = GuardrailMessages.systemError(vi);
+            // Distinguish "out of quota/tokens" from a genuine error so the reply is actionable
+            // (and the dev can tell the two apart without digging through logs).
+            reply = AiErrorClassifier.userMessage(ex, vi);
         }
 
         AiChatMessageEntity assistantMessage =
