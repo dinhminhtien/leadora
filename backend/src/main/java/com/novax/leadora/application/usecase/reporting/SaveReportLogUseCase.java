@@ -6,6 +6,7 @@ import com.novax.leadora.infrastructure.persistence.entity.ReportGenerationLogEn
 import com.novax.leadora.infrastructure.persistence.repository.ReportGenerationLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,9 +40,10 @@ public class SaveReportLogUseCase {
 
     /**
      * POST-2 (UC-23.1 / UC-23.2) — audit a report VIEW action (who, when, which report, filters,
-     * how many records). Runs in its own transaction and is best-effort: an audit-log failure must
+     * how many records). Runs in its own transaction asynchronously: an audit-log failure must
      * never break the report the user asked for, so callers wrap this and swallow exceptions.
      */
+    @Async("taskExecutor")
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logReportView(String actorName, String actorRole, String action,
                               LocalDate from, LocalDate to, int resultCount) {

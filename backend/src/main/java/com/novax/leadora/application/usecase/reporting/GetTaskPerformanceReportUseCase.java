@@ -8,8 +8,10 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.TaskPriority;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.novax.leadora.common.util.ReportingUtils;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -36,18 +38,20 @@ public class GetTaskPerformanceReportUseCase {
      * @param actor the authenticated user — UC-23.2 access scope: Sales Manager/Admin see team-wide
      *              performance, Sales Staff see only their own assigned tasks.
      */
+    @Cacheable(
+        value = "task-performance-report", 
+        key = "(#actor.role != null && #actor.role.roleName != null && (#actor.role.roleName.trim().toUpperCase() == 'MANAGER' || #actor.role.roleName.trim().toUpperCase() == 'ADMIN') ? 'all' : #actor.userId) + '_' + #from + '_' + #to",
+        unless = "#result == null"
+    )
     @Transactional(readOnly = true)
     public TaskPerformanceReportResponse execute(UserEntity actor, LocalDate from, LocalDate to) {
         OffsetDateTime now = OffsetDateTime.now();
 
-        // Scope by role at the query level (Sales Staff → own tasks only) so the report never
-        // exposes other people's follow-up data and stays cheap for individual contributors.
-        List<TaskEntity> source = canSeeAllTasks(actor)
-                ? taskRepository.findAll()
-                : taskRepository.findByAssignedUser_UserId(actor.getUserId());
-        List<TaskEntity> tasks = source.stream()
-                .filter(t -> inRange(t.getCreatedAt(), from, to))
-                .toList();
+        OffsetDateTime start = ReportingUtils.getStartOfDayOrEpoch(from);
+        OffsetDateTime end = ReportingUtils.getEndOfDayOrFuture(to);
+
+        UUID assignedUserId = canSeeAllTasks(actor) ? null : actor.getUserId();
+        List<TaskEntity> tasks = taskRepository.findForPerformanceReport(assignedUserId, start, end);
 
         long total = tasks.size();
         long completed = tasks.stream().filter(t -> t.getStatus() == TaskStatus.COMPLETED).count();
@@ -67,8 +71,8 @@ public class GetTaskPerformanceReportUseCase {
                 .open(open)
                 .cancelled(cancelled)
                 .overdue(overdue)
-                .completionRate(rate(completed, total))
-                .overdueRate(rate(overdue, total))
+                .completionRate(ReportingUtils.calculateRate(completed, total))
+                .overdueRate(ReportingUtils.calculateRate(overdue, total))
                 .priorityLow(low)
                 .priorityMedium(medium)
                 .priorityHigh(high)
@@ -100,7 +104,7 @@ public class GetTaskPerformanceReportUseCase {
                     .total(a.total)
                     .completed(a.completed)
                     .overdue(a.overdue)
-                    .completionRate(rate(a.completed, a.total))
+                    .completionRate(ReportingUtils.calculateRate(a.completed, a.total))
                     .build());
         }
         rows.sort(Comparator.comparingLong((StaffRow r) -> r.getTotal()).reversed());
@@ -121,19 +125,6 @@ public class GetTaskPerformanceReportUseCase {
         return FULL_SCOPE_ROLES.contains(role);
     }
 
-    private boolean inRange(OffsetDateTime at, LocalDate from, LocalDate to) {
-        if (at == null) {
-            return from == null && to == null;
-        }
-        LocalDate d = at.toLocalDate();
-        if (from != null && d.isBefore(from)) return false;
-        return to == null || !d.isAfter(to);
-    }
-
-    private double rate(long part, long whole) {
-        if (whole <= 0) return 0;
-        return Math.round((part * 10000.0 / whole)) / 100.0;
-    }
 
     private static class StaffAgg {
         String name;

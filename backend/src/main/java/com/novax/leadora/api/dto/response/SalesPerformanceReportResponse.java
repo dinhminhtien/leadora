@@ -1,8 +1,10 @@
 package com.novax.leadora.api.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -14,6 +16,8 @@ import java.util.List;
  */
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class SalesPerformanceReportResponse {
 
@@ -49,6 +53,8 @@ public class SalesPerformanceReportResponse {
 
     @Getter
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class RepRow {
         private String name;
         private long leads;

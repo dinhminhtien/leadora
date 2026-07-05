@@ -45,7 +45,8 @@ public class ReportingController {
     /** Dashboard KPI summary — all aggregation happens server-side */
     @GetMapping("/dashboard-summary")
     public ResponseEntity<ApiResponse<DashboardSummaryResponse>> getDashboardSummary() {
-        DashboardSummaryResponse summary = getDashboardSummaryUseCase.execute();
+        UserEntity actor = currentUserProvider.resolve(null);
+        DashboardSummaryResponse summary = getDashboardSummaryUseCase.execute(actor);
         return ResponseEntity.ok(ApiResponse.success(summary));
     }
 

@@ -5,9 +5,12 @@ import com.novax.leadora.api.dto.response.PipelineProgressionReportResponse.Stag
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
+import com.novax.leadora.common.util.ReportingUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import org.springframework.cache.annotation.Cacheable;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -30,13 +33,15 @@ public class GetPipelineProgressionReportUseCase {
 
     private final DealRepository dealRepository;
 
+    @Cacheable(value = "pipeline-progression-report", key = "#from + '_' + #to", unless = "#result == null")
     @Transactional(readOnly = true)
     public PipelineProgressionReportResponse execute(LocalDate from, LocalDate to) {
         OffsetDateTime now = OffsetDateTime.now();
 
-        List<DealEntity> deals = dealRepository.findAll().stream()
-                .filter(d -> inRange(d.getCreatedAt(), from, to))
-                .toList();
+        OffsetDateTime start = ReportingUtils.getStartOfDayOrEpoch(from);
+        OffsetDateTime end = ReportingUtils.getEndOfDayOrFuture(to);
+
+        List<DealEntity> deals = dealRepository.findByCreatedAtRange(start, end);
 
         long totalDeals = deals.size();
         long closedWon = countStage(deals, DealPipelineStage.CLOSED_WON);
@@ -46,7 +51,7 @@ public class GetPipelineProgressionReportUseCase {
         BigDecimal pipelineValue = deals.stream()
                 .filter(d -> d.getPipelineStage() != null && OPEN_STAGES.contains(d.getPipelineStage()))
                 .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         List<StageRow> stages = new ArrayList<>();
         String bottleneck = null;
@@ -56,7 +61,7 @@ public class GetPipelineProgressionReportUseCase {
                     .filter(d -> d.getPipelineStage() == stage).toList();
             BigDecimal value = inStage.stream()
                     .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
             double avgAge = inStage.stream()
                     .mapToLong(d -> ageDays(d.getCreatedAt(), now))
                     .average().orElse(0);
@@ -85,7 +90,7 @@ public class GetPipelineProgressionReportUseCase {
                 .openDeals(openDeals)
                 .closedWon(closedWon)
                 .closedLost(closedLost)
-                .winRate(rate(closedWon, closedWon + closedLost))
+                .winRate(ReportingUtils.calculateRate(closedWon, closedWon + closedLost))
                 .pipelineValue(pipelineValue)
                 .bottleneckStage(bottleneck)
                 .stages(stages)
@@ -110,19 +115,5 @@ public class GetPipelineProgressionReportUseCase {
             case CLOSED_WON -> "Closed won";
             case CLOSED_LOST -> "Closed lost";
         };
-    }
-
-    private boolean inRange(OffsetDateTime at, LocalDate from, LocalDate to) {
-        if (at == null) {
-            return from == null && to == null;
-        }
-        LocalDate d = at.toLocalDate();
-        if (from != null && d.isBefore(from)) return false;
-        return to == null || !d.isAfter(to);
-    }
-
-    private double rate(long part, long whole) {
-        if (whole <= 0) return 0;
-        return Math.round((part * 10000.0 / whole)) / 100.0;
     }
 }
