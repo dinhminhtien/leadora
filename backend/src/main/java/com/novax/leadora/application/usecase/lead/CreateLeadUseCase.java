@@ -6,9 +6,11 @@ import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.common.exception.DuplicateLeadException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
+import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
+import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,7 @@ public class CreateLeadUseCase {
     private final UserRepository userRepository;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
     private final CurrentUserProvider currentUserProvider;
+    private final NotificationRepository notificationRepository;
 
     @Transactional
     public LeadResponse execute(CreateLeadRequest request) {
@@ -73,6 +76,11 @@ public class CreateLeadUseCase {
             log.warn("SLA tracking failed for lead {}: {}", saved.getLeadId(), e.getMessage());
         }
 
+        // UC-15.1: notify the assigned sales rep, if the lead was created already assigned
+        if (assignedUser != null) {
+            notifyLeadAssigned(saved, assignedUser);
+        }
+
         return LeadResponse.from(saved);
     }
 
@@ -94,6 +102,22 @@ public class CreateLeadUseCase {
                     .ifPresent(existing -> {
                         throw new DuplicateLeadException("phone number", phone, existing.getLeadId());
                     });
+        }
+    }
+
+    private void notifyLeadAssigned(LeadEntity lead, UserEntity assignedUser) {
+        try {
+            NotificationEntity notification = NotificationEntity.builder()
+                    .user(assignedUser)
+                    .title("New Lead Assigned")
+                    .message("You were assigned a new lead: " + lead.getFullName())
+                    .type("LEAD_ASSIGNED")
+                    .relatedEntity("LEAD")
+                    .relatedId(lead.getLeadId())
+                    .build();
+            notificationRepository.save(notification);
+        } catch (Exception e) {
+            log.warn("Lead-assigned notification failed for lead {}: {}", lead.getLeadId(), e.getMessage());
         }
     }
 }

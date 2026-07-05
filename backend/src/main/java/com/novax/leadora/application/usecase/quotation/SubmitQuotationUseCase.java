@@ -3,12 +3,17 @@ package com.novax.leadora.application.usecase.quotation;
 import com.novax.leadora.api.dto.request.SubmitQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
+import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +22,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SubmitQuotationUseCase {
@@ -25,6 +31,8 @@ public class SubmitQuotationUseCase {
 
     private final QuotationRepository quotationRepository;
     private final QuotationDetailRepository quotationDetailRepository;
+    private final UserRepository userRepository;
+    private final NotificationRepository notificationRepository;
 
     @Transactional
     public QuotationResponse execute(UUID id, SubmitQuotationRequest request) {
@@ -50,6 +58,27 @@ public class SubmitQuotationUseCase {
         }
 
         QuotationEntity saved = quotationRepository.save(quotation);
+
+        // BR-21/BR-34: alert Sales Managers so a discount >10% quotation doesn't sit
+        // unnoticed in the pending-approvals queue
+        if (newStatus == QuotationStatus.PENDING_APPROVAL) {
+            List<UserEntity> managers = userRepository.findByRoleName("MANAGER");
+            String message = "Quotation " + saved.getQuotationId().toString().substring(0, 8).toUpperCase()
+                    + " requires approval — discount " + discountPct + "% exceeds the 10% threshold.";
+            for (UserEntity manager : managers) {
+                NotificationEntity notification = NotificationEntity.builder()
+                        .user(manager)
+                        .title("Quotation Pending Approval")
+                        .message(message)
+                        .type("QUOTATION_PENDING_APPROVAL")
+                        .relatedEntity("QUOTATION")
+                        .relatedId(saved.getQuotationId())
+                        .build();
+                notificationRepository.save(notification);
+            }
+            log.info("Quotation {} submitted with discount {}% — notified {} manager(s)",
+                    saved.getQuotationId(), discountPct, managers.size());
+        }
 
         List<QuotationDetailEntity> details =
                 quotationDetailRepository.findByQuotation_QuotationId(saved.getQuotationId());

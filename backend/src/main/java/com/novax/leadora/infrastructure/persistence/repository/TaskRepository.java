@@ -61,4 +61,6 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
         long countByStatusNotIn(List<TaskStatus> statuses);
 
         long countByStatusNotInAndEndAtBefore(List<TaskStatus> statuses, OffsetDateTime endAt);
+
+        List<TaskEntity> findByStatusAndEndAtBeforeAndOverdueNotifiedFalse(TaskStatus status, OffsetDateTime endAt);
 }

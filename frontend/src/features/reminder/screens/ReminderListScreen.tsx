@@ -15,6 +15,7 @@ import { UpdateReminderModal } from "@/features/reminder/components/UpdateRemind
 import { useReminders } from "@/features/reminder/hooks/use_reminders";
 import { useUsers } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import { useAuthStore } from "@/stores/auth_store";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 import type { Reminder, ReminderStatus } from "@/services/reminder_service";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -192,6 +193,7 @@ function CalendarView({ reminders, selectedDay, onDayClick }: {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export function ReminderListScreen() {
+  const { highlightedId, setRowRef } = useHighlightRow();
   const { user, isLoading: isAuthLoading } = useAuthStore();
   const isManager = user?.roles?.includes("MANAGER") ?? false;
 
@@ -437,8 +439,10 @@ export function ReminderListScreen() {
                     return (
                       <TableRow
                         key={r.reminderId}
+                        ref={setRowRef(r.reminderId)}
                         onClick={() => setUpdateTarget(r)}
                         className={`border-b border-slate-100 transition cursor-pointer ${
+                          highlightedId === r.reminderId ? "bg-amber-50 ring-2 ring-inset ring-amber-400" :
                           overdue          ? "bg-red-50/30 hover:bg-red-50/50" :
                           r.status === "DONE" ? "opacity-55 bg-slate-50/40" :
                           "hover:bg-slate-50/60"

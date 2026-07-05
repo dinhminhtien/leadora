@@ -47,6 +47,7 @@ import type {
   ArrivalHandover,
   ReadinessStatus,
 } from "@/services/arrival_handover_service";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 const PAGE_SIZE = 10;
 
@@ -142,6 +143,7 @@ function fmtDateTime(iso?: string) {
 }
 
 export function FrontOfficeHandoverScreen() {
+  const { highlightedId, setRowRef } = useHighlightRow();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [readinessFilter, setReadinessFilter] = useState("");
@@ -322,7 +324,10 @@ export function FrontOfficeHandoverScreen() {
               {rows.map((h) => (
                 <TableRow
                   key={h.handoverId}
-                  className="cursor-pointer hover:bg-slate-50"
+                  ref={setRowRef(h.handoverId)}
+                  className={`cursor-pointer hover:bg-slate-50 ${
+                    highlightedId === h.handoverId ? "bg-amber-50 ring-2 ring-inset ring-amber-400" : ""
+                  }`}
                   onClick={() => setSelectedId(h.handoverId)}
                 >
                   <TableCell className="font-semibold text-slate-700">
