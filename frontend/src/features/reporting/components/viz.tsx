@@ -63,6 +63,20 @@ export function vndCompact(n?: number): string {
   return `${v.toLocaleString("en-US")} ₫`;
 }
 
+/* ── Empty state (UC exception E5.1 — "No report data found") ──────────────── */
+
+export function EmptyReport({
+  message = "No report data found for the selected period.",
+}: {
+  message?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-white p-10 text-center shadow-sm">
+      <p className="text-sm text-slate-400">{message}</p>
+    </div>
+  );
+}
+
 /* ── Stat tile ─────────────────────────────────────────────────────────────── */
 
 export function StatTile({

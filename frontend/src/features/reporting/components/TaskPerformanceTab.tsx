@@ -13,7 +13,7 @@ import {
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { useTaskPerformanceReport } from "@/features/reporting/hooks/use_reporting";
-import { StatTile, Meter, SegmentBar, VIZ } from "./viz";
+import { StatTile, Meter, SegmentBar, EmptyReport, VIZ } from "./viz";
 
 const pct = (n?: number) => `${(n ?? 0).toFixed(1)}%`;
 
@@ -50,7 +50,9 @@ export function TaskPerformanceTab() {
       )}
       {isError && <p className="p-4 text-sm text-rose-500">Failed to load the report. Please try again.</p>}
 
-      {data && !isLoading && (
+      {data && !isLoading && data.totalTasks === 0 && <EmptyReport />}
+
+      {data && !isLoading && data.totalTasks > 0 && (
         <>
           {/* KPI tiles — status accents reserved for the good/bad numbers, others stay ink. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

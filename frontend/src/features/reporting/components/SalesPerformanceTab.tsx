@@ -13,7 +13,7 @@ import {
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { useSalesPerformanceReport } from "@/features/reporting/hooks/use_reporting";
-import { StatTile, Meter, SegmentBar, VIZ, compact, vndCompact } from "./viz";
+import { StatTile, Meter, SegmentBar, EmptyReport, VIZ, compact, vndCompact } from "./viz";
 
 const vnd = (n?: number) => `${(n ?? 0).toLocaleString("en-US")} ₫`;
 const pct = (n?: number) => `${(n ?? 0).toFixed(1)}%`;
@@ -26,6 +26,10 @@ export function SalesPerformanceTab() {
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
   });
+
+  const hasData =
+    !!data &&
+    data.leadsCreated + data.dealsTotal + data.quotationsCreated + data.bookingsConfirmed > 0;
 
   return (
     <div className="space-y-5">
@@ -53,7 +57,9 @@ export function SalesPerformanceTab() {
       )}
       {isError && <p className="p-4 text-sm text-rose-500">Failed to load the report. Please try again.</p>}
 
-      {data && !isLoading && (
+      {data && !isLoading && !hasData && <EmptyReport />}
+
+      {data && !isLoading && hasData && (
         <>
           {/* KPI tiles */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
