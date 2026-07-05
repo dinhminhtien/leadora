@@ -7,23 +7,11 @@ import {
   type ReportLogPayload,
   type ReportRangeParams,
 } from "@/services/reporting_service";
-import { dealService } from "@/services/deal_service";
-
 // Fetch all quotations for the discount report tab
 export function useQuotationsForReport() {
   return useQuery({
     queryKey: ["quotations-for-report"],
     queryFn: () => quotationService.getList(),
-    select: (res) => res.data ?? [],
-    staleTime: 60_000,
-  });
-}
-
-// Fetch all deals for pipeline metrics (used by ReportingScreen analytics)
-export function useDealsForReport() {
-  return useQuery({
-    queryKey: ["deals-for-report"],
-    queryFn: () => dealService.getList(),
     select: (res) => res.data ?? [],
     staleTime: 60_000,
   });
