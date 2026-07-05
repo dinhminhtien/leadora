@@ -70,5 +70,8 @@ public class TaskEntity extends BaseEntity {
     @JoinColumn(name = "deal_id")
     private DealEntity deal;
 
+    @Builder.Default
+    @Column(name = "overdue_notified", nullable = false)
+    private Boolean overdueNotified = false;
 
 }
