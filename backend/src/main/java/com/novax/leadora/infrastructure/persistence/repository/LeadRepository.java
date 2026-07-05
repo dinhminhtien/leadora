@@ -92,4 +92,15 @@ public interface LeadRepository
     List<LeadEntity> findByStatus(LeadStatus status);
 
     long countByStatus(LeadStatus status);
+
+    // ── Performance report query (eliminates N+1 and filters at DB level) ──
+    @EntityGraph(attributePaths = {"assignedUser"})
+    @Query("""
+            SELECT l FROM LeadEntity l
+            WHERE l.createdAt >= :startDate
+              AND l.createdAt <= :endDate
+            """)
+    List<LeadEntity> findByCreatedAtRange(
+            @Param("startDate") OffsetDateTime startDate,
+            @Param("endDate") OffsetDateTime endDate);
 }

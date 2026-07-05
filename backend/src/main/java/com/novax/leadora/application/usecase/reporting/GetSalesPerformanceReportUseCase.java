@@ -19,6 +19,7 @@ import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,18 +52,19 @@ public class GetSalesPerformanceReportUseCase {
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
 
+    @Cacheable(value = "sales-performance-report", key = "#from + '_' + #to", unless = "#result == null")
     @Transactional(readOnly = true)
     public SalesPerformanceReportResponse execute(LocalDate from, LocalDate to) {
-        List<LeadEntity> leads = leadRepository.findAll().stream()
-                .filter(l -> inRange(l.getCreatedAt(), from, to)).toList();
-        List<DealEntity> deals = dealRepository.findAll().stream()
-                .filter(d -> inRange(d.getCreatedAt(), from, to)).toList();
-        List<QuotationEntity> quotations = quotationRepository.findAll().stream()
-                .filter(q -> inRange(q.getCreatedAt(), from, to)).toList();
-        List<BookingEntity> bookings = bookingRepository.findAll().stream()
-                .filter(b -> inRange(b.getCreatedAt(), from, to)).toList();
-        List<PaymentEntity> paidPayments = paymentRepository.findByStatus(PaymentStatus.PAID).stream()
-                .filter(p -> inRange(p.getPaidAt() != null ? p.getPaidAt() : p.getCreatedAt(), from, to)).toList();
+        OffsetDateTime start = from != null ? from.atStartOfDay().atOffset(java.time.ZoneOffset.UTC)
+                : OffsetDateTime.of(1970, 1, 1, 0, 0, 0, 0, java.time.ZoneOffset.UTC);
+        OffsetDateTime end = to != null ? to.atTime(java.time.LocalTime.MAX).atOffset(java.time.ZoneOffset.UTC)
+                : OffsetDateTime.of(2100, 12, 31, 23, 59, 59, 999999999, java.time.ZoneOffset.UTC);
+
+        List<LeadEntity> leads = leadRepository.findByCreatedAtRange(start, end);
+        List<DealEntity> deals = dealRepository.findByCreatedAtRange(start, end);
+        List<QuotationEntity> quotations = quotationRepository.findByCreatedAtRange(start, end);
+        List<BookingEntity> bookings = bookingRepository.findByCreatedAtRange(start, end);
+        List<PaymentEntity> paidPayments = paymentRepository.findPaidPaymentsForReport(PaymentStatus.PAID, start, end);
 
         long leadsCreated = leads.size();
         long qualifiedLeads = leads.stream().filter(l -> l.getStatus() == LeadStatus.QUALIFIED).count();
@@ -168,14 +170,7 @@ public class GetSalesPerformanceReportUseCase {
                 .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
     }
 
-    private boolean inRange(OffsetDateTime at, LocalDate from, LocalDate to) {
-        if (at == null) {
-            return from == null && to == null;
-        }
-        LocalDate d = at.toLocalDate();
-        if (from != null && d.isBefore(from)) return false;
-        return to == null || !d.isAfter(to);
-    }
+
 
     private double rate(long part, long whole) {
         if (whole <= 0) return 0;

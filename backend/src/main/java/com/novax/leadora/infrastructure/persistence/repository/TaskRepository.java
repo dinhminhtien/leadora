@@ -46,6 +46,19 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
                         @Param("rangeStart") OffsetDateTime rangeStart,
                         @Param("rangeEnd") OffsetDateTime rangeEnd);
 
+        // ── Performance report query (eliminates N+1 and filters at DB level) ──
+        @EntityGraph(attributePaths = { "assignedUser" })
+        @Query("""
+                        SELECT t FROM TaskEntity t
+                        WHERE (:assignedUserId IS NULL OR t.assignedUser.userId = :assignedUserId)
+                          AND t.createdAt >= :startDate
+                          AND t.createdAt <= :endDate
+                        """)
+        List<TaskEntity> findForPerformanceReport(
+                        @Param("assignedUserId") UUID assignedUserId,
+                        @Param("startDate") OffsetDateTime startDate,
+                        @Param("endDate") OffsetDateTime endDate);
+
         // ── Lightweight association lookups (no eager load required) ──────────
 
         List<TaskEntity> findByAssignedUser_UserId(UUID assignedUserId);
