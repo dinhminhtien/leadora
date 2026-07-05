@@ -18,9 +18,11 @@ export function AuthLayout({ children }: AuthLayoutProps) {
 
         {/* Brand Header */}
         <div className="flex items-center gap-3 relative z-10">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-white font-bold shadow-lg shadow-primary/20">
-            L
-          </div>
+          <img
+            src="/logo1.jpg"
+            alt="Leadora Logo"
+            className="size-9 rounded-xl object-left object-cover mix-blend-multiply dark:mix-blend-normal dark:invert shrink-0"
+          />
           <div className="flex flex-col">
             <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100 tracking-wider">Leadora</span>
             <span className="text-[9px] text-zinc-400 dark:text-zinc-500 font-semibold tracking-widest uppercase">Hotel CRM</span>
@@ -105,9 +107,11 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           {/* Header (visible on mobile, simplified brand on desktop layout) */}
           <div className="text-center lg:text-left space-y-1.5">
             <div className="lg:hidden flex items-center justify-center gap-2 mb-6">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-white font-bold">
-                L
-              </div>
+              <img
+                src="/logo1.jpg"
+                alt="Leadora Logo"
+                className="size-8 rounded-lg object-left object-cover mix-blend-multiply dark:mix-blend-normal dark:invert shrink-0"
+              />
               <span className="text-sm font-bold tracking-wider text-foreground">Leadora</span>
             </div>
             <span className="text-[10px] font-bold uppercase tracking-widest text-primary">

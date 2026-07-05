@@ -1,0 +1,106 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../../shared/formatters.dart';
+import '../../../../shared/widgets/async_value_view.dart';
+import '../../../../shared/widgets/empty_state.dart';
+import '../../data/notification_models.dart';
+import '../providers/notification_providers.dart';
+
+/// UC-24.24 / UC-24.25 — notification list with mark read / mark all read.
+class NotificationListScreen extends ConsumerWidget {
+  const NotificationListScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(notificationListControllerProvider);
+    final controller = ref.read(notificationListControllerProvider.notifier);
+    final hasUnread = async.valueOrNull?.any((n) => !n.isRead) ?? false;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Notifications'),
+        actions: [
+          if (hasUnread)
+            TextButton(
+              onPressed: controller.markAllRead,
+              child: const Text('Mark all read'),
+            ),
+        ],
+      ),
+      body: AsyncValueView<List<AppNotification>>(
+        value: async,
+        onRetry: controller.refresh,
+        isEmpty: (list) => list.isEmpty,
+        empty: const EmptyState(
+          icon: Icons.notifications_off_outlined,
+          title: 'No notifications',
+          message: "You're all caught up.",
+        ),
+        data: (list) => RefreshIndicator(
+          onRefresh: controller.refresh,
+          child: ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: list.length,
+            separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
+            itemBuilder: (context, index) =>
+                _NotificationTile(notification: list[index], onTap: () => controller.toggleRead(list[index])),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NotificationTile extends StatelessWidget {
+  const _NotificationTile({required this.notification, required this.onTap});
+
+  final AppNotification notification;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final unread = !notification.isRead;
+    return ListTile(
+      onTap: onTap,
+      leading: CircleAvatar(
+        backgroundColor: unread
+            ? theme.colorScheme.primaryContainer
+            : theme.colorScheme.surfaceContainerHighest,
+        child: Icon(
+          notification.icon,
+          color: unread ? theme.colorScheme.onPrimaryContainer : theme.colorScheme.outline,
+          size: 20,
+        ),
+      ),
+      title: Text(
+        notification.title,
+        style: theme.textTheme.bodyLarge?.copyWith(
+          fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
+        ),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (notification.message.isNotEmpty)
+            Text(notification.message, maxLines: 2, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 2),
+          Text(
+            Formatters.relative(notification.createdAt),
+            style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
+          ),
+        ],
+      ),
+      trailing: unread
+          ? Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
+            )
+          : null,
+      isThreeLine: notification.message.isNotEmpty,
+    );
+  }
+}

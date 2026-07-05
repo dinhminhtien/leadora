@@ -1,0 +1,9 @@
+{
+  "FLAVOR": "dev",
+  "APP_NAME": "Leadora (Dev)",
+  "API_BASE_URL": "http://10.0.2.2:8085/api/v1",
+  "CONNECT_TIMEOUT_MS": "20000",
+  "RECEIVE_TIMEOUT_MS": "20000",
+  "ENABLE_CRASHLYTICS": "false",
+  "LOG_LEVEL": "verbose"
+}

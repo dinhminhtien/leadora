@@ -38,6 +38,26 @@ public final class GuardrailMessages {
     public static final String SYSTEM_ERROR_EN =
             "An unexpected error occurred. Please try again later.";
 
+    /**
+     * The AI provider rejected the request for quota / rate-limit reasons — most commonly the
+     * Gemini free tier returning HTTP 429 RESOURCE_EXHAUSTED. Distinct from a generic error so the
+     * user (and dev) can tell "out of tokens" apart from a real bug.
+     */
+    public static final String QUOTA_EXCEEDED_VI =
+            "Trợ lý AI hiện đã hết lượt truy vấn (chạm giới hạn quota/tần suất của Gemini). "
+                    + "Vui lòng thử lại sau ít phút, hoặc kiểm tra hạn mức của API key.";
+    public static final String QUOTA_EXCEEDED_EN =
+            "The AI assistant has run out of queries (Gemini quota / rate limit reached). "
+                    + "Please try again in a few minutes, or check the API key's quota.";
+
+    /** The AI provider is unreachable or misconfigured (bad/missing API key, auth error, timeout). */
+    public static final String AI_UNAVAILABLE_VI =
+            "Không kết nối được dịch vụ AI (API key hoặc cấu hình có thể chưa đúng). "
+                    + "Vui lòng thử lại sau hoặc báo quản trị viên.";
+    public static final String AI_UNAVAILABLE_EN =
+            "Could not reach the AI service (the API key or configuration may be invalid). "
+                    + "Please try again later or contact an administrator.";
+
     public static String mutationRefusal(boolean vietnamese) {
         return vietnamese ? MUTATION_REFUSAL_VI : MUTATION_REFUSAL_EN;
     }
@@ -52,5 +72,13 @@ public final class GuardrailMessages {
 
     public static String systemError(boolean vietnamese) {
         return vietnamese ? SYSTEM_ERROR_VI : SYSTEM_ERROR_EN;
+    }
+
+    public static String quotaExceeded(boolean vietnamese) {
+        return vietnamese ? QUOTA_EXCEEDED_VI : QUOTA_EXCEEDED_EN;
+    }
+
+    public static String aiUnavailable(boolean vietnamese) {
+        return vietnamese ? AI_UNAVAILABLE_VI : AI_UNAVAILABLE_EN;
     }
 }

@@ -5,9 +5,11 @@ import com.novax.leadora.api.dto.response.LeadResponse;
 import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
+import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
+import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +29,7 @@ public class UpdateLeadUseCase {
     private final LeadRepository leadRepository;
     private final UserRepository userRepository;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
+    private final NotificationRepository notificationRepository;
 
     @Transactional
     public LeadResponse execute(UUID leadId, UpdateLeadRequest request) {
@@ -61,8 +64,14 @@ public class UpdateLeadUseCase {
         // lead in the same request is allowed (the assignee is already set when the
         // status guard below runs).
         if (request.getAssignedUserId() != null) {
+            UUID previousAssigneeId = lead.getAssignedUser() != null ? lead.getAssignedUser().getUserId() : null;
             UserEntity assignedUser = userRepository.findById(request.getAssignedUserId()).orElse(null);
             lead.setAssignedUser(assignedUser);
+
+            // UC-15.1: notify the newly (re)assigned sales rep
+            if (assignedUser != null && !assignedUser.getUserId().equals(previousAssigneeId)) {
+                notifyLeadAssigned(lead, assignedUser);
+            }
         }
         if (request.getStatus() != null) {
             LeadStatus newStatus = request.getStatus();
@@ -131,6 +140,22 @@ public class UpdateLeadUseCase {
             throw new IllegalStateException(
                     "Invalid status transition: " + current + " → " + next +
                     ". Leads move forward one stage at a time (NEW → CONTACTED → QUALIFIED).");
+        }
+    }
+
+    private void notifyLeadAssigned(LeadEntity lead, UserEntity assignedUser) {
+        try {
+            NotificationEntity notification = NotificationEntity.builder()
+                    .user(assignedUser)
+                    .title("Lead Assigned")
+                    .message("You were assigned the lead: " + lead.getFullName())
+                    .type("LEAD_ASSIGNED")
+                    .relatedEntity("LEAD")
+                    .relatedId(lead.getLeadId())
+                    .build();
+            notificationRepository.save(notification);
+        } catch (Exception e) {
+            log.warn("Lead-assigned notification failed for lead {}: {}", lead.getLeadId(), e.getMessage());
         }
     }
 }
