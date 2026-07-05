@@ -22,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.novax.leadora.common.util.ReportingUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -55,10 +56,8 @@ public class GetSalesPerformanceReportUseCase {
     @Cacheable(value = "sales-performance-report", key = "#from + '_' + #to", unless = "#result == null")
     @Transactional(readOnly = true)
     public SalesPerformanceReportResponse execute(LocalDate from, LocalDate to) {
-        OffsetDateTime start = from != null ? from.atStartOfDay().atOffset(java.time.ZoneOffset.UTC)
-                : OffsetDateTime.of(1970, 1, 1, 0, 0, 0, 0, java.time.ZoneOffset.UTC);
-        OffsetDateTime end = to != null ? to.atTime(java.time.LocalTime.MAX).atOffset(java.time.ZoneOffset.UTC)
-                : OffsetDateTime.of(2100, 12, 31, 23, 59, 59, 999999999, java.time.ZoneOffset.UTC);
+        OffsetDateTime start = ReportingUtils.getStartOfDayOrEpoch(from);
+        OffsetDateTime end = ReportingUtils.getEndOfDayOrFuture(to);
 
         List<LeadEntity> leads = leadRepository.findByCreatedAtRange(start, end);
         List<DealEntity> deals = dealRepository.findByCreatedAtRange(start, end);
@@ -92,19 +91,19 @@ public class GetSalesPerformanceReportUseCase {
                 .leadsCreated(leadsCreated)
                 .qualifiedLeads(qualifiedLeads)
                 .leadsConverted(leadsConverted)
-                .leadConversionRate(rate(leadsConverted, leadsCreated))
+                .leadConversionRate(ReportingUtils.calculateRate(leadsConverted, leadsCreated))
                 .dealsTotal(deals.size())
                 .dealsOpen(dealsOpen)
                 .dealsWon(dealsWon)
                 .dealsLost(dealsLost)
-                .winRate(rate(dealsWon, dealsWon + dealsLost))
+                .winRate(ReportingUtils.calculateRate(dealsWon, dealsWon + dealsLost))
                 .wonValue(wonValue)
                 .pipelineValue(pipelineValue)
                 .quotationsCreated(quotationsCreated)
                 .quotationsAccepted(quotationsAccepted)
-                .quotationAcceptanceRate(rate(quotationsAccepted, quotationsCreated))
+                .quotationAcceptanceRate(ReportingUtils.calculateRate(quotationsAccepted, quotationsCreated))
                 .bookingsConfirmed(bookingsConfirmed)
-                .quotationToBookingRate(rate(bookingsConfirmed, quotationsCreated))
+                .quotationToBookingRate(ReportingUtils.calculateRate(bookingsConfirmed, quotationsCreated))
                 .revenue(revenue)
                 .reps(buildReps(leads, deals, bookings, paidPayments))
                 .build();
@@ -170,12 +169,6 @@ public class GetSalesPerformanceReportUseCase {
                 .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
     }
 
-
-
-    private double rate(long part, long whole) {
-        if (whole <= 0) return 0;
-        return Math.round((part * 10000.0 / whole)) / 100.0; // 2 decimals
-    }
 
     private static class RepAgg {
         String name;

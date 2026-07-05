@@ -5,6 +5,7 @@ import com.novax.leadora.api.dto.response.QuotationOutcomeReportResponse.StatusR
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.common.util.ReportingUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -27,10 +28,8 @@ public class GetQuotationOutcomeReportUseCase {
     @Cacheable(value = "quotation-outcome-report", key = "#from + '_' + #to", unless = "#result == null")
     @Transactional(readOnly = true)
     public QuotationOutcomeReportResponse execute(LocalDate from, LocalDate to) {
-        OffsetDateTime start = from != null ? from.atStartOfDay().atOffset(java.time.ZoneOffset.UTC)
-                : OffsetDateTime.of(1970, 1, 1, 0, 0, 0, 0, java.time.ZoneOffset.UTC);
-        OffsetDateTime end = to != null ? to.atTime(java.time.LocalTime.MAX).atOffset(java.time.ZoneOffset.UTC)
-                : OffsetDateTime.of(2100, 12, 31, 23, 59, 59, 999999999, java.time.ZoneOffset.UTC);
+        OffsetDateTime start = ReportingUtils.getStartOfDayOrEpoch(from);
+        OffsetDateTime end = ReportingUtils.getEndOfDayOrFuture(to);
 
         List<QuotationEntity> quotations = quotationRepository.findByCreatedAtRange(start, end);
 
@@ -69,9 +68,9 @@ public class GetQuotationOutcomeReportUseCase {
                 .expired(expired)
                 .accepted(accepted)
                 .converted(converted)
-                .approvalRate(rate(approved, approved + rejected))
-                .acceptanceRate(rate(accepted, total))
-                .conversionRate(rate(converted, total))
+                .approvalRate(ReportingUtils.calculateRate(approved, approved + rejected))
+                .acceptanceRate(ReportingUtils.calculateRate(accepted, total))
+                .conversionRate(ReportingUtils.calculateRate(converted, total))
                 .byStatus(byStatus)
                 .build();
     }
@@ -90,11 +89,5 @@ public class GetQuotationOutcomeReportUseCase {
             case ACCEPTED -> "Accepted";
             case INTERESTED -> "Interested";
         };
-    }
-
-
-    private double rate(long part, long whole) {
-        if (whole <= 0) return 0;
-        return Math.round((part * 10000.0 / whole)) / 100.0;
     }
 }

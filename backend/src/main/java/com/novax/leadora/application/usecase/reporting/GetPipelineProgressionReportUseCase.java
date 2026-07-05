@@ -5,6 +5,7 @@ import com.novax.leadora.api.dto.response.PipelineProgressionReportResponse.Stag
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
+import com.novax.leadora.common.util.ReportingUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,10 +38,8 @@ public class GetPipelineProgressionReportUseCase {
     public PipelineProgressionReportResponse execute(LocalDate from, LocalDate to) {
         OffsetDateTime now = OffsetDateTime.now();
 
-        OffsetDateTime start = from != null ? from.atStartOfDay().atOffset(java.time.ZoneOffset.UTC)
-                : OffsetDateTime.of(1970, 1, 1, 0, 0, 0, 0, java.time.ZoneOffset.UTC);
-        OffsetDateTime end = to != null ? to.atTime(java.time.LocalTime.MAX).atOffset(java.time.ZoneOffset.UTC)
-                : OffsetDateTime.of(2100, 12, 31, 23, 59, 59, 999999999, java.time.ZoneOffset.UTC);
+        OffsetDateTime start = ReportingUtils.getStartOfDayOrEpoch(from);
+        OffsetDateTime end = ReportingUtils.getEndOfDayOrFuture(to);
 
         List<DealEntity> deals = dealRepository.findByCreatedAtRange(start, end);
 
@@ -91,7 +90,7 @@ public class GetPipelineProgressionReportUseCase {
                 .openDeals(openDeals)
                 .closedWon(closedWon)
                 .closedLost(closedLost)
-                .winRate(rate(closedWon, closedWon + closedLost))
+                .winRate(ReportingUtils.calculateRate(closedWon, closedWon + closedLost))
                 .pipelineValue(pipelineValue)
                 .bottleneckStage(bottleneck)
                 .stages(stages)
@@ -116,11 +115,5 @@ public class GetPipelineProgressionReportUseCase {
             case CLOSED_WON -> "Closed won";
             case CLOSED_LOST -> "Closed lost";
         };
-    }
-
-
-    private double rate(long part, long whole) {
-        if (whole <= 0) return 0;
-        return Math.round((part * 10000.0 / whole)) / 100.0;
     }
 }

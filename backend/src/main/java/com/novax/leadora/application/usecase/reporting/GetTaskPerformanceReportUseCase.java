@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.novax.leadora.common.util.ReportingUtils;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -46,11 +47,8 @@ public class GetTaskPerformanceReportUseCase {
     public TaskPerformanceReportResponse execute(UserEntity actor, LocalDate from, LocalDate to) {
         OffsetDateTime now = OffsetDateTime.now();
 
-        // Convert LocalDate to OffsetDateTime boundaries in system default/UTC offset
-        OffsetDateTime start = from != null ? from.atStartOfDay().atOffset(java.time.ZoneOffset.UTC)
-                : OffsetDateTime.of(1970, 1, 1, 0, 0, 0, 0, java.time.ZoneOffset.UTC);
-        OffsetDateTime end = to != null ? to.atTime(java.time.LocalTime.MAX).atOffset(java.time.ZoneOffset.UTC)
-                : OffsetDateTime.of(2100, 12, 31, 23, 59, 59, 999999999, java.time.ZoneOffset.UTC);
+        OffsetDateTime start = ReportingUtils.getStartOfDayOrEpoch(from);
+        OffsetDateTime end = ReportingUtils.getEndOfDayOrFuture(to);
 
         UUID assignedUserId = canSeeAllTasks(actor) ? null : actor.getUserId();
         List<TaskEntity> tasks = taskRepository.findForPerformanceReport(assignedUserId, start, end);
@@ -73,8 +71,8 @@ public class GetTaskPerformanceReportUseCase {
                 .open(open)
                 .cancelled(cancelled)
                 .overdue(overdue)
-                .completionRate(rate(completed, total))
-                .overdueRate(rate(overdue, total))
+                .completionRate(ReportingUtils.calculateRate(completed, total))
+                .overdueRate(ReportingUtils.calculateRate(overdue, total))
                 .priorityLow(low)
                 .priorityMedium(medium)
                 .priorityHigh(high)
@@ -106,7 +104,7 @@ public class GetTaskPerformanceReportUseCase {
                     .total(a.total)
                     .completed(a.completed)
                     .overdue(a.overdue)
-                    .completionRate(rate(a.completed, a.total))
+                    .completionRate(ReportingUtils.calculateRate(a.completed, a.total))
                     .build());
         }
         rows.sort(Comparator.comparingLong((StaffRow r) -> r.getTotal()).reversed());
@@ -127,12 +125,6 @@ public class GetTaskPerformanceReportUseCase {
         return FULL_SCOPE_ROLES.contains(role);
     }
 
-
-
-    private double rate(long part, long whole) {
-        if (whole <= 0) return 0;
-        return Math.round((part * 10000.0 / whole)) / 100.0;
-    }
 
     private static class StaffAgg {
         String name;

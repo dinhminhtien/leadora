@@ -133,8 +133,11 @@ export function SalesPipelineScreen() {
   ];
 
   // Fetch deals helper (UC-11.2)
-  const fetchDeals = async (searchVal: string, ownerVal: string) => {
-    setLoading(true);
+  const fetchDeals = async (searchVal: string, ownerVal: string, showSpinner = false) => {
+    const shouldShowSpinner = showSpinner || loading;
+    if (shouldShowSpinner) {
+      setLoading(true);
+    }
     try {
       const params: any = {};
       if (searchVal.trim()) {
@@ -150,7 +153,9 @@ export function SalesPipelineScreen() {
     } catch (err) {
       console.error("Failed to fetch deals", err);
     } finally {
-      setLoading(false);
+      if (shouldShowSpinner) {
+        setLoading(false);
+      }
     }
   };
 
