@@ -13,10 +13,12 @@ import { productService, type ProductService } from "@/services/product_service"
 import { customerProfileService, type CustomerProfile } from "@/services/customer_profile_service";
 import { quotationService, type Quotation } from "@/services/quotation_service";
 import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 type TabType = "queue" | "checker";
 
 export function BookingConfirmationScreen() {
+  const { highlightedId, setRowRef } = useHighlightRow();
   const [activeTab, setActiveTab] = useState<TabType>("queue");
   const [isNewRequestOpen, setIsNewRequestOpen] = useState(false);
 
@@ -421,7 +423,13 @@ export function BookingConfirmationScreen() {
                     </TableRow>
                   ) : bookings.length > 0 ? (
                     bookings.map(b => (
-                      <TableRow key={b.bookingId} className="hover:bg-muted/30 border-b border-border transition">
+                      <TableRow
+                        key={b.bookingId}
+                        ref={setRowRef(b.bookingId)}
+                        className={`hover:bg-muted/30 border-b border-border transition ${
+                          highlightedId === b.bookingId ? "bg-amber-50 ring-2 ring-inset ring-amber-400 dark:bg-amber-500/10" : ""
+                        }`}
+                      >
                         <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-700 dark:!text-zinc-300 !text-center whitespace-nowrap">
                           <span className="flex items-center justify-center gap-1.5 text-primary">
                             <Receipt className="size-3.5 text-muted-foreground/60" />

@@ -22,6 +22,7 @@ public class SalesPerformanceReportResponse {
 
     // Leads
     private long leadsCreated;
+    private long qualifiedLeads;         // leads that reached QUALIFIED (UC-23.1)
     private long leadsConverted;
     private double leadConversionRate;   // %
 
@@ -41,6 +42,7 @@ public class SalesPerformanceReportResponse {
 
     // Bookings & revenue
     private long bookingsConfirmed;
+    private double quotationToBookingRate; // % confirmed bookings / created quotations (UC-23.1)
     private BigDecimal revenue;          // sum of PAID payments
 
     private List<RepRow> reps;

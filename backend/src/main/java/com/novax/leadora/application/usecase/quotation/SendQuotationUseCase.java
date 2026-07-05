@@ -2,10 +2,12 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.SendQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
+import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationSendLogEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
+import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationSendLogRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ public class SendQuotationUseCase {
     private final QuotationSendLogRepository sendLogRepository;
     private final QuotationEmailService quotationEmailService;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
+    private final NotificationRepository notificationRepository;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, SendQuotationRequest request) {
@@ -61,6 +64,23 @@ public class SendQuotationUseCase {
             resolveSlaBreachUseCase.executeByEntity("QUOTATION", quotationId);
         } catch (Exception e) {
             log.warn("SLA auto-resolve failed for quotation {}: {}", quotationId, e.getMessage());
+        }
+
+        // UC-15.1: notify the quotation owner that it was dispatched to the customer
+        if (saved.getCreatedBy() != null) {
+            try {
+                NotificationEntity notification = NotificationEntity.builder()
+                        .user(saved.getCreatedBy())
+                        .title("Quotation Sent")
+                        .message("Your quotation was sent to " + request.getRecipientName() + " via " + request.getSendMethod() + ".")
+                        .type("QUOTATION_SENT")
+                        .relatedEntity("QUOTATION")
+                        .relatedId(quotationId)
+                        .build();
+                notificationRepository.save(notification);
+            } catch (Exception e) {
+                log.warn("Quotation-sent notification failed for quotation {}: {}", quotationId, e.getMessage());
+            }
         }
 
         // POST-3: Send email when method is EMAIL (UC-14.4) — failure is logged but does not rollback DB state

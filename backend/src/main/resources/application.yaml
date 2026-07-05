@@ -101,6 +101,18 @@ spring:
   # Spring AI configuration — Internal Sales Chat Assistant (feature/ai_internal)
   # Runtime: Google Gemini API for BOTH chat and embeddings (no local AI) + pgvector store for RAG.
   ai:
+    # Fail-fast retry. Spring AI's default retries a 429 up to 10 times with exponential backoff
+    # (2s → ×5 → up to 3 min), so on a quota/rate-limit error the chat/embedding call would HANG
+    # for tens of seconds before surfacing the error ("chat chậm hơn bình thường"). On the Gemini
+    # free tier (20 chat req/day, 1000 embed req/day) a 429 is usually a hard daily cap, not a blip,
+    # so retrying long is pointless — fail after at most one short retry and let the app show a clear
+    # "hết quota" message immediately. Raise these once billing/paid quota is enabled.
+    retry:
+      max-attempts: ${AI_RETRY_MAX_ATTEMPTS:2}
+      backoff:
+        initial-interval: 800ms
+        multiplier: 2
+        max-interval: 3s
     # Select Gemini as the active provider so Ollama/Anthropic auto-configs back off.
     model:
       chat: google-genai
@@ -123,9 +135,14 @@ spring:
             # so on 3.x the reliable speed lever is the model: set GEMINI_CHAT_MODEL=gemini-2.5-flash.
             thinking-budget: ${GEMINI_THINKING_BUDGET:0}
         embedding:
-          # Match connection configuration for embedding
-          vertex-ai: ${GEMINI_USE_VERTEX:true}
-          api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:#{null}}}
+          # IMPORTANT: the Google GenAI *embedding* connection has NO working `vertex-ai` boolean
+          # (unlike the chat block). Its mode is inferred purely from the properties present:
+          #   - api-key set            → Gemini Developer API (AI Studio)
+          #   - project-id + location  → Vertex AI
+          # So we must NOT put an api-key here in Vertex mode: a blank/null api-key still flips the
+          # embedding client to Developer API and fails with "API key not valid" (the upload/RAG bug).
+          # To run embeddings on the Developer API instead, set GEMINI_USE_VERTEX=false AND add:
+          #     api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY}}
           project-id: ${GEMINI_PROJECT_ID:mock-project-id}
           location: ${GEMINI_LOCATION:asia-southeast1}
           text:
@@ -148,6 +165,21 @@ spring:
 logging:
   level:
     org.springframework.security: DEBUG
+
+# RAG ingestion tuning (custom namespace read by SemanticChunker).
+# semantic-chunking embeds EVERY sentence of a document to find topic boundaries — on top of the
+# per-chunk embeddings the vector store already does — so one medium file can fire hundreds of
+# embedding calls and exhaust the Gemini free-tier embedding quota (1000/day) in a single upload.
+# Default OFF: fall back to token splitting, which embeds only the final chunks (O(chunks), not
+# O(sentences)) — 10–30× fewer calls, faster ingest, uploads that actually finish. Turn it back on
+# (AI_SEMANTIC_CHUNKING=true) once you have paid/embedding quota and want the retrieval-quality gain.
+ai:
+  rag:
+    semantic-chunking:
+      # ON by default now that Vertex AI (billed) has real embedding quota — semantic chunking
+      # embeds each sentence to find topic boundaries (better retrieval quality) but costs more
+      # embedding calls. Set AI_SEMANTIC_CHUNKING=false to fall back to cheap token splitting.
+      enabled: ${AI_SEMANTIC_CHUNKING:true}
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}

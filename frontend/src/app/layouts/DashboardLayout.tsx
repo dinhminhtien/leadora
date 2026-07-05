@@ -3,10 +3,16 @@
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useNotifications } from "@/features/notification/hooks/use_notifications";
+import {
+  useNotifications,
+  useUnreadNotificationCount,
+  useMarkNotificationRead,
+} from "@/features/notification/hooks/use_notifications";
+import type { Notification } from "@/services/notification_service";
 import { getUserRole, canAccessPath, dashboardPathForRole } from "@/shared/auth/access";
 import {
   Bell,
+  BellOff,
   BriefcaseBusiness,
   CalendarCheck,
   ChartNoAxesCombined,
@@ -106,6 +112,28 @@ const navigationGroups: NavGroup[] = [
   },
 ];
 
+function notificationRoute(n: Notification): string | null {
+  if (!n.relatedEntity || !n.relatedId) return null;
+  const entity = n.relatedEntity.toUpperCase();
+  if (entity === "LEAD") return ROUTE_PATHS.leadDetail(n.relatedId);
+  if (entity === "QUOTATION") return ROUTE_PATHS.quotationDetail(n.relatedId);
+  if (entity === "BOOKING") return ROUTE_PATHS.bookingConfirmation;
+  if (entity === "REMINDER") return ROUTE_PATHS.reminders;
+  if (entity === "TASK") return ROUTE_PATHS.followUpTasks;
+  if (entity === "SLA") return ROUTE_PATHS.sla;
+  if (entity === "HANDOVER") return ROUTE_PATHS.frontOfficeHandover;
+  return null;
+}
+
+function formatNotifTime(iso: string): string {
+  const diffMin = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (diffMin < 1) return "Just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h ago`;
+  return `${Math.floor(diffH / 24)}d ago`;
+}
+
 export function getAvatarSource(avatarUrl: string | null | undefined, userId: string | null | undefined): string | null {
   if (!avatarUrl) return null;
   if (avatarUrl.startsWith("local-storage-avatar://") && userId) {
@@ -121,10 +149,26 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const { sidebarOpen, toggleSidebar } = useUiStore();
   const { user, clearUser, isLoading } = useAuthStore();
-  const { data: unreadNotifications } = useNotifications(true);
-  const unreadCount = unreadNotifications?.length ?? 0;
+  const { data: unreadCount = 0 } = useUnreadNotificationCount();
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [isNotifDropdownOpen, setIsNotifDropdownOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const { data: notifPreview } = useNotifications({ size: 6 }, isNotifDropdownOpen);
+  const markNotificationRead = useMarkNotificationRead();
+
+  // Clicking a notification always marks it read. It only navigates (and closes the
+  // dropdown) when there's somewhere to go — otherwise the dropdown stays open so the
+  // item's read/unread styling visibly updates in place.
+  const handleNotificationPreviewClick = async (n: Notification) => {
+    if (!n.isRead) {
+      await markNotificationRead.mutateAsync({ id: n.id, read: true });
+    }
+    const route = notificationRoute(n);
+    if (route) {
+      setIsNotifDropdownOpen(false);
+      router.push(route);
+    }
+  };
 
   const avatarSource = useMemo(() => {
     return getAvatarSource(user?.avatarUrl, user?.id);
@@ -209,7 +253,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     setIsUserDropdownOpen(false);
     supabaseAuthService.clearLocalSession();
     clearUser();
-    
+
     try {
       await Promise.allSettled([
         authService.logout(),
@@ -243,9 +287,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             className={`flex items-center ${sidebarOpen ? "gap-3 px-3" : "w-full h-full justify-center px-0"} rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 transition`}
             title={sidebarOpen ? "Collapse Menu" : "Expand Menu"}
           >
-            <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-white font-bold shrink-0 shadow-lg shadow-primary/20">
-              L
-            </div>
+            <img
+              src="/logo1.jpg"
+              alt="Leadora Logo"
+              className="size-9 rounded-xl object-left object-cover mix-blend-multiply dark:mix-blend-normal dark:invert shrink-0"
+            />
             {sidebarOpen && (
               <div className="flex flex-col">
                 <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100 tracking-wider">Leadora</span>
@@ -350,82 +396,136 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
           {/* Center: Search Lead/Deals (hidden for Front Office) */}
           {!isFrontOffice && (
-          <div className="flex-1 max-w-sm mx-6 hidden md:block">
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search guests, corporate leads, active deals..."
-                className="w-full rounded-xl border border-border bg-muted/40 pl-10 pr-4 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary focus:bg-background focus:ring-2 focus:ring-primary/10 transition shadow-[inset_0_1px_2px_rgba(0,0,0,0.015)]"
-              />
+            <div className="flex-1 max-w-sm mx-6 hidden md:block">
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search guests, corporate leads, active deals..."
+                  className="w-full rounded-xl border border-border bg-muted/40 pl-10 pr-4 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary focus:bg-background focus:ring-2 focus:ring-primary/10 transition shadow-[inset_0_1px_2px_rgba(0,0,0,0.015)]"
+                />
+              </div>
             </div>
-          </div>
           )}
 
           {/* Right: Actions (Quick Add, Notification, Profile) */}
           <div className="ml-auto flex items-center gap-3.5">
             {/* Quick Add Button (hidden for Front Office) */}
             {!isFrontOffice && (
-            <div className="relative">
-              <Button
-                variant="primary"
-                size="sm"
-                className="rounded-lg shadow-xs"
-                leftIcon={<Plus className="size-3.5" />}
-                onClick={() => setIsQuickAddOpen(!isQuickAddOpen)}
-              >
-                Quick Add
-              </Button>
+              <div className="relative">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="rounded-lg shadow-xs"
+                  leftIcon={<Plus className="size-3.5" />}
+                  onClick={() => setIsQuickAddOpen(!isQuickAddOpen)}
+                >
+                  Quick Add
+                </Button>
 
-              {isQuickAddOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setIsQuickAddOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-48 rounded-xl border border-border bg-background p-1.5 shadow-lg z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                    <p className="px-2.5 py-1 text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Create New</p>
-                    <button
-                      onClick={() => handleQuickAction("Lead")}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-muted transition cursor-pointer"
-                    >
-                      <Handshake className="size-3.5 text-indigo-500" /> Add New Lead
-                    </button>
-                    <button
-                      onClick={() => handleQuickAction("Deal")}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-muted transition cursor-pointer"
-                    >
-                      <BriefcaseBusiness className="size-3.5 text-emerald-500" /> Add New Deal
-                    </button>
-                    <button
-                      onClick={() => handleQuickAction("Task")}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-muted transition cursor-pointer"
-                    >
-                      <CalendarCheck className="size-3.5 text-amber-500" /> Add Follow-up Task
-                    </button>
-                    <button
-                      onClick={() => handleQuickAction("Guest Profile")}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-muted transition cursor-pointer"
-                    >
-                      <Users className="size-3.5 text-blue-500" /> Create Guest Profile
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+                {isQuickAddOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsQuickAddOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-48 rounded-xl border border-border bg-background p-1.5 shadow-lg z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                      <p className="px-2.5 py-1 text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Create New</p>
+                      <button
+                        onClick={() => handleQuickAction("Lead")}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-muted transition cursor-pointer"
+                      >
+                        <Handshake className="size-3.5 text-indigo-500" /> Add New Lead
+                      </button>
+                      <button
+                        onClick={() => handleQuickAction("Deal")}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-muted transition cursor-pointer"
+                      >
+                        <BriefcaseBusiness className="size-3.5 text-emerald-500" /> Add New Deal
+                      </button>
+                      <button
+                        onClick={() => handleQuickAction("Task")}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-muted transition cursor-pointer"
+                      >
+                        <CalendarCheck className="size-3.5 text-amber-500" /> Add Follow-up Task
+                      </button>
+                      <button
+                        onClick={() => handleQuickAction("Guest Profile")}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-muted transition cursor-pointer"
+                      >
+                        <Users className="size-3.5 text-blue-500" /> Create Guest Profile
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
 
             {/* Theme Toggle */}
             <ThemeToggle className="shadow-none border-none bg-transparent hover:bg-muted text-muted-foreground dark:hover:bg-muted/80" />
 
             {/* Notification Center */}
-            <button
-              onClick={() => router.push(ROUTE_PATHS.notifications)}
-              className="relative rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition cursor-pointer"
-              title="Notifications"
-            >
-              <Bell className="size-4" />
-              {unreadCount > 0 && (
-                <span className="absolute right-2 top-2 size-1.5 rounded-full bg-danger"></span>
+            <div className="relative">
+              <button
+                onClick={() => setIsNotifDropdownOpen((v) => !v)}
+                className="relative rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition cursor-pointer"
+                title="Notifications"
+              >
+                <Bell className="size-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-danger px-1 text-[9px] font-bold leading-none text-white">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {isNotifDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsNotifDropdownOpen(false)} />
+                  <div className="absolute right-0 mt-2.5 w-80 rounded-xl border border-zinc-200 dark:border-zinc-850 bg-background shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 ease-out overflow-hidden">
+                    <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-zinc-100 dark:border-zinc-900">
+                      <p className="text-xs font-bold text-foreground">
+                        Notifications {unreadCount > 0 && <span className="text-muted-foreground font-medium">({unreadCount} unread)</span>}
+                      </p>
+                    </div>
+
+                    <div className="max-h-80 overflow-y-auto">
+                      {!notifPreview?.content || notifPreview.content.length === 0 ? (
+                        <div className="flex flex-col items-center gap-1.5 py-8 text-muted-foreground">
+                          <BellOff className="size-6 opacity-40" />
+                          <p className="text-[11px]">You're all caught up</p>
+                        </div>
+                      ) : (
+                        notifPreview.content.map((n) => (
+                          <button
+                            key={n.id}
+                            onClick={() => handleNotificationPreviewClick(n)}
+                            className={`flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left border-b border-zinc-50 dark:border-zinc-900 last:border-0 hover:bg-muted transition ${
+                              !n.isRead ? "bg-blue-50/50 dark:bg-blue-950/10" : ""
+                            }`}
+                          >
+                            <span className={`mt-1 size-1.5 rounded-full shrink-0 ${!n.isRead ? "bg-blue-500" : "bg-zinc-300 dark:bg-zinc-700"}`} />
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-xs truncate ${!n.isRead ? "font-bold text-foreground" : "font-medium text-muted-foreground"}`}>
+                                {n.title}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed mt-0.5">{n.message}</p>
+                              <p className="text-[9px] text-muted-foreground/70 mt-1">{formatNotifTime(n.createdAt)}</p>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between px-3.5 py-2 border-t border-zinc-100 dark:border-zinc-900 bg-muted/30">
+                      <button
+                        onClick={() => { setIsNotifDropdownOpen(false); router.push(ROUTE_PATHS.notifications); }}
+                        className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                      >
+                        View all
+                      </button>
+                    </div>
+                  </div>
+                </>
               )}
-            </button>
+            </div>
 
             {/* User Profile */}
             <div className="relative">
@@ -481,7 +581,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Menu Options */}
                     <div className="p-0.5 space-y-0.5">
                       <button
@@ -495,7 +595,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                         <User className="size-3.5 text-zinc-400 dark:text-zinc-500" />
                         Profile
                       </button>
-                      
+
                       <button
                         role="menuitem"
                         onClick={() => {
@@ -506,9 +606,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                         <Settings className="size-3.5 text-zinc-400 dark:text-zinc-500" />
                         Admin Console
                       </button>
-                      
+
                       <div className="h-px bg-zinc-100 dark:bg-zinc-900 my-1" />
-                      
+
                       <button
                         role="menuitem"
                         onClick={handleLogout}

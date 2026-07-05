@@ -18,6 +18,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** UC-23.2 — View Follow-up Task Performance Report. */
@@ -26,14 +27,25 @@ import java.util.UUID;
 public class GetTaskPerformanceReportUseCase {
 
     private static final int MAX_STAFF = 50;
+    /** Roles that may see team-wide task performance; everyone else is scoped to their own tasks. */
+    private static final Set<String> FULL_SCOPE_ROLES = Set.of("MANAGER", "ADMIN");
 
     private final TaskRepository taskRepository;
 
+    /**
+     * @param actor the authenticated user — UC-23.2 access scope: Sales Manager/Admin see team-wide
+     *              performance, Sales Staff see only their own assigned tasks.
+     */
     @Transactional(readOnly = true)
-    public TaskPerformanceReportResponse execute(LocalDate from, LocalDate to) {
+    public TaskPerformanceReportResponse execute(UserEntity actor, LocalDate from, LocalDate to) {
         OffsetDateTime now = OffsetDateTime.now();
 
-        List<TaskEntity> tasks = taskRepository.findAll().stream()
+        // Scope by role at the query level (Sales Staff → own tasks only) so the report never
+        // exposes other people's follow-up data and stays cheap for individual contributors.
+        List<TaskEntity> source = canSeeAllTasks(actor)
+                ? taskRepository.findAll()
+                : taskRepository.findByAssignedUser_UserId(actor.getUserId());
+        List<TaskEntity> tasks = source.stream()
                 .filter(t -> inRange(t.getCreatedAt(), from, to))
                 .toList();
 
@@ -101,6 +113,12 @@ public class GetTaskPerformanceReportUseCase {
             return false;
         }
         return t.getEndAt() != null && t.getEndAt().isBefore(now);
+    }
+
+    private boolean canSeeAllTasks(UserEntity user) {
+        String role = (user != null && user.getRole() != null && user.getRole().getRoleName() != null)
+                ? user.getRole().getRoleName().trim().toUpperCase() : "";
+        return FULL_SCOPE_ROLES.contains(role);
     }
 
     private boolean inRange(OffsetDateTime at, LocalDate from, LocalDate to) {

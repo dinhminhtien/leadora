@@ -1,4 +1,4 @@
-import { apiClient, type ApiResponse } from "@/services/api_client";
+import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_client";
 
 export type NotificationType =
   | "LEAD_ASSIGNED"
@@ -6,9 +6,13 @@ export type NotificationType =
   | "QUOTATION_SENT"
   | "CUSTOMER_RESPONSE"
   | "BOOKING_UPDATE"
-  | "PAYMENT_REMINDER"
   | "SLA_WARNING"
+  | "SLA_BREACH"
   | "TASK_OVERDUE"
+  | "REMINDER"
+  | "REMINDER_ESCALATED"
+  | "REMINDER_OVERDUE"
+  | "HANDOVER"
   | string;
 
 export type Notification = {
@@ -22,13 +26,25 @@ export type Notification = {
   createdAt: string;
 };
 
+export type NotificationListParams = {
+  unreadOnly?: boolean;
+  page?: number;
+  size?: number;
+};
+
 const ENDPOINT = "/notifications";
 
 export const notificationService = {
-  async getList(unreadOnly = false): Promise<ApiResponse<Notification[]>> {
-    const response = await apiClient.get<ApiResponse<Notification[]>>(ENDPOINT, {
-      params: { unreadOnly },
+  async getList(params: NotificationListParams = {}): Promise<ApiResponse<PageResponse<Notification>>> {
+    const { unreadOnly = false, page = 0, size = 20 } = params;
+    const response = await apiClient.get<ApiResponse<PageResponse<Notification>>>(ENDPOINT, {
+      params: { unreadOnly, page, size },
     });
+    return response.data;
+  },
+
+  async getUnreadCount(): Promise<ApiResponse<{ count: number }>> {
+    const response = await apiClient.get<ApiResponse<{ count: number }>>(`${ENDPOINT}/unread-count`);
     return response.data;
   },
 

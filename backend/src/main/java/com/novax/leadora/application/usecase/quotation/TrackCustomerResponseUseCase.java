@@ -2,23 +2,28 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.TrackCustomerResponseRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
+import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationCustomerResponseEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
+import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationCustomerResponseRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TrackCustomerResponseUseCase {
 
     private final QuotationRepository quotationRepository;
     private final QuotationCustomerResponseRepository customerResponseRepository;
+    private final NotificationRepository notificationRepository;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, TrackCustomerResponseRequest request) {
@@ -62,6 +67,23 @@ public class TrackCustomerResponseUseCase {
                 .newStatus(newStatus.name())
                 .build();
         customerResponseRepository.save(responseLog);
+
+        // UC-15.1: notify the quotation owner of the customer's decision
+        if (saved.getCreatedBy() != null) {
+            try {
+                NotificationEntity notification = NotificationEntity.builder()
+                        .user(saved.getCreatedBy())
+                        .title("Customer Responded")
+                        .message("Customer response recorded: " + request.getCustomerResponse().toUpperCase() + " for your quotation.")
+                        .type("CUSTOMER_RESPONSE")
+                        .relatedEntity("QUOTATION")
+                        .relatedId(quotationId)
+                        .build();
+                notificationRepository.save(notification);
+            } catch (Exception e) {
+                log.warn("Customer-response notification failed for quotation {}: {}", quotationId, e.getMessage());
+            }
+        }
 
         return QuotationResponse.from(saved);
     }

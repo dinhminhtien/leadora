@@ -24,6 +24,7 @@ import {
 import { useResolveTask } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import type { SlaRule, SlaRulePayload, SlaActivityType, SlaTracking, SlaDisplayStatus, SlaActivityBreakdown } from "@/services/sla_service";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 // BR-02: chỉ ADMIN và MANAGER được cấu hình rules
 const CONFIGURE_ROLES = ["ADMIN", "MANAGER"];
@@ -85,6 +86,7 @@ function formatHoursRemaining(hours: number): string {
 function MonitorTab() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { highlightedId, setRowRef } = useHighlightRow();
   const [entityTypeFilter, setEntityTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<SlaDisplayStatus | "">("");
   const [resolvingId, setResolvingId] = useState<string | null>(null);
@@ -234,6 +236,8 @@ function MonitorTab() {
               }
               resolveLabel={r.entityType === "TASK" ? "Resolve Task" : "Resolve"}
               isResolving={resolvingId === r.trackingId}
+              rowRef={setRowRef(r.trackingId)}
+              isHighlighted={highlightedId === r.trackingId}
             />
           ))}
         </div>
@@ -249,18 +253,23 @@ function SlaTrackingRow({
   onResolve,
   resolveLabel = "Resolve",
   isResolving,
+  rowRef,
+  isHighlighted,
 }: {
   record: SlaTracking;
   onNavigate: (path: string) => void;
   onResolve?: () => void;
   resolveLabel?: string;
   isResolving?: boolean;
+  rowRef?: (el: HTMLDivElement | null) => void;
+  isHighlighted?: boolean;
 }) {
   const route = getEntityRoute(r.entityType, r.entityId);
   const isUrgent = r.displayStatus === "BREACHED" || r.displayStatus === "WARNING";
 
   return (
-    <Card className={`border shadow-xs ${
+    <Card ref={rowRef} className={`border shadow-xs ${
+      isHighlighted ? "ring-2 ring-inset ring-amber-400 bg-amber-50" :
       r.displayStatus === "BREACHED"   ? "border-red-200 bg-red-50/30"   :
       r.displayStatus === "WARNING"    ? "border-amber-200 bg-amber-50/20" :
       "border-slate-100 bg-white"

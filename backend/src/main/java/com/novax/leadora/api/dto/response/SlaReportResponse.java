@@ -22,10 +22,10 @@ public class SlaReportResponse {
     /** breachedCount / totalTracked × 100 */
     private double breachRatePct;
 
-    /** (withinSlaCount + resolvedCount) / totalTracked × 100 */
+    /** On-time compliance: (withinSla + warning + resolved-before-deadline) / totalTracked × 100 */
     private double complianceRatePct;
 
-    /** resolvedCount / (resolvedCount + breachedCount) × 100 */
+    /** Eventual resolution: resolvedCount / (resolvedCount + breachedCount) × 100 */
     private double resolutionRatePct;
 
     /** Average hours from startedAt → updatedAt for RESOLVED records only */
