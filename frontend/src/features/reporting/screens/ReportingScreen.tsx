@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { BarChart2, FileText, Download, Printer, AlertCircle, CheckCircle2, ClipboardList, Loader2, TrendingUp, Lightbulb, ArrowUpRight, HelpCircle } from "lucide-react";
+import { BarChart2, FileText, Download, Printer, AlertCircle, CheckCircle2, ClipboardList, Loader2, TrendingUp, Lightbulb, ArrowUpRight, HelpCircle, GitBranch, ReceiptText, ShieldCheck } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -14,6 +14,9 @@ import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
 import { SalesPerformanceTab } from "@/features/reporting/components/SalesPerformanceTab";
 import { TaskPerformanceTab } from "@/features/reporting/components/TaskPerformanceTab";
+import { PipelineProgressionTab } from "@/features/reporting/components/PipelineProgressionTab";
+import { QuotationOutcomeTab } from "@/features/reporting/components/QuotationOutcomeTab";
+import { SlaComplianceTab } from "@/features/reporting/components/SlaComplianceTab";
 
 export interface ReportLog {
   id: string;
@@ -917,7 +920,14 @@ function DiscountReportTab() {
 
 // ── Main Screen ──────────────────────────────────────────────────────────────
 
-type Tab = "analytics" | "sales-performance" | "task-performance" | "discount-report";
+type Tab =
+  | "analytics"
+  | "sales-performance"
+  | "pipeline-progression"
+  | "quotation-outcome"
+  | "sla-compliance"
+  | "task-performance"
+  | "discount-report";
 
 export function ReportingScreen() {
   const [activeTab, setActiveTab] = useState<Tab>("analytics");
@@ -934,6 +944,9 @@ export function ReportingScreen() {
     ...(isManagerScope
       ? ([
           { key: "sales-performance", label: "Sales Performance", icon: <TrendingUp className="size-3.5" /> },
+          { key: "pipeline-progression", label: "Pipeline Progression", icon: <GitBranch className="size-3.5" /> },
+          { key: "quotation-outcome", label: "Quotation Outcome", icon: <ReceiptText className="size-3.5" /> },
+          { key: "sla-compliance", label: "SLA Compliance", icon: <ShieldCheck className="size-3.5" /> },
         ] as { key: Tab; label: string; icon: React.ReactNode }[])
       : []),
     { key: "task-performance", label: "Task Performance", icon: <ClipboardList className="size-3.5" /> },
@@ -972,6 +985,9 @@ export function ReportingScreen() {
         <AnalyticsTab reportPeriod={reportPeriod} setReportPeriod={setReportPeriod} />
       )}
       {activeTab === "sales-performance" && <SalesPerformanceTab />}
+      {activeTab === "pipeline-progression" && <PipelineProgressionTab />}
+      {activeTab === "quotation-outcome" && <QuotationOutcomeTab />}
+      {activeTab === "sla-compliance" && <SlaComplianceTab />}
       {activeTab === "task-performance" && <TaskPerformanceTab />}
       {activeTab === "discount-report" && <DiscountReportTab />}
     </div>

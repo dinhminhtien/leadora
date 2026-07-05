@@ -66,3 +66,33 @@ export function useTaskPerformanceReport(params: ReportRangeParams) {
     staleTime: 30_000,
   });
 }
+
+// UC-23.4 — Sales Pipeline Progression Report
+export function usePipelineProgressionReport(params: ReportRangeParams) {
+  return useQuery({
+    queryKey: ["pipeline-progression-report", params],
+    queryFn: () => reportingService.getPipelineProgression(params),
+    select: (res) => res.data,
+    staleTime: 30_000,
+  });
+}
+
+// UC-23.5 — Quotation Outcome Report
+export function useQuotationOutcomeReport(params: ReportRangeParams) {
+  return useQuery({
+    queryKey: ["quotation-outcome-report", params],
+    queryFn: () => reportingService.getQuotationOutcome(params),
+    select: (res) => res.data,
+    staleTime: 30_000,
+  });
+}
+
+// UC-23.3 — SLA Compliance Report
+export function useSlaComplianceReport(params: ReportRangeParams) {
+  return useQuery({
+    queryKey: ["sla-compliance-report", params],
+    queryFn: () => reportingService.getSlaCompliance(params),
+    select: (res) => res.data,
+    staleTime: 30_000,
+  });
+}
