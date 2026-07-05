@@ -1,0 +1,103 @@
+package com.novax.leadora.application.usecase.reporting;
+
+import com.novax.leadora.api.dto.response.QuotationOutcomeReportResponse;
+import com.novax.leadora.api.dto.response.QuotationOutcomeReportResponse.StatusRow;
+import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
+import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+
+/** UC-23.5 — View Quotation Outcome Report. */
+@Service
+@RequiredArgsConstructor
+public class GetQuotationOutcomeReportUseCase {
+
+    private final QuotationRepository quotationRepository;
+
+    @Transactional(readOnly = true)
+    public QuotationOutcomeReportResponse execute(LocalDate from, LocalDate to) {
+        List<QuotationEntity> quotations = quotationRepository.findAll().stream()
+                .filter(q -> inRange(q.getCreatedAt(), from, to))
+                .toList();
+
+        // Count per status.
+        Map<QuotationStatus, Long> counts = new EnumMap<>(QuotationStatus.class);
+        for (QuotationEntity q : quotations) {
+            if (q.getStatus() != null) {
+                counts.merge(q.getStatus(), 1L, Long::sum);
+            }
+        }
+
+        long total = quotations.size();
+        long sent = counts.getOrDefault(QuotationStatus.SENT, 0L);
+        long approved = counts.getOrDefault(QuotationStatus.APPROVED, 0L);
+        long rejected = counts.getOrDefault(QuotationStatus.REJECTED, 0L);
+        long expired = counts.getOrDefault(QuotationStatus.EXPIRED, 0L);
+        long accepted = counts.getOrDefault(QuotationStatus.ACCEPTED, 0L);
+        long converted = counts.getOrDefault(QuotationStatus.CONVERTED, 0L);
+
+        // Full breakdown (enum order, only non-empty statuses).
+        List<StatusRow> byStatus = new ArrayList<>();
+        for (QuotationStatus s : QuotationStatus.values()) {
+            long c = counts.getOrDefault(s, 0L);
+            if (c > 0) {
+                byStatus.add(StatusRow.builder().status(s.name()).label(label(s)).count(c).build());
+            }
+        }
+
+        return QuotationOutcomeReportResponse.builder()
+                .dateFrom(from)
+                .dateTo(to)
+                .total(total)
+                .sent(sent)
+                .approved(approved)
+                .rejected(rejected)
+                .expired(expired)
+                .accepted(accepted)
+                .converted(converted)
+                .approvalRate(rate(approved, approved + rejected))
+                .acceptanceRate(rate(accepted, total))
+                .conversionRate(rate(converted, total))
+                .byStatus(byStatus)
+                .build();
+    }
+
+    private String label(QuotationStatus s) {
+        return switch (s) {
+            case DRAFT -> "Draft";
+            case PENDING_APPROVAL -> "Pending approval";
+            case SENT -> "Sent";
+            case APPROVED -> "Approved";
+            case REJECTED -> "Rejected";
+            case EXPIRED -> "Expired";
+            case CLOSED -> "Closed";
+            case CONVERTED -> "Converted";
+            case PENDING_REVISION -> "Pending revision";
+            case ACCEPTED -> "Accepted";
+            case INTERESTED -> "Interested";
+        };
+    }
+
+    private boolean inRange(OffsetDateTime at, LocalDate from, LocalDate to) {
+        if (at == null) {
+            return from == null && to == null;
+        }
+        LocalDate d = at.toLocalDate();
+        if (from != null && d.isBefore(from)) return false;
+        return to == null || !d.isAfter(to);
+    }
+
+    private double rate(long part, long whole) {
+        if (whole <= 0) return 0;
+        return Math.round((part * 10000.0 / whole)) / 100.0;
+    }
+}
