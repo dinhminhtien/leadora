@@ -5,12 +5,16 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_shell.dart';
+import '../../features/deal/presentation/screens/deal_detail_screen.dart';
+import '../../features/interaction/presentation/screens/interaction_timeline_screen.dart';
+import '../../features/interaction/presentation/screens/log_interaction_screen.dart';
 import '../../features/lead/presentation/screens/create_lead_screen.dart';
 import '../../features/lead/presentation/screens/lead_detail_screen.dart';
 import '../../features/lead/presentation/screens/lead_list_screen.dart';
 import '../../features/notification/presentation/screens/notification_list_screen.dart';
 import '../../features/profile/presentation/screens/change_password_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
+import '../../features/quotation/presentation/screens/quotation_detail_screen.dart';
 import '../../features/task/presentation/screens/task_detail_screen.dart';
 import '../../features/task/presentation/screens/task_list_screen.dart';
 import '../widgets/placeholder_screen.dart';
@@ -53,6 +57,42 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: Routes.forgotPassword,
         name: RouteNames.forgotPassword,
         builder: (_, _) => const PlaceholderScreen(title: 'Forgot password'),
+      ),
+
+      // Full-screen routes reached only via notification deep-link — no
+      // list/tab entry point exists yet (see NotificationListScreen._relatedRoute).
+      GoRoute(
+        path: Routes.quotationDetail,
+        name: RouteNames.quotationDetail,
+        builder: (_, state) =>
+            QuotationDetailScreen(quotationId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: Routes.dealDetail,
+        name: RouteNames.dealDetail,
+        builder: (_, state) => DealDetailScreen(dealId: state.pathParameters['id']!),
+      ),
+
+      // Interaction Timeline — reached from a deal/customer detail's
+      // "Interactions" section (see InteractionSummaryCard).
+      GoRoute(
+        path: Routes.interactionTimeline,
+        name: RouteNames.interactionTimeline,
+        builder: (_, state) => InteractionTimelineScreen(
+          linkedType: state.pathParameters['linkedType']!,
+          linkedId: state.pathParameters['linkedId']!,
+          linkedName: state.uri.queryParameters['name'],
+        ),
+      ),
+      GoRoute(
+        path: Routes.logInteraction,
+        name: RouteNames.logInteraction,
+        builder: (_, state) => LogInteractionScreen(
+          linkedType: state.pathParameters['linkedType']!,
+          linkedId: state.pathParameters['linkedId']!,
+          linkedName: state.uri.queryParameters['name'],
+          initialType: state.uri.queryParameters['type'],
+        ),
       ),
 
       // Authenticated tabbed area.

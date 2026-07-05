@@ -1,11 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../core/routing/routes.dart';
 import '../../../../shared/formatters.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/empty_state.dart';
 import '../../data/notification_models.dart';
 import '../providers/notification_providers.dart';
+
+/// Maps a notification's `relatedEntity`/`relatedId` to a screen this app can
+/// show. Entities without a mobile screen yet (BOOKING, SLA, HANDOVER,
+/// REMINDER) fall through to `null` — tapping them only marks the
+/// notification read.
+String? _relatedRoute(AppNotification n) {
+  final id = n.relatedId;
+  if (id == null || id.isEmpty) return null;
+  switch (n.relatedEntity?.toUpperCase()) {
+    case 'LEAD':
+      return Routes.leadDetailPath(id);
+    case 'TASK':
+      return Routes.taskDetailPath(id);
+    case 'QUOTATION':
+      return Routes.quotationDetailPath(id);
+    case 'DEAL':
+      return Routes.dealDetailPath(id);
+    default:
+      return null;
+  }
+}
+
+/// Tapping a notification opens its related record (if this app has a screen
+/// for it) and marks it read — mirrors the web `handleNotificationClick`.
+/// Deliberately one-directional (never re-marks an already-read notification
+/// unread on tap; `toggleRead` only flips when the notification is unread).
+Future<void> _openNotification(
+  BuildContext context,
+  NotificationListController controller,
+  AppNotification n,
+) async {
+  if (!n.isRead) {
+    await controller.toggleRead(n);
+  }
+  final route = _relatedRoute(n);
+  if (route != null && context.mounted) {
+    context.push(route);
+  }
+}
 
 /// UC-24.24 / UC-24.25 — notification list with mark read / mark all read.
 class NotificationListScreen extends ConsumerWidget {
@@ -44,8 +85,10 @@ class NotificationListScreen extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: list.length,
             separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
-            itemBuilder: (context, index) =>
-                _NotificationTile(notification: list[index], onTap: () => controller.toggleRead(list[index])),
+            itemBuilder: (context, index) => _NotificationTile(
+              notification: list[index],
+              onTap: () => _openNotification(context, controller, list[index]),
+            ),
           ),
         ),
       ),

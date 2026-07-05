@@ -23,6 +23,38 @@ class Routes {
 
   static String leadDetailPath(String id) => '/leads/detail/$id';
   static String taskDetailPath(String id) => '/tasks/detail/$id';
+
+  // Full-screen routes reached only via notification deep-link (no list/tab yet).
+  static const String quotationDetail = '/quotations/:id';
+  static const String dealDetail = '/deals/:id';
+
+  static String quotationDetailPath(String id) => '/quotations/$id';
+  static String dealDetailPath(String id) => '/deals/$id';
+
+  // Interaction Timeline — reached from a deal/customer detail's
+  // "Interactions" section (no dedicated tab).
+  static const String interactionTimeline = '/interactions/:linkedType/:linkedId';
+  static const String logInteraction = '/interactions/:linkedType/:linkedId/log';
+
+  static String interactionTimelinePath(String linkedType, String linkedId, {String? name}) {
+    final path = '/interactions/$linkedType/$linkedId';
+    final query = name != null && name.trim().isNotEmpty ? {'name': name} : null;
+    return query == null ? path : '$path?${Uri(queryParameters: query).query}';
+  }
+
+  static String logInteractionPath(
+    String linkedType,
+    String linkedId, {
+    String? name,
+    String? type,
+  }) {
+    final path = '/interactions/$linkedType/$linkedId/log';
+    final query = <String, String>{
+      if (name != null && name.trim().isNotEmpty) 'name': name,
+      if (type != null && type.trim().isNotEmpty) 'type': type,
+    };
+    return query.isEmpty ? path : '$path?${Uri(queryParameters: query).query}';
+  }
 }
 
 /// Route *names* (stable identifiers independent of path shape).
@@ -42,4 +74,8 @@ class RouteNames {
   static const String notifications = 'notifications';
   static const String profile = 'profile';
   static const String changePassword = 'changePassword';
+  static const String quotationDetail = 'quotationDetail';
+  static const String dealDetail = 'dealDetail';
+  static const String interactionTimeline = 'interactionTimeline';
+  static const String logInteraction = 'logInteraction';
 }
