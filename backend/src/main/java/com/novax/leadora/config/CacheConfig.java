@@ -1,6 +1,10 @@
 package com.novax.leadora.config;
 
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -15,7 +19,8 @@ import java.util.Map;
 
 @Configuration
 @EnableCaching
-public class CacheConfig {
+@Slf4j
+public class CacheConfig implements CachingConfigurer {
 
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
@@ -34,5 +39,34 @@ public class CacheConfig {
                 .cacheDefaults(defaultConfig)
                 .withInitialCacheConfigurations(customConfigs)
                 .build();
+    }
+
+    @Override
+    public CacheErrorHandler errorHandler() {
+        return new CacheErrorHandler() {
+            @Override
+            public void handleCacheGetError(RuntimeException exception, Cache cache, Object key) {
+                log.warn("Redis cache GET failed for cache '{}' (key: {}). Falling back to database. Error: {}", 
+                        cache.getName(), key, exception.getMessage());
+            }
+
+            @Override
+            public void handleCachePutError(RuntimeException exception, Cache cache, Object key, Object value) {
+                log.warn("Redis cache PUT failed for cache '{}' (key: {}). Error: {}", 
+                        cache.getName(), key, exception.getMessage());
+            }
+
+            @Override
+            public void handleCacheEvictError(RuntimeException exception, Cache cache, Object key) {
+                log.warn("Redis cache EVICT failed for cache '{}' (key: {}). Error: {}", 
+                        cache.getName(), key, exception.getMessage());
+            }
+
+            @Override
+            public void handleCacheClearError(RuntimeException exception, Cache cache) {
+                log.warn("Redis cache CLEAR failed for cache '{}'. Error: {}", 
+                        cache.getName(), exception.getMessage());
+            }
+        };
     }
 }
