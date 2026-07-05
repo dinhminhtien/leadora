@@ -94,4 +94,43 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get notificationsMarkAllRead => 'Đánh dấu tất cả đã đọc';
+
+  @override
+  String get forgotPasswordTitle => 'Quên mật khẩu';
+
+  @override
+  String get forgotPasswordSubtitle =>
+      'Nhập email của bạn để nhận liên kết đặt lại mật khẩu';
+
+  @override
+  String get forgotPasswordEmailLabel => 'Địa chỉ Email';
+
+  @override
+  String get forgotPasswordSubmit => 'Gửi liên kết khôi phục';
+
+  @override
+  String get forgotPasswordSuccess =>
+      'Gửi liên kết thành công. Vui lòng kiểm tra hộp thư điện tử của bạn.';
+
+  @override
+  String get resetPasswordTitle => 'Đặt lại mật khẩu';
+
+  @override
+  String get resetPasswordSubtitle => 'Nhập mật khẩu bảo mật mới của bạn';
+
+  @override
+  String get resetPasswordLabel => 'Mật khẩu mới';
+
+  @override
+  String get resetPasswordConfirmLabel => 'Xác nhận mật khẩu mới';
+
+  @override
+  String get resetPasswordSubmit => 'Cập nhật mật khẩu';
+
+  @override
+  String get resetPasswordSuccess =>
+      'Cập nhật mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.';
+
+  @override
+  String get resetPasswordMismatch => 'Mật khẩu xác nhận không khớp';
 }

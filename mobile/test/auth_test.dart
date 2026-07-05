@@ -147,4 +147,47 @@ void main() {
       verify(() => mockSecureStorage.delete(any())).called(1);
     });
   });
+
+  group('forgotPassword and resetPassword', () {
+    test('forgotPassword calls forgotPassword endpoint with email and clientType', () async {
+      when(() => mockApiClient.post<void>(
+        ApiPaths.forgotPassword,
+        data: any(named: 'data'),
+        decode: any(named: 'decode'),
+      )).thenAnswer((_) async {});
+
+      await repository.forgotPassword('test@leadora.vn');
+
+      verify(() => mockApiClient.post<void>(
+        ApiPaths.forgotPassword,
+        data: {
+          'email': 'test@leadora.vn',
+          'clientType': 'mobile',
+        },
+        decode: any(named: 'decode'),
+      )).called(1);
+    });
+
+    test('resetPassword calls resetPassword endpoint with token and new password', () async {
+      when(() => mockApiClient.post<void>(
+        ApiPaths.resetPassword,
+        data: any(named: 'data'),
+        decode: any(named: 'decode'),
+      )).thenAnswer((_) async {});
+
+      await repository.resetPassword(
+        token: 'my-reset-token',
+        password: 'NewPassword123!',
+      );
+
+      verify(() => mockApiClient.post<void>(
+        ApiPaths.resetPassword,
+        data: {
+          'token': 'my-reset-token',
+          'password': 'NewPassword123!',
+        },
+        decode: any(named: 'decode'),
+      )).called(1);
+    });
+  });
 }

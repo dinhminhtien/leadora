@@ -28,5 +28,17 @@
   "paymentStatusExpired": "Payment expired",
   "paymentStatusCancelled": "Payment cancelled",
   "notificationsTitle": "Notifications",
-  "notificationsMarkAllRead": "Mark all as read"
+  "notificationsMarkAllRead": "Mark all as read",
+  "forgotPasswordTitle": "Forgot Password",
+  "forgotPasswordSubtitle": "Enter your email to receive password reset instructions",
+  "forgotPasswordEmailLabel": "Email Address",
+  "forgotPasswordSubmit": "Send Reset Link",
+  "forgotPasswordSuccess": "Reset link sent successfully. Please check your email inbox.",
+  "resetPasswordTitle": "Reset Password",
+  "resetPasswordSubtitle": "Enter your new secure password",
+  "resetPasswordLabel": "New Password",
+  "resetPasswordConfirmLabel": "Confirm New Password",
+  "resetPasswordSubmit": "Update Password",
+  "resetPasswordSuccess": "Password updated successfully. Please login with your new password.",
+  "resetPasswordMismatch": "Passwords do not match"
 }

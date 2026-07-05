@@ -63,6 +63,9 @@ class ApiResponse<T> {
     }
     final value = data;
     if (value == null) {
+      if (null is T) {
+        return null as T;
+      }
       throw const SerializationException(
         debugDetail: 'success=true but data was null',
       );
