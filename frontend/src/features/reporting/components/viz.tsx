@@ -63,6 +63,63 @@ export function vndCompact(n?: number): string {
   return `${v.toLocaleString("en-US")} ₫`;
 }
 
+/* ── Date-range filter (shared by every report tab) ────────────────────────── */
+
+export function ReportDateRange({
+  dateFrom,
+  dateTo,
+  setDateFrom,
+  setDateTo,
+}: {
+  dateFrom: string;
+  dateTo: string;
+  setDateFrom: (v: string) => void;
+  setDateTo: (v: string) => void;
+}) {
+  const inputCls =
+    "w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:border-teal-400 focus:outline-none";
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-slate-100 bg-white p-3 shadow-sm sm:flex-row sm:items-end">
+      <div className="flex-1">
+        <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Date From</label>
+        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={inputCls} />
+      </div>
+      <div className="flex-1">
+        <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Date To</label>
+        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={inputCls} />
+      </div>
+      <p className="text-[11px] text-slate-400 sm:pb-2">Leave empty = all time</p>
+    </div>
+  );
+}
+
+/* ── Horizontal labeled bars (per-mark distribution — stages, statuses, types) ─ */
+
+export type HBarItem = { label: string; value: number; color: string; sub?: string };
+
+export function HBarList({ items }: { items: HBarItem[] }) {
+  const max = Math.max(1, ...items.map((i) => i.value));
+  return (
+    <div className="space-y-2">
+      {items.map((it) => (
+        <div key={it.label} className="flex items-center gap-2 text-[11px]">
+          <span className="w-28 shrink-0 truncate text-slate-600" title={it.label}>{it.label}</span>
+          <div className="h-3.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full transition-[width] duration-300"
+              style={{ width: `${(it.value / max) * 100}%`, background: it.color, minWidth: it.value > 0 ? 6 : 0 }}
+            />
+          </div>
+          <span className="w-24 shrink-0 text-right tabular-nums font-semibold text-slate-700">
+            {it.value}
+            {it.sub ? <span className="ml-1 font-normal text-slate-400">{it.sub}</span> : null}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ── Empty state (UC exception E5.1 — "No report data found") ──────────────── */
 
 export function EmptyReport({

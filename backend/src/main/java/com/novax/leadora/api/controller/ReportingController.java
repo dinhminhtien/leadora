@@ -2,10 +2,14 @@ package com.novax.leadora.api.controller;
 
 import com.novax.leadora.api.dto.request.SaveReportLogRequest;
 import com.novax.leadora.api.dto.response.DashboardSummaryResponse;
+import com.novax.leadora.api.dto.response.PipelineProgressionReportResponse;
+import com.novax.leadora.api.dto.response.QuotationOutcomeReportResponse;
 import com.novax.leadora.api.dto.response.ReportLogResponse;
 import com.novax.leadora.api.dto.response.SalesPerformanceReportResponse;
 import com.novax.leadora.api.dto.response.TaskPerformanceReportResponse;
 import com.novax.leadora.application.usecase.reporting.GetDashboardSummaryUseCase;
+import com.novax.leadora.application.usecase.reporting.GetPipelineProgressionReportUseCase;
+import com.novax.leadora.application.usecase.reporting.GetQuotationOutcomeReportUseCase;
 import com.novax.leadora.application.usecase.reporting.GetSalesPerformanceReportUseCase;
 import com.novax.leadora.application.usecase.reporting.GetTaskPerformanceReportUseCase;
 import com.novax.leadora.application.usecase.reporting.SaveReportLogUseCase;
@@ -34,6 +38,8 @@ public class ReportingController {
     private final GetDashboardSummaryUseCase getDashboardSummaryUseCase;
     private final GetSalesPerformanceReportUseCase getSalesPerformanceReportUseCase;
     private final GetTaskPerformanceReportUseCase getTaskPerformanceReportUseCase;
+    private final GetPipelineProgressionReportUseCase getPipelineProgressionReportUseCase;
+    private final GetQuotationOutcomeReportUseCase getQuotationOutcomeReportUseCase;
     private final CurrentUserProvider currentUserProvider;
 
     /** Dashboard KPI summary — all aggregation happens server-side */
@@ -69,6 +75,32 @@ public class ReportingController {
         UserEntity actor = currentUserProvider.resolve(null);
         TaskPerformanceReportResponse report = getTaskPerformanceReportUseCase.execute(actor, dateFrom, dateTo);
         auditView(actor, "VIEW_TASK_PERFORMANCE", dateFrom, dateTo, (int) report.getTotalTasks());
+        return ResponseEntity.ok(ApiResponse.success(report));
+    }
+
+    /** UC-23.4 — View Sales Pipeline Progression Report (Sales Manager). */
+    @GetMapping("/pipeline-progression")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<PipelineProgressionReportResponse>> getPipelineProgression(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo
+    ) {
+        UserEntity actor = currentUserProvider.resolve(null);
+        PipelineProgressionReportResponse report = getPipelineProgressionReportUseCase.execute(dateFrom, dateTo);
+        auditView(actor, "VIEW_PIPELINE_PROGRESSION", dateFrom, dateTo, (int) report.getTotalDeals());
+        return ResponseEntity.ok(ApiResponse.success(report));
+    }
+
+    /** UC-23.5 — View Quotation Outcome Report (Sales Manager). */
+    @GetMapping("/quotation-outcome")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    public ResponseEntity<ApiResponse<QuotationOutcomeReportResponse>> getQuotationOutcome(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo
+    ) {
+        UserEntity actor = currentUserProvider.resolve(null);
+        QuotationOutcomeReportResponse report = getQuotationOutcomeReportUseCase.execute(dateFrom, dateTo);
+        auditView(actor, "VIEW_QUOTATION_OUTCOME", dateFrom, dateTo, (int) report.getTotal());
         return ResponseEntity.ok(ApiResponse.success(report));
     }
 

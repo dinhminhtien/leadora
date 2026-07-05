@@ -7,23 +7,11 @@ import {
   type ReportLogPayload,
   type ReportRangeParams,
 } from "@/services/reporting_service";
-import { dealService } from "@/services/deal_service";
-
 // Fetch all quotations for the discount report tab
 export function useQuotationsForReport() {
   return useQuery({
     queryKey: ["quotations-for-report"],
     queryFn: () => quotationService.getList(),
-    select: (res) => res.data ?? [],
-    staleTime: 60_000,
-  });
-}
-
-// Fetch all deals for pipeline metrics (used by ReportingScreen analytics)
-export function useDealsForReport() {
-  return useQuery({
-    queryKey: ["deals-for-report"],
-    queryFn: () => dealService.getList(),
     select: (res) => res.data ?? [],
     staleTime: 60_000,
   });
@@ -62,6 +50,36 @@ export function useTaskPerformanceReport(params: ReportRangeParams) {
   return useQuery({
     queryKey: ["task-performance-report", params],
     queryFn: () => reportingService.getTaskPerformance(params),
+    select: (res) => res.data,
+    staleTime: 30_000,
+  });
+}
+
+// UC-23.4 — Sales Pipeline Progression Report
+export function usePipelineProgressionReport(params: ReportRangeParams) {
+  return useQuery({
+    queryKey: ["pipeline-progression-report", params],
+    queryFn: () => reportingService.getPipelineProgression(params),
+    select: (res) => res.data,
+    staleTime: 30_000,
+  });
+}
+
+// UC-23.5 — Quotation Outcome Report
+export function useQuotationOutcomeReport(params: ReportRangeParams) {
+  return useQuery({
+    queryKey: ["quotation-outcome-report", params],
+    queryFn: () => reportingService.getQuotationOutcome(params),
+    select: (res) => res.data,
+    staleTime: 30_000,
+  });
+}
+
+// UC-23.3 — SLA Compliance Report
+export function useSlaComplianceReport(params: ReportRangeParams) {
+  return useQuery({
+    queryKey: ["sla-compliance-report", params],
+    queryFn: () => reportingService.getSlaCompliance(params),
     select: (res) => res.data,
     staleTime: 30_000,
   });
