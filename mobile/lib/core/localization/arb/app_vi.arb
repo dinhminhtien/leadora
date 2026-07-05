@@ -28,5 +28,17 @@
   "paymentStatusExpired": "Thanh toán hết hạn",
   "paymentStatusCancelled": "Đã hủy thanh toán",
   "notificationsTitle": "Thông báo",
-  "notificationsMarkAllRead": "Đánh dấu tất cả đã đọc"
+  "notificationsMarkAllRead": "Đánh dấu tất cả đã đọc",
+  "forgotPasswordTitle": "Quên mật khẩu",
+  "forgotPasswordSubtitle": "Nhập email của bạn để nhận liên kết đặt lại mật khẩu",
+  "forgotPasswordEmailLabel": "Địa chỉ Email",
+  "forgotPasswordSubmit": "Gửi liên kết khôi phục",
+  "forgotPasswordSuccess": "Gửi liên kết thành công. Vui lòng kiểm tra hộp thư điện tử của bạn.",
+  "resetPasswordTitle": "Đặt lại mật khẩu",
+  "resetPasswordSubtitle": "Nhập mật khẩu bảo mật mới của bạn",
+  "resetPasswordLabel": "Mật khẩu mới",
+  "resetPasswordConfirmLabel": "Xác nhận mật khẩu mới",
+  "resetPasswordSubmit": "Cập nhật mật khẩu",
+  "resetPasswordSuccess": "Cập nhật mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.",
+  "resetPasswordMismatch": "Mật khẩu xác nhận không khớp"
 }

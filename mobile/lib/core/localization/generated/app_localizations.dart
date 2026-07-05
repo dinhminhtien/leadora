@@ -271,6 +271,78 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Mark all as read'**
   String get notificationsMarkAllRead;
+
+  /// No description provided for @forgotPasswordTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Forgot Password'**
+  String get forgotPasswordTitle;
+
+  /// No description provided for @forgotPasswordSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your email to receive password reset instructions'**
+  String get forgotPasswordSubtitle;
+
+  /// No description provided for @forgotPasswordEmailLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Email Address'**
+  String get forgotPasswordEmailLabel;
+
+  /// No description provided for @forgotPasswordSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Send Reset Link'**
+  String get forgotPasswordSubmit;
+
+  /// No description provided for @forgotPasswordSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset link sent successfully. Please check your email inbox.'**
+  String get forgotPasswordSuccess;
+
+  /// No description provided for @resetPasswordTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset Password'**
+  String get resetPasswordTitle;
+
+  /// No description provided for @resetPasswordSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your new secure password'**
+  String get resetPasswordSubtitle;
+
+  /// No description provided for @resetPasswordLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'New Password'**
+  String get resetPasswordLabel;
+
+  /// No description provided for @resetPasswordConfirmLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm New Password'**
+  String get resetPasswordConfirmLabel;
+
+  /// No description provided for @resetPasswordSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Update Password'**
+  String get resetPasswordSubmit;
+
+  /// No description provided for @resetPasswordSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Password updated successfully. Please login with your new password.'**
+  String get resetPasswordSuccess;
+
+  /// No description provided for @resetPasswordMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Passwords do not match'**
+  String get resetPasswordMismatch;
 }
 
 class _AppLocalizationsDelegate

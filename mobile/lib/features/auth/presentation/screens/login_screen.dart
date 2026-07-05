@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/localization/generated/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
+import '../../../../core/routing/routes.dart';
 import '../providers/auth_controller.dart';
 
 /// Email/password sign-in with realtime validation and bound submit state.
@@ -147,7 +149,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
-                        onPressed: isLoading ? null : () {},
+                        onPressed: isLoading
+                            ? null
+                            : () => context.push(Routes.forgotPassword),
                         child: Text(l10n.loginForgotPassword),
                       ),
                     ),
