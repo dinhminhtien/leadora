@@ -8,10 +8,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.stream.Collectors;
@@ -86,6 +88,33 @@ public class GlobalExceptionHandler {
         log.warn("Business rule violation: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(ApiResponse.businessError("BUSINESS_RULE_VIOLATION", ex.getMessage(), null));
+    }
+
+    /**
+     * A multipart upload larger than {@code spring.servlet.multipart.max-file-size}. The chat
+     * document upload also enforces a 5 MB app-level cap with a friendlier message; this catches
+     * anything that trips the servlet's hard ceiling first so the client gets 413 + a clear reason
+     * instead of a generic 500.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+        log.warn("Upload too large: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(ApiResponse.businessError("UPLOAD_TOO_LARGE",
+                        "Tệp vượt quá dung lượng cho phép (tối đa 5MB).", null));
+    }
+
+    /**
+     * A malformed / unreadable request body (invalid JSON, wrong charset, empty body where one is
+     * required). This is a client mistake, not a server fault — return 400 instead of letting it
+     * fall through to the generic 500 handler.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        log.warn("Malformed request body: {}", ex.getMessage());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.businessError("MALFORMED_REQUEST",
+                        "Nội dung yêu cầu không hợp lệ (JSON sai định dạng hoặc sai mã hoá).", null));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
