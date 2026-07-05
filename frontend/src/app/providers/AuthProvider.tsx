@@ -24,7 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const isPublicRoute = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
+  const isPublicRoute = pathname === "/" || PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
 
   useEffect(() => {
     const checkSession = async () => {
