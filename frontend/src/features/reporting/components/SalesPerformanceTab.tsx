@@ -64,6 +64,12 @@ export function SalesPerformanceTab() {
               icon={<Users className="size-3.5" />}
             />
             <StatTile
+              label="Qualified leads"
+              value={compact(data.qualifiedLeads)}
+              sub={`of ${data.leadsCreated} new leads`}
+              icon={<Users className="size-3.5" />}
+            />
+            <StatTile
               label="Deals won"
               value={`${data.dealsWon}/${data.dealsTotal}`}
               sub={`Win rate ${pct(data.winRate)} · lost ${data.dealsLost}`}
@@ -136,6 +142,13 @@ export function SalesPerformanceTab() {
                     <span className="text-sm font-extrabold" style={{ color: VIZ.open }}>{pct(data.quotationAcceptanceRate)}</span>
                   </div>
                   <Meter value={data.quotationAcceptanceRate} fill={VIZ.open} track={VIZ.trackBlue} />
+                </div>
+                <div>
+                  <div className="mb-1.5 flex items-baseline justify-between">
+                    <h3 className="text-sm font-bold text-slate-700">Quotation → booking</h3>
+                    <span className="text-sm font-extrabold" style={{ color: VIZ.open }}>{pct(data.quotationToBookingRate)}</span>
+                  </div>
+                  <Meter value={data.quotationToBookingRate} fill={VIZ.open} track={VIZ.trackBlue} />
                 </div>
               </CardContent>
             </Card>
