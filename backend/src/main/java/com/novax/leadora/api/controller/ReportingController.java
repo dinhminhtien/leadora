@@ -10,6 +10,8 @@ import com.novax.leadora.application.usecase.reporting.GetSalesPerformanceReport
 import com.novax.leadora.application.usecase.reporting.GetTaskPerformanceReportUseCase;
 import com.novax.leadora.application.usecase.reporting.SaveReportLogUseCase;
 import com.novax.leadora.common.response.ApiResponse;
+import com.novax.leadora.common.security.CurrentUserProvider;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -30,6 +32,7 @@ public class ReportingController {
     private final GetDashboardSummaryUseCase getDashboardSummaryUseCase;
     private final GetSalesPerformanceReportUseCase getSalesPerformanceReportUseCase;
     private final GetTaskPerformanceReportUseCase getTaskPerformanceReportUseCase;
+    private final CurrentUserProvider currentUserProvider;
 
     /** Dashboard KPI summary — all aggregation happens server-side */
     @GetMapping("/dashboard-summary")
@@ -49,15 +52,19 @@ public class ReportingController {
                 getSalesPerformanceReportUseCase.execute(dateFrom, dateTo)));
     }
 
-    /** UC-23.2 — View Follow-up Task Performance Report (Sales Manager). */
+    /**
+     * UC-23.2 — View Follow-up Task Performance Report. Sales Staff see their own task performance;
+     * Sales Manager / Admin see team-wide performance (scoping is applied in the use case).
+     */
     @GetMapping("/task-performance")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<TaskPerformanceReportResponse>> getTaskPerformance(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo
     ) {
+        UserEntity actor = currentUserProvider.resolve(null);
         return ResponseEntity.ok(ApiResponse.success(
-                getTaskPerformanceReportUseCase.execute(dateFrom, dateTo)));
+                getTaskPerformanceReportUseCase.execute(actor, dateFrom, dateTo)));
     }
 
     /** UC-14.2 — Save audit log when a discount report is generated */

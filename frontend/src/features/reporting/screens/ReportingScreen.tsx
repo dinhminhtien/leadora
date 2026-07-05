@@ -923,19 +923,20 @@ export function ReportingScreen() {
   const [activeTab, setActiveTab] = useState<Tab>("analytics");
   const [reportPeriod, setReportPeriod] = useState("this-quarter");
 
-  // Performance statistics (UC-23.1/23.2) are Sales-Manager reports.
   const user = useAuthStore((s) => s.user);
   const role = getUserRole(user);
-  const canSeePerformance = role === "MANAGER" || role === "ADMIN";
+  // UC-23.1 (Sales Performance) is a Sales-Manager report; UC-23.2 (Task Performance) is also
+  // available to Sales Staff, scoped to their own tasks (the backend applies the scope by role).
+  const isManagerScope = role === "MANAGER" || role === "ADMIN";
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "analytics", label: "Sales Analytics", icon: <BarChart2 className="size-3.5" /> },
-    ...(canSeePerformance
+    ...(isManagerScope
       ? ([
           { key: "sales-performance", label: "Sales Performance", icon: <TrendingUp className="size-3.5" /> },
-          { key: "task-performance", label: "Task Performance", icon: <ClipboardList className="size-3.5" /> },
         ] as { key: Tab; label: string; icon: React.ReactNode }[])
       : []),
+    { key: "task-performance", label: "Task Performance", icon: <ClipboardList className="size-3.5" /> },
     { key: "discount-report", label: "Discount Reports", icon: <FileText className="size-3.5" /> },
   ];
 
