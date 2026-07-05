@@ -65,6 +65,7 @@ public class GetSalesPerformanceReportUseCase {
                 .filter(p -> inRange(p.getPaidAt() != null ? p.getPaidAt() : p.getCreatedAt(), from, to)).toList();
 
         long leadsCreated = leads.size();
+        long qualifiedLeads = leads.stream().filter(l -> l.getStatus() == LeadStatus.QUALIFIED).count();
         long leadsConverted = leads.stream().filter(l -> l.getStatus() == LeadStatus.CONVERTED).count();
 
         long dealsWon = deals.stream().filter(d -> d.getStatus() == DealStatus.WON).count();
@@ -87,6 +88,7 @@ public class GetSalesPerformanceReportUseCase {
                 .dateFrom(from)
                 .dateTo(to)
                 .leadsCreated(leadsCreated)
+                .qualifiedLeads(qualifiedLeads)
                 .leadsConverted(leadsConverted)
                 .leadConversionRate(rate(leadsConverted, leadsCreated))
                 .dealsTotal(deals.size())
@@ -100,6 +102,7 @@ public class GetSalesPerformanceReportUseCase {
                 .quotationsAccepted(quotationsAccepted)
                 .quotationAcceptanceRate(rate(quotationsAccepted, quotationsCreated))
                 .bookingsConfirmed(bookingsConfirmed)
+                .quotationToBookingRate(rate(bookingsConfirmed, quotationsCreated))
                 .revenue(revenue)
                 .reps(buildReps(leads, deals, bookings, paidPayments))
                 .build();

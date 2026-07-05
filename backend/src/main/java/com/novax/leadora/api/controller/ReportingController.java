@@ -10,8 +10,11 @@ import com.novax.leadora.application.usecase.reporting.GetSalesPerformanceReport
 import com.novax.leadora.application.usecase.reporting.GetTaskPerformanceReportUseCase;
 import com.novax.leadora.application.usecase.reporting.SaveReportLogUseCase;
 import com.novax.leadora.common.response.ApiResponse;
+import com.novax.leadora.common.security.CurrentUserProvider;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +23,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.time.LocalDate;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/reporting")
 @RequiredArgsConstructor
@@ -30,6 +34,7 @@ public class ReportingController {
     private final GetDashboardSummaryUseCase getDashboardSummaryUseCase;
     private final GetSalesPerformanceReportUseCase getSalesPerformanceReportUseCase;
     private final GetTaskPerformanceReportUseCase getTaskPerformanceReportUseCase;
+    private final CurrentUserProvider currentUserProvider;
 
     /** Dashboard KPI summary — all aggregation happens server-side */
     @GetMapping("/dashboard-summary")
@@ -45,19 +50,36 @@ public class ReportingController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo
     ) {
-        return ResponseEntity.ok(ApiResponse.success(
-                getSalesPerformanceReportUseCase.execute(dateFrom, dateTo)));
+        UserEntity actor = currentUserProvider.resolve(null);
+        SalesPerformanceReportResponse report = getSalesPerformanceReportUseCase.execute(dateFrom, dateTo);
+        auditView(actor, "VIEW_SALES_PERFORMANCE", dateFrom, dateTo, (int) report.getDealsTotal());
+        return ResponseEntity.ok(ApiResponse.success(report));
     }
 
-    /** UC-23.2 — View Follow-up Task Performance Report (Sales Manager). */
+    /**
+     * UC-23.2 — View Follow-up Task Performance Report. Sales Staff see their own task performance;
+     * Sales Manager / Admin see team-wide performance (scoping is applied in the use case).
+     */
     @GetMapping("/task-performance")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<TaskPerformanceReportResponse>> getTaskPerformance(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo
     ) {
-        return ResponseEntity.ok(ApiResponse.success(
-                getTaskPerformanceReportUseCase.execute(dateFrom, dateTo)));
+        UserEntity actor = currentUserProvider.resolve(null);
+        TaskPerformanceReportResponse report = getTaskPerformanceReportUseCase.execute(actor, dateFrom, dateTo);
+        auditView(actor, "VIEW_TASK_PERFORMANCE", dateFrom, dateTo, (int) report.getTotalTasks());
+        return ResponseEntity.ok(ApiResponse.success(report));
+    }
+
+    /** POST-2 audit of a report view — best-effort: never let a logging failure break the report. */
+    private void auditView(UserEntity actor, String action, LocalDate from, LocalDate to, int resultCount) {
+        try {
+            String role = (actor.getRole() != null) ? actor.getRole().getRoleName() : null;
+            saveReportLogUseCase.logReportView(actor.getFullName(), role, action, from, to, resultCount);
+        } catch (Exception ex) {
+            log.warn("Report-view audit log failed for {}: {}", action, ex.getMessage());
+        }
     }
 
     /** UC-14.2 — Save audit log when a discount report is generated */

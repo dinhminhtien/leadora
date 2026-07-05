@@ -58,6 +58,7 @@ export type SalesPerformanceReport = {
   dateFrom?: string;
   dateTo?: string;
   leadsCreated: number;
+  qualifiedLeads: number;
   leadsConverted: number;
   leadConversionRate: number;
   dealsTotal: number;
@@ -71,6 +72,7 @@ export type SalesPerformanceReport = {
   quotationsAccepted: number;
   quotationAcceptanceRate: number;
   bookingsConfirmed: number;
+  quotationToBookingRate: number;
   revenue: number;
   reps: SalesRepRow[];
 };
