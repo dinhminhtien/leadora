@@ -2,6 +2,17 @@
 
 Leadora is a modular hotel & hospitality CRM platform built with a Spring Boot backend, Next.js frontend, and AI-powered assistant features.
 
+## Project Skills (.claude/skills/)
+
+Repo-specific skills; invoke with `/name` or let them auto-trigger. Prefer them over improvising the same workflow from scratch:
+
+| Skill | Use when |
+|---|---|
+| `/verify` | Before committing any nontrivial change — exact analyze/test/build commands and pass criteria per stack |
+| `/implement-uc` | Implementing or extending a UC-xx / business feature — design-doc reading order, BR/RBAC non-negotiables, build order (backend contract first) |
+| `/api-contract` | An endpoint, DTO, enum, or query param changes — alignment checklist across backend ↔ web ↔ mobile plus known wire-format pitfalls |
+| `/run-stack` | Running/demoing locally or debugging 401/CORS/connection issues between backend :8085, frontend :3000, and the Flutter app |
+
 ## Workspace Overview
 
 ```
