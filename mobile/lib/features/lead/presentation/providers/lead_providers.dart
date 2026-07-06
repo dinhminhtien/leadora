@@ -61,19 +61,27 @@ class LeadListController extends AutoDisposeAsyncNotifier<LeadListState> {
   }
 
   /// Pull-to-refresh: reload page 0 with current filters.
+  /// On failure the previous value (items + filters) is kept alongside the
+  /// error, so a retry re-runs the same filters instead of reverting to
+  /// defaults.
   Future<void> refresh() async {
     final current = state.valueOrNull ?? const LeadListState();
     state = const AsyncLoading<LeadListState>().copyWithPrevious(state);
-    state = await AsyncValue.guard(() => _fetch(current));
+    state =
+        (await AsyncValue.guard(() => _fetch(current))).copyWithPrevious(state);
   }
 
   /// Replace the filter set and reload from the top.
   Future<void> applyFilters(LeadFilters filters) async {
     final current = state.valueOrNull ?? const LeadListState();
-    state = const AsyncLoading<LeadListState>().copyWithPrevious(state);
-    state = await AsyncValue.guard(
-      () => _fetch(current.copyWith(filters: filters)),
-    );
+    final next = current.copyWith(filters: filters);
+    // Seed the loading state with the *requested* filters so the chips/badge
+    // reflect the selection immediately, and so a failed fetch + retry re-runs
+    // these filters rather than silently restoring the old ones.
+    state = const AsyncLoading<LeadListState>()
+        .copyWithPrevious(AsyncData(next), isRefresh: true);
+    state =
+        (await AsyncValue.guard(() => _fetch(next))).copyWithPrevious(state);
   }
 
   /// Current filters, for screens composing an updated set.

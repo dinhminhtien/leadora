@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -64,7 +66,13 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
               isCorporate: _isCorporate,
             ),
           );
-      ref.invalidate(leadListControllerProvider);
+      // refresh() (not invalidate) so the list reloads without dropping the
+      // user's active search/filters. Only when the list is actually alive —
+      // reading the notifier otherwise would spawn an unowned autoDispose
+      // provider that dies mid-refresh (deep-link case).
+      if (ref.exists(leadListControllerProvider)) {
+        unawaited(ref.read(leadListControllerProvider.notifier).refresh());
+      }
       messenger.showSnackBar(
         SnackBar(content: Text('Lead "${lead.fullName}" created')),
       );

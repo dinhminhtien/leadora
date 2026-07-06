@@ -53,10 +53,20 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
   }
 
   void _onSearchChanged(String value) {
+    // Rebuild so the clear (X) suffix appears/disappears as the user types.
+    setState(() {});
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
       _controller.applyFilters(_controller.filters.copyWith(search: value));
     });
+  }
+
+  void _clearSearch() {
+    // Cancel any pending debounce so a stale search doesn't re-apply itself
+    // right after the field was cleared.
+    _debounce?.cancel();
+    setState(() => _searchController.clear());
+    _controller.applyFilters(_controller.filters.copyWith(search: ''));
   }
 
   Future<void> _openFilterSheet() async {
@@ -112,11 +122,7 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
                     ? null
                     : IconButton(
                         icon: const Icon(Icons.close_rounded),
-                        onPressed: () {
-                          _searchController.clear();
-                          _controller.applyFilters(
-                              _controller.filters.copyWith(search: ''));
-                        },
+                        onPressed: _clearSearch,
                       ),
               ),
             ),
