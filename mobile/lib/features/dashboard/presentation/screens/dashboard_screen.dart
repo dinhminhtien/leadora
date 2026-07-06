@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/section_card.dart';
@@ -79,13 +80,25 @@ class _Greeting extends StatelessWidget {
     final theme = Theme.of(context);
     final hour = DateTime.now().hour;
     final part = hour < 12 ? 'Good morning' : (hour < 18 ? 'Good afternoon' : 'Good evening');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Text('$part,',
-            style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        Text(name,
-            style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$part,',
+                  style: theme.textTheme.bodyLarge
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              const SizedBox(height: 2),
+              Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineSmall),
+            ],
+          ),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        AppAvatar(name: name, radius: 24),
       ],
     );
   }
@@ -101,11 +114,11 @@ class _KpiGrid extends StatelessWidget {
       crossAxisCount: 2,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      // Taller than 1.55 to give the 3 text lines headroom — at 1.55 the card
-      // overflowed by ~5.5px on default text scale.
-      childAspectRatio: 1.45,
+      mainAxisSpacing: AppSpacing.md,
+      crossAxisSpacing: AppSpacing.md,
+      // Headroom for the icon chip + large value + label + sub. Kept generous
+      // so it never clips at larger text scale (a 1.55 card overflowed 5.5px).
+      childAspectRatio: 1.28,
       children: [
         _KpiCard(
           label: 'Active leads',
@@ -158,42 +171,46 @@ class _KpiCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, size: 18, color: color),
-              ),
-            ],
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+            ),
+            child: Icon(icon, size: 18, color: color),
           ),
           const Spacer(),
           Text(value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 2),
-          Text(label,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+              )),
+          const SizedBox(height: AppSpacing.xs),
+          Text(label.toUpperCase(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+                color: scheme.onSurfaceVariant,
+              )),
           Text(sub,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline)),
+              style: theme.textTheme.labelSmall?.copyWith(color: scheme.outline)),
         ],
       ),
     );
