@@ -152,7 +152,9 @@ class LeadFilters {
   /// null = both, true = corporate only, false = individual only.
   final bool? isCorporate;
 
-  /// Inclusive created-date window (calendar days, formatted yyyy-MM-dd).
+  /// Inclusive created-date window, picked as *local* calendar days. Sent to
+  /// the backend as UTC instants (see [toQuery]) so the window matches the
+  /// user's timezone instead of UTC calendar days.
   final DateTime? dateFrom;
   final DateTime? dateTo;
   final LeadSort sort;
@@ -199,10 +201,16 @@ class LeadFilters {
   /// Reset the advanced filters, keeping the inline ones (search + status).
   LeadFilters resetAdvanced() => LeadFilters(search: search, status: status);
 
-  static String _day(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
+  /// Local midnight of [d]'s calendar day, as a UTC ISO-8601 instant
+  /// (`…Z` suffix). Deliberately *not* an offset form like `+07:00`: a raw
+  /// `+` in a query string decodes to a space server-side and would make the
+  /// backend silently drop the bound.
+  static String utcStartOfLocalDay(DateTime d) =>
+      DateTime(d.year, d.month, d.day).toUtc().toIso8601String();
+
+  /// End of [d]'s local calendar day (23:59:59.999) as a UTC ISO-8601 instant.
+  static String utcEndOfLocalDay(DateTime d) =>
+      DateTime(d.year, d.month, d.day, 23, 59, 59, 999).toUtc().toIso8601String();
 
   /// Query params for `GET /leads`. Defaults are omitted; the backend fills
   /// them in (sortBy=createdAt desc, scope=assigned).
@@ -212,8 +220,8 @@ class LeadFilters {
       if (status != null) 'status': status!.wire,
       if (source != null && source!.trim().isNotEmpty) 'source': source!.trim(),
       if (isCorporate != null) 'isCorporate': isCorporate,
-      if (dateFrom != null) 'dateFrom': _day(dateFrom!),
-      if (dateTo != null) 'dateTo': _day(dateTo!),
+      if (dateFrom != null) 'dateFrom': utcStartOfLocalDay(dateFrom!),
+      if (dateTo != null) 'dateTo': utcEndOfLocalDay(dateTo!),
       if (sort != LeadSort.newestFirst) ...{
         'sortBy': sort.sortBy,
         'sortDir': sort.sortDir,
