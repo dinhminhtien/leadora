@@ -103,7 +103,9 @@ class _KpiGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 12,
       crossAxisSpacing: 12,
-      childAspectRatio: 1.55,
+      // Taller than 1.55 to give the 3 text lines headroom — at 1.55 the card
+      // overflowed by ~5.5px on default text scale.
+      childAspectRatio: 1.45,
       children: [
         _KpiCard(
           label: 'Active leads',
@@ -185,6 +187,8 @@ class _KpiCard extends StatelessWidget {
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 2),
           Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
           Text(sub,
               maxLines: 1,

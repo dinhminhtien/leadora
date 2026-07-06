@@ -59,17 +59,26 @@ class PaginationResponse<T> {
     }
     final items = rawContent.map(decodeItem).toList(growable: false);
 
-    final page = (data['number'] ?? data['page'] ?? 0) as int;
-    final totalPages = (data['totalPages'] ?? 0) as int;
+    // Two page shapes must both parse:
+    //   * Spring Boot 3.3+ `PagedModel` — metadata nested under `page`:
+    //     { content: [...], page: { size, number, totalElements, totalPages } }
+    //   * legacy flat `PageImpl` — metadata at the top level:
+    //     { content: [...], number, size, totalElements, totalPages, first, last }
+    // The nested shape has no `first`/`last`, so derive them from number/totalPages.
+    final meta = data['page'] is Map ? (data['page'] as Map) : data;
+    int asInt(Object? v, int fallback) => (v as num?)?.toInt() ?? fallback;
+
+    final page = asInt(meta['number'], 0);
+    final totalPages = asInt(meta['totalPages'], 0);
 
     return PaginationResponse<T>(
       items: items,
       page: page,
-      size: (data['size'] ?? items.length) as int,
-      totalElements: (data['totalElements'] ?? items.length) as int,
+      size: asInt(meta['size'], items.length),
+      totalElements: asInt(meta['totalElements'], items.length),
       totalPages: totalPages,
-      isFirst: (data['first'] ?? page == 0) as bool,
-      isLast: (data['last'] ?? page >= totalPages - 1) as bool,
+      isFirst: (data['first'] as bool?) ?? (page == 0),
+      isLast: (data['last'] as bool?) ?? (page >= totalPages - 1),
     );
   }
 
