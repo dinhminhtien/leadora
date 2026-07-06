@@ -10,36 +10,30 @@ class LeadListState {
     this.isLoadingMore = false,
     this.hasMore = true,
     this.nextPage = 0,
-    this.search,
-    this.status,
+    this.filters = const LeadFilters(),
   });
 
   final List<Lead> items;
   final bool isLoadingMore;
   final bool hasMore;
   final int nextPage;
-  final String? search;
-  final LeadStatus? status;
+  final LeadFilters filters;
 
   LeadListState copyWith({
     List<Lead>? items,
     bool? isLoadingMore,
     bool? hasMore,
     int? nextPage,
-    Object? search = _sentinel,
-    Object? status = _sentinel,
+    LeadFilters? filters,
   }) {
     return LeadListState(
       items: items ?? this.items,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       hasMore: hasMore ?? this.hasMore,
       nextPage: nextPage ?? this.nextPage,
-      search: search == _sentinel ? this.search : search as String?,
-      status: status == _sentinel ? this.status : status as LeadStatus?,
+      filters: filters ?? this.filters,
     );
   }
-
-  static const _sentinel = Object();
 }
 
 /// Loads and paginates the assigned-lead list, reacting to search/status
@@ -54,8 +48,7 @@ class LeadListController extends AutoDisposeAsyncNotifier<LeadListState> {
 
   Future<LeadListState> _fetch(LeadListState base) async {
     final page = await _repo.getLeads(
-      search: base.search,
-      status: base.status?.wire,
+      filters: base.filters,
       page: 0,
       size: _pageSize,
     );
@@ -74,16 +67,18 @@ class LeadListController extends AutoDisposeAsyncNotifier<LeadListState> {
     state = await AsyncValue.guard(() => _fetch(current));
   }
 
-  /// Apply a new search/status filter and reload from the top.
-  Future<void> applyFilters({String? search, LeadStatus? status, bool clearStatus = false}) async {
+  /// Replace the filter set and reload from the top.
+  Future<void> applyFilters(LeadFilters filters) async {
     final current = state.valueOrNull ?? const LeadListState();
-    final next = current.copyWith(
-      search: search,
-      status: clearStatus ? null : (status ?? current.status),
-    );
     state = const AsyncLoading<LeadListState>().copyWithPrevious(state);
-    state = await AsyncValue.guard(() => _fetch(next));
+    state = await AsyncValue.guard(
+      () => _fetch(current.copyWith(filters: filters)),
+    );
   }
+
+  /// Current filters, for screens composing an updated set.
+  LeadFilters get filters =>
+      state.valueOrNull?.filters ?? const LeadFilters();
 
   /// Infinite scroll: append the next page.
   Future<void> loadMore() async {
@@ -92,8 +87,7 @@ class LeadListController extends AutoDisposeAsyncNotifier<LeadListState> {
     state = AsyncData(current.copyWith(isLoadingMore: true));
     try {
       final page = await _repo.getLeads(
-        search: current.search,
-        status: current.status?.wire,
+        filters: current.filters,
         page: current.nextPage,
         size: _pageSize,
       );

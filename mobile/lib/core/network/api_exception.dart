@@ -107,10 +107,16 @@ class ValidationException extends AppException {
 class ApiException extends AppException {
   const ApiException({
     required String message,
+    this.details,
     super.errorCode,
     super.debugDetail,
     super.statusCode,
   }) : super(message);
+
+  /// Machine-readable payload from `ApiResponse.details`, when the backend
+  /// attaches one (e.g. `DUPLICATE_LEAD` carries the existing lead's id so
+  /// the UI can link to it). Unlike [debugDetail], this may drive UI flow.
+  final String? details;
 }
 
 /// 5xx — server-side failure. Retriable.
