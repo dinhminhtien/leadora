@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_dimens.dart';
 import '../formatters.dart';
 
 /// A titled surface card used to group detail fields on detail screens.
@@ -22,14 +23,8 @@ class SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: theme.colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-      ),
       child: Padding(
         padding: padding,
         child: Column(
@@ -39,8 +34,15 @@ class SectionCard extends StatelessWidget {
               Row(
                 children: [
                   if (icon != null) ...[
-                    Icon(icon, size: 18, color: theme.colorScheme.primary),
-                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(
+                        color: scheme.primary.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(AppRadii.sm),
+                      ),
+                      child: Icon(icon, size: 16, color: scheme.primary),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
                   ],
                   Expanded(
                     child: Text(
@@ -52,7 +54,7 @@ class SectionCard extends StatelessWidget {
                   ?trailing,
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.lg),
             ],
             child,
           ],

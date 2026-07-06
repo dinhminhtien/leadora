@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -123,7 +125,13 @@ class LeadDetailScreen extends ConsumerWidget {
     try {
       await ref.read(leadRepositoryProvider).updateStatus(lead.leadId, selected);
       ref.invalidate(leadDetailProvider(leadId));
-      ref.invalidate(leadListControllerProvider);
+      // refresh() (not invalidate) so the list reloads without dropping the
+      // user's active search/filters. Only when the list is actually alive —
+      // reading the notifier otherwise would spawn an unowned autoDispose
+      // provider that dies mid-refresh (deep-link case).
+      if (ref.exists(leadListControllerProvider)) {
+        unawaited(ref.read(leadListControllerProvider.notifier).refresh());
+      }
       messenger.showSnackBar(
         SnackBar(content: Text('Status updated to ${Formatters.humanizeEnum(selected.wire)}')),
       );

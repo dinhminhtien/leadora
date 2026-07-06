@@ -95,8 +95,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(Icons.hub_rounded,
-                        size: 56, color: theme.colorScheme.primary),
+                    Container(
+                      height: 76,
+                      width: 76,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            theme.colorScheme.primary,
+                            theme.colorScheme.primary.withValues(alpha: 0.72),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(22),
+                        boxShadow: [
+                          BoxShadow(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.28),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Icon(Icons.hub_rounded,
+                          size: 38, color: theme.colorScheme.onPrimary),
+                    ),
                     const SizedBox(height: 24),
                     Text(
                       l10n.loginTitle,
