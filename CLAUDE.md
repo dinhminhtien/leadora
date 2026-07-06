@@ -12,6 +12,7 @@ Repo-specific skills; invoke with `/name` or let them auto-trigger. Prefer them 
 | `/implement-uc` | Implementing or extending a UC-xx / business feature — design-doc reading order, BR/RBAC non-negotiables, build order (backend contract first) |
 | `/api-contract` | An endpoint, DTO, enum, or query param changes — alignment checklist across backend ↔ web ↔ mobile plus known wire-format pitfalls |
 | `/run-stack` | Running/demoing locally or debugging 401/CORS/connection issues between backend :8085, frontend :3000, and the Flutter app |
+| `/mobile-ui` | Improving/redesigning the Flutter app UI, building a screen/widget, or touching `mobile/lib/core/theme` or `shared/widgets` — design tokens, component polish, and emulator visual verification |
 
 ## Workspace Overview
 
