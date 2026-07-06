@@ -53,6 +53,14 @@ public class CreateLeadUseCase {
             log.warn("Could not resolve creator for new lead: {}", e.getMessage());
         }
 
+        // When a sales rep creates their own (quick) lead with no explicit assignee,
+        // they own it: assign it to themselves so it shows in their "assigned to me"
+        // list and its status can advance (an unassigned lead is locked at NEW until a
+        // Manager assigns it). Managers/Admins still create unassigned drafts to distribute.
+        if (assignedUser == null && creator != null && isSalesRep(creator)) {
+            assignedUser = creator;
+        }
+
         LeadEntity lead = LeadEntity.builder()
                 .fullName(request.getFullName())
                 .email(request.getEmail())
@@ -77,11 +85,21 @@ public class CreateLeadUseCase {
         }
 
         // UC-15.1: notify the assigned sales rep, if the lead was created already assigned
-        if (assignedUser != null) {
+        // by someone else. Skip self-assignment (a rep creating their own lead) — no point
+        // telling them they were "assigned" a lead they just created.
+        if (assignedUser != null && !assignedUser.equals(creator)) {
             notifyLeadAssigned(saved, assignedUser);
         }
 
         return LeadResponse.from(saved);
+    }
+
+    /** True when the user's role is a sales-rep role (owner-scoped), per the access policy. */
+    private static boolean isSalesRep(UserEntity user) {
+        String role = user.getRole() != null && user.getRole().getRoleName() != null
+                ? user.getRole().getRoleName().trim().toUpperCase()
+                : "";
+        return role.equals("SALES") || role.equals("SALES_STAFF");
     }
 
     /**
