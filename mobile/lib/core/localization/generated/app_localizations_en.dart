@@ -94,4 +94,43 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get notificationsMarkAllRead => 'Mark all as read';
+
+  @override
+  String get forgotPasswordTitle => 'Forgot Password';
+
+  @override
+  String get forgotPasswordSubtitle =>
+      'Enter your email to receive password reset instructions';
+
+  @override
+  String get forgotPasswordEmailLabel => 'Email Address';
+
+  @override
+  String get forgotPasswordSubmit => 'Send Reset Link';
+
+  @override
+  String get forgotPasswordSuccess =>
+      'Reset link sent successfully. Please check your email inbox.';
+
+  @override
+  String get resetPasswordTitle => 'Reset Password';
+
+  @override
+  String get resetPasswordSubtitle => 'Enter your new secure password';
+
+  @override
+  String get resetPasswordLabel => 'New Password';
+
+  @override
+  String get resetPasswordConfirmLabel => 'Confirm New Password';
+
+  @override
+  String get resetPasswordSubmit => 'Update Password';
+
+  @override
+  String get resetPasswordSuccess =>
+      'Password updated successfully. Please login with your new password.';
+
+  @override
+  String get resetPasswordMismatch => 'Passwords do not match';
 }

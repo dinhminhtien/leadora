@@ -8,8 +8,10 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.TaskPriority;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.novax.leadora.common.util.ReportingUtils;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -18,6 +20,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** UC-23.2 — View Follow-up Task Performance Report. */
@@ -26,16 +29,29 @@ import java.util.UUID;
 public class GetTaskPerformanceReportUseCase {
 
     private static final int MAX_STAFF = 50;
+    /** Roles that may see team-wide task performance; everyone else is scoped to their own tasks. */
+    private static final Set<String> FULL_SCOPE_ROLES = Set.of("MANAGER", "ADMIN");
 
     private final TaskRepository taskRepository;
 
+    /**
+     * @param actor the authenticated user — UC-23.2 access scope: Sales Manager/Admin see team-wide
+     *              performance, Sales Staff see only their own assigned tasks.
+     */
+    @Cacheable(
+        value = "task-performance-report", 
+        key = "(#actor.role != null && #actor.role.roleName != null && (#actor.role.roleName.trim().toUpperCase() == 'MANAGER' || #actor.role.roleName.trim().toUpperCase() == 'ADMIN') ? 'all' : #actor.userId) + '_' + #from + '_' + #to",
+        unless = "#result == null"
+    )
     @Transactional(readOnly = true)
-    public TaskPerformanceReportResponse execute(LocalDate from, LocalDate to) {
+    public TaskPerformanceReportResponse execute(UserEntity actor, LocalDate from, LocalDate to) {
         OffsetDateTime now = OffsetDateTime.now();
 
-        List<TaskEntity> tasks = taskRepository.findAll().stream()
-                .filter(t -> inRange(t.getCreatedAt(), from, to))
-                .toList();
+        OffsetDateTime start = ReportingUtils.getStartOfDayOrEpoch(from);
+        OffsetDateTime end = ReportingUtils.getEndOfDayOrFuture(to);
+
+        UUID assignedUserId = canSeeAllTasks(actor) ? null : actor.getUserId();
+        List<TaskEntity> tasks = taskRepository.findForPerformanceReport(assignedUserId, start, end);
 
         long total = tasks.size();
         long completed = tasks.stream().filter(t -> t.getStatus() == TaskStatus.COMPLETED).count();
@@ -55,8 +71,8 @@ public class GetTaskPerformanceReportUseCase {
                 .open(open)
                 .cancelled(cancelled)
                 .overdue(overdue)
-                .completionRate(rate(completed, total))
-                .overdueRate(rate(overdue, total))
+                .completionRate(ReportingUtils.calculateRate(completed, total))
+                .overdueRate(ReportingUtils.calculateRate(overdue, total))
                 .priorityLow(low)
                 .priorityMedium(medium)
                 .priorityHigh(high)
@@ -88,7 +104,7 @@ public class GetTaskPerformanceReportUseCase {
                     .total(a.total)
                     .completed(a.completed)
                     .overdue(a.overdue)
-                    .completionRate(rate(a.completed, a.total))
+                    .completionRate(ReportingUtils.calculateRate(a.completed, a.total))
                     .build());
         }
         rows.sort(Comparator.comparingLong((StaffRow r) -> r.getTotal()).reversed());
@@ -103,19 +119,12 @@ public class GetTaskPerformanceReportUseCase {
         return t.getEndAt() != null && t.getEndAt().isBefore(now);
     }
 
-    private boolean inRange(OffsetDateTime at, LocalDate from, LocalDate to) {
-        if (at == null) {
-            return from == null && to == null;
-        }
-        LocalDate d = at.toLocalDate();
-        if (from != null && d.isBefore(from)) return false;
-        return to == null || !d.isAfter(to);
+    private boolean canSeeAllTasks(UserEntity user) {
+        String role = (user != null && user.getRole() != null && user.getRole().getRoleName() != null)
+                ? user.getRole().getRoleName().trim().toUpperCase() : "";
+        return FULL_SCOPE_ROLES.contains(role);
     }
 
-    private double rate(long part, long whole) {
-        if (whole <= 0) return 0;
-        return Math.round((part * 10000.0 / whole)) / 100.0;
-    }
 
     private static class StaffAgg {
         String name;

@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
 import java.util.Set;
 import java.util.UUID;
 
@@ -45,7 +46,12 @@ public class GetLeadListUseCase {
         }
         String sourceParam = StringUtils.hasText(source) ? source.trim() : "";
 
-        // Calendar dates ("YYYY-MM-DD") → an inclusive [from 00:00, to 23:59:59.999] UTC window.
+        // Date bounds. Two accepted shapes:
+        //   * ISO offset datetime ("2026-07-05T17:00:00.000Z") — the client states its
+        //     own day boundary as an exact instant (mobile sends local midnight
+        //     converted to UTC), used as-is;
+        //   * bare calendar date ("2026-07-06") — legacy shape, interpreted as an
+        //     inclusive [00:00, 23:59:59.999] UTC window.
         // The repository compares with COALESCE(:param, createdAt), so a null bound = no limit.
         OffsetDateTime dateFromParam = parseStartOfDay(dateFrom);
         OffsetDateTime dateToParam = parseEndOfDay(dateTo);
@@ -80,8 +86,11 @@ public class GetLeadListUseCase {
 
     private static OffsetDateTime parseStartOfDay(String date) {
         if (!StringUtils.hasText(date)) return null;
+        String value = date.trim();
+        OffsetDateTime exact = parseOffsetDateTime(value);
+        if (exact != null) return exact; // client already chose its day boundary
         try {
-            return LocalDate.parse(date.trim()).atStartOfDay().atOffset(ZoneOffset.UTC);
+            return LocalDate.parse(value).atStartOfDay().atOffset(ZoneOffset.UTC);
         } catch (Exception ignored) {
             return null; // ignore malformed dates rather than failing the whole list
         }
@@ -89,9 +98,20 @@ public class GetLeadListUseCase {
 
     private static OffsetDateTime parseEndOfDay(String date) {
         if (!StringUtils.hasText(date)) return null;
+        String value = date.trim();
+        OffsetDateTime exact = parseOffsetDateTime(value);
+        if (exact != null) return exact;
         try {
-            return LocalDate.parse(date.trim()).atTime(LocalTime.MAX).atOffset(ZoneOffset.UTC);
+            return LocalDate.parse(value).atTime(LocalTime.MAX).atOffset(ZoneOffset.UTC);
         } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static OffsetDateTime parseOffsetDateTime(String value) {
+        try {
+            return OffsetDateTime.parse(value);
+        } catch (DateTimeParseException ignored) {
             return null;
         }
     }

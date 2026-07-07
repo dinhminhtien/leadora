@@ -10,6 +10,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,4 +30,15 @@ public interface BookingRepository extends JpaRepository<BookingEntity, UUID>, J
     @Override
     @EntityGraph(attributePaths = {"customer", "assignedUser", "quotation"})
     Page<BookingEntity> findAll(Specification<BookingEntity> spec, Pageable pageable);
+
+    // ── Performance report query (eliminates N+1 and filters at DB level) ──
+    @EntityGraph(attributePaths = {"assignedUser"})
+    @Query("""
+            SELECT b FROM BookingEntity b
+            WHERE b.createdAt >= :startDate
+              AND b.createdAt <= :endDate
+            """)
+    List<BookingEntity> findByCreatedAtRange(
+            @Param("startDate") OffsetDateTime startDate,
+            @Param("endDate") OffsetDateTime endDate);
 }

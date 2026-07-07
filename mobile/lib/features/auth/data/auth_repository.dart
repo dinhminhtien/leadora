@@ -109,7 +109,21 @@ class AuthRepository {
   Future<void> forgotPassword(String email) {
     return _client.post<void>(
       ApiPaths.forgotPassword,
-      data: {'email': email},
+      data: {
+        'email': email,
+        'clientType': 'mobile',
+      },
+      decode: (_) {},
+    );
+  }
+
+  Future<void> resetPassword({
+    required String token,
+    required String password,
+  }) {
+    return _client.post<void>(
+      ApiPaths.resetPassword,
+      data: {'token': token, 'password': password},
       decode: (_) {},
     );
   }

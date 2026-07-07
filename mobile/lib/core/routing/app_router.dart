@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
+import '../../features/auth/presentation/screens/reset_password_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_shell.dart';
 import '../../features/deal/presentation/screens/deal_detail_screen.dart';
@@ -17,7 +19,6 @@ import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/quotation/presentation/screens/quotation_detail_screen.dart';
 import '../../features/task/presentation/screens/task_detail_screen.dart';
 import '../../features/task/presentation/screens/task_list_screen.dart';
-import '../widgets/placeholder_screen.dart';
 import '../widgets/splash_screen.dart';
 import 'app_session.dart';
 import 'routes.dart';
@@ -56,7 +57,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.forgotPassword,
         name: RouteNames.forgotPassword,
-        builder: (_, _) => const PlaceholderScreen(title: 'Forgot password'),
+        builder: (_, _) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: Routes.resetPassword,
+        name: RouteNames.resetPassword,
+        builder: (_, state) {
+          final token = state.uri.queryParameters['token'] ?? '';
+          return ResetPasswordScreen(token: token);
+        },
       ),
 
       // Full-screen routes reached only via notification deep-link — no
@@ -201,17 +210,22 @@ final routerProvider = Provider<GoRouter>((ref) {
 String? _guard(AppSession session, GoRouterState state) {
   final loc = state.matchedLocation;
   final onSplash = loc == Routes.splash;
-  final onAuthRoute = loc == Routes.login || loc == Routes.forgotPassword;
+  final onAuthRoute =
+      loc == Routes.login ||
+      loc == Routes.forgotPassword ||
+      loc == Routes.resetPassword;
 
   if (!session.isResolved) {
-    return onSplash ? null : Routes.splash;
+    return onSplash || onAuthRoute ? null : Routes.splash;
   }
 
   if (!session.isAuthenticated) {
     return onAuthRoute ? null : Routes.login;
   }
 
-  // Authenticated: bounce away from splash/auth routes.
-  if (onSplash || onAuthRoute) return Routes.dashboard;
+  // Authenticated: bounce away from splash/login/forgot.
+  if (onSplash || loc == Routes.login || loc == Routes.forgotPassword) {
+    return Routes.dashboard;
+  }
   return null;
 }

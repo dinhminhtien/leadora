@@ -15,10 +15,9 @@ class LeadRepository {
   final ApiClient _client;
 
   /// UC-24.14 / UC-24.15 — paged, searchable, filterable assigned-lead list.
+  /// All filter/sort/scope params come from [LeadFilters.toQuery].
   Future<PaginationResponse<Lead>> getLeads({
-    String? search,
-    String? status,
-    String scope = 'assigned',
+    LeadFilters filters = const LeadFilters(),
     int page = 0,
     int size = 15,
     CancelToken? cancelToken,
@@ -26,9 +25,7 @@ class LeadRepository {
     return _client.getPaged<Lead>(
       ApiPaths.leads,
       query: {
-        if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
-        'status': ?status,
-        'scope': scope,
+        ...filters.toQuery(),
         'page': page,
         'size': size,
       },

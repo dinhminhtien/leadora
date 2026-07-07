@@ -130,6 +130,8 @@ public class WebSecurityConfig {
                     }
                 }
                 return hs256Decoder.decode(token);
+            } catch (JwtException ex) {
+                throw ex; // Let validation/expiration exceptions pass through directly
             } catch (Exception ex) {
                 throw new JwtException("Failed to decode JWT: " + ex.getMessage(), ex);
             }

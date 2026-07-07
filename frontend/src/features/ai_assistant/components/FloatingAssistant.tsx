@@ -52,11 +52,44 @@ const PANEL_W = 384;
 const MARGIN = 20;
 const POS_KEY = "lia-launcher-pos";
 
+/** Max upload size — mirror of the backend cap (5 MB). Files above this are rejected client-side. */
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
+/** Human-friendly ETA from seconds remaining (empty when unknown/instant). */
+function formatEta(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "";
+  if (seconds < 60) return `~${Math.ceil(seconds)}s`;
+  return `~${Math.ceil(seconds / 60)} min`;
+}
+
+/** Transfer speed in human units (empty when not measurable yet). */
+function formatSpeed(bytesPerSec: number) {
+  if (!Number.isFinite(bytesPerSec) || bytesPerSec <= 0) return "";
+  if (bytesPerSec >= 1024 * 1024) return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+  return `${Math.max(1, Math.round(bytesPerSec / 1024))} KB/s`;
+}
+
+/** Live state of an in-flight upload (byte transfer only — server ingest is async afterwards). */
+type UploadState = {
+  name: string;
+  size: number;
+  pct: number;
+  loaded: number;
+  speed: number; // bytes/s
+  eta: number; // seconds remaining
+};
+
 const SUGGESTIONS = [
-  "Tôi có bao nhiêu deal đang mở?",
-  "Liệt kê công việc của tôi đang quá hạn",
-  "Tổng hợp doanh số toàn đội tháng này",
-  "Chính sách hoàn huỷ booking thế nào?",
+  "How many open deals do I have?",
+  "List my overdue tasks",
+  "Summarize the team's sales this month",
+  "What is the booking cancellation policy?",
 ];
 
 type Pos = { x: number; y: number };
@@ -206,8 +239,8 @@ export function FloatingAssistant() {
         onPointerUp={onPointerUp}
         style={{ left: launcher.x, top: launcher.y, width: LAUNCHER_SIZE, height: LAUNCHER_SIZE }}
         className="fixed z-[61] flex touch-none select-none items-center justify-center rounded-full bg-gradient-to-br from-teal-300 to-teal-500 shadow-xl shadow-teal-900/25 ring-4 ring-white transition-transform duration-150 hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing"
-        title={isOpen ? "Thu nhỏ Lia" : "Mở trợ lý Lia"}
-        aria-label="Trợ lý Lia"
+        title={isOpen ? "Minimize Lia" : "Open Lia assistant"}
+        aria-label="Lia assistant"
       >
         <LiaMascot variant="head" size={48} />
         {!isOpen && (
@@ -252,6 +285,17 @@ function AssistantPanel({
   const [pendingUserText, setPendingUserText] = useState<string | null>(null);
   const [animateId, setAnimateId] = useState<string | null>(null);
   const [view, setView] = useState<"chat" | "history" | "docs">("chat");
+  // Live upload state (name/size/%/speed/ETA) and the last upload error message.
+  const [upload, setUpload] = useState<UploadState | null>(null);
+  const [uploadErrorMsg, setUploadErrorMsg] = useState<string | null>(null);
+  const uploadStartRef = useRef<number>(0);
+  // Custom confirmation popup (replaces the native window.confirm for deletes).
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
@@ -322,25 +366,63 @@ function AssistantPanel({
   };
 
   const handleRenameSession = async (sessionId: string, currentTitle?: string) => {
-    const next = window.prompt("Đổi tên cuộc trò chuyện:", currentTitle ?? "");
+    const next = window.prompt("Rename conversation:", currentTitle ?? "");
     const title = next?.trim();
     if (!title || title === currentTitle) return;
     await renameSession.mutateAsync({ sessionId, title });
   };
 
-  const handleDeleteSession = async (sessionId: string) => {
-    // If we're deleting the active conversation, fall back to a blank chat.
-    if (sessionId === selectedSessionId) clearSelectedSession();
-    await deleteSession.mutateAsync(sessionId);
+  const handleDeleteSession = (sessionId: string, title?: string) => {
+    setConfirmDialog({
+      title: "Delete conversation",
+      message: `Delete "${title || "this conversation"}"? This can't be undone.`,
+      confirmLabel: "Delete",
+      onConfirm: () => {
+        // If we're deleting the active conversation, fall back to a blank chat.
+        if (sessionId === selectedSessionId) clearSelectedSession();
+        deleteSession.mutate(sessionId);
+      },
+    });
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Reset the input immediately so re-picking the SAME file still fires onChange.
+    if (fileInputRef.current) fileInputRef.current.value = "";
     if (!file) return;
+
+    setUploadErrorMsg(null);
+
+    // Client-side size gate (backend enforces the same 5MB cap independently).
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUploadErrorMsg(
+        `"${file.name}" is ${formatBytes(file.size)} — over the 5MB limit. Please pick a smaller file.`,
+      );
+      return;
+    }
+
+    uploadStartRef.current = Date.now();
+    setUpload({ name: file.name, size: file.size, pct: 0, loaded: 0, speed: 0, eta: 0 });
     try {
-      await uploadDocument.mutateAsync({ file });
+      await uploadDocument.mutateAsync({
+        file,
+        onProgress: (p) => {
+          const elapsed = (Date.now() - uploadStartRef.current) / 1000;
+          const speed = elapsed > 0 ? p.loaded / elapsed : 0; // bytes/s
+          const eta = speed > 0 ? (p.total - p.loaded) / speed : 0;
+          setUpload((u) =>
+            u ? { ...u, pct: p.percent, loaded: p.loaded, speed, eta } : u,
+          );
+        },
+      });
+    } catch (err) {
+      // Surface the backend's real reason (e.g. unsupported format, >5MB) instead of a generic line.
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? "Upload failed. Please try again.";
+      setUploadErrorMsg(msg);
     } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setUpload(null);
     }
   };
 
@@ -356,14 +438,14 @@ function AssistantPanel({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold leading-tight">Lia</p>
           <p className="truncate text-[10px] text-teal-50/90">
-            Trợ lý chăm sóc &amp; follow-up lead của bạn
+            Your lead care &amp; follow-up assistant
           </p>
         </div>
-        <HeaderBtn title="Cuộc trò chuyện mới" onClick={handleNewChat}>
+        <HeaderBtn title="New conversation" onClick={handleNewChat}>
           <Plus className="size-4" />
         </HeaderBtn>
         <HeaderBtn
-          title="Lịch sử trò chuyện"
+          title="Chat history"
           onClick={() => setView(view === "history" ? "chat" : "history")}
           active={view === "history"}
         >
@@ -371,7 +453,7 @@ function AssistantPanel({
         </HeaderBtn>
         {canManageDocs && (
           <HeaderBtn
-            title="Tài liệu công ty"
+            title="Company documents"
             onClick={() => setView(view === "docs" ? "chat" : "docs")}
             active={view === "docs"}
           >
@@ -379,12 +461,12 @@ function AssistantPanel({
           </HeaderBtn>
         )}
         <HeaderBtn
-          title={isFullscreen ? "Thu nhỏ cửa sổ" : "Toàn màn hình"}
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           onClick={onToggleFullscreen}
         >
           {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
         </HeaderBtn>
-        <HeaderBtn title="Thu nhỏ" onClick={onClose}>
+        <HeaderBtn title="Minimize" onClick={onClose}>
           <Minus className="size-4" />
         </HeaderBtn>
       </div>
@@ -403,17 +485,17 @@ function AssistantPanel({
         <DocsView
           documents={documents}
           uploading={uploadDocument.isPending}
-          uploadError={uploadDocument.isError}
+          upload={upload}
+          uploadErrorMsg={uploadErrorMsg}
           onUploadClick={() => fileInputRef.current?.click()}
-          onDelete={(id, title, chunks) => {
-            if (
-              window.confirm(
-                `Xoá tài liệu "${title}"?\nToàn bộ ${chunks} chunk của nó sẽ bị xoá khỏi bộ nhớ chat (không thể hoàn tác).`,
-              )
-            ) {
-              deleteDocument.mutate(id);
-            }
-          }}
+          onDelete={(id, title, chunks) =>
+            setConfirmDialog({
+              title: "Delete document",
+              message: `Delete "${title}"? All ${chunks} of its chunks will be removed from the assistant's memory. This can't be undone.`,
+              confirmLabel: "Delete",
+              onConfirm: () => deleteDocument.mutate(id),
+            })
+          }
           deleting={deleteDocument.isPending}
           fileInputRef={fileInputRef}
           onFileChange={handleUpload}
@@ -437,7 +519,7 @@ function AssistantPanel({
               {pendingUserText && <RawBubble role="USER" text={pendingUserText} />}
               {sendMessage.isPending && (
                 <div className="flex items-center gap-2 pl-1 text-[11px] text-teal-600">
-                  <Loader2 className="size-3.5 animate-spin" /> Lia đang soạn câu trả lời…
+                  <Loader2 className="size-3.5 animate-spin" /> Lia is typing…
                 </div>
               )}
             </div>
@@ -452,7 +534,7 @@ function AssistantPanel({
           <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 focus-within:border-teal-400 focus-within:bg-white transition">
             <textarea
               rows={1}
-              placeholder="Hỏi Lia về lead, deal, task, doanh số…"
+              placeholder="Ask Lia about leads, deals, tasks, revenue…"
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
               onKeyDown={(e) => {
@@ -468,22 +550,90 @@ function AssistantPanel({
               onClick={() => handleSend()}
               disabled={sendMessage.isPending || !inputVal.trim()}
               className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-teal-500 text-white transition hover:bg-teal-600 disabled:opacity-40"
-              title="Gửi"
+              title="Send"
             >
               <Send className="size-4" />
             </button>
           </div>
           <p className="mt-1 text-center text-[9px] text-slate-400">
-            Lia chỉ đọc dữ liệu — không thực hiện thao tác thay đổi.
+            Lia is read-only — it never changes any data.
           </p>
          </div>
         </div>
+      )}
+
+      {/* Custom confirmation popup (replaces window.confirm for deletes) */}
+      {confirmDialog && (
+        <ConfirmDialog
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          onCancel={() => setConfirmDialog(null)}
+          onConfirm={() => {
+            confirmDialog.onConfirm();
+            setConfirmDialog(null);
+          }}
+        />
       )}
     </>
   );
 }
 
 /* ─────────────────────── Sub-views & bits ─────────────────────── */
+
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  // Full-widget overlay + centered card. z-index sits above the panel (z-60/62) and launcher (z-61).
+  return (
+    <div
+      className="absolute inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-4 animate-in fade-in duration-150"
+      onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-[280px] rounded-2xl bg-white p-4 shadow-2xl animate-in zoom-in-95 duration-150"
+      >
+        <div className="mb-2 flex items-start gap-2.5">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-500">
+            <Trash2 className="size-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[13px] font-bold text-slate-800">{title}</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">{message}</p>
+          </div>
+        </div>
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="rounded-lg px-3 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-100"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            autoFocus
+            className="rounded-lg bg-rose-500 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-rose-600"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function HeaderBtn({
   children,
@@ -524,10 +674,10 @@ function EmptyState({
     <div className="flex h-full flex-col items-center justify-center px-3 text-center">
       <LiaMascot variant="full" size={104} />
       <p className="mt-2 text-xs font-bold text-slate-700">
-        Chào {userName?.split(" ").slice(-1)[0] || "bạn"}! Mình là Lia 💚
+        Hi {userName?.split(" ").slice(-1)[0] || "there"}! I'm Lia 💚
       </p>
       <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-        Hỏi mình về lead/deal/task của bạn, số liệu toàn đội hoặc tài liệu công ty.
+        Ask me about your leads/deals/tasks, team-wide figures, or company documents.
       </p>
       <div className="mt-3 grid w-full gap-1.5">
         {SUGGESTIONS.map((s) => (
@@ -557,13 +707,13 @@ function HistoryView({
   selectedId: string | null;
   onSelect: (id: string) => void;
   onRename: (id: string, title?: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, title?: string) => void;
 }) {
   return (
     <div className="flex-1 space-y-1 overflow-y-auto bg-slate-50/60 p-2 custom-scrollbar">
-      {loading && <p className="p-2 text-[11px] text-slate-400">Đang tải…</p>}
+      {loading && <p className="p-2 text-[11px] text-slate-400">Loading…</p>}
       {!loading && sessions.length === 0 && (
-        <p className="p-2 text-[11px] text-slate-400">Chưa có cuộc trò chuyện nào.</p>
+        <p className="p-2 text-[11px] text-slate-400">No conversations yet.</p>
       )}
       {sessions.map((s) => (
         <div
@@ -577,7 +727,7 @@ function HistoryView({
         >
           <span className="flex min-w-0 items-center gap-2">
             <MessageSquare className="size-3.5 shrink-0" />
-            <span className="truncate">{s.title || "Cuộc trò chuyện"}</span>
+            <span className="truncate">{s.title || "Conversation"}</span>
           </span>
           <span className="ml-1 flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
             <button
@@ -586,17 +736,17 @@ function HistoryView({
                 onRename(s.sessionId, s.title);
               }}
               className="text-slate-400 transition hover:text-teal-600"
-              title="Đổi tên"
+              title="Rename"
             >
               <Pencil className="size-3.5" />
             </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete(s.sessionId);
+                onDelete(s.sessionId, s.title);
               }}
               className="text-slate-400 transition hover:text-rose-500"
-              title="Xoá"
+              title="Delete"
             >
               <Trash2 className="size-3.5" />
             </button>
@@ -610,22 +760,33 @@ function HistoryView({
 function DocsView({
   documents,
   uploading,
-  uploadError,
+  upload,
+  uploadErrorMsg,
   onUploadClick,
   onDelete,
   deleting,
   fileInputRef,
   onFileChange,
 }: {
-  documents: { documentId: string; title: string; chunkCount: number }[];
+  documents: {
+    documentId: string;
+    title: string;
+    chunkCount: number;
+    processing?: boolean;
+  }[];
   uploading: boolean;
-  uploadError: boolean;
+  upload: UploadState | null;
+  uploadErrorMsg: string | null;
   onUploadClick: () => void;
   onDelete: (id: string, title: string, chunks: number) => void;
   deleting: boolean;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
+  // The byte transfer finishes at 100%; the backend then embeds the file in the background.
+  const transferring = upload !== null && upload.pct < 100;
+  const eta = upload ? formatEta(upload.eta) : "";
+  const speed = upload ? formatSpeed(upload.speed) : "";
   return (
     <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50/60 p-3 custom-scrollbar">
       <input
@@ -638,35 +799,86 @@ function DocsView({
       <button
         onClick={onUploadClick}
         disabled={uploading}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-teal-300 bg-teal-50/50 py-2.5 text-[11px] font-semibold text-teal-700 transition hover:bg-teal-50"
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-teal-300 bg-teal-50/50 py-2.5 text-[11px] font-semibold text-teal-700 transition hover:bg-teal-50 disabled:opacity-60"
       >
         {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-        Tải tài liệu lên (PDF, DOCX, TXT, MD)
+        Upload a document (PDF, DOCX, TXT, MD)
       </button>
-      {uploadError && (
-        <p className="text-[10px] text-rose-500">Tải lên thất bại. Kiểm tra định dạng tệp và thử lại.</p>
-      )}
-      {documents.length === 0 && (
-        <p className="pt-2 text-center text-[10px] text-slate-400">Chưa có tài liệu nào.</p>
-      )}
-      {documents.map((doc) => (
-        <div
-          key={doc.documentId}
-          className="flex items-center justify-between rounded-xl border border-slate-100 bg-white px-2.5 py-2 text-[10px] text-slate-600"
-        >
-          <span className="truncate" title={doc.title}>
-            {doc.title} <span className="text-slate-300">({doc.chunkCount} chunk)</span>
-          </span>
-          <button
-            onClick={() => onDelete(doc.documentId, doc.title, doc.chunkCount)}
-            disabled={deleting}
-            className="ml-1 shrink-0 text-slate-400 transition hover:text-rose-500 disabled:opacity-40"
-            title="Xoá tài liệu"
-          >
-            <Trash2 className="size-3.5" />
-          </button>
+      <p className="text-center text-[9px] text-slate-400">Max 5MB per file.</p>
+
+      {/* Rich upload progress: file name + size, % bar that fills at the real transfer speed,
+          transferred/total, live speed and ETA. At 100% the byte upload is done and the server
+          is embedding the file (async), so we switch the label to "Processing…". */}
+      {upload && (
+        <div className="rounded-xl border border-teal-100 bg-white px-2.5 py-2">
+          <div className="mb-1 flex items-center gap-2 text-[10px] font-medium text-slate-600">
+            <FileText className="size-3.5 shrink-0 text-teal-500" />
+            <span className="min-w-0 flex-1 truncate" title={upload.name}>
+              {upload.name}
+            </span>
+            <span className="shrink-0 text-slate-400">{formatBytes(upload.size)}</span>
+          </div>
+          <div className="mb-1 flex items-center justify-between text-[10px] font-medium text-slate-500">
+            <span>{transferring ? "Uploading…" : "Processing on server…"}</span>
+            <span className="tabular-nums text-teal-600">{upload.pct}%</span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-teal-500 transition-[width] duration-150"
+              style={{ width: `${upload.pct}%` }}
+            />
+          </div>
+          {transferring ? (
+            <p className="mt-1 flex justify-between text-[9px] text-slate-400">
+              <span>
+                {formatBytes(upload.loaded)} / {formatBytes(upload.size)}
+                {speed && ` · ${speed}`}
+              </span>
+              {eta && <span>{eta} left</span>}
+            </p>
+          ) : (
+            <p className="mt-1 text-[9px] text-slate-400">
+              Uploaded — parsing &amp; indexing on the server…
+            </p>
+          )}
         </div>
-      ))}
+      )}
+
+      {uploadErrorMsg && (
+        <p className="rounded-lg bg-rose-50 px-2 py-1.5 text-[10px] text-rose-600">{uploadErrorMsg}</p>
+      )}
+
+      {documents.length === 0 && (
+        <p className="pt-2 text-center text-[10px] text-slate-400">No documents yet.</p>
+      )}
+      {documents.map((doc) => {
+        const processing = doc.processing || doc.chunkCount === 0;
+        return (
+          <div
+            key={doc.documentId}
+            className="flex items-center justify-between rounded-xl border border-slate-100 bg-white px-2.5 py-2 text-[10px] text-slate-600"
+          >
+            <span className="flex min-w-0 items-center gap-1.5" title={doc.title}>
+              <span className="truncate">{doc.title}</span>
+              {processing ? (
+                <span className="flex shrink-0 items-center gap-1 text-amber-500">
+                  <Loader2 className="size-3 animate-spin" /> Processing…
+                </span>
+              ) : (
+                <span className="shrink-0 text-slate-300">({doc.chunkCount} chunks)</span>
+              )}
+            </span>
+            <button
+              onClick={() => onDelete(doc.documentId, doc.title, doc.chunkCount)}
+              disabled={deleting || processing}
+              className="ml-1 shrink-0 text-slate-400 transition hover:text-rose-500 disabled:opacity-40"
+              title={processing ? "Processing — cannot delete yet" : "Delete document"}
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

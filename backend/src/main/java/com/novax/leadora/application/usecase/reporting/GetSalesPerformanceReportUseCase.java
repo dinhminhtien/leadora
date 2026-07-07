@@ -19,8 +19,10 @@ import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.novax.leadora.common.util.ReportingUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -51,20 +53,20 @@ public class GetSalesPerformanceReportUseCase {
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
 
+    @Cacheable(value = "sales-performance-report", key = "#from + '_' + #to", unless = "#result == null")
     @Transactional(readOnly = true)
     public SalesPerformanceReportResponse execute(LocalDate from, LocalDate to) {
-        List<LeadEntity> leads = leadRepository.findAll().stream()
-                .filter(l -> inRange(l.getCreatedAt(), from, to)).toList();
-        List<DealEntity> deals = dealRepository.findAll().stream()
-                .filter(d -> inRange(d.getCreatedAt(), from, to)).toList();
-        List<QuotationEntity> quotations = quotationRepository.findAll().stream()
-                .filter(q -> inRange(q.getCreatedAt(), from, to)).toList();
-        List<BookingEntity> bookings = bookingRepository.findAll().stream()
-                .filter(b -> inRange(b.getCreatedAt(), from, to)).toList();
-        List<PaymentEntity> paidPayments = paymentRepository.findByStatus(PaymentStatus.PAID).stream()
-                .filter(p -> inRange(p.getPaidAt() != null ? p.getPaidAt() : p.getCreatedAt(), from, to)).toList();
+        OffsetDateTime start = ReportingUtils.getStartOfDayOrEpoch(from);
+        OffsetDateTime end = ReportingUtils.getEndOfDayOrFuture(to);
+
+        List<LeadEntity> leads = leadRepository.findByCreatedAtRange(start, end);
+        List<DealEntity> deals = dealRepository.findByCreatedAtRange(start, end);
+        List<QuotationEntity> quotations = quotationRepository.findByCreatedAtRange(start, end);
+        List<BookingEntity> bookings = bookingRepository.findByCreatedAtRange(start, end);
+        List<PaymentEntity> paidPayments = paymentRepository.findPaidPaymentsForReport(PaymentStatus.PAID, start, end);
 
         long leadsCreated = leads.size();
+        long qualifiedLeads = leads.stream().filter(l -> l.getStatus() == LeadStatus.QUALIFIED).count();
         long leadsConverted = leads.stream().filter(l -> l.getStatus() == LeadStatus.CONVERTED).count();
 
         long dealsWon = deals.stream().filter(d -> d.getStatus() == DealStatus.WON).count();
@@ -87,19 +89,21 @@ public class GetSalesPerformanceReportUseCase {
                 .dateFrom(from)
                 .dateTo(to)
                 .leadsCreated(leadsCreated)
+                .qualifiedLeads(qualifiedLeads)
                 .leadsConverted(leadsConverted)
-                .leadConversionRate(rate(leadsConverted, leadsCreated))
+                .leadConversionRate(ReportingUtils.calculateRate(leadsConverted, leadsCreated))
                 .dealsTotal(deals.size())
                 .dealsOpen(dealsOpen)
                 .dealsWon(dealsWon)
                 .dealsLost(dealsLost)
-                .winRate(rate(dealsWon, dealsWon + dealsLost))
+                .winRate(ReportingUtils.calculateRate(dealsWon, dealsWon + dealsLost))
                 .wonValue(wonValue)
                 .pipelineValue(pipelineValue)
                 .quotationsCreated(quotationsCreated)
                 .quotationsAccepted(quotationsAccepted)
-                .quotationAcceptanceRate(rate(quotationsAccepted, quotationsCreated))
+                .quotationAcceptanceRate(ReportingUtils.calculateRate(quotationsAccepted, quotationsCreated))
                 .bookingsConfirmed(bookingsConfirmed)
+                .quotationToBookingRate(ReportingUtils.calculateRate(bookingsConfirmed, quotationsCreated))
                 .revenue(revenue)
                 .reps(buildReps(leads, deals, bookings, paidPayments))
                 .build();
@@ -165,19 +169,6 @@ public class GetSalesPerformanceReportUseCase {
                 .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
     }
 
-    private boolean inRange(OffsetDateTime at, LocalDate from, LocalDate to) {
-        if (at == null) {
-            return from == null && to == null;
-        }
-        LocalDate d = at.toLocalDate();
-        if (from != null && d.isBefore(from)) return false;
-        return to == null || !d.isAfter(to);
-    }
-
-    private double rate(long part, long whole) {
-        if (whole <= 0) return 0;
-        return Math.round((part * 10000.0 / whole)) / 100.0; // 2 decimals
-    }
 
     private static class RepAgg {
         String name;
