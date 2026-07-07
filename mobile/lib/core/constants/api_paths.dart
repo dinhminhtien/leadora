@@ -55,6 +55,18 @@ class ApiPaths {
   // --- Customers (CustomerController) ---
   static const String customers = '/customers';
 
-  // --- Interactions (InteractionTimelineController) ---
-  static const String interactions = '/interactions';
+  // --- Interaction Timeline (InteractionTimelineController) ---
+  static const String interactionTimeline = '/interaction-timeline';
+  static String interactionTimelineById(String id) => '/interaction-timeline/$id';
+  static String interactionTimelineAuditLogs(String id) =>
+      '/interaction-timeline/$id/audit-logs';
+
+  // --- Quotations (QuotationController) ---
+  static const String quotations = '/quotations';
+  static String quotationById(String id) => '/quotations/$id';
+  static String quotationTrackResponse(String id) => '/quotations/$id/track-response';
+
+  // --- Deals (DealController) ---
+  static const String deals = '/deals';
+  static String dealById(String id) => '/deals/$id';
 }
