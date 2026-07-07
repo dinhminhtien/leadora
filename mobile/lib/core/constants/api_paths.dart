@@ -69,4 +69,11 @@ class ApiPaths {
   // --- Deals (DealController) ---
   static const String deals = '/deals';
   static String dealById(String id) => '/deals/$id';
+
+  // --- SLA (SlaController) ---
+  static const String slaMonitoring = '/sla/monitoring';
+
+  // --- Reminders (ReminderController) ---
+  static const String reminders = '/reminders';
+  static String reminderDismiss(String id) => '/reminders/$id/dismiss';
 }

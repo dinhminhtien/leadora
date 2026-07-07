@@ -32,6 +32,11 @@ class Routes {
   static String quotationDetailPath(String id) => '/quotations/$id';
   static String dealDetailPath(String id) => '/deals/$id';
 
+  // Full-screen browse entry points, reached from the Dashboard quick actions.
+  static const String quotations = '/quotations';
+  static const String sla = '/sla';
+  static const String reminders = '/reminders';
+
   // Interaction Timeline — reached from a deal/customer detail's
   // "Interactions" section (no dedicated tab).
   static const String interactionTimeline = '/interactions/:linkedType/:linkedId';
@@ -78,6 +83,9 @@ class RouteNames {
   static const String changePassword = 'changePassword';
   static const String quotationDetail = 'quotationDetail';
   static const String dealDetail = 'dealDetail';
+  static const String quotations = 'quotations';
+  static const String sla = 'sla';
+  static const String reminders = 'reminders';
   static const String interactionTimeline = 'interactionTimeline';
   static const String logInteraction = 'logInteraction';
 }

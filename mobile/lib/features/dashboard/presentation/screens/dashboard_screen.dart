@@ -225,17 +225,26 @@ class _QuickActions extends StatelessWidget {
       (Icons.people_alt_rounded, 'Leads', () => context.goNamed(RouteNames.leads)),
       (Icons.checklist_rounded, 'Tasks', () => context.goNamed(RouteNames.tasks)),
       (Icons.notifications_rounded, 'Alerts', () => context.goNamed(RouteNames.notifications)),
+      (Icons.receipt_long_outlined, 'Quotations', () => context.pushNamed(RouteNames.quotations)),
+      (Icons.verified_outlined, 'SLA', () => context.pushNamed(RouteNames.sla)),
+      (Icons.alarm_outlined, 'Reminders', () => context.pushNamed(RouteNames.reminders)),
     ];
-    return Row(
-      children: [
-        for (final a in actions)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: _ActionButton(icon: a.$1, label: a.$2, onTap: a.$3),
-            ),
-          ),
-      ],
+    // Horizontally scrollable so the row can grow past 4 icons without
+    // squishing tap targets below 48dp.
+    return SizedBox(
+      height: 92,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: actions.length,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+        itemBuilder: (context, i) {
+          final a = actions[i];
+          return SizedBox(
+            width: 84,
+            child: _ActionButton(icon: a.$1, label: a.$2, onTap: a.$3),
+          );
+        },
+      ),
     );
   }
 }
@@ -259,10 +268,17 @@ class _ActionButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, color: theme.colorScheme.primary),
             const SizedBox(height: 6),
-            Text(label, style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600)),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
+            ),
           ],
         ),
       ),

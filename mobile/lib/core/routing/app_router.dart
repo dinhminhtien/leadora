@@ -17,6 +17,9 @@ import '../../features/notification/presentation/screens/notification_list_scree
 import '../../features/profile/presentation/screens/change_password_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/quotation/presentation/screens/quotation_detail_screen.dart';
+import '../../features/quotation/presentation/screens/quotation_list_screen.dart';
+import '../../features/reminder/presentation/screens/reminder_list_screen.dart';
+import '../../features/sla/presentation/screens/sla_list_screen.dart';
 import '../../features/task/presentation/screens/task_detail_screen.dart';
 import '../../features/task/presentation/screens/task_list_screen.dart';
 import '../widgets/splash_screen.dart';
@@ -80,6 +83,23 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: Routes.dealDetail,
         name: RouteNames.dealDetail,
         builder: (_, state) => DealDetailScreen(dealId: state.pathParameters['id']!),
+      ),
+
+      // Browse entry points — reached from the Dashboard quick actions.
+      GoRoute(
+        path: Routes.quotations,
+        name: RouteNames.quotations,
+        builder: (_, _) => const QuotationListScreen(),
+      ),
+      GoRoute(
+        path: Routes.sla,
+        name: RouteNames.sla,
+        builder: (_, _) => const SlaListScreen(),
+      ),
+      GoRoute(
+        path: Routes.reminders,
+        name: RouteNames.reminders,
+        builder: (_, _) => const ReminderListScreen(),
       ),
 
       // Interaction Timeline — reached from a deal/customer detail's
