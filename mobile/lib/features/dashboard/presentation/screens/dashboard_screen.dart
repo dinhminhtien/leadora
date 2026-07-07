@@ -8,6 +8,7 @@ import '../../../../shared/formatters.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
+import '../../../notification/presentation/providers/notification_providers.dart';
 import '../../../task/presentation/screens/task_list_screen.dart';
 import '../../data/dashboard_models.dart';
 import '../../data/dashboard_repository.dart';
@@ -32,6 +33,7 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
     final summary = ref.watch(dashboardSummaryProvider);
+    final unread = ref.watch(unreadNotificationCountProvider).valueOrNull ?? 0;
 
     return Scaffold(
       body: SafeArea(
@@ -41,7 +43,7 @@ class DashboardScreen extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             children: [
-              _Greeting(name: user?.name ?? 'there'),
+              _Greeting(name: user?.name ?? 'there', unreadCount: unread),
               const SizedBox(height: 16),
               AsyncValueView<DashboardSummary>(
                 value: summary,
@@ -72,8 +74,9 @@ class DashboardScreen extends ConsumerWidget {
 }
 
 class _Greeting extends StatelessWidget {
-  const _Greeting({required this.name});
+  const _Greeting({required this.name, required this.unreadCount});
   final String name;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -97,9 +100,33 @@ class _Greeting extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(width: AppSpacing.sm),
+        _NotificationBell(unreadCount: unreadCount),
         const SizedBox(width: AppSpacing.md),
         AppAvatar(name: name, radius: 24),
       ],
+    );
+  }
+}
+
+/// Bell icon + unread badge, mirroring the web header's notification button
+/// (top-right, next to the avatar). Tapping opens the full-screen list.
+class _NotificationBell extends StatelessWidget {
+  const _NotificationBell({required this.unreadCount});
+  final int unreadCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Badge(
+      isLabelVisible: unreadCount > 0,
+      label: Text(unreadCount > 9 ? '9+' : '$unreadCount'),
+      child: IconButton.filledTonal(
+        style: IconButton.styleFrom(backgroundColor: scheme.surfaceContainerHighest),
+        tooltip: 'Notifications',
+        onPressed: () => context.pushNamed(RouteNames.notifications),
+        icon: const Icon(Icons.notifications_rounded),
+      ),
     );
   }
 }
@@ -224,8 +251,8 @@ class _QuickActions extends StatelessWidget {
       (Icons.person_add_alt_1_rounded, 'New lead', () => context.pushNamed(RouteNames.leadCreate)),
       (Icons.people_alt_rounded, 'Leads', () => context.goNamed(RouteNames.leads)),
       (Icons.checklist_rounded, 'Tasks', () => context.goNamed(RouteNames.tasks)),
-      (Icons.notifications_rounded, 'Alerts', () => context.goNamed(RouteNames.notifications)),
-      (Icons.receipt_long_outlined, 'Quotations', () => context.pushNamed(RouteNames.quotations)),
+      (Icons.notifications_rounded, 'Alerts', () => context.pushNamed(RouteNames.notifications)),
+      (Icons.receipt_long_outlined, 'Quotations', () => context.goNamed(RouteNames.quotations)),
       (Icons.verified_outlined, 'SLA', () => context.pushNamed(RouteNames.sla)),
       (Icons.alarm_outlined, 'Reminders', () => context.pushNamed(RouteNames.reminders)),
     ];
@@ -383,7 +410,7 @@ class _RecentNotifications extends ConsumerWidget {
       children: [
         _SectionHeader(
           title: 'Recent notifications',
-          onSeeAll: () => context.goNamed(RouteNames.notifications),
+          onSeeAll: () => context.pushNamed(RouteNames.notifications),
         ),
         const SizedBox(height: 8),
         async.when(

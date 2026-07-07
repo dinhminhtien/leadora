@@ -13,7 +13,7 @@ class Routes {
   static const String dashboard = '/dashboard';
   static const String leads = '/leads';
   static const String tasks = '/tasks';
-  static const String notifications = '/notifications';
+  static const String quotations = '/quotations';
   static const String profile = '/profile';
 
   // Full-screen routes rendered over the shell (relative sub-paths).
@@ -32,10 +32,21 @@ class Routes {
   static String quotationDetailPath(String id) => '/quotations/$id';
   static String dealDetailPath(String id) => '/deals/$id';
 
-  // Full-screen browse entry points, reached from the Dashboard quick actions.
-  static const String quotations = '/quotations';
+  // Full-screen browse entry points, reached from the Dashboard quick actions
+  // and from the header notification bell.
+  static const String notifications = '/notifications';
   static const String sla = '/sla';
   static const String reminders = '/reminders';
+
+  /// [highlightId], when set, is read back by the target list screen to
+  /// flash + scroll to that row — mirrors the web `?highlight=` param used
+  /// after a notification tap (see `useHighlightRow` on web).
+  static String slaPath({String? highlightId}) =>
+      highlightId == null || highlightId.isEmpty ? sla : '$sla?highlight=$highlightId';
+
+  static String remindersPath({String? highlightId}) => highlightId == null || highlightId.isEmpty
+      ? reminders
+      : '$reminders?highlight=$highlightId';
 
   // Interaction Timeline — reached from a deal/customer detail's
   // "Interactions" section (no dedicated tab).
