@@ -10,9 +10,10 @@ import '../../data/notification_models.dart';
 import '../providers/notification_providers.dart';
 
 /// Maps a notification's `relatedEntity`/`relatedId` to a screen this app can
-/// show. Entities without a mobile screen yet (BOOKING, SLA, HANDOVER,
-/// REMINDER) fall through to `null` — tapping them only marks the
-/// notification read.
+/// show. BOOKING and HANDOVER have no mobile screen yet and fall through to
+/// `null` — tapping them only marks the notification read. SLA/REMINDER route
+/// to their list screens (the `relatedId` is the tracking/reminder row's own
+/// id, which those list screens don't deep-link to individually yet).
 String? _relatedRoute(AppNotification n) {
   final id = n.relatedId;
   if (id == null || id.isEmpty) return null;
@@ -25,6 +26,10 @@ String? _relatedRoute(AppNotification n) {
       return Routes.quotationDetailPath(id);
     case 'DEAL':
       return Routes.dealDetailPath(id);
+    case 'SLA':
+      return Routes.sla;
+    case 'REMINDER':
+      return Routes.reminders;
     default:
       return null;
   }

@@ -12,6 +12,17 @@ class QuotationRepository {
 
   final ApiClient _client;
 
+  /// View Quotation Status (list) — all quotations visible to this caller.
+  /// The backend endpoint is unfiltered/unpaged (`GET /quotations` →
+  /// `findAll()`), so this returns everything in one call.
+  Future<List<Quotation>> getQuotations() {
+    return _client.get<List<Quotation>>(
+      ApiPaths.quotations,
+      decode: (data) =>
+          (data as List).map((e) => Quotation.fromJson(e as Map<String, dynamic>)).toList(),
+    );
+  }
+
   /// UC-14.5 / View Quotation Status — full quotation detail.
   Future<Quotation> getQuotation(String quotationId) {
     return _client.get<Quotation>(

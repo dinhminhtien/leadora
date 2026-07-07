@@ -12,13 +12,18 @@ class NotificationRepository {
   final ApiClient _client;
 
   /// UC-24.24 — list notifications for the authenticated user.
-  Future<List<AppNotification>> getNotifications({bool unreadOnly = false}) {
+  ///
+  /// The backend returns a Spring `Page<NotificationResponse>` (an object with
+  /// a `content` array), not a bare JSON array — [size] is large enough that a
+  /// single page covers the list since this screen has no "load more" yet.
+  Future<List<AppNotification>> getNotifications({bool unreadOnly = false, int size = 50}) {
     return _client.get<List<AppNotification>>(
       ApiPaths.notifications,
-      query: {'unreadOnly': unreadOnly},
-      decode: (data) => (data as List)
-          .map((e) => AppNotification.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      query: {'unreadOnly': unreadOnly, 'size': size},
+      decode: (data) {
+        final list = data is Map && data['content'] is List ? data['content'] as List : data as List;
+        return list.map((e) => AppNotification.fromJson(e as Map<String, dynamic>)).toList();
+      },
     );
   }
 
