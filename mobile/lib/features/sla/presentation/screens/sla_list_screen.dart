@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,10 +8,13 @@ import '../../../../core/routing/routes.dart';
 import '../../../../shared/formatters.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/empty_state.dart';
+import '../../../../shared/widgets/highlight_glow.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared/widgets/status_chip.dart';
 import '../../data/sla_models.dart';
 import '../providers/sla_providers.dart';
+
+const _highlightDuration = Duration(seconds: 4);
 
 /// Maps an SLA entry's `entityType`/`entityId` to a screen this app can show.
 /// BOOKING has no mobile screen yet — tapping those entries does nothing.
@@ -29,8 +34,14 @@ String? _relatedRoute(SlaTrackingEntry e) {
 
 /// UC-17.3 — View SLA on Mobile. Read-only monitoring list; rule
 /// configuration and the performance report stay web-only.
+///
+/// [highlightId], when set (arrives via the notification tap → `?highlight=`
+/// deep-link, see `Routes.slaPath`), flashes and scrolls to the matching
+/// tracking row once the list loads.
 class SlaListScreen extends ConsumerStatefulWidget {
-  const SlaListScreen({super.key});
+  const SlaListScreen({super.key, this.highlightId});
+
+  final String? highlightId;
 
   @override
   ConsumerState<SlaListScreen> createState() => _SlaListScreenState();
@@ -38,6 +49,26 @@ class SlaListScreen extends ConsumerStatefulWidget {
 
 class _SlaListScreenState extends ConsumerState<SlaListScreen> {
   SlaDisplayStatus? _filter;
+  String? _highlightId;
+  Timer? _timer;
+  final Set<String> _scrolledIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _highlightId = widget.highlightId;
+    if (_highlightId != null) {
+      _timer = Timer(_highlightDuration, () {
+        if (mounted) setState(() => _highlightId = null);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -91,7 +122,27 @@ class _SlaListScreenState extends ConsumerState<SlaListScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                   itemCount: items.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) => _SlaCard(entry: items[index]),
+                  itemBuilder: (context, index) {
+                    final entry = items[index];
+                    final highlighted = _highlightId != null && entry.trackingId == _highlightId;
+                    return Builder(
+                      builder: (itemContext) {
+                        if (highlighted && _scrolledIds.add(entry.trackingId)) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (itemContext.mounted) {
+                              Scrollable.ensureVisible(
+                                itemContext,
+                                alignment: 0.3,
+                                duration: const Duration(milliseconds: 400),
+                                curve: Curves.easeOut,
+                              );
+                            }
+                          });
+                        }
+                        return _SlaCard(entry: entry, highlighted: highlighted);
+                      },
+                    );
+                  },
                 ),
               ),
             ),
@@ -103,9 +154,10 @@ class _SlaListScreenState extends ConsumerState<SlaListScreen> {
 }
 
 class _SlaCard extends StatelessWidget {
-  const _SlaCard({required this.entry});
+  const _SlaCard({required this.entry, this.highlighted = false});
 
   final SlaTrackingEntry entry;
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
@@ -118,51 +170,54 @@ class _SlaCard extends StatelessWidget {
             ? '${-hours}h overdue'
             : '${hours}h left';
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: route == null ? null : () => context.push(route),
-      child: SectionCard(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Icon(entry.icon, size: 22, color: theme.colorScheme.primary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return HighlightGlow(
+      highlighted: highlighted,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: route == null ? null : () => context.push(route),
+        child: SectionCard(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Icon(entry.icon, size: 22, color: theme.colorScheme.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${Formatters.humanizeEnum(entry.activityType)} · ${Formatters.humanizeEnum(entry.entityType)}',
+                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Deadline ${Formatters.dateTime(entry.deadlineAt)}',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    '${Formatters.humanizeEnum(entry.activityType)} · ${Formatters.humanizeEnum(entry.entityType)}',
-                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  StatusChip(
+                    tone: entry.displayStatus.tone,
+                    rawStatus: entry.displayStatus.wire,
+                    dense: true,
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 6),
                   Text(
-                    'Deadline ${Formatters.dateTime(entry.deadlineAt)}',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    hoursLabel,
+                    style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                StatusChip(
-                  tone: entry.displayStatus.tone,
-                  rawStatus: entry.displayStatus.wire,
-                  dense: true,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  hoursLabel,
-                  style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

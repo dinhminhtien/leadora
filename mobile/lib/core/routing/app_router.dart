@@ -32,7 +32,7 @@ final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 final _shellHomeKey = GlobalKey<NavigatorState>(debugLabel: 'shell-home');
 final _shellLeadsKey = GlobalKey<NavigatorState>(debugLabel: 'shell-leads');
 final _shellTasksKey = GlobalKey<NavigatorState>(debugLabel: 'shell-tasks');
-final _shellNotifsKey = GlobalKey<NavigatorState>(debugLabel: 'shell-notifs');
+final _shellQuotationsKey = GlobalKey<NavigatorState>(debugLabel: 'shell-quotations');
 final _shellProfileKey = GlobalKey<NavigatorState>(debugLabel: 'shell-profile');
 
 /// The app router. Depends on [appSessionProvider] so the redirect guard and
@@ -85,21 +85,24 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => DealDetailScreen(dealId: state.pathParameters['id']!),
       ),
 
-      // Browse entry points — reached from the Dashboard quick actions.
+      // Browse entry points — reached from the Dashboard quick actions and
+      // (notifications) the header bell.
       GoRoute(
-        path: Routes.quotations,
-        name: RouteNames.quotations,
-        builder: (_, _) => const QuotationListScreen(),
+        path: Routes.notifications,
+        name: RouteNames.notifications,
+        builder: (_, _) => const NotificationListScreen(),
       ),
       GoRoute(
         path: Routes.sla,
         name: RouteNames.sla,
-        builder: (_, _) => const SlaListScreen(),
+        builder: (_, state) =>
+            SlaListScreen(highlightId: state.uri.queryParameters['highlight']),
       ),
       GoRoute(
         path: Routes.reminders,
         name: RouteNames.reminders,
-        builder: (_, _) => const ReminderListScreen(),
+        builder: (_, state) =>
+            ReminderListScreen(highlightId: state.uri.queryParameters['highlight']),
       ),
 
       // Interaction Timeline — reached from a deal/customer detail's
@@ -186,14 +189,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // Tab 4 — Notifications.
+          // Tab 4 — Quotations.
           StatefulShellBranch(
-            navigatorKey: _shellNotifsKey,
+            navigatorKey: _shellQuotationsKey,
             routes: [
               GoRoute(
-                path: Routes.notifications,
-                name: RouteNames.notifications,
-                builder: (_, _) => const NotificationListScreen(),
+                path: Routes.quotations,
+                name: RouteNames.quotations,
+                builder: (_, _) => const QuotationListScreen(),
               ),
             ],
           ),
