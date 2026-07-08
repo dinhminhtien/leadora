@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Search, User, CheckCircle2, XCircle, Info, Calendar, DollarSign, ArrowRight, Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import { Search, User, CheckCircle2, XCircle, Info, Calendar, Banknote, ArrowRight, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -170,7 +170,7 @@ export function ReservationStatusScreen() {
 
       {error && (
         <div className="flex items-center gap-2 p-4 text-sm text-red-800 bg-red-50 rounded-xl border border-red-100">
-          <AlertCircle className="size-4 text-red-600 flex-shrink-0" />
+          <AlertCircle className="size-4 text-red-600 shrink-0" />
           <span>{error}</span>
         </div>
       )}
@@ -245,13 +245,13 @@ export function ReservationStatusScreen() {
           <Table className="w-full table-fixed min-w-[1200px]">
             <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
               <TableRow hoverable={false}>
-                <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[18%] !text-left whitespace-nowrap">Guest Name</TableHead>
-                <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Reservation Ref</TableHead>
-                <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[13%] !text-left whitespace-nowrap">Room Type</TableHead>
-                <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[17%] !text-center whitespace-nowrap">Check-in / Check-out</TableHead>
-                <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[10%] !text-center whitespace-nowrap">Total Amount</TableHead>
-                <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Occupancy Status</TableHead>
-                <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[20%] !text-center whitespace-nowrap">Actions</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[18%] text-left! whitespace-nowrap">Guest Name</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[11%] text-center! whitespace-nowrap">Reservation Ref</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[13%] text-left! whitespace-nowrap">Room Type</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[17%] text-center! whitespace-nowrap">Check-in / Check-out</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[10%] text-center! whitespace-nowrap">Total Amount</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[11%] text-center! whitespace-nowrap">Occupancy Status</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[20%] text-center! whitespace-nowrap">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -267,15 +267,15 @@ export function ReservationStatusScreen() {
               ) : reservations.length > 0 ? (
                 reservations.map((res) => (
                   <TableRow key={res.id} className="hover:bg-slate-50/70 border-b border-slate-100 transition">
-                    <TableCell className="!py-3 !px-4 !text-xs !font-bold !text-slate-800 !text-left whitespace-nowrap">
+                    <TableCell className="py-3! px-4! text-xs! font-bold! text-slate-800! text-left! whitespace-nowrap">
                       <span className="flex items-center gap-1.5">
                         <User className="size-3.5 text-slate-400" />
                         {res.guestName}
                       </span>
                     </TableCell>
-                    <TableCell className="!py-3 !px-4 !text-xs !font-bold !text-slate-700 !text-center whitespace-nowrap">{res.reservationNo}</TableCell>
-                    <TableCell className="!py-3 !px-4 !text-xs !text-slate-600 !text-left whitespace-nowrap">{res.roomType}</TableCell>
-                    <TableCell className="!py-3 !px-4 !text-xs !text-slate-500 !text-center whitespace-nowrap">
+                    <TableCell className="py-3! px-4! text-xs! font-bold! text-slate-700! text-center! whitespace-nowrap">{res.reservationNo}</TableCell>
+                    <TableCell className="py-3! px-4! text-xs! text-slate-600! text-left! whitespace-nowrap">{res.roomType}</TableCell>
+                    <TableCell className="py-3! px-4! text-xs! text-slate-500! text-center! whitespace-nowrap">
                       <span className="flex items-center justify-center gap-1">
                         <Calendar className="size-3 text-slate-400" />
                         {res.checkInDate}
@@ -283,10 +283,10 @@ export function ReservationStatusScreen() {
                         {res.checkOutDate}
                       </span>
                     </TableCell>
-                    <TableCell className="!py-3 !px-4 !text-xs !font-bold !text-slate-700 !text-center whitespace-nowrap">
-                      ${res.totalAmount?.toLocaleString()}
+                    <TableCell className="py-3! px-4! text-xs! font-bold! text-slate-700! text-center! whitespace-nowrap">
+                      {res.totalAmount?.toLocaleString("vi-VN")} ₫
                     </TableCell>
-                    <TableCell className="!py-3 !px-4 !text-center whitespace-nowrap">
+                    <TableCell className="py-3! px-4! text-center! whitespace-nowrap">
                       <div className="flex justify-center">
                         <Badge
                           variant={
@@ -307,7 +307,7 @@ export function ReservationStatusScreen() {
                         </Badge>
                       </div>
                     </TableCell>
-                    <TableCell className="!py-3 !px-4 !text-center whitespace-nowrap">
+                    <TableCell className="py-3! px-4! text-center! whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1.5">
                       <Button
                         variant="outline"
@@ -447,9 +447,9 @@ export function ReservationStatusScreen() {
                     </div>
                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
                       <div className="text-slate-400 mb-1">Total Amount</div>
-                      <div className="font-bold text-slate-800 text-sm flex items-center text-blue-600">
-                        <DollarSign className="size-3 text-blue-500" />
-                        {detailData.totalAmount?.toLocaleString()}
+                      <div className="font-bold text-blue-600 text-sm flex items-center">
+                        <Banknote className="size-3 text-blue-500 mr-1" />
+                        {detailData.totalAmount?.toLocaleString("vi-VN")} ₫
                       </div>
                     </div>
                   </div>
@@ -510,7 +510,7 @@ export function ReservationStatusScreen() {
                                 <td className="p-3 font-mono text-slate-600">{det.roomNumber || "Unassigned"}</td>
                                 <td className="p-3 text-slate-500">{det.quantity}</td>
                                 <td className="p-3 text-slate-500">{det.nights}</td>
-                                <td className="p-3 text-slate-600">${det.unitPrice?.toLocaleString()}</td>
+                                <td className="p-3 text-slate-600">{det.unitPrice?.toLocaleString("vi-VN")} ₫</td>
                                 <td className="p-3">
                                   <Badge
                                     variant={

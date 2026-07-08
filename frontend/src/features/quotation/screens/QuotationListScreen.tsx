@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
@@ -345,7 +345,7 @@ export function QuotationListScreen() {
                   <TableCell className="py-3 px-4 text-xs font-bold text-slate-700">{q.contactName}</TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-600 font-semibold">{q.dealName}</TableCell>
                   <TableCell className="py-3 px-4 text-xs font-black text-slate-800">
-                    ${q.amount.toLocaleString('en-US')}
+                    {q.amount.toLocaleString('vi-VN')} ₫
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-500 font-semibold">
                     <span className="flex items-center gap-1">

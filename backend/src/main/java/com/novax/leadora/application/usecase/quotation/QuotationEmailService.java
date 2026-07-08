@@ -109,7 +109,7 @@ public class QuotationEmailService {
 
     private String formatCurrency(BigDecimal amount) {
         if (amount == null) return "—";
-        return "$" + NumberFormat.getNumberInstance(Locale.US).format(amount);
+        return NumberFormat.getNumberInstance(Locale.of("vi", "VN")).format(amount) + " ₫";
     }
 
     private String escapeHtml(String text) {

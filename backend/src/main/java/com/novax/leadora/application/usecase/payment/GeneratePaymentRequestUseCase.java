@@ -58,9 +58,8 @@ public class GeneratePaymentRequestUseCase {
         // Save first to get the payment ID for VietQR addInfo note
         PaymentEntity saved = paymentRepository.save(payment);
 
-        double rate = fetchUsdVndRate();
-        long amountInVnd = Math.round(request.getAmount().doubleValue() * rate);
-        log.info("Converting USD amount {} to VND amount {} using rate {}", request.getAmount(), amountInVnd, rate);
+        long amountInVnd = Math.round(request.getAmount().doubleValue());
+        log.info("Generating VietQR link for payment {} with amount {} VND", saved.getPaymentId(), amountInVnd);
 
         // Generate dynamic VietQR link pointing directly to our MB Bank account
         String qrCodeUrl = "https://img.vietqr.io/image/MB-" + bankAccountNumber 
@@ -81,25 +80,5 @@ public class GeneratePaymentRequestUseCase {
                 actor != null ? actor.getUserId() : null);
 
         return PaymentResponse.from(updated);
-    }
-
-    @SuppressWarnings("unchecked")
-    private double fetchUsdVndRate() {
-        try {
-            org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
-            java.util.Map<String, Object> response = restTemplate.getForObject("https://open.er-api.com/v6/latest/USD",
-                    java.util.Map.class);
-            if (response != null && "success".equals(response.get("result"))) {
-                java.util.Map<String, Object> rates = (java.util.Map<String, Object>) response.get("rates");
-                if (rates != null && rates.containsKey("VND")) {
-                    Number vndRate = (Number) rates.get("VND");
-                    log.info("Fetched real-time USD to VND exchange rate: {}", vndRate);
-                    return vndRate.doubleValue();
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to fetch real-time exchange rate: {}. Falling back to default 25400.0", e.getMessage());
-        }
-        return 25400.0;
     }
 }

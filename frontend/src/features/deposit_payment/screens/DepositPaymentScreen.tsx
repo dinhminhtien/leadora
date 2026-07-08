@@ -15,10 +15,10 @@ import {
   AlertTriangle,
   Copy,
   ExternalLink,
-  DollarSign,
   Calendar,
   FileText,
-  Download
+  Download,
+  Banknote
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -106,26 +106,6 @@ export function DepositPaymentScreen() {
 
   const watchPaymentMethod = watch("paymentMethod", "TRANSFER");
   const watchAmount = watch("amount", 0);
-
-  const [exchangeRate, setExchangeRate] = useState<number>(25400); // Live conversion rate
-
-  // Fetch real-time exchange rate on mount
-  useEffect(() => {
-    const fetchRate = async () => {
-      try {
-        const response = await fetch("https://open.er-api.com/v6/latest/USD");
-        const data = await response.json();
-        if (data && data.result === "success" && data.rates && data.rates.VND) {
-          const rate = data.rates.VND;
-          setExchangeRate(rate);
-          console.log("Fetched real-time USD to VND exchange rate: ", rate);
-        }
-      } catch (err) {
-        console.warn("Failed to fetch real-time exchange rate. Using fallback 25400", err);
-      }
-    };
-    fetchRate();
-  }, []);
 
   // Fetch payments list
   const loadPayments = useCallback(async () => {
@@ -456,12 +436,12 @@ export function DepositPaymentScreen() {
                 <Table className="w-full table-fixed min-w-[1100px]">
                   <TableHeader className="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-100 dark:border-zinc-850">
                     <TableRow hoverable={false}>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[15%] !text-left whitespace-nowrap">Booking Reference</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[25%] !text-left whitespace-nowrap">Guest Name</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[20%] !text-left whitespace-nowrap">Payment Type</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[13%] !text-center whitespace-nowrap">Due Date</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[12%] !text-center whitespace-nowrap">Gateway Status</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[15%] !text-right whitespace-nowrap">Amount Paid</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-left! whitespace-nowrap">Booking Reference</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[25%] text-left! whitespace-nowrap">Guest Name</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[20%] text-left! whitespace-nowrap">Payment Type</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[13%] text-center! whitespace-nowrap">Due Date</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[12%] text-center! whitespace-nowrap">Gateway Status</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-right! whitespace-nowrap">Amount Paid</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -472,33 +452,28 @@ export function DepositPaymentScreen() {
                           onClick={() => handleViewDetails(p.paymentId)}
                           className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 border-b border-slate-100 dark:border-zinc-800 transition cursor-pointer select-none"
                         >
-                          <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-700 dark:!text-zinc-300 !text-left whitespace-nowrap">
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
                             <span className="flex items-center gap-1.5 text-primary">
                               <CreditCard className="size-3.5 text-slate-400 dark:text-zinc-550 shrink-0" />
                               {p.bookingCode || "N/A"}
                             </span>
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-800 dark:!text-zinc-200 !text-left whitespace-nowrap truncate max-w-[150px]" title={p.customerName || "N/A"}>
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-[150px]" title={p.customerName || "N/A"}>
                             {p.customerName || "N/A"}
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-600 dark:!text-zinc-400 !text-left whitespace-nowrap truncate">
+                          <TableCell className="py-3.5! px-4! text-xs! text-slate-600! dark:text-zinc-400! text-left! whitespace-nowrap truncate">
                             {p.paymentType === "DEPOSIT" ? "Deposit Hold" : "Full Bill Settlement"}
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-500 dark:!text-zinc-400 !text-center whitespace-nowrap">
+                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">
                             {p.dueDate || "N/A"}
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-center whitespace-nowrap">
+                          <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
                             <div className="flex justify-center">
                               {getStatusBadge(p.status)}
                             </div>
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-700 dark:!text-zinc-300 !text-right whitespace-nowrap">
-                            <div>${p.amount?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-                            {p.paymentMethod === "TRANSFER" && (
-                              <div className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold mt-0.5">
-                                {Math.round(p.amount * exchangeRate).toLocaleString('vi-VN')} ₫
-                              </div>
-                            )}
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-right! whitespace-nowrap">
+                            <div>{p.amount?.toLocaleString('vi-VN')} ₫</div>
                           </TableCell>
                         </TableRow>
                       ))
@@ -582,12 +557,12 @@ export function DepositPaymentScreen() {
                 <Table className="w-full table-fixed min-w-[1100px]">
                   <TableHeader className="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-100 dark:border-zinc-850">
                     <TableRow hoverable={false}>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[15%] !text-left whitespace-nowrap">Booking Reference</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[30%] !text-left whitespace-nowrap">Customer Name</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[15%] !text-center whitespace-nowrap">Check In</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[15%] !text-center whitespace-nowrap">Check Out</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[10%] !text-center whitespace-nowrap">Booking Status</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[15%] !text-right whitespace-nowrap">Total Invoice</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-left! whitespace-nowrap">Booking Reference</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[30%] text-left! whitespace-nowrap">Customer Name</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-center! whitespace-nowrap">Check In</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-center! whitespace-nowrap">Check Out</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[10%] text-center! whitespace-nowrap">Booking Status</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-right! whitespace-nowrap">Total Invoice</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -598,23 +573,23 @@ export function DepositPaymentScreen() {
                           onClick={() => setSelectedBookingForDetails(b)}
                           className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 border-b border-slate-100 dark:border-zinc-800 transition cursor-pointer select-none"
                         >
-                          <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-700 dark:!text-zinc-300 !text-left whitespace-nowrap">
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
                             {b.bookingCode}
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-800 dark:!text-zinc-200 !text-left whitespace-nowrap truncate max-w-[150px]" title={b.customerName}>
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-[150px]" title={b.customerName}>
                             {b.customerName}
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-500 dark:!text-zinc-400 !text-center whitespace-nowrap">{b.checkInDate}</TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-500 dark:!text-zinc-400 !text-center whitespace-nowrap">{b.checkOutDate}</TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-center whitespace-nowrap">
+                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkInDate}</TableCell>
+                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkOutDate}</TableCell>
+                          <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
                             <div className="flex justify-center">
                               <Badge variant="success" className="bg-emerald-55 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-450 dark:border-emerald-900 font-bold uppercase text-[9px] py-1 min-w-[90px] justify-center text-center">
                                 {b.status}
                               </Badge>
                             </div>
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-700 dark:!text-zinc-300 !text-right whitespace-nowrap">
-                            ${b.totalAmount?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-right! whitespace-nowrap">
+                            {b.totalAmount?.toLocaleString('vi-VN')} ₫
                           </TableCell>
                         </TableRow>
                       ))
@@ -714,31 +689,26 @@ export function DepositPaymentScreen() {
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
-                  Amount Request (USD)
+                  Amount Request (VND)
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 font-bold">
-                    $
+                    ₫
                   </span>
                   <input
                     type="number"
-                    step="0.01"
-                    placeholder="Enter amount in USD..."
+                    placeholder="Enter amount in VND..."
                     {...register("amount", { valueAsNumber: true })}
                     className="w-full pl-7 pr-3 py-2 border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 transition font-bold"
                   />
                 </div>
-                {watchPaymentMethod === "TRANSFER" ? (
+                {watchPaymentMethod === "CASH" ? (
                   <p className="text-[10px] text-slate-450 dark:text-zinc-400 mt-1 italic font-medium">
-                    Note: For VietQR (SePay), this will be processed as{" "}
-                    <strong className="text-blue-600 dark:text-blue-400 font-bold">
-                      {Math.round((watchAmount || 0) * exchangeRate).toLocaleString("vi-VN")} ₫
-                    </strong>{" "}
-                    (using live rate: {exchangeRate.toLocaleString("vi-VN")} ₫/$).
+                    Note: Manual cash collection logged via system.
                   </p>
                 ) : (
                   <p className="text-[10px] text-slate-455 dark:text-zinc-400 mt-1 italic font-medium">
-                    Note: Standard invoicing currency.
+                    Note: Direct transfer via VietQR dynamic gateway.
                   </p>
                 )}
                 {errors.amount && (
@@ -863,18 +833,13 @@ export function DepositPaymentScreen() {
               {/* Amount block */}
               <div className="bg-slate-50 dark:bg-zinc-800/40 border border-slate-100 dark:border-zinc-800 rounded-lg p-3 flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                  <DollarSign className="size-5 text-slate-400 dark:text-zinc-500 shrink-0" />
+                  <Banknote className="size-5 text-slate-400 dark:text-zinc-500 shrink-0" />
                   <span className="text-xs font-bold text-slate-600 dark:text-zinc-400">Total Requested Amount</span>
                 </div>
                 <div className="text-right">
                   <span className="text-lg font-black text-slate-900 dark:text-zinc-100 block">
-                    ${selectedPayment.amount?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    {selectedPayment.amount?.toLocaleString('vi-VN')} ₫
                   </span>
-                  {selectedPayment.paymentMethod === "TRANSFER" && (
-                    <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 block mt-0.5">
-                      Equivalent to: {Math.round(selectedPayment.amount * exchangeRate).toLocaleString('vi-VN')} ₫
-                    </span>
-                  )}
                 </div>
               </div>
 
@@ -956,7 +921,7 @@ export function DepositPaymentScreen() {
                       <div>
                         <p className="font-bold">Cash Payment Instruction</p>
                         <p className="text-slate-650 dark:text-zinc-400 mt-0.5 text-[11px]">
-                          Please collect the cash amount of <strong>${selectedPayment.amount?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong> directly from the guest at the front desk.
+                          Please collect the cash amount of <strong>{selectedPayment.amount?.toLocaleString('vi-VN')} ₫</strong> directly from the guest at the front desk.
                           After receiving, click <strong>Manual Confirm PAID</strong> below to settle this request.
                         </p>
                       </div>
@@ -1123,7 +1088,7 @@ export function DepositPaymentScreen() {
                 </div>
                 <div className="col-span-2 border-t border-slate-100 dark:border-zinc-800 pt-3">
                   <span className="text-slate-400 dark:text-zinc-500 block mb-0.5">Total Amount</span>
-                  <span className="font-extrabold text-slate-800 dark:text-zinc-200 text-base">${selectedBookingForDetails.totalAmount?.toLocaleString()}</span>
+                  <span className="font-extrabold text-slate-800 dark:text-zinc-200 text-base">{selectedBookingForDetails.totalAmount?.toLocaleString('vi-VN')} ₫</span>
                 </div>
               </div>
             </div>
