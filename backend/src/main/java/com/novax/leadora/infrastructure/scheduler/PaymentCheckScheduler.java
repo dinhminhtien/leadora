@@ -76,8 +76,6 @@ public class PaymentCheckScheduler {
             return;
         }
 
-        double exchangeRate = fetchUsdVndRate();
-
         for (BankTransaction txn : transactions) {
             String desc = txn.getDescription();
             if (desc == null) continue;
@@ -118,7 +116,7 @@ public class PaymentCheckScheduler {
             }
 
             // 3. Amount Check
-            long expectedAmountVnd = Math.round(payment.getAmount().doubleValue() * exchangeRate);
+            long expectedAmountVnd = Math.round(payment.getAmount().doubleValue());
             long actualAmountVnd = Math.round(txn.getCreditAmount());
 
             if (expectedAmountVnd != actualAmountVnd) {
@@ -206,24 +204,6 @@ public class PaymentCheckScheduler {
             log.error("Failed to fetch transaction logs from " + apiProvider + " API gateway", e);
         }
         return results;
-    }
-
-    @SuppressWarnings("unchecked")
-    private double fetchUsdVndRate() {
-        try {
-            java.util.Map<String, Object> response = restTemplate.getForObject("https://open.er-api.com/v6/latest/USD",
-                    java.util.Map.class);
-            if (response != null && "success".equals(response.get("result"))) {
-                java.util.Map<String, Object> rates = (java.util.Map<String, Object>) response.get("rates");
-                if (rates != null && rates.containsKey("VND")) {
-                    Number vndRate = (Number) rates.get("VND");
-                    return vndRate.doubleValue();
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to fetch real-time exchange rate: {}. Falling back to default 25400.0", e.getMessage());
-        }
-        return 25400.0;
     }
 
     @Getter

@@ -27,7 +27,7 @@ const handoverSchema = z.object({
 }).refine(
   (data) => {
     if (data.status === "SUBMITTED") {
-      return !!data.assignedFoUserId && data.assignedFoUserId.trim().length > 0;
+      return data.assignedFoUserId && data.assignedFoUserId.trim().length > 0;
     }
     return true;
   },
@@ -156,7 +156,7 @@ export function OperationalHandoverScreen() {
         );
 
         const filtered = (res.data.content || []).filter(
-          b => !existingBookingIds.has(b.bookingId)
+          b => existingBookingIds.has!(b.bookingId)
         );
 
         setBookings(filtered);
@@ -346,12 +346,12 @@ export function OperationalHandoverScreen() {
                 <Table className="w-full table-fixed min-w-[1100px]">
                   <TableHeader className="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-100 dark:border-zinc-850">
                     <TableRow hoverable={false}>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[12%] !text-left whitespace-nowrap">Booking Code</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[20%] !text-left whitespace-nowrap">Customer / Guest</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[20%] !text-center whitespace-nowrap">Check-In / Out Date</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[24%] !text-left whitespace-nowrap">Room Allocations</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[12%] !text-center whitespace-nowrap">Handover Status</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[12%] !text-center whitespace-nowrap">FO Readiness</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[12%] text-left! whitespace-nowrap">Booking Code</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[20%] text-left! whitespace-nowrap">Customer / Guest</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[20%] text-center! whitespace-nowrap">Check-In / Out Date</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[24%] text-left! whitespace-nowrap">Room Allocations</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[12%] text-center! whitespace-nowrap">Handover Status</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[12%] text-center! whitespace-nowrap">FO Readiness</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -362,24 +362,24 @@ export function OperationalHandoverScreen() {
                           onClick={() => setSelectedHandover(h)}
                           className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 border-b border-slate-100 dark:border-zinc-800 transition cursor-pointer select-none"
                         >
-                          <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-700 dark:!text-zinc-300 !text-left whitespace-nowrap">
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
                             {h.bookingCode}
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-800 dark:!text-zinc-200 !text-left whitespace-nowrap truncate max-w-[180px]" title={h.customerName}>
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-[180px]" title={h.customerName}>
                             {h.customerName}
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-500 dark:!text-zinc-400 !text-center whitespace-nowrap">
+                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">
                             {h.checkInDate} / {h.checkOutDate}
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-650 dark:!text-zinc-400 !text-left whitespace-nowrap truncate max-w-[220px]" title={h.roomSummary || ""}>
+                          <TableCell className="py-3.5! px-4! text-xs! text-slate-650! dark:text-zinc-400! text-left! whitespace-nowrap truncate max-w-[220px]" title={h.roomSummary || ""}>
                             {h.roomSummary || "—"}
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-center whitespace-nowrap">
+                          <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
                             <div className="flex justify-center">
                               {getStatusBadge(h.status)}
                             </div>
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-center whitespace-nowrap">
+                          <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
                             <div className="flex flex-col items-center justify-center gap-1">
                               {getReadinessBadge(h.readinessStatus)}
                               {h.readinessStatus === "NEED_CLARIFICATION" && h.clarificationNote && (
@@ -470,11 +470,11 @@ export function OperationalHandoverScreen() {
                 <Table className="w-full table-fixed min-w-[1000px]">
                   <TableHeader className="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-100 dark:border-zinc-850">
                     <TableRow hoverable={false}>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[15%] !text-left whitespace-nowrap">Booking Code</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[30%] !text-left whitespace-nowrap">Customer / Guest</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[25%] !text-center whitespace-nowrap">Check-In / Out Date</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[13%] !text-right whitespace-nowrap">Total Amount</TableHead>
-                      <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 dark:!text-zinc-400 w-[17%] !text-center whitespace-nowrap">Status</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-left! whitespace-nowrap">Booking Code</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[30%] text-left! whitespace-nowrap">Customer / Guest</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[25%] text-center! whitespace-nowrap">Check-In / Out Date</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[13%] text-right! whitespace-nowrap">Total Amount</TableHead>
+                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[17%] text-center! whitespace-nowrap">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -485,19 +485,19 @@ export function OperationalHandoverScreen() {
                           onClick={() => setSelectedBooking(b)}
                           className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 border-b border-slate-100 dark:border-zinc-800 transition cursor-pointer select-none"
                         >
-                          <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-700 dark:!text-zinc-300 !text-left whitespace-nowrap">
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
                             {b.bookingCode}
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-800 dark:!text-zinc-200 !text-left whitespace-nowrap truncate max-w-[200px]" title={b.customerName}>
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-[200px]" title={b.customerName}>
                             {b.customerName}
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-500 dark:!text-zinc-400 !text-center whitespace-nowrap">
+                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">
                             {b.checkInDate} / {b.checkOutDate}
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-700 dark:!text-zinc-300 !text-right whitespace-nowrap">
-                            ${b.totalAmount?.toLocaleString()}
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-right! whitespace-nowrap">
+                            {b.totalAmount?.toLocaleString("vi-VN")} ₫
                           </TableCell>
-                          <TableCell className="!py-3.5 !px-4 !text-center whitespace-nowrap">
+                          <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
                             <div className="flex justify-center">
                               <Badge variant="success" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900 font-bold py-1">CONFIRMED</Badge>
                             </div>
@@ -628,7 +628,7 @@ export function OperationalHandoverScreen() {
 
               {/* Front Office Staff Assignment */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider flex items-center gap-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider flex items-center gap-1">
                   Assigned FO Staff
                   {formStatus === "SUBMITTED" ? (
                     <span className="text-[10px] text-red-500 font-bold">*</span>
@@ -639,7 +639,7 @@ export function OperationalHandoverScreen() {
                 <select
                   {...register("assignedFoUserId")}
                   className={`w-full p-2.5 text-xs rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-850 dark:text-zinc-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-zinc-900 transition ${
-                    !assignedFoUserVal ? "text-slate-450 opacity-60 dark:text-zinc-500" : "text-slate-800 dark:text-zinc-100 font-medium"
+                    assignedFoUserVal! ? "text-slate-450 opacity-60 dark:text-zinc-500" : "text-slate-800 dark:text-zinc-100 font-medium"
                   }`}
                 >
                   <option value="" className="text-slate-400 opacity-65">Select FO staff</option>
@@ -951,7 +951,7 @@ export function OperationalHandoverScreen() {
                 </div>
                 <div className="text-xs col-span-2 border-t border-slate-50 dark:border-zinc-800 pt-3">
                   <span className="text-slate-400 dark:text-zinc-500 block mb-0.5">Total Amount</span>
-                  <span className="font-extrabold text-slate-800 dark:text-zinc-200 text-base">${selectedBooking.totalAmount?.toLocaleString()}</span>
+                  <span className="font-extrabold text-slate-800 dark:text-zinc-200 text-base">{selectedBooking.totalAmount?.toLocaleString("vi-VN")} ₫</span>
                 </div>
               </div>
             </div>

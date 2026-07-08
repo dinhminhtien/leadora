@@ -271,7 +271,7 @@ export function CreateQuotationScreen() {
               </CardHeader>
               <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <FieldLabel required>Price Per Night / Unit (USD)</FieldLabel>
+                  <FieldLabel required>Price Per Night / Unit (VND)</FieldLabel>
                   <Input
                     {...register("pricePerNight")}
                     type="number"
@@ -362,23 +362,23 @@ export function CreateQuotationScreen() {
                   <div className="flex justify-between text-slate-500">
                     <span>Rate/Night</span>
                     <span className="font-semibold text-slate-700">
-                      ${(pricePerNight || 0).toLocaleString("en-US")}
+                      {(pricePerNight || 0).toLocaleString("vi-VN")} ₫
                     </span>
                   </div>
                   <div className="border-t border-slate-100 pt-2 flex justify-between text-slate-600">
                     <span>Subtotal</span>
-                    <span className="font-bold">${pricing.subtotal.toLocaleString("en-US")}</span>
+                    <span className="font-bold">{pricing.subtotal.toLocaleString("vi-VN")} ₫</span>
                   </div>
                   {pricing.discountAmount > 0 && (
                     <div className="flex justify-between text-amber-600">
                       <span>Discount ({discountPercent || 0}%)</span>
-                      <span className="font-bold">-${pricing.discountAmount.toLocaleString("en-US")}</span>
+                      <span className="font-bold">-{pricing.discountAmount.toLocaleString("vi-VN")} ₫</span>
                     </div>
                   )}
                   <div className="border-t border-slate-200 pt-2 flex justify-between text-slate-800">
                     <span className="font-bold text-sm">Total</span>
                     <span className="font-black text-sm text-blue-700">
-                      ${pricing.total.toLocaleString("en-US")}
+                      {pricing.total.toLocaleString("vi-VN")} ₫
                     </span>
                   </div>
                 </div>
