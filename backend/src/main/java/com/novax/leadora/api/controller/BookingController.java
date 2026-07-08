@@ -25,7 +25,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/bookings")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+@PreAuthorize("hasAnyRole('SALES','RESERVATION','MANAGER','ADMIN')")
 public class BookingController {
 
     private final CheckRoomAvailabilityUseCase checkRoomAvailabilityUseCase;
