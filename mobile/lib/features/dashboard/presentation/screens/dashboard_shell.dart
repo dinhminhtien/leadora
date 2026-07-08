@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-import '../../../notification/presentation/providers/notification_providers.dart';
 
 /// Tabbed shell for the authenticated area. Hosts a [StatefulNavigationShell]
 /// (from go_router's [StatefulShellRoute.indexedStack]) so each tab keeps its
 /// own navigation stack and scroll position across tab switches.
-class DashboardShell extends ConsumerWidget {
+class DashboardShell extends StatelessWidget {
   const DashboardShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
@@ -21,9 +18,7 @@ class DashboardShell extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final unread = ref.watch(unreadNotificationCountProvider).valueOrNull ?? 0;
-
+  Widget build(BuildContext context) {
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: NavigationBar(
@@ -45,18 +40,10 @@ class DashboardShell extends ConsumerWidget {
             selectedIcon: Icon(Icons.checklist_rounded),
             label: 'Tasks',
           ),
-          NavigationDestination(
-            icon: Badge(
-              isLabelVisible: unread > 0,
-              label: Text('$unread'),
-              child: const Icon(Icons.notifications_outlined),
-            ),
-            selectedIcon: Badge(
-              isLabelVisible: unread > 0,
-              label: Text('$unread'),
-              child: const Icon(Icons.notifications_rounded),
-            ),
-            label: 'Alerts',
+          const NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long_rounded),
+            label: 'Quotations',
           ),
           const NavigationDestination(
             icon: Icon(Icons.person_outline_rounded),

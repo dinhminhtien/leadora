@@ -177,7 +177,7 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
             <div>
               <h2 className="text-sm font-bold text-slate-800">Convert to Booking</h2>
               <p className="text-[10px] text-slate-400 mt-0.5">
-                {quote.quoteNo} · {quote.contactName} · ${quote.amount.toLocaleString("en-US")}
+                {quote.quoteNo} · {quote.contactName} · {quote.amount.toLocaleString("vi-VN")} ₫
               </p>
             </div>
           </div>
@@ -355,7 +355,7 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
                   <DollarSign className="size-3 shrink-0" />
                   <span>Amount</span>
                 </div>
-                <span className="font-black text-emerald-700">${quote.amount.toLocaleString("en-US")}</span>
+                <span className="font-black text-emerald-700">{quote.amount.toLocaleString("vi-VN")} ₫</span>
 
                 <div className="flex items-center gap-1.5 text-slate-500">
                   <CheckCircle2 className="size-3 shrink-0" />

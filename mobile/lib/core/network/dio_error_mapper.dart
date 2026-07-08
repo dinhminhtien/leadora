@@ -96,6 +96,7 @@ class DioErrorMapper {
         return ApiException(
           message: message ?? 'Request failed ($status).',
           errorCode: code,
+          details: parsed.details,
           debugDetail: detail,
           statusCode: status,
         );

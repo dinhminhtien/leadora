@@ -7,12 +7,19 @@ import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/reset_password_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_shell.dart';
+import '../../features/deal/presentation/screens/deal_detail_screen.dart';
+import '../../features/interaction/presentation/screens/interaction_timeline_screen.dart';
+import '../../features/interaction/presentation/screens/log_interaction_screen.dart';
 import '../../features/lead/presentation/screens/create_lead_screen.dart';
 import '../../features/lead/presentation/screens/lead_detail_screen.dart';
 import '../../features/lead/presentation/screens/lead_list_screen.dart';
 import '../../features/notification/presentation/screens/notification_list_screen.dart';
 import '../../features/profile/presentation/screens/change_password_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
+import '../../features/quotation/presentation/screens/quotation_detail_screen.dart';
+import '../../features/quotation/presentation/screens/quotation_list_screen.dart';
+import '../../features/reminder/presentation/screens/reminder_list_screen.dart';
+import '../../features/sla/presentation/screens/sla_list_screen.dart';
 import '../../features/task/presentation/screens/task_detail_screen.dart';
 import '../../features/task/presentation/screens/task_list_screen.dart';
 import '../widgets/splash_screen.dart';
@@ -25,7 +32,7 @@ final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 final _shellHomeKey = GlobalKey<NavigatorState>(debugLabel: 'shell-home');
 final _shellLeadsKey = GlobalKey<NavigatorState>(debugLabel: 'shell-leads');
 final _shellTasksKey = GlobalKey<NavigatorState>(debugLabel: 'shell-tasks');
-final _shellNotifsKey = GlobalKey<NavigatorState>(debugLabel: 'shell-notifs');
+final _shellQuotationsKey = GlobalKey<NavigatorState>(debugLabel: 'shell-quotations');
 final _shellProfileKey = GlobalKey<NavigatorState>(debugLabel: 'shell-profile');
 
 /// The app router. Depends on [appSessionProvider] so the redirect guard and
@@ -62,6 +69,62 @@ final routerProvider = Provider<GoRouter>((ref) {
           final token = state.uri.queryParameters['token'] ?? '';
           return ResetPasswordScreen(token: token);
         },
+      ),
+
+      // Full-screen routes reached only via notification deep-link — no
+      // list/tab entry point exists yet (see NotificationListScreen._relatedRoute).
+      GoRoute(
+        path: Routes.quotationDetail,
+        name: RouteNames.quotationDetail,
+        builder: (_, state) =>
+            QuotationDetailScreen(quotationId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: Routes.dealDetail,
+        name: RouteNames.dealDetail,
+        builder: (_, state) => DealDetailScreen(dealId: state.pathParameters['id']!),
+      ),
+
+      // Browse entry points — reached from the Dashboard quick actions and
+      // (notifications) the header bell.
+      GoRoute(
+        path: Routes.notifications,
+        name: RouteNames.notifications,
+        builder: (_, _) => const NotificationListScreen(),
+      ),
+      GoRoute(
+        path: Routes.sla,
+        name: RouteNames.sla,
+        builder: (_, state) =>
+            SlaListScreen(highlightId: state.uri.queryParameters['highlight']),
+      ),
+      GoRoute(
+        path: Routes.reminders,
+        name: RouteNames.reminders,
+        builder: (_, state) =>
+            ReminderListScreen(highlightId: state.uri.queryParameters['highlight']),
+      ),
+
+      // Interaction Timeline — reached from a deal/customer detail's
+      // "Interactions" section (see InteractionSummaryCard).
+      GoRoute(
+        path: Routes.interactionTimeline,
+        name: RouteNames.interactionTimeline,
+        builder: (_, state) => InteractionTimelineScreen(
+          linkedType: state.pathParameters['linkedType']!,
+          linkedId: state.pathParameters['linkedId']!,
+          linkedName: state.uri.queryParameters['name'],
+        ),
+      ),
+      GoRoute(
+        path: Routes.logInteraction,
+        name: RouteNames.logInteraction,
+        builder: (_, state) => LogInteractionScreen(
+          linkedType: state.pathParameters['linkedType']!,
+          linkedId: state.pathParameters['linkedId']!,
+          linkedName: state.uri.queryParameters['name'],
+          initialType: state.uri.queryParameters['type'],
+        ),
       ),
 
       // Authenticated tabbed area.
@@ -126,14 +189,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // Tab 4 — Notifications.
+          // Tab 4 — Quotations.
           StatefulShellBranch(
-            navigatorKey: _shellNotifsKey,
+            navigatorKey: _shellQuotationsKey,
             routes: [
               GoRoute(
-                path: Routes.notifications,
-                name: RouteNames.notifications,
-                builder: (_, _) => const NotificationListScreen(),
+                path: Routes.quotations,
+                name: RouteNames.quotations,
+                builder: (_, _) => const QuotationListScreen(),
               ),
             ],
           ),

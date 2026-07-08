@@ -52,7 +52,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
                 <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Pipeline Value</span>
                 <TrendingUp className="size-3.5 text-emerald-500" />
               </div>
-              <p className="text-xl font-bold text-zinc-900 dark:text-white mt-1.5">$148,250</p>
+              <p className="text-xl font-bold text-zinc-900 dark:text-white mt-1.5">148.250 ₫</p>
               <span className="text-[9px] text-emerald-500 font-semibold">+12.4% this week</span>
             </div>
 

@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
+import '../../../notification/presentation/providers/notification_providers.dart';
 import '../../../task/presentation/screens/task_list_screen.dart';
 import '../../data/dashboard_models.dart';
 import '../../data/dashboard_repository.dart';
@@ -31,6 +33,7 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
     final summary = ref.watch(dashboardSummaryProvider);
+    final unread = ref.watch(unreadNotificationCountProvider).valueOrNull ?? 0;
 
     return Scaffold(
       body: SafeArea(
@@ -40,7 +43,7 @@ class DashboardScreen extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             children: [
-              _Greeting(name: user?.name ?? 'there'),
+              _Greeting(name: user?.name ?? 'there', unreadCount: unread),
               const SizedBox(height: 16),
               AsyncValueView<DashboardSummary>(
                 value: summary,
@@ -71,22 +74,59 @@ class DashboardScreen extends ConsumerWidget {
 }
 
 class _Greeting extends StatelessWidget {
-  const _Greeting({required this.name});
+  const _Greeting({required this.name, required this.unreadCount});
   final String name;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hour = DateTime.now().hour;
     final part = hour < 12 ? 'Good morning' : (hour < 18 ? 'Good afternoon' : 'Good evening');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Text('$part,',
-            style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        Text(name,
-            style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$part,',
+                  style: theme.textTheme.bodyLarge
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              const SizedBox(height: 2),
+              Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineSmall),
+            ],
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        _NotificationBell(unreadCount: unreadCount),
+        const SizedBox(width: AppSpacing.md),
+        AppAvatar(name: name, radius: 24),
       ],
+    );
+  }
+}
+
+/// Bell icon + unread badge, mirroring the web header's notification button
+/// (top-right, next to the avatar). Tapping opens the full-screen list.
+class _NotificationBell extends StatelessWidget {
+  const _NotificationBell({required this.unreadCount});
+  final int unreadCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Badge(
+      isLabelVisible: unreadCount > 0,
+      label: Text(unreadCount > 9 ? '9+' : '$unreadCount'),
+      child: IconButton.filledTonal(
+        style: IconButton.styleFrom(backgroundColor: scheme.surfaceContainerHighest),
+        tooltip: 'Notifications',
+        onPressed: () => context.pushNamed(RouteNames.notifications),
+        icon: const Icon(Icons.notifications_rounded),
+      ),
     );
   }
 }
@@ -101,9 +141,11 @@ class _KpiGrid extends StatelessWidget {
       crossAxisCount: 2,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 1.55,
+      mainAxisSpacing: AppSpacing.md,
+      crossAxisSpacing: AppSpacing.md,
+      // Headroom for the icon chip + large value + label + sub. Kept generous
+      // so it never clips at larger text scale (a 1.55 card overflowed 5.5px).
+      childAspectRatio: 1.28,
       children: [
         _KpiCard(
           label: 'Active leads',
@@ -156,40 +198,46 @@ class _KpiCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, size: 18, color: color),
-              ),
-            ],
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+            ),
+            child: Icon(icon, size: 18, color: color),
           ),
           const Spacer(),
           Text(value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 2),
-          Text(label,
-              style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+              )),
+          const SizedBox(height: AppSpacing.xs),
+          Text(label.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+                color: scheme.onSurfaceVariant,
+              )),
           Text(sub,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline)),
+              style: theme.textTheme.labelSmall?.copyWith(color: scheme.outline)),
         ],
       ),
     );
@@ -203,18 +251,27 @@ class _QuickActions extends StatelessWidget {
       (Icons.person_add_alt_1_rounded, 'New lead', () => context.pushNamed(RouteNames.leadCreate)),
       (Icons.people_alt_rounded, 'Leads', () => context.goNamed(RouteNames.leads)),
       (Icons.checklist_rounded, 'Tasks', () => context.goNamed(RouteNames.tasks)),
-      (Icons.notifications_rounded, 'Alerts', () => context.goNamed(RouteNames.notifications)),
+      (Icons.notifications_rounded, 'Alerts', () => context.pushNamed(RouteNames.notifications)),
+      (Icons.receipt_long_outlined, 'Quotations', () => context.goNamed(RouteNames.quotations)),
+      (Icons.verified_outlined, 'SLA', () => context.pushNamed(RouteNames.sla)),
+      (Icons.alarm_outlined, 'Reminders', () => context.pushNamed(RouteNames.reminders)),
     ];
-    return Row(
-      children: [
-        for (final a in actions)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: _ActionButton(icon: a.$1, label: a.$2, onTap: a.$3),
-            ),
-          ),
-      ],
+    // Horizontally scrollable so the row can grow past 4 icons without
+    // squishing tap targets below 48dp.
+    return SizedBox(
+      height: 92,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: actions.length,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+        itemBuilder: (context, i) {
+          final a = actions[i];
+          return SizedBox(
+            width: 84,
+            child: _ActionButton(icon: a.$1, label: a.$2, onTap: a.$3),
+          );
+        },
+      ),
     );
   }
 }
@@ -238,10 +295,17 @@ class _ActionButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, color: theme.colorScheme.primary),
             const SizedBox(height: 6),
-            Text(label, style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600)),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
+            ),
           ],
         ),
       ),
@@ -346,7 +410,7 @@ class _RecentNotifications extends ConsumerWidget {
       children: [
         _SectionHeader(
           title: 'Recent notifications',
-          onSeeAll: () => context.goNamed(RouteNames.notifications),
+          onSeeAll: () => context.pushNamed(RouteNames.notifications),
         ),
         const SizedBox(height: 8),
         async.when(

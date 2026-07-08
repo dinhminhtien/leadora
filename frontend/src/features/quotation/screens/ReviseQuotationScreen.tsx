@@ -328,7 +328,7 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
                       <TableCell className="py-2 text-xs font-bold text-slate-600">v{v.version ?? 1}</TableCell>
                       <TableCell className="py-2 text-xs text-slate-500">{v.quoteNo}</TableCell>
                       <TableCell className="py-2 text-xs text-slate-500 capitalize">{v.status.replace("_", " ")}</TableCell>
-                      <TableCell className="py-2 text-xs font-semibold text-slate-700">${v.amount.toLocaleString("en-US")}</TableCell>
+                      <TableCell className="py-2 text-xs font-semibold text-slate-700">{v.amount.toLocaleString("vi-VN")} ₫</TableCell>
                       <TableCell className="py-2 text-xs text-slate-500">{Number(v.discountPercent ?? 0)}%</TableCell>
                       <TableCell className="py-2 text-xs text-slate-500 max-w-[200px] truncate">{v.changeReason ?? "—"}</TableCell>
                     </TableRow>
@@ -423,7 +423,7 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
               </CardHeader>
               <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <FieldLabel required>Price Per Night / Unit (USD)</FieldLabel>
+                  <FieldLabel required>Price Per Night / Unit (VND)</FieldLabel>
                   <Input {...register("pricePerNight")} type="number" min={0} step={0.01} placeholder="0.00" error={errors.pricePerNight?.message} />
                 </div>
                 <div>
@@ -531,21 +531,21 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
                   </div>
                   <div className="flex justify-between text-slate-500">
                     <span>Rate/Night</span>
-                    <span className="font-semibold text-slate-700">${(pricePerNight || 0).toLocaleString("en-US")}</span>
+                    <span className="font-semibold text-slate-700">{(pricePerNight || 0).toLocaleString("vi-VN")} ₫</span>
                   </div>
                   <div className="border-t border-slate-100 pt-2 flex justify-between text-slate-600">
                     <span>Subtotal</span>
-                    <span className="font-bold">${pricing.subtotal.toLocaleString("en-US")}</span>
+                    <span className="font-bold">{pricing.subtotal.toLocaleString("vi-VN")} ₫</span>
                   </div>
                   {pricing.discountAmount > 0 && (
                     <div className="flex justify-between text-amber-600">
                       <span>Discount ({discountPercent || 0}%)</span>
-                      <span className="font-bold">-${pricing.discountAmount.toLocaleString("en-US")}</span>
+                      <span className="font-bold">-{pricing.discountAmount.toLocaleString("vi-VN")} ₫</span>
                     </div>
                   )}
                   <div className="border-t border-slate-200 pt-2 flex justify-between text-slate-800">
                     <span className="font-bold text-sm">Total</span>
-                    <span className="font-black text-sm text-blue-700">${pricing.total.toLocaleString("en-US")}</span>
+                    <span className="font-black text-sm text-blue-700">{pricing.total.toLocaleString("vi-VN")} ₫</span>
                   </div>
                 </div>
 

@@ -97,12 +97,12 @@ public class UpdateHandoverReadinessUseCase {
         }
         BookingEntity booking = handover.getBooking();
         String bookingCode = booking != null ? booking.getBookingCode() : "";
-        String by = actor != null && actor.getFullName() != null ? actor.getFullName() : "Lễ tân";
+        String by = actor != null && actor.getFullName() != null ? actor.getFullName() : "Front Office";
 
         NotificationEntity notification = NotificationEntity.builder()
                 .user(recipient)
-                .title("Bàn giao cần làm rõ")
-                .message(by + " yêu cầu làm rõ bàn giao " + bookingCode + ": " + handover.getClarificationNote())
+                .title("Handover Clarification Requested")
+                .message(by + " requested clarification for handover " + bookingCode + ": " + handover.getClarificationNote())
                 .type("HANDOVER")
                 .relatedEntity("HANDOVER")
                 .relatedId(handover.getHandoverId())

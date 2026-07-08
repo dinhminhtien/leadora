@@ -112,5 +112,6 @@ export function canAccessPath(
 
   // SALES / MANAGER — permission driven.
   const required = requiredPermissionFor(pathname);
+  if (required === "HANDOVER_VIEW") return true; // Allowed by default for handover pages
   return required != null && permissions.includes(required);
 }

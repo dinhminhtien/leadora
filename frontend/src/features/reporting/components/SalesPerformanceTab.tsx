@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/Input";
 import { useSalesPerformanceReport } from "@/features/reporting/hooks/use_reporting";
 import { StatTile, Meter, SegmentBar, EmptyReport, VIZ, compact, vndCompact } from "./viz";
 
-const vnd = (n?: number) => `${(n ?? 0).toLocaleString("en-US")} ₫`;
+const vnd = (n?: number) => `${(n ?? 0).toLocaleString("vi-VN")} ₫`;
 const pct = (n?: number) => `${(n ?? 0).toFixed(1)}%`;
 
 export function SalesPerformanceTab() {

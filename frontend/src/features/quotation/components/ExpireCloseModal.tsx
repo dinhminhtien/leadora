@@ -167,7 +167,7 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
                 <Badge variant="default" size="sm" className="font-bold text-[9px] bg-slate-200 text-slate-600">
                   {STATUS_LABEL[quote.status] ?? quote.status}
                 </Badge>
-                <p className="text-xs font-black text-slate-700">${quote.amount.toLocaleString("en-US")}</p>
+                <p className="text-xs font-black text-slate-700">{quote.amount.toLocaleString("vi-VN")} ₫</p>
               </div>
             </div>
 

@@ -24,6 +24,7 @@ public class ConvertLeadUseCase {
 
     private final LeadRepository leadRepository;
     private final CustomerRepository customerRepository;
+    private final LeadAccessPolicy leadAccessPolicy;
 
     @Transactional
     public ConvertLeadResponse execute(UUID leadId, ConvertLeadRequest request) {
@@ -31,6 +32,10 @@ public class ConvertLeadUseCase {
         // 1. Load lead (eager-fetch assignedUser + createdBy)
         LeadEntity lead = leadRepository.findWithUsersById(leadId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead", leadId));
+
+        // UC-8.5 RBAC: same owner-scoping as viewing — a Sales Staff may only
+        // convert leads assigned to (or created by) them; MANAGER/ADMIN unscoped.
+        leadAccessPolicy.assertCanView(leadAccessPolicy.currentUser(), lead);
 
         // 2. Idempotency — already converted
         if (lead.getStatus() == LeadStatus.CONVERTED) {

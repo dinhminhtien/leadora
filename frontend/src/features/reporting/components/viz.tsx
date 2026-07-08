@@ -51,7 +51,7 @@ function textOnFill(hex: string): string {
 export function compact(n: number): string {
   if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (Math.abs(n) >= 10_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toLocaleString("en-US");
+  return n.toLocaleString("vi-VN");
 }
 
 /** Compact VND for constrained stat tiles (keeps large revenue from overflowing the tile). */
@@ -60,7 +60,7 @@ export function vndCompact(n?: number): string {
   if (Math.abs(v) >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}B ₫`;
   if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M ₫`;
   if (Math.abs(v) >= 10_000) return `${Math.round(v / 1_000)}K ₫`;
-  return `${v.toLocaleString("en-US")} ₫`;
+  return `${v.toLocaleString("vi-VN")} ₫`;
 }
 
 /* ── Date-range filter (shared by every report tab) ────────────────────────── */

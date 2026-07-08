@@ -48,6 +48,9 @@ dependencies:
   image_picker: ^1.1.2
   cached_network_image: ^3.4.1
 
+  # Typography — brand font (Inter). Falls back to the platform font offline.
+  google_fonts: ^6.2.1
+
   # Logging
   logger: ^2.5.0
 
