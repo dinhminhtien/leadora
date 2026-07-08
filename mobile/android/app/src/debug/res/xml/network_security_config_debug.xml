@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only network policy: allow plain-HTTP to ANY host so `flutter run` /
+  hot reload works against whatever LAN IP the dev machine happens to have,
+  without editing the release whitelist. Never shipped in release builds.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

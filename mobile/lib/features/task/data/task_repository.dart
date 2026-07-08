@@ -12,11 +12,14 @@ class TaskRepository {
 
   final ApiClient _client;
 
-  /// UC-24.16 — paged task list, filterable by status / priority / overdue.
+  /// UC-24.16 — paged task list, filterable by search / status / priority /
+  /// assignee / customer / overdue. Mirrors `GET /tasks` on the backend.
   Future<PaginationResponse<Task>> getTasks({
     String? search,
     String? status,
     String? priority,
+    String? assignedUserId,
+    String? customerId,
     bool overdue = false,
     int page = 0,
     int size = 20,
@@ -27,11 +30,41 @@ class TaskRepository {
         if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
         'status': ?status,
         'priority': ?priority,
+        'assignedUserId': ?assignedUserId,
+        'customerId': ?customerId,
         if (overdue) 'overdue': true,
         'page': page,
         'size': size,
       },
       decodeItem: (item) => Task.fromJson(item as Map<String, dynamic>),
+    );
+  }
+
+  /// UC-10.1 — create a follow-up task. `POST /tasks`.
+  Future<Task> createTask(CreateTaskPayload payload) {
+    return _client.post<Task>(
+      ApiPaths.tasks,
+      data: payload.toJson(),
+      decode: (data) => Task.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  /// UC-10.4 — full edit (title / assignee / priority / schedule / status).
+  /// `PUT /tasks/{id}`.
+  Future<Task> updateTask(String taskId, UpdateTaskPayload payload) {
+    return _client.put<Task>(
+      ApiPaths.taskById(taskId),
+      data: payload.toJson(),
+      decode: (data) => Task.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  /// UC-10.7 — resign: clone into a new follow-up task. `POST /tasks/{id}/resign`.
+  Future<Task> resignTask(String taskId, ResignTaskPayload payload) {
+    return _client.post<Task>(
+      ApiPaths.taskResign(taskId),
+      data: payload.toJson(),
+      decode: (data) => Task.fromJson(data as Map<String, dynamic>),
     );
   }
 

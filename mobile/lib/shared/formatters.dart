@@ -8,6 +8,7 @@ class Formatters {
   static final DateFormat _date = DateFormat('dd MMM yyyy');
   static final DateFormat _dateTime = DateFormat('dd MMM yyyy · HH:mm');
   static final DateFormat _time = DateFormat('HH:mm');
+  static final DateFormat _monthYear = DateFormat('MMMM yyyy');
   static final NumberFormat _currency =
       NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
   static final NumberFormat _compact = NumberFormat.compact();
@@ -20,6 +21,10 @@ class Formatters {
 
   static String time(DateTime? value) =>
       value == null ? '—' : _time.format(value.toLocal());
+
+  /// e.g. `July 2026` — used for grouping timeline entries by month.
+  static String monthYear(DateTime? value) =>
+      value == null ? '—' : _monthYear.format(value.toLocal());
 
   static String money(num? value) =>
       value == null ? '—' : _currency.format(value);

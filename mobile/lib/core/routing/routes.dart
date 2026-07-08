@@ -20,10 +20,24 @@ class Routes {
   static const String leadCreateSub = 'new';
   static const String leadDetailSub = 'detail/:id';
   static const String taskDetailSub = 'detail/:id';
+  static const String taskCreateSub = 'new';
+  static const String taskEditSub = 'edit/:id';
+  static const String taskResignSub = 'resign/:id';
   static const String changePasswordSub = 'change-password';
 
   static String leadDetailPath(String id) => '/leads/detail/$id';
   static String taskDetailPath(String id) => '/tasks/detail/$id';
+  static const String taskCreate = '/tasks/new';
+  static String taskEditPath(String id) => '/tasks/edit/$id';
+  static String taskResignPath(String id) => '/tasks/resign/$id';
+
+  // Customer profiles — full-screen browse reached from Dashboard quick actions.
+  static const String customers = '/customers';
+  static const String customerCreateSub = 'new';
+  static const String customerDetailSub = 'detail/:id';
+  static const String customerEditSub = 'edit/:id';
+  static String customerDetailPath(String id) => '/customers/detail/$id';
+  static String customerEditPath(String id) => '/customers/edit/$id';
 
   // Full-screen routes reached only via notification deep-link (no list/tab yet).
   static const String quotationDetail = '/quotations/:id';
@@ -89,6 +103,13 @@ class RouteNames {
   static const String leadDetail = 'leadDetail';
   static const String tasks = 'tasks';
   static const String taskDetail = 'taskDetail';
+  static const String taskCreate = 'taskCreate';
+  static const String taskEdit = 'taskEdit';
+  static const String taskResign = 'taskResign';
+  static const String customers = 'customers';
+  static const String customerCreate = 'customerCreate';
+  static const String customerDetail = 'customerDetail';
+  static const String customerEdit = 'customerEdit';
   static const String notifications = 'notifications';
   static const String profile = 'profile';
   static const String changePassword = 'changePassword';
