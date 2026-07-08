@@ -184,6 +184,11 @@ ai:
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  bank:
+    account-number: ${APP_BANK_ACCOUNT_NUMBER:123456789}
+    provider: ${APP_BANK_PROVIDER:sepay}
+    api-token: ${APP_BANK_API_TOKEN:dummy-token}
+    api-url: ${APP_BANK_API_URL:https://my.sepay.vn/plus/api/transactions}
 
 # Supabase environment fallbacks (prevents startup crash if environment variables are not set)
 SUPABASE_URL: ${SUPABASE_URL}
