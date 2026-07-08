@@ -360,7 +360,7 @@ export function DepositPaymentScreen() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            PayOS Sandbox Gateway Active
+            Direct Bank Integration (SePay) Active
           </Badge>
         </div>
       </div>
@@ -730,7 +730,7 @@ export function DepositPaymentScreen() {
                 </div>
                 {watchPaymentMethod === "TRANSFER" ? (
                   <p className="text-[10px] text-slate-450 dark:text-zinc-400 mt-1 italic font-medium">
-                    Note: For VietQR (PayOS), this will be processed as{" "}
+                    Note: For VietQR (SePay), this will be processed as{" "}
                     <strong className="text-blue-600 dark:text-blue-400 font-bold">
                       {Math.round((watchAmount || 0) * exchangeRate).toLocaleString("vi-VN")} ₫
                     </strong>{" "}
@@ -878,13 +878,13 @@ export function DepositPaymentScreen() {
                 </div>
               </div>
 
-              {/* PayOS Details */}
+              {/* Gateway Details */}
               <div className="border-t border-slate-100 dark:border-zinc-800 pt-4 space-y-3">
-                <h4 className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">PayOS Gateway Connection Data</h4>
+                <h4 className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">Gateway Connection Data</h4>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-500 dark:text-zinc-400 font-medium">Gateway Provider:</span>
-                    <span className="font-bold text-slate-700 dark:text-zinc-300">{selectedPayment.gatewayProvider || "PAYOS"}</span>
+                    <span className="font-bold text-slate-700 dark:text-zinc-300">{selectedPayment.gatewayProvider || "SEPAY"}</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-500 dark:text-zinc-400 font-medium">Transaction reference link ID:</span>
