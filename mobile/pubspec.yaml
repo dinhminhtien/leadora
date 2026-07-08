@@ -58,6 +58,7 @@ dependencies:
   intl: any
 
   # Utility
+  url_launcher: ^6.3.1         # tel:/mailto: quick actions on detail screens
   uuid: ^4.5.1                 # idempotency keys
   connectivity_plus: ^6.1.1    # online/offline detection for retry queue
   mutex: ^3.1.0                # refresh-token mutex lock
@@ -80,3 +81,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   generate: true              # enable gen-l10n from lib/core/localization/*.arb
+
+  assets:
+    - assets/images/logo.png  # official brand mark, copied from frontend/public/logo1.jpg

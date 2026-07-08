@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_colors.dart';
 import '../formatters.dart';
 
 /// A compact, color-coded status pill used across leads / tasks / notifications.
@@ -59,12 +60,12 @@ class StatusChip extends StatelessWidget {
   }
 
   static Color _color(StatusTone tone) => switch (tone) {
-        StatusTone.neutral => const Color(0xFF64748B),
-        StatusTone.info => const Color(0xFF0EA5E9),
-        StatusTone.success => const Color(0xFF16A34A),
-        StatusTone.warning => const Color(0xFFF59E0B),
-        StatusTone.danger => const Color(0xFFDC2626),
-        StatusTone.brand => const Color(0xFF2563EB),
+        StatusTone.neutral => AppColors.neutral,
+        StatusTone.info => AppColors.info,
+        StatusTone.success => AppColors.success,
+        StatusTone.warning => AppColors.warning,
+        StatusTone.danger => AppColors.danger,
+        StatusTone.brand => AppColors.brandSeed,
       };
 
   static Color _darken(Color c) =>

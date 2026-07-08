@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_dimens.dart';
@@ -111,7 +112,13 @@ class InfoRow extends StatelessWidget {
   }
 }
 
-/// Circular initials avatar with a deterministic tint from the name.
+/// Circular avatar: remote photo when a usable URL is present, otherwise
+/// initials with a deterministic tint from the name.
+///
+/// Only http(s) URLs are loaded — the web client stores a
+/// `local-storage-avatar://` placeholder for browser-local uploads, which no
+/// other device can resolve, so anything non-http falls back to initials.
+/// Network failures also fall back instead of leaving a broken circle.
 class AppAvatar extends StatelessWidget {
   const AppAvatar({super.key, required this.name, this.radius = 20, this.imageUrl});
 
@@ -119,12 +126,36 @@ class AppAvatar extends StatelessWidget {
   final double radius;
   final String? imageUrl;
 
+  static bool _isLoadable(String? url) {
+    if (url == null || url.isEmpty) return false;
+    final uri = Uri.tryParse(url);
+    return uri != null && (uri.isScheme('http') || uri.isScheme('https'));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final fallback = _initialsCircle();
+    if (!_isLoadable(imageUrl)) return fallback;
+    return CircleAvatar(
+      radius: radius,
+      // Initials stay visible behind the photo while it loads / if it fails.
+      backgroundColor: Colors.transparent,
+      child: ClipOval(
+        child: CachedNetworkImage(
+          imageUrl: imageUrl!,
+          width: radius * 2,
+          height: radius * 2,
+          fit: BoxFit.cover,
+          fadeInDuration: const Duration(milliseconds: 200),
+          placeholder: (_, _) => fallback,
+          errorWidget: (_, _, _) => fallback,
+        ),
+      ),
+    );
+  }
+
+  Widget _initialsCircle() {
     final tint = Colors.primaries[name.hashCode.abs() % Colors.primaries.length];
-    if (imageUrl != null && imageUrl!.isNotEmpty) {
-      return CircleAvatar(radius: radius, backgroundImage: NetworkImage(imageUrl!));
-    }
     return CircleAvatar(
       radius: radius,
       backgroundColor: tint.withValues(alpha: 0.18),
