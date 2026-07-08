@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
 import '../../../../shared/widgets/async_value_view.dart';
+import '../../../../shared/widgets/brand_logo.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
 import '../../../notification/presentation/providers/notification_providers.dart';
@@ -43,7 +45,11 @@ class DashboardScreen extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             children: [
-              _Greeting(name: user?.name ?? 'there', unreadCount: unread),
+              _Greeting(
+                name: user?.name ?? 'there',
+                avatarUrl: user?.avatarUrl,
+                unreadCount: unread,
+              ),
               const SizedBox(height: 16),
               AsyncValueView<DashboardSummary>(
                 value: summary,
@@ -74,8 +80,9 @@ class DashboardScreen extends ConsumerWidget {
 }
 
 class _Greeting extends StatelessWidget {
-  const _Greeting({required this.name, required this.unreadCount});
+  const _Greeting({required this.name, this.avatarUrl, required this.unreadCount});
   final String name;
+  final String? avatarUrl;
   final int unreadCount;
 
   @override
@@ -85,6 +92,8 @@ class _Greeting extends StatelessWidget {
     final part = hour < 12 ? 'Good morning' : (hour < 18 ? 'Good afternoon' : 'Good evening');
     return Row(
       children: [
+        const BrandLogo(size: 40),
+        const SizedBox(width: AppSpacing.md),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -103,7 +112,7 @@ class _Greeting extends StatelessWidget {
         const SizedBox(width: AppSpacing.sm),
         _NotificationBell(unreadCount: unreadCount),
         const SizedBox(width: AppSpacing.md),
-        AppAvatar(name: name, radius: 24),
+        AppAvatar(name: name, radius: 24, imageUrl: avatarUrl),
       ],
     );
   }
@@ -152,28 +161,28 @@ class _KpiGrid extends StatelessWidget {
           value: Formatters.compact(summary.activeLeadsCount),
           sub: 'of ${summary.totalLeadsCount} total',
           icon: Icons.people_alt_rounded,
-          color: const Color(0xFF2563EB),
+          color: AppColors.brandSeed,
         ),
         _KpiCard(
           label: 'Pending tasks',
           value: Formatters.compact(summary.pendingTasksCount),
           sub: '${summary.overdueTasksCount} overdue',
           icon: Icons.checklist_rounded,
-          color: summary.overdueTasksCount > 0 ? const Color(0xFFDC2626) : const Color(0xFF16A34A),
+          color: summary.overdueTasksCount > 0 ? AppColors.danger : AppColors.success,
         ),
         _KpiCard(
           label: 'Active deals',
           value: Formatters.compact(summary.activeDealsCount),
           sub: Formatters.money(summary.activeDealsValue),
           icon: Icons.handshake_rounded,
-          color: const Color(0xFF7C3AED),
+          color: Theme.of(context).colorScheme.tertiary,
         ),
         _KpiCard(
           label: 'Weighted pipeline',
           value: Formatters.money(summary.weightedPipelineValue),
           sub: '${Formatters.money(summary.totalDealsValue)} total',
           icon: Icons.trending_up_rounded,
-          color: const Color(0xFF0EA5E9),
+          color: AppColors.info,
         ),
       ],
     );
@@ -250,6 +259,7 @@ class _QuickActions extends StatelessWidget {
     final actions = [
       (Icons.person_add_alt_1_rounded, 'New lead', () => context.pushNamed(RouteNames.leadCreate)),
       (Icons.people_alt_rounded, 'Leads', () => context.goNamed(RouteNames.leads)),
+      (Icons.contacts_rounded, 'Customers', () => context.pushNamed(RouteNames.customers)),
       (Icons.checklist_rounded, 'Tasks', () => context.goNamed(RouteNames.tasks)),
       (Icons.notifications_rounded, 'Alerts', () => context.pushNamed(RouteNames.notifications)),
       (Icons.receipt_long_outlined, 'Quotations', () => context.goNamed(RouteNames.quotations)),

@@ -5,6 +5,7 @@ import 'core/config/env.dart';
 import 'core/localization/generated/app_localizations.dart';
 import 'core/routing/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_mode_controller.dart';
 import 'features/auth/presentation/providers/auth_controller.dart';
 
 /// Root application widget.
@@ -22,12 +23,13 @@ class LeadoraApp extends ConsumerWidget {
     // Instantiate the auth controller → triggers session restore at startup.
     ref.watch(authControllerProvider);
     final router = ref.watch(routerProvider);
+    final themeMode = ref.watch(themeModeProvider);
     return MaterialApp.router(
       title: Env.appName,
       debugShowCheckedModeBanner: Env.isDev,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       routerConfig: router,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
