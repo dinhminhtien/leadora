@@ -136,15 +136,15 @@ function generateQuotationHTML(quote: Quotation, recipientName: string, message:
     <span class="lbl">Rooms</span><span class="val">${safeNumberOfRooms}</span>
     <span class="lbl">Check-in</span><span class="val">${safeCheckInDate}</span>
     <span class="lbl">Check-out</span><span class="val">${safeCheckOutDate}</span>
-    <span class="lbl">Rate / Night</span><span class="val">$${(quote.pricePerNight ?? 0).toLocaleString('en-US')}</span>
+    <span class="lbl">Rate / Night</span><span class="val">${(quote.pricePerNight ?? 0).toLocaleString('vi-VN')} ₫</span>
     <span class="lbl">Payment Policy</span><span class="val">${safePaymentPolicy}</span>
   </div>
 
   <h2>Pricing</h2>
   <table>
-    <tr><td>Subtotal</td><td align="right">$${(quote.subtotal ?? 0).toLocaleString('en-US')}</td></tr>
-    <tr><td>Discount (${quote.discountPercent ?? 0}%)</td><td align="right">-$${(quote.discountAmount ?? 0).toLocaleString('en-US')}</td></tr>
-    <tr class="total"><td><strong>Total Amount</strong></td><td align="right"><strong>$${quote.amount.toLocaleString('en-US')}</strong></td></tr>
+    <tr><td>Subtotal</td><td align="right">${(quote.subtotal ?? 0).toLocaleString('vi-VN')} ₫</td></tr>
+    <tr><td>Discount (${quote.discountPercent ?? 0}%)</td><td align="right">-${(quote.discountAmount ?? 0).toLocaleString('vi-VN')} ₫</td></tr>
+    <tr class="total"><td><strong>Total Amount</strong></td><td align="right"><strong>{quote.amount.toLocaleString('vi-VN')} ₫</strong></td></tr>
   </table>
   <p style="font-size:11px;color:#94a3b8;margin-top:8px">This quotation is valid until <strong>${safeExpiryDate}</strong>. Please confirm your booking before the expiry date.</p>
 
@@ -263,7 +263,7 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
         `📋 ${quote.quoteNo} — ${quote.dealName}`,
         `🛏 Room: ${quote.roomType ?? "—"}`,
         `📅 Check-in: ${quote.checkInDate ?? "—"}  →  Check-out: ${quote.checkOutDate ?? "—"}`,
-        `💰 Total: $${quote.amount.toLocaleString("en-US")}`,
+        `💰 Total: ${quote.amount.toLocaleString("vi-VN")} ₫`,
         `⏰ Valid until: ${quote.expiryDate}`,
         ...(personalMessage ? [``, personalMessage] : []),
       ];
@@ -324,7 +324,7 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
               <span><span className="text-slate-400">Customer:</span> <strong className="text-slate-700">{quote.contactName}</strong></span>
               <span><span className="text-slate-400">Room:</span> <strong className="text-slate-700">{quote.roomType ?? "—"}</strong></span>
               <span><span className="text-slate-400">Dates:</span> <strong className="text-slate-700">{quote.checkInDate ?? "—"} → {quote.checkOutDate ?? "—"}</strong></span>
-              <span><span className="text-slate-400">Total:</span> <strong className="text-blue-700">${quote.amount.toLocaleString('en-US')}</strong></span>
+              <span><span className="text-slate-400">Total:</span> <strong className="text-blue-700">{quote.amount.toLocaleString('vi-VN')} ₫</strong></span>
               <span><span className="text-slate-400">Discount:</span> <strong className="text-amber-600">{quote.discountPercent ?? 0}%</strong></span>
               <span><span className="text-slate-400">Valid until:</span> <strong className="text-slate-700">{quote.expiryDate}</strong></span>
             </div>

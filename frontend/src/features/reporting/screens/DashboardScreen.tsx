@@ -275,7 +275,7 @@ export function DashboardScreen() {
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Deals Pipeline</p>
                 <h3 className="text-2xl font-bold text-foreground mt-1.5">
-                  ${activeDealsValue.toLocaleString("en-US")}
+                  {activeDealsValue.toLocaleString("vi-VN")} ₫
                 </h3>
                 <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-0.5 mt-1.5">
                   <TrendingUp className="size-3" /> {activeDealsCount} active deals
@@ -347,7 +347,7 @@ export function DashboardScreen() {
                   <div className="flex justify-between items-center text-xs">
                     <span className="font-semibold text-foreground/80">{stage.stage}</span>
                     <span className="text-muted-foreground text-[10px]">
-                      {stage.count} {stage.count === 1 ? "deal" : "deals"} ({totalDealsValue > 0 ? ((stage.value / totalDealsValue) * 100).toFixed(0) : 0}%) • <strong className="text-foreground/90">${stage.value.toLocaleString("en-US")}</strong>
+                      {stage.count} {stage.count === 1 ? "deal" : "deals"} ({totalDealsValue > 0 ? ((stage.value / totalDealsValue) * 100).toFixed(0) : 0}%) • <strong className="text-foreground/90">{stage.value.toLocaleString("vi-VN")} ₫</strong>
                     </span>
                   </div>
                   <div className="w-full bg-muted rounded-lg h-3 overflow-hidden flex">
@@ -365,7 +365,7 @@ export function DashboardScreen() {
               <div className="flex justify-between items-center mb-4">
                 <div>
                   <h4 className="text-xs font-bold text-foreground">
-                    Weighted Revenue Forecast: ${weightedPipelineValue.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                    Weighted Revenue Forecast: {weightedPipelineValue.toLocaleString("vi-VN", { maximumFractionDigits: 0 })} ₫
                   </h4>
                   <p className="text-[10px] text-muted-foreground">Projected win values based on historical deal stages</p>
                 </div>
@@ -555,7 +555,7 @@ export function DashboardScreen() {
               <div className="p-3 bg-muted/50 border border-border/40 rounded-xl flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground">Avg Deal Size</p>
-                  <p className="text-base font-bold text-foreground mt-0.5">$18,400</p>
+                  <p className="text-base font-bold text-foreground mt-0.5">18.400 ₫</p>
                 </div>
                 <Badge variant="primary" className="font-semibold">
                   +8% MoM

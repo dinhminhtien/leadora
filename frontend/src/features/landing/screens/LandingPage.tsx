@@ -382,7 +382,7 @@ export function LandingPage() {
                   <TrendingUp className="size-5" />
                 </div>
               </div>
-              <p className="text-4xl font-black text-zinc-900 dark:text-white">$148,250</p>
+              <p className="text-4xl font-black text-zinc-900 dark:text-white">148.250 ₫</p>
               <p className="text-xs font-bold text-emerald-500 mt-1 flex items-center justify-center gap-1">
                 +12.4% average weekly sales volume
               </p>

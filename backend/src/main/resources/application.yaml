@@ -143,6 +143,7 @@ spring:
           # embedding client to Developer API and fails with "API key not valid" (the upload/RAG bug).
           # To run embeddings on the Developer API instead, set GEMINI_USE_VERTEX=false AND add:
           #     api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY}}
+          api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:#{null}}}
           project-id: ${GEMINI_PROJECT_ID:mock-project-id}
           location: ${GEMINI_LOCATION:asia-southeast1}
           text:
@@ -183,6 +184,11 @@ ai:
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  bank:
+    account-number: ${APP_BANK_ACCOUNT_NUMBER:123456789}
+    provider: ${APP_BANK_PROVIDER:sepay}
+    api-token: ${APP_BANK_API_TOKEN:dummy-token}
+    api-url: ${APP_BANK_API_URL:https://my.sepay.vn/plus/api/transactions}
 
 # Supabase environment fallbacks (prevents startup crash if environment variables are not set)
 SUPABASE_URL: ${SUPABASE_URL}

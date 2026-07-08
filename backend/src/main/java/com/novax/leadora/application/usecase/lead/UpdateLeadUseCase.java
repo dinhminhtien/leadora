@@ -30,11 +30,16 @@ public class UpdateLeadUseCase {
     private final UserRepository userRepository;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     private final NotificationRepository notificationRepository;
+    private final LeadAccessPolicy leadAccessPolicy;
 
     @Transactional
     public LeadResponse execute(UUID leadId, UpdateLeadRequest request) {
         LeadEntity lead = leadRepository.findWithUsersById(leadId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead", leadId));
+
+        // UC-8.4 RBAC: same owner-scoping as viewing — a Sales Staff may only
+        // modify leads assigned to (or created by) them; MANAGER/ADMIN unscoped.
+        leadAccessPolicy.assertCanView(leadAccessPolicy.currentUser(), lead);
 
         if (StringUtils.hasText(request.getFullName())) {
             lead.setFullName(request.getFullName());

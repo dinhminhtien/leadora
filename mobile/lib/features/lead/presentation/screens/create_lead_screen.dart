@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/network/api_exception.dart';
+import '../../../../core/routing/routes.dart';
 import '../../data/lead_models.dart';
 import '../../data/lead_repository.dart';
 import '../providers/lead_providers.dart';
@@ -63,14 +66,57 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
               isCorporate: _isCorporate,
             ),
           );
-      ref.invalidate(leadListControllerProvider);
+      // refresh() (not invalidate) so the list reloads without dropping the
+      // user's active search/filters. Only when the list is actually alive —
+      // reading the notifier otherwise would spawn an unowned autoDispose
+      // provider that dies mid-refresh (deep-link case).
+      if (ref.exists(leadListControllerProvider)) {
+        unawaited(ref.read(leadListControllerProvider.notifier).refresh());
+      }
       messenger.showSnackBar(
         SnackBar(content: Text('Lead "${lead.fullName}" created')),
       );
       router.pop();
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _submitting = false);
+      // UC-8.1 duplicate detection: the backend rejects a lead whose email or
+      // phone matches an existing one (409, details = existing lead id).
+      if (e.errorCode == 'DUPLICATE_LEAD' && e.details != null && mounted) {
+        await _showDuplicateDialog(e.message, e.details!);
+        return;
+      }
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } on AppException catch (e) {
       if (mounted) setState(() => _submitting = false);
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _showDuplicateDialog(String message, String existingLeadId) async {
+    final view = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.copy_all_rounded),
+        title: const Text('Duplicate lead'),
+        content: Text('$message\n\nYou can open the existing lead instead.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('View existing lead'),
+          ),
+        ],
+      ),
+    );
+    if (view == true && mounted) {
+      // Swap this form for the existing lead's detail screen.
+      context.pushReplacementNamed(
+        RouteNames.leadDetail,
+        pathParameters: {'id': existingLeadId},
+      );
     }
   }
 
@@ -121,10 +167,14 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
             TextFormField(
               controller: _company,
               enabled: !_submitting,
-              decoration: const InputDecoration(
-                labelText: 'Company',
-                prefixIcon: Icon(Icons.business_outlined),
+              decoration: InputDecoration(
+                labelText: _isCorporate ? 'Company *' : 'Company',
+                prefixIcon: const Icon(Icons.business_outlined),
               ),
+              // BR (mirrors backend): an organization lead must name its company.
+              validator: (v) => _isCorporate && (v == null || v.trim().isEmpty)
+                  ? 'Company name is required for a corporate lead'
+                  : null,
             ),
             const SizedBox(height: 16),
             TextFormField(

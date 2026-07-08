@@ -14,6 +14,7 @@ import '../../data/lead_models.dart';
 import '../providers/lead_providers.dart';
 
 /// UC-24.14 / UC-24.15 — assigned lead list with search, status filter,
+/// advanced filters (scope, sort, source, type, created-date window),
 /// pull-to-refresh and infinite scroll.
 class LeadListScreen extends ConsumerStatefulWidget {
   const LeadListScreen({super.key});
@@ -41,28 +42,65 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
     super.dispose();
   }
 
+  LeadListController get _controller =>
+      ref.read(leadListControllerProvider.notifier);
+
   void _onScroll() {
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 400) {
-      ref.read(leadListControllerProvider.notifier).loadMore();
+      _controller.loadMore();
     }
   }
 
   void _onSearchChanged(String value) {
+    // Rebuild so the clear (X) suffix appears/disappears as the user types.
+    setState(() {});
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
-      ref.read(leadListControllerProvider.notifier).applyFilters(search: value);
+      _controller.applyFilters(_controller.filters.copyWith(search: value));
     });
+  }
+
+  void _clearSearch() {
+    // Cancel any pending debounce so a stale search doesn't re-apply itself
+    // right after the field was cleared.
+    _debounce?.cancel();
+    setState(() => _searchController.clear());
+    _controller.applyFilters(_controller.filters.copyWith(search: ''));
+  }
+
+  Future<void> _openFilterSheet() async {
+    final result = await showModalBottomSheet<LeadFilters>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _LeadFilterSheet(initial: _controller.filters),
+    );
+    if (result != null) _controller.applyFilters(result);
   }
 
   @override
   Widget build(BuildContext context) {
     final asyncState = ref.watch(leadListControllerProvider);
-    final controller = ref.read(leadListControllerProvider.notifier);
-    final activeStatus = asyncState.valueOrNull?.status;
+    final filters = asyncState.valueOrNull?.filters ?? const LeadFilters();
+    final advancedCount = filters.activeAdvancedCount;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Leads')),
+      appBar: AppBar(
+        title: const Text('Leads'),
+        actions: [
+          IconButton(
+            tooltip: 'Filters',
+            onPressed: _openFilterSheet,
+            icon: Badge.count(
+              count: advancedCount,
+              isLabelVisible: advancedCount > 0,
+              child: const Icon(Icons.tune_rounded),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.pushNamed(RouteNames.leadCreate),
         icon: const Icon(Icons.person_add_alt_1_rounded),
@@ -84,10 +122,7 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
                     ? null
                     : IconButton(
                         icon: const Icon(Icons.close_rounded),
-                        onPressed: () {
-                          _searchController.clear();
-                          controller.applyFilters(search: '');
-                        },
+                        onPressed: _clearSearch,
                       ),
               ),
             ),
@@ -100,14 +135,16 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
               children: [
                 _StatusFilterChip(
                   label: 'All',
-                  selected: activeStatus == null,
-                  onTap: () => controller.applyFilters(clearStatus: true),
+                  selected: filters.status == null,
+                  onTap: () => _controller
+                      .applyFilters(filters.copyWith(status: null)),
                 ),
                 for (final s in LeadStatus.values)
                   _StatusFilterChip(
                     label: Formatters.humanizeEnum(s.wire),
-                    selected: activeStatus == s,
-                    onTap: () => controller.applyFilters(status: s),
+                    selected: filters.status == s,
+                    onTap: () =>
+                        _controller.applyFilters(filters.copyWith(status: s)),
                   ),
               ],
             ),
@@ -116,7 +153,7 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
           Expanded(
             child: AsyncValueView<LeadListState>(
               value: asyncState,
-              onRetry: controller.refresh,
+              onRetry: _controller.refresh,
               isEmpty: (s) => s.items.isEmpty,
               empty: const EmptyState(
                 icon: Icons.people_outline_rounded,
@@ -124,7 +161,7 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
                 message: 'Try clearing filters or create a new lead.',
               ),
               data: (s) => RefreshIndicator(
-                onRefresh: controller.refresh,
+                onRefresh: _controller.refresh,
                 child: ListView.separated(
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -145,6 +182,162 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Advanced filter editor. Edits a local copy of [initial] and pops with the
+/// result on Apply (or with the advanced filters reset on Reset).
+class _LeadFilterSheet extends StatefulWidget {
+  const _LeadFilterSheet({required this.initial});
+
+  final LeadFilters initial;
+
+  @override
+  State<_LeadFilterSheet> createState() => _LeadFilterSheetState();
+}
+
+class _LeadFilterSheetState extends State<_LeadFilterSheet> {
+  late LeadFilters _draft = widget.initial;
+  late final _sourceController =
+      TextEditingController(text: widget.initial.source ?? '');
+
+  @override
+  void dispose() {
+    _sourceController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDateRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 3),
+      lastDate: now,
+      initialDateRange: _draft.dateFrom != null && _draft.dateTo != null
+          ? DateTimeRange(start: _draft.dateFrom!, end: _draft.dateTo!)
+          : null,
+    );
+    if (picked != null) {
+      setState(() =>
+          _draft = _draft.copyWith(dateFrom: picked.start, dateTo: picked.end));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasDateWindow = _draft.dateFrom != null || _draft.dateTo != null;
+
+    return Padding(
+      // Keep the sheet above the keyboard while typing a source.
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Filter leads', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 16),
+              Text('Show', style: theme.textTheme.labelLarge),
+              const SizedBox(height: 8),
+              SegmentedButton<LeadScope>(
+                segments: [
+                  for (final s in LeadScope.values)
+                    ButtonSegment(value: s, label: Text(s.label)),
+                ],
+                selected: {_draft.scope},
+                onSelectionChanged: (sel) =>
+                    setState(() => _draft = _draft.copyWith(scope: sel.first)),
+              ),
+              const SizedBox(height: 16),
+              Text('Lead type', style: theme.textTheme.labelLarge),
+              const SizedBox(height: 8),
+              SegmentedButton<bool?>(
+                segments: const [
+                  ButtonSegment(value: null, label: Text('All')),
+                  ButtonSegment(value: false, label: Text('Individual')),
+                  ButtonSegment(value: true, label: Text('Corporate')),
+                ],
+                selected: {_draft.isCorporate},
+                onSelectionChanged: (sel) => setState(
+                    () => _draft = _draft.copyWith(isCorporate: sel.first)),
+              ),
+              const SizedBox(height: 16),
+              Text('Sort by', style: theme.textTheme.labelLarge),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 0,
+                children: [
+                  for (final s in LeadSort.values)
+                    ChoiceChip(
+                      label: Text(s.label),
+                      selected: _draft.sort == s,
+                      onSelected: (_) =>
+                          setState(() => _draft = _draft.copyWith(sort: s)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _sourceController,
+                onChanged: (v) =>
+                    setState(() => _draft = _draft.copyWith(source: v)),
+                decoration: const InputDecoration(
+                  labelText: 'Source',
+                  hintText: 'e.g. Referral, Website, Walk-in',
+                  prefixIcon: Icon(Icons.campaign_outlined),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.date_range_rounded),
+                title: Text(
+                  hasDateWindow
+                      ? '${Formatters.date(_draft.dateFrom)} → ${Formatters.date(_draft.dateTo)}'
+                      : 'Created date — any time',
+                  style: theme.textTheme.bodyMedium,
+                ),
+                onTap: _pickDateRange,
+                trailing: hasDateWindow
+                    ? IconButton(
+                        tooltip: 'Clear dates',
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        onPressed: () => setState(() => _draft =
+                            _draft.copyWith(dateFrom: null, dateTo: null)),
+                      )
+                    : const Icon(Icons.chevron_right_rounded),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () =>
+                          Navigator.of(context).pop(_draft.resetAdvanced()),
+                      child: const Text('Reset'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(_draft),
+                      child: const Text('Apply filters'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

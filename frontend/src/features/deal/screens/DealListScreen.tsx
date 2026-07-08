@@ -456,11 +456,11 @@ export function DealListScreen() {
         </div>
         <div className="border-r border-slate-100 last:border-0 px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">Pipeline Value</p>
-          <p className="text-lg font-bold text-slate-800 mt-1">${stats.activeValue.toLocaleString('en-US')}</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">{stats.activeValue.toLocaleString('vi-VN')} ₫</p>
         </div>
         <div className="border-r border-slate-100 last:border-0 px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">Won Revenue</p>
-          <p className="text-lg font-bold text-slate-800 mt-1">${stats.wonValue.toLocaleString('en-US')}</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">{stats.wonValue.toLocaleString('vi-VN')} ₫</p>
         </div>
         <div className="px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">Win Ratio (Closed)</p>
@@ -560,7 +560,7 @@ export function DealListScreen() {
                     </div>
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs font-bold text-slate-800">
-                    ${deal.value.toLocaleString('en-US')}
+                    {deal.value.toLocaleString('vi-VN')} ₫
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-500 font-medium">
                     <div className="flex items-center gap-1">
@@ -760,7 +760,7 @@ export function DealListScreen() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">Deal Value ($)</label>
+                  <label className="text-xs font-semibold text-slate-600">Deal Value (VND)</label>
                   <Input
                     type="number"
                     placeholder="e.g. 15000"
@@ -978,7 +978,7 @@ export function DealListScreen() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">Deal Value ($)</label>
+                  <label className="text-xs font-semibold text-slate-600">Deal Value (VND)</label>
                   <Input
                     type="number"
                     disabled={isAlreadyClosed}

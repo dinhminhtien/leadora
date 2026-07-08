@@ -32,7 +32,7 @@ public class SalesFeedbackEntity extends BaseEntity {
     @JoinColumn(name = "sales_staff_id")
     private UserEntity salesStaff;
 
-    @Column(name = "rating", nullable = false)
+    @Column(name = "rating")
     private Short rating;
 
     @Column(name = "comment", columnDefinition = "TEXT")
