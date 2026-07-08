@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/theme_mode_controller.dart';
 import '../../../../shared/formatters.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/section_card.dart';
@@ -67,6 +68,8 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 16),
+              const _AppearanceCard(),
+              const SizedBox(height: 16),
               Card(
                 elevation: 0,
                 margin: EdgeInsets.zero,
@@ -112,5 +115,43 @@ class ProfileScreen extends ConsumerWidget {
     await ref.read(authControllerProvider.notifier).logout();
     // The router's redirect guard reacts to the session change and returns to
     // login automatically; no manual navigation needed.
+  }
+}
+
+/// Light / Dark / System selector — persisted via [themeModeProvider] so the
+/// choice survives restarts, mirroring the web dashboard's theme toggle.
+class _AppearanceCard extends ConsumerWidget {
+  const _AppearanceCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+    return SectionCard(
+      title: 'Appearance',
+      icon: Icons.palette_outlined,
+      child: SegmentedButton<ThemeMode>(
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment(
+            value: ThemeMode.light,
+            label: Text('Light'),
+            icon: Icon(Icons.light_mode_outlined, size: 18),
+          ),
+          ButtonSegment(
+            value: ThemeMode.dark,
+            label: Text('Dark'),
+            icon: Icon(Icons.dark_mode_outlined, size: 18),
+          ),
+          ButtonSegment(
+            value: ThemeMode.system,
+            label: Text('Auto'),
+            icon: Icon(Icons.brightness_auto_outlined, size: 18),
+          ),
+        ],
+        selected: {mode},
+        onSelectionChanged: (selection) =>
+            ref.read(themeModeProvider.notifier).setMode(selection.first),
+      ),
+    );
   }
 }

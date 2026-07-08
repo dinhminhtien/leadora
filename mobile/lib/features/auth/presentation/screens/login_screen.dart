@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/localization/generated/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/routing/routes.dart';
+import '../../../../shared/widgets/brand_logo.dart';
 import '../providers/auth_controller.dart';
 
 /// Email/password sign-in with realtime validation and bound submit state.
@@ -95,29 +96,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Container(
-                      height: 76,
-                      width: 76,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            theme.colorScheme.primary,
-                            theme.colorScheme.primary.withValues(alpha: 0.72),
+                    // Official brand mark — same asset as the website header.
+                    Center(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(22),
+                          boxShadow: [
+                            BoxShadow(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.22),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
                           ],
                         ),
-                        borderRadius: BorderRadius.circular(22),
-                        boxShadow: [
-                          BoxShadow(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.28),
-                            blurRadius: 20,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
+                        child: const BrandLogo(size: 84, radius: 22),
                       ),
-                      child: Icon(Icons.hub_rounded,
-                          size: 38, color: theme.colorScheme.onPrimary),
                     ),
                     const SizedBox(height: 24),
                     Text(

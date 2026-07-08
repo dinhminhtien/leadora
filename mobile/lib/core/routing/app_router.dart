@@ -5,6 +5,10 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/reset_password_screen.dart';
+import '../../features/customer/data/customer_models.dart';
+import '../../features/customer/presentation/screens/customer_detail_screen.dart';
+import '../../features/customer/presentation/screens/customer_form_screen.dart';
+import '../../features/customer/presentation/screens/customer_list_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_shell.dart';
 import '../../features/deal/presentation/screens/deal_detail_screen.dart';
@@ -20,7 +24,9 @@ import '../../features/quotation/presentation/screens/quotation_detail_screen.da
 import '../../features/quotation/presentation/screens/quotation_list_screen.dart';
 import '../../features/reminder/presentation/screens/reminder_list_screen.dart';
 import '../../features/sla/presentation/screens/sla_list_screen.dart';
+import '../../features/task/data/task_models.dart';
 import '../../features/task/presentation/screens/task_detail_screen.dart';
+import '../../features/task/presentation/screens/task_form_screen.dart';
 import '../../features/task/presentation/screens/task_list_screen.dart';
 import '../widgets/splash_screen.dart';
 import 'app_session.dart';
@@ -105,6 +111,38 @@ final routerProvider = Provider<GoRouter>((ref) {
             ReminderListScreen(highlightId: state.uri.queryParameters['highlight']),
       ),
 
+      // Customer profiles — full-screen browse (no dedicated tab), reached from
+      // the Dashboard quick actions. List → detail → edit, plus create.
+      GoRoute(
+        path: Routes.customers,
+        name: RouteNames.customers,
+        builder: (_, _) => const CustomerListScreen(),
+        routes: [
+          GoRoute(
+            path: Routes.customerCreateSub,
+            name: RouteNames.customerCreate,
+            builder: (_, _) =>
+                const CustomerFormScreen(mode: CustomerFormMode.create),
+          ),
+          GoRoute(
+            path: Routes.customerDetailSub,
+            name: RouteNames.customerDetail,
+            builder: (_, state) => CustomerDetailScreen(
+              customerId: state.pathParameters['id']!,
+              initial: state.extra as Customer?,
+            ),
+          ),
+          GoRoute(
+            path: Routes.customerEditSub,
+            name: RouteNames.customerEdit,
+            builder: (_, state) => CustomerFormLoader(
+              customerId: state.pathParameters['id']!,
+              initial: state.extra as Customer?,
+            ),
+          ),
+        ],
+      ),
+
       // Interaction Timeline — reached from a deal/customer detail's
       // "Interactions" section (see InteractionSummaryCard).
       GoRoute(
@@ -179,11 +217,38 @@ final routerProvider = Provider<GoRouter>((ref) {
                 builder: (_, _) => const TaskListScreen(),
                 routes: [
                   GoRoute(
+                    path: Routes.taskCreateSub,
+                    name: RouteNames.taskCreate,
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (_, _) =>
+                        const TaskFormScreen(mode: TaskFormMode.create),
+                  ),
+                  GoRoute(
                     path: Routes.taskDetailSub,
                     name: RouteNames.taskDetail,
                     parentNavigatorKey: _rootNavigatorKey,
                     builder: (_, state) =>
                         TaskDetailScreen(taskId: state.pathParameters['id']!),
+                  ),
+                  GoRoute(
+                    path: Routes.taskEditSub,
+                    name: RouteNames.taskEdit,
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (_, state) => TaskFormLoader(
+                      mode: TaskFormMode.edit,
+                      taskId: state.pathParameters['id']!,
+                      initial: state.extra as Task?,
+                    ),
+                  ),
+                  GoRoute(
+                    path: Routes.taskResignSub,
+                    name: RouteNames.taskResign,
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (_, state) => TaskFormLoader(
+                      mode: TaskFormMode.resign,
+                      taskId: state.pathParameters['id']!,
+                      initial: state.extra as Task?,
+                    ),
                   ),
                 ],
               ),
