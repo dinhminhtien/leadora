@@ -65,5 +65,13 @@ public class PaymentEntity extends BaseEntity {
     private String qrCodeUrl;
 
     @Column(name = "notes", columnDefinition = "TEXT")
-    private String notes;
+    private String verificationNote;
+
+    public String getNotes() {
+        return verificationNote;
+    }
+
+    public void setNotes(String notes) {
+        this.verificationNote = notes;
+    }
 }
