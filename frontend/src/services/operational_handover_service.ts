@@ -1,19 +1,33 @@
-import { apiClient, type ApiResponse } from "@/services/api_client";
-import type { ListQuery } from "@/shared/types/api";
+import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_client";
+import type { ArrivalHandover, HandoverStatus } from "./arrival_handover_service";
 
-export type OperationalHandover = Record<string, unknown> & {
-  id: string;
-  title?: string;
-  status?: string;
+export type { ArrivalHandover as OperationalHandover, HandoverStatus };
+
+export type OperationalHandoverPayload = {
+  bookingId?: string;
+  specialRequests?: string;
+  roomPreferences?: string;
+  vipNotes?: string;
+  operationalNotes?: string;
+  assignedFoUserId?: string;
+  status: "DRAFT" | "SUBMITTED";
 };
 
-export type OperationalHandoverPayload = Record<string, unknown>;
+export type OperationalHandoverQuery = {
+  search?: string;
+  status?: string;
+  arrivalDate?: string;
+  sortBy?: string;
+  sortDir?: string;
+  page?: number;
+  size?: number;
+};
 
 const ENDPOINT = "/operational-handovers";
 
 export const operationalHandoverService = {
-  async getList(params?: ListQuery) {
-    const response = await apiClient.get<ApiResponse<OperationalHandover[]>>(
+  async getList(params?: OperationalHandoverQuery) {
+    const response = await apiClient.get<ApiResponse<PageResponse<ArrivalHandover>>>(
       ENDPOINT,
       { params },
     );
@@ -21,14 +35,14 @@ export const operationalHandoverService = {
   },
 
   async getById(id: string) {
-    const response = await apiClient.get<ApiResponse<OperationalHandover>>(
+    const response = await apiClient.get<ApiResponse<ArrivalHandover>>(
       `${ENDPOINT}/${id}`,
     );
     return response.data;
   },
 
   async create(payload: OperationalHandoverPayload) {
-    const response = await apiClient.post<ApiResponse<OperationalHandover>>(
+    const response = await apiClient.post<ApiResponse<ArrivalHandover>>(
       ENDPOINT,
       payload,
     );
@@ -36,7 +50,7 @@ export const operationalHandoverService = {
   },
 
   async update(id: string, payload: OperationalHandoverPayload) {
-    const response = await apiClient.put<ApiResponse<OperationalHandover>>(
+    const response = await apiClient.put<ApiResponse<ArrivalHandover>>(
       `${ENDPOINT}/${id}`,
       payload,
     );
