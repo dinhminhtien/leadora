@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/empty_state.dart';
@@ -92,12 +93,18 @@ class _ReminderListScreenState extends ConsumerState<ReminderListScreen> {
           onRefresh: controller.refresh,
           child: ListView.separated(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.sm,
+              AppSpacing.lg,
+              AppSpacing.xxxl,
+            ),
             itemCount: list.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
             itemBuilder: (context, index) {
               final reminder = list[index];
-              final highlighted = _highlightId != null && reminder.reminderId == _highlightId;
+              final highlighted =
+                  _highlightId != null && reminder.reminderId == _highlightId;
               return Builder(
                 builder: (itemContext) {
                   if (highlighted && _scrolledIds.add(reminder.reminderId)) {
@@ -128,7 +135,11 @@ class _ReminderListScreenState extends ConsumerState<ReminderListScreen> {
 }
 
 class _ReminderCard extends StatelessWidget {
-  const _ReminderCard({required this.reminder, required this.onDismiss, this.highlighted = false});
+  const _ReminderCard({
+    required this.reminder,
+    required this.onDismiss,
+    this.highlighted = false,
+  });
 
   final Reminder reminder;
   final VoidCallback onDismiss;
@@ -142,10 +153,10 @@ class _ReminderCard extends StatelessWidget {
     return HighlightGlow(
       highlighted: highlighted,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadii.lg),
         onTap: route == null ? null : () => context.push(route),
         child: SectionCard(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -158,7 +169,9 @@ class _ReminderCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             reminder.title,
-                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -171,12 +184,14 @@ class _ReminderCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    if (reminder.description != null && reminder.description!.trim().isNotEmpty) ...[
+                    if (reminder.description != null &&
+                        reminder.description!.trim().isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
                         reminder.description!,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -184,15 +199,30 @@ class _ReminderCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        Icon(Icons.schedule_rounded, size: 14, color: theme.colorScheme.outline),
+                        Icon(
+                          Icons.schedule_rounded,
+                          size: 14,
+                          color: theme.colorScheme.outline,
+                        ),
                         const SizedBox(width: 4),
-                        Text(
-                          Formatters.relative(reminder.remindAt),
-                          style: theme.textTheme.labelSmall
-                              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        Flexible(
+                          child: Text(
+                            Formatters.relative(reminder.remindAt),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
                         ),
                         const SizedBox(width: 10),
-                        StatusChip(tone: reminder.status.tone, rawStatus: reminder.status.wire, dense: true),
+                        Flexible(
+                          child: StatusChip(
+                            tone: reminder.status.tone,
+                            rawStatus: reminder.status.wire,
+                            dense: true,
+                          ),
+                        ),
                       ],
                     ),
                   ],

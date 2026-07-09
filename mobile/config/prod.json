@@ -4,6 +4,5 @@
   "API_BASE_URL": "https://api.leadora.novax.ai/api/v1",
   "CONNECT_TIMEOUT_MS": "15000",
   "RECEIVE_TIMEOUT_MS": "15000",
-  "ENABLE_CRASHLYTICS": "true",
   "LOG_LEVEL": "warning"
 }

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,12 +5,25 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/routing/routes.dart';
 import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
+import '../../../../shared/widgets/app_search_field.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/empty_state.dart';
+import '../../../../shared/widgets/list_skeleton.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared/widgets/status_chip.dart';
 import '../../data/customer_models.dart';
 import '../providers/customer_providers.dart';
+
+/// Dummy row for the loading skeleton — same widget as a real row so the list
+/// keeps its shape when data lands.
+const _skeletonCustomer = Customer(
+  customerId: '',
+  customerType: CustomerType.corporate,
+  fullName: 'Placeholder customer name',
+  status: CustomerStatus.active,
+  companyName: 'Placeholder company',
+  email: 'placeholder@example.com',
+);
 
 /// Customer Profiles — search, type/status filters, live stat cards,
 /// pull-to-refresh and infinite scroll. Mirrors the web Customer Profiles list.
@@ -25,8 +36,6 @@ class CustomerListScreen extends ConsumerStatefulWidget {
 
 class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
   final _scrollController = ScrollController();
-  final _searchController = TextEditingController();
-  Timer? _debounce;
 
   @override
   void initState() {
@@ -36,9 +45,7 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _scrollController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -52,19 +59,8 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
     }
   }
 
-  void _onSearchChanged(String value) {
-    setState(() {});
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      _controller.applyFilters(_controller.filters.copyWith(search: value));
-    });
-  }
-
-  void _clearSearch() {
-    _debounce?.cancel();
-    setState(() => _searchController.clear());
-    _controller.applyFilters(_controller.filters.copyWith(search: ''));
-  }
+  void _onSearchChanged(String term) =>
+      _controller.applyFilters(_controller.filters.copyWith(search: term));
 
   Future<void> _openFilterSheet() async {
     final result = await showModalBottomSheet<CustomerFilters>(
@@ -81,7 +77,8 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
     final asyncState = ref.watch(customerListControllerProvider);
     final filters = asyncState.valueOrNull?.filters ?? const CustomerFilters();
     final activeCount =
-        (filters.customerType != null ? 1 : 0) + (filters.status != null ? 1 : 0);
+        (filters.customerType != null ? 1 : 0) +
+        (filters.status != null ? 1 : 0);
 
     return Scaffold(
       appBar: AppBar(
@@ -109,31 +106,21 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: TextField(
-              controller: _searchController,
-              onChanged: _onSearchChanged,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: 'Search name, email, phone, company…',
-                prefixIcon: const Icon(Icons.search_rounded),
-                isDense: true,
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: _clearSearch,
-                      ),
-              ),
-            ),
+          AppSearchField(
+            hintText: 'Search name, email, phone, company…',
+            initialValue: filters.search,
+            onChanged: _onSearchChanged,
           ),
           const _CustomerStatsRow(),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xs),
           Expanded(
             child: AsyncValueView<CustomerListState>(
               value: asyncState,
               onRetry: _controller.refresh,
+              loading: ListSkeleton(
+                separatorHeight: AppSpacing.sm,
+                itemBuilder: (_) => _CustomerCard(customer: _skeletonCustomer),
+              ),
               isEmpty: (s) => s.items.isEmpty,
               empty: EmptyState(
                 icon: Icons.people_outline_rounded,
@@ -147,13 +134,19 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
                 child: ListView.separated(
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.xs,
+                    AppSpacing.lg,
+                    AppSpacing.fabClearance,
+                  ),
                   itemCount: s.items.length + (s.hasMore ? 1 : 0),
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     if (index >= s.items.length) {
                       return const Padding(
-                        padding: EdgeInsets.all(16),
+                        padding: EdgeInsets.all(AppSpacing.lg),
                         child: Center(child: CircularProgressIndicator()),
                       );
                     }
@@ -178,16 +171,31 @@ class _CustomerStatsRow extends ConsumerWidget {
     final async = ref.watch(customerStatsProvider);
     final stats = async.valueOrNull;
     if (stats == null) return const SizedBox(height: 4);
+    // The pill's two text lines scale with the user's font size; a hardcoded
+    // height clips them at accessibility scales.
+    final height = 18 + MediaQuery.textScalerOf(context).scale(46);
     return SizedBox(
-      height: 64,
+      height: height,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
         children: [
           _StatPill(label: 'Total', value: stats.total, tone: StatusTone.brand),
-          _StatPill(label: 'Active', value: stats.active, tone: StatusTone.success),
-          _StatPill(label: 'Individual', value: stats.individual, tone: StatusTone.info),
-          _StatPill(label: 'Corporate', value: stats.corporate, tone: StatusTone.neutral),
+          _StatPill(
+            label: 'Active',
+            value: stats.active,
+            tone: StatusTone.success,
+          ),
+          _StatPill(
+            label: 'Individual',
+            value: stats.individual,
+            tone: StatusTone.info,
+          ),
+          _StatPill(
+            label: 'Corporate',
+            value: stats.corporate,
+            tone: StatusTone.neutral,
+          ),
         ],
       ),
     );
@@ -195,7 +203,11 @@ class _CustomerStatsRow extends ConsumerWidget {
 }
 
 class _StatPill extends StatelessWidget {
-  const _StatPill({required this.label, required this.value, required this.tone});
+  const _StatPill({
+    required this.label,
+    required this.value,
+    required this.tone,
+  });
 
   final String label;
   final int value;
@@ -206,25 +218,34 @@ class _StatPill extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.only(right: AppSpacing.sm),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(AppRadii.md),
         border: Border.all(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+        ),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(Formatters.compact(value),
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w800)),
-          Text(label.toUpperCase(),
-              style: theme.textTheme.labelSmall?.copyWith(
-                letterSpacing: 0.4,
-                color: theme.colorScheme.onSurfaceVariant,
-              )),
+          Text(
+            Formatters.compact(value),
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            label.toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              letterSpacing: 0.4,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
@@ -248,7 +269,12 @@ class _CustomerFilterSheetState extends State<_CustomerFilterSheet> {
     final theme = Theme.of(context);
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          0,
+          AppSpacing.xl,
+          AppSpacing.lg,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
@@ -301,8 +327,9 @@ class _CustomerFilterSheetState extends State<_CustomerFilterSheet> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(
-                        CustomerFilters(search: _draft.search)),
+                    onPressed: () => Navigator.of(
+                      context,
+                    ).pop(CustomerFilters(search: _draft.search)),
                     child: const Text('Reset'),
                   ),
                 ),
@@ -338,14 +365,14 @@ class _CustomerCard extends StatelessWidget {
     ].whereType<String>().join(' · ');
 
     return InkWell(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadii.lg),
       onTap: () => context.pushNamed(
         RouteNames.customerDetail,
         pathParameters: {'id': customer.customerId},
         extra: customer,
       ),
       child: SectionCard(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         child: Row(
           children: [
             AppAvatar(name: customer.fullName, radius: 22),
@@ -359,25 +386,31 @@ class _CustomerCard extends StatelessWidget {
                       Flexible(
                         child: Text(
                           customer.fullName,
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       const SizedBox(width: 6),
-                      StatusChip(
-                        tone: customer.customerType.tone,
-                        label: customer.customerType.label,
-                        dense: true,
+                      // Flexible so the chip truncates on 320dp phones instead
+                      // of overflowing when the trailing status chip is wide.
+                      Flexible(
+                        child: StatusChip(
+                          tone: customer.customerType.tone,
+                          label: customer.customerType.label,
+                          dense: true,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

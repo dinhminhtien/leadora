@@ -9,14 +9,20 @@ class Routes {
   static const String forgotPassword = '/forgot-password';
   static const String resetPassword = '/reset-password';
 
-  // Dashboard shell + tabs.
+  // Dashboard shell + tabs: Dashboard · Deals · Leads · Tasks · More.
   static const String dashboard = '/dashboard';
+  static const String deals = '/deals';
   static const String leads = '/leads';
   static const String tasks = '/tasks';
+  static const String more = '/more';
+
+  // Secondary modules — reached from the More hub, rendered over the shell.
   static const String quotations = '/quotations';
   static const String profile = '/profile';
 
   // Full-screen routes rendered over the shell (relative sub-paths).
+  static const String dealCreateSub = 'new';
+  static const String dealDetailSub = 'detail/:id';
   static const String leadCreateSub = 'new';
   static const String leadDetailSub = 'detail/:id';
   static const String taskDetailSub = 'detail/:id';
@@ -24,6 +30,7 @@ class Routes {
   static const String taskEditSub = 'edit/:id';
   static const String taskResignSub = 'resign/:id';
   static const String changePasswordSub = 'change-password';
+  static const String profileEditSub = 'edit';
 
   static String leadDetailPath(String id) => '/leads/detail/$id';
   static String taskDetailPath(String id) => '/tasks/detail/$id';
@@ -41,10 +48,27 @@ class Routes {
 
   // Full-screen routes reached only via notification deep-link (no list/tab yet).
   static const String quotationDetail = '/quotations/:id';
-  static const String dealDetail = '/deals/:id';
 
   static String quotationDetailPath(String id) => '/quotations/$id';
-  static String dealDetailPath(String id) => '/deals/$id';
+
+  /// `detail/` segment (rather than `/deals/:id`) keeps the create route from
+  /// being swallowed as a deal whose id is literally "new".
+  static String dealDetailPath(String id) => '/deals/detail/$id';
+  static const String dealCreate = '/deals/new';
+
+  // Payments & bookings — reached from the More hub.
+  static const String payments = '/payments';
+  static const String paymentCreateSub = 'new';
+  static const String paymentDetailSub = 'detail/:id';
+  static const String paymentCreate = '/payments/new';
+  static String paymentDetailPath(String id) => '/payments/detail/$id';
+
+  static const String bookings = '/bookings';
+  static const String bookingDetailSub = 'detail/:id';
+  static String bookingDetailPath(String id) => '/bookings/detail/$id';
+
+  // Sales pipeline (Kanban) — reached from the More hub.
+  static const String pipeline = '/pipeline';
 
   // Full-screen browse entry points, reached from the Dashboard quick actions
   // and from the header notification bell.
@@ -56,20 +80,31 @@ class Routes {
   /// flash + scroll to that row — mirrors the web `?highlight=` param used
   /// after a notification tap (see `useHighlightRow` on web).
   static String slaPath({String? highlightId}) =>
-      highlightId == null || highlightId.isEmpty ? sla : '$sla?highlight=$highlightId';
+      highlightId == null || highlightId.isEmpty
+      ? sla
+      : '$sla?highlight=$highlightId';
 
-  static String remindersPath({String? highlightId}) => highlightId == null || highlightId.isEmpty
+  static String remindersPath({String? highlightId}) =>
+      highlightId == null || highlightId.isEmpty
       ? reminders
       : '$reminders?highlight=$highlightId';
 
   // Interaction Timeline — reached from a deal/customer detail's
   // "Interactions" section (no dedicated tab).
-  static const String interactionTimeline = '/interactions/:linkedType/:linkedId';
-  static const String logInteraction = '/interactions/:linkedType/:linkedId/log';
+  static const String interactionTimeline =
+      '/interactions/:linkedType/:linkedId';
+  static const String logInteraction =
+      '/interactions/:linkedType/:linkedId/log';
 
-  static String interactionTimelinePath(String linkedType, String linkedId, {String? name}) {
+  static String interactionTimelinePath(
+    String linkedType,
+    String linkedId, {
+    String? name,
+  }) {
     final path = '/interactions/$linkedType/$linkedId';
-    final query = name != null && name.trim().isNotEmpty ? {'name': name} : null;
+    final query = name != null && name.trim().isNotEmpty
+        ? {'name': name}
+        : null;
     return query == null ? path : '$path?${Uri(queryParameters: query).query}';
   }
 
@@ -98,6 +133,15 @@ class RouteNames {
   static const String resetPassword = 'resetPassword';
 
   static const String dashboard = 'dashboard';
+  static const String more = 'more';
+  static const String deals = 'deals';
+  static const String dealCreate = 'dealCreate';
+  static const String pipeline = 'pipeline';
+  static const String payments = 'payments';
+  static const String paymentCreate = 'paymentCreate';
+  static const String paymentDetail = 'paymentDetail';
+  static const String bookings = 'bookings';
+  static const String bookingDetail = 'bookingDetail';
   static const String leads = 'leads';
   static const String leadCreate = 'leadCreate';
   static const String leadDetail = 'leadDetail';
@@ -112,6 +156,7 @@ class RouteNames {
   static const String customerEdit = 'customerEdit';
   static const String notifications = 'notifications';
   static const String profile = 'profile';
+  static const String profileEdit = 'profileEdit';
   static const String changePassword = 'changePassword';
   static const String quotationDetail = 'quotationDetail';
   static const String dealDetail = 'dealDetail';

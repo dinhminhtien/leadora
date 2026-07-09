@@ -5,18 +5,18 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/localization/generated/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../providers/reset_password_controller.dart';
 
 class ResetPasswordScreen extends ConsumerStatefulWidget {
-  const ResetPasswordScreen({
-    super.key,
-    required this.token,
-  });
+  const ResetPasswordScreen({super.key, required this.token});
 
   final String token;
 
   @override
-  ConsumerState<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
+  ConsumerState<ResetPasswordScreen> createState() =>
+      _ResetPasswordScreenState();
 }
 
 class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
@@ -50,7 +50,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
 
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
-    
+
     final l10n = AppLocalizations.of(context);
     if (widget.token.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -66,16 +66,13 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
 
     final success = await ref
         .read(resetPasswordControllerProvider.notifier)
-        .resetPassword(
-          token: widget.token,
-          password: _passwordController.text,
-        );
+        .resetPassword(token: widget.token, password: _passwordController.text);
 
     if (success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(l10n.resetPasswordSuccess),
-          backgroundColor: Colors.green[700],
+          backgroundColor: AppColors.success,
         ),
       );
       context.go(Routes.login);
@@ -92,8 +89,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     ref.listen<AsyncValue<void>>(resetPasswordControllerProvider, (prev, next) {
       if (next.hasError && !next.isLoading) {
         final error = next.error;
-        final message =
-            error is AppException ? error.message : l10n.commonErrorTitle;
+        final message = error is AppException
+            ? error.message
+            : l10n.commonErrorTitle;
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(content: Text(message)));
@@ -110,7 +108,10 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xxl,
+              vertical: AppSpacing.xxxl,
+            ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
               child: Form(
@@ -130,8 +131,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                     const SizedBox(height: 24),
                     Text(
                       l10n.resetPasswordTitle,
-                      style: theme.textTheme.headlineMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
@@ -152,11 +154,14 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                         labelText: l10n.resetPasswordLabel,
                         prefixIcon: const Icon(Icons.lock_outline_rounded),
                         suffixIcon: IconButton(
-                          icon: Icon(_obscurePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined),
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
                           onPressed: () => setState(
-                              () => _obscurePassword = !_obscurePassword),
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
                         ),
                       ),
                       validator: (v) => _validatePassword(v, l10n),
@@ -172,11 +177,15 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                         labelText: l10n.resetPasswordConfirmLabel,
                         prefixIcon: const Icon(Icons.lock_outline_rounded),
                         suffixIcon: IconButton(
-                          icon: Icon(_obscureConfirmPassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined),
+                          icon: Icon(
+                            _obscureConfirmPassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
                           onPressed: () => setState(
-                              () => _obscureConfirmPassword = !_obscureConfirmPassword),
+                            () => _obscureConfirmPassword =
+                                !_obscureConfirmPassword,
+                          ),
                         ),
                       ),
                       validator: (v) => _validateConfirmPassword(v, l10n),
@@ -191,7 +200,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                           ? const SizedBox(
                               width: 22,
                               height: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2.5),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                              ),
                             )
                           : Text(l10n.resetPasswordSubmit),
                     ),

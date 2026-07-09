@@ -2,7 +2,8 @@
 ///
 /// Paths are relative to [Env.apiBaseUrl] (which already ends in `/api/v1`).
 /// Grounded in the actual Spring Boot controllers in the backend module:
-///   AuthController, BookingController, NotificationController, etc.
+///   AuthController, TaskController, NotificationController, etc. Only the
+/// endpoints the mobile client actually consumes are listed here.
 class ApiPaths {
   const ApiPaths._();
 
@@ -39,17 +40,6 @@ class ApiPaths {
   /// `/auth/refresh` would live; see [TokenRefresher] for the fallback.
   static const String refresh = '/auth/refresh';
 
-  // --- Booking (BookingController) ---
-  static const String bookings = '/bookings';
-  static String bookingById(String id) => '/bookings/$id';
-  static String bookingStatus(String id) => '/bookings/$id/status';
-
-  // --- Payment (lives under bookings/quotations on this backend) ---
-  static String paymentByBooking(String bookingId) =>
-      '/bookings/$bookingId/payment';
-  static String paymentStatus(String bookingId) =>
-      '/bookings/$bookingId/payment/status';
-
   // --- Notifications (NotificationController) ---
   static const String notifications = '/notifications';
   static String notificationById(String id) => '/notifications/$id';
@@ -65,18 +55,31 @@ class ApiPaths {
 
   // --- Interaction Timeline (InteractionTimelineController) ---
   static const String interactionTimeline = '/interaction-timeline';
-  static String interactionTimelineById(String id) => '/interaction-timeline/$id';
+  static String interactionTimelineById(String id) =>
+      '/interaction-timeline/$id';
   static String interactionTimelineAuditLogs(String id) =>
       '/interaction-timeline/$id/audit-logs';
 
   // --- Quotations (QuotationController) ---
   static const String quotations = '/quotations';
   static String quotationById(String id) => '/quotations/$id';
-  static String quotationTrackResponse(String id) => '/quotations/$id/track-response';
+  static String quotationTrackResponse(String id) =>
+      '/quotations/$id/track-response';
 
   // --- Deals (DealController) ---
   static const String deals = '/deals';
   static String dealById(String id) => '/deals/$id';
+  static String dealStatus(String id) => '/deals/$id/status';
+
+  // --- Bookings (BookingController) ---
+  static const String bookings = '/bookings';
+  static String bookingById(String id) => '/bookings/$id';
+
+  // --- Payments (PaymentController) ---
+  static const String payments = '/payments';
+  static String paymentById(String id) => '/payments/$id';
+  static String paymentStatus(String id) => '/payments/$id/status';
+  static String paymentCancel(String id) => '/payments/$id/cancel';
 
   // --- SLA (SlaController) ---
   static const String slaMonitoring = '/sla/monitoring';

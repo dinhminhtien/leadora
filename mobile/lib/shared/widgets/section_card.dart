@@ -1,6 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/storage/local_avatar_store.dart';
 import '../../core/theme/app_dimens.dart';
 import '../formatters.dart';
 
@@ -12,7 +14,7 @@ class SectionCard extends StatelessWidget {
     this.icon,
     this.trailing,
     required this.child,
-    this.padding = const EdgeInsets.all(16),
+    this.padding = const EdgeInsets.all(AppSpacing.lg),
   });
 
   final String? title;
@@ -48,8 +50,9 @@ class SectionCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       title!,
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   ?trailing,
@@ -83,7 +86,7 @@ class InfoRow extends StatelessWidget {
     final theme = Theme.of(context);
     final v = (value == null || value!.trim().isEmpty) ? '—' : value!;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -95,15 +98,17 @@ class InfoRow extends StatelessWidget {
             width: 108,
             child: Text(
               label,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           Expanded(
             child: Text(
               v,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w500),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -115,12 +120,18 @@ class InfoRow extends StatelessWidget {
 /// Circular avatar: remote photo when a usable URL is present, otherwise
 /// initials with a deterministic tint from the name.
 ///
-/// Only http(s) URLs are loaded — the web client stores a
-/// `local-storage-avatar://` placeholder for browser-local uploads, which no
-/// other device can resolve, so anything non-http falls back to initials.
-/// Network failures also fall back instead of leaving a broken circle.
-class AppAvatar extends StatelessWidget {
-  const AppAvatar({super.key, required this.name, this.radius = 20, this.imageUrl});
+/// Besides http(s) URLs it resolves the `local-storage-avatar://<userId>`
+/// placeholder the web client writes for browser-local uploads — on this
+/// device the bytes come from [LocalAvatarStore]; on devices that don't hold
+/// the image it falls back to initials, exactly like the web does. Network
+/// failures also fall back instead of leaving a broken circle.
+class AppAvatar extends ConsumerWidget {
+  const AppAvatar({
+    super.key,
+    required this.name,
+    this.radius = 20,
+    this.imageUrl,
+  });
 
   final String name;
   final double radius;
@@ -133,8 +144,22 @@ class AppAvatar extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final fallback = _initialsCircle();
+
+    final localUserId = LocalAvatarStore.userIdFrom(imageUrl);
+    if (localUserId != null) {
+      final bytes = ref
+          .watch(localAvatarBytesProvider(localUserId))
+          .valueOrNull;
+      if (bytes == null) return fallback;
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: MemoryImage(bytes),
+        backgroundColor: Colors.transparent,
+      );
+    }
+
     if (!_isLoadable(imageUrl)) return fallback;
     return CircleAvatar(
       radius: radius,
@@ -155,7 +180,8 @@ class AppAvatar extends StatelessWidget {
   }
 
   Widget _initialsCircle() {
-    final tint = Colors.primaries[name.hashCode.abs() % Colors.primaries.length];
+    final tint =
+        Colors.primaries[name.hashCode.abs() % Colors.primaries.length];
     return CircleAvatar(
       radius: radius,
       backgroundColor: tint.withValues(alpha: 0.18),

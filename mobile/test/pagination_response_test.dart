@@ -9,12 +9,7 @@ void main() {
       // This is the shape the Leadora backend actually returns.
       final data = {
         'content': [1, 2, 3],
-        'page': {
-          'size': 15,
-          'number': 0,
-          'totalElements': 3,
-          'totalPages': 1,
-        },
+        'page': {'size': 15, 'number': 0, 'totalElements': 3, 'totalPages': 1},
       };
       final res = PaginationResponse<int>.parse(data, decodeInt);
       expect(res.items, [1, 2, 3]);

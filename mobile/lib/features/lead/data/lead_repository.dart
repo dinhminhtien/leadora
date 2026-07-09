@@ -24,11 +24,7 @@ class LeadRepository {
   }) {
     return _client.getPaged<Lead>(
       ApiPaths.leads,
-      query: {
-        ...filters.toQuery(),
-        'page': page,
-        'size': size,
-      },
+      query: {...filters.toQuery(), 'page': page, 'size': size},
       decodeItem: (item) => Lead.fromJson(item as Map<String, dynamic>),
       cancelToken: cancelToken,
     );

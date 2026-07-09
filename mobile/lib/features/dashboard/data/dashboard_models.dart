@@ -42,15 +42,19 @@ class DashboardSummary {
 }
 
 class StageSummary {
-  const StageSummary({required this.stage, required this.count, required this.value});
+  const StageSummary({
+    required this.stage,
+    required this.count,
+    required this.value,
+  });
 
   final String stage;
   final int count;
   final num value;
 
   factory StageSummary.fromJson(Map<String, dynamic> json) => StageSummary(
-        stage: json['stage'] as String? ?? '—',
-        count: (json['count'] as num?)?.toInt() ?? 0,
-        value: (json['value'] as num?) ?? 0,
-      );
+    stage: json['stage'] as String? ?? '—',
+    count: (json['count'] as num?)?.toInt() ?? 0,
+    value: (json['value'] as num?) ?? 0,
+  );
 }
