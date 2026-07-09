@@ -17,7 +17,11 @@ import '../providers/customer_providers.dart';
 /// tabs. Mirrors the web Customer Profile detail screen (unified activity
 /// timeline of tasks + deals + bookings + quotations).
 class CustomerDetailScreen extends ConsumerWidget {
-  const CustomerDetailScreen({super.key, required this.customerId, this.initial});
+  const CustomerDetailScreen({
+    super.key,
+    required this.customerId,
+    this.initial,
+  });
 
   final String customerId;
   final Customer? initial;
@@ -63,21 +67,40 @@ class CustomerDetailScreen extends ConsumerWidget {
             ],
           ),
         ),
-        body: Column(
-          children: [
-            _ProfileHeader(customer: customer),
-            _TaskStatsRow(customerId: customerId),
-            const Divider(height: 1),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _OverviewTab(customer: customer),
-                  _HistoryTab(customerId: customerId),
-                  _InfoTab(customer: customer),
-                ],
-              ),
-            ),
-          ],
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            return Column(
+              children: [
+                // On short viewports (landscape phones, large text scale) the
+                // header + stats block can outgrow the screen; cap it to half
+                // the height and let it scroll instead of overflowing.
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: constraints.maxHeight / 2,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _ProfileHeader(customer: customer),
+                        _TaskStatsRow(customerId: customerId),
+                      ],
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      _OverviewTab(customer: customer),
+                      _HistoryTab(customerId: customerId),
+                      _InfoTab(customer: customer),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -93,7 +116,12 @@ class _ProfileHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -105,8 +133,9 @@ class _ProfileHeader extends StatelessWidget {
               children: [
                 Text(
                   customer.fullName,
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -116,14 +145,16 @@ class _ProfileHeader extends StatelessWidget {
                   runSpacing: 6,
                   children: [
                     StatusChip(
-                        tone: customer.customerType.tone,
-                        label: customer.customerType.label,
-                        icon: customer.customerType.icon,
-                        dense: true),
+                      tone: customer.customerType.tone,
+                      label: customer.customerType.label,
+                      icon: customer.customerType.icon,
+                      dense: true,
+                    ),
                     StatusChip(
-                        tone: customer.status.tone,
-                        rawStatus: customer.status.wire,
-                        dense: true),
+                      tone: customer.status.tone,
+                      rawStatus: customer.status.wire,
+                      dense: true,
+                    ),
                   ],
                 ),
                 if (customer.isCorporate &&
@@ -132,14 +163,19 @@ class _ProfileHeader extends StatelessWidget {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      Icon(Icons.apartment_rounded,
-                          size: 15, color: theme.colorScheme.onSurfaceVariant),
+                      Icon(
+                        Icons.apartment_rounded,
+                        size: AppIconSize.sm,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                       const SizedBox(width: 6),
                       Flexible(
-                        child: Text(customer.companyName!,
-                            style: theme.textTheme.bodyMedium,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
+                        child: Text(
+                          customer.companyName!,
+                          style: theme.textTheme.bodyMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
@@ -148,7 +184,9 @@ class _ProfileHeader extends StatelessWidget {
                 _ContactLine(icon: Icons.phone_outlined, value: customer.phone),
                 _ContactLine(icon: Icons.email_outlined, value: customer.email),
                 _ContactLine(
-                    icon: Icons.location_on_outlined, value: customer.address),
+                  icon: Icons.location_on_outlined,
+                  value: customer.address,
+                ),
               ],
             ),
           ),
@@ -169,17 +207,24 @@ class _ContactLine extends StatelessWidget {
     if (value == null || value!.trim().isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 3),
+      padding: const EdgeInsets.only(top: AppSpacing.xs),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: theme.colorScheme.onSurfaceVariant),
+          Icon(
+            icon,
+            size: AppIconSize.xs,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(value!,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
+            child: Text(
+              value!,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -197,20 +242,31 @@ class _TaskStatsRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tasks = ref.watch(customerTasksProvider(customerId)).valueOrNull;
     if (tasks == null) return const SizedBox(height: 4);
-    final open =
-        tasks.where((t) => t.status == TaskStatus.open && !t.isOverdue).length;
+    final open = tasks
+        .where((t) => t.status == TaskStatus.open && !t.isOverdue)
+        .length;
     final overdue = tasks.where((t) => t.isOverdue).length;
-    final completed =
-        tasks.where((t) => t.status == TaskStatus.completed).length;
+    final completed = tasks
+        .where((t) => t.status == TaskStatus.completed)
+        .length;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
       child: Row(
         children: [
           _MiniStat(label: 'Open', value: open, tone: StatusTone.info),
           _MiniStat(label: 'Overdue', value: overdue, tone: StatusTone.danger),
           _MiniStat(label: 'Done', value: completed, tone: StatusTone.success),
-          _MiniStat(label: 'Total', value: tasks.length, tone: StatusTone.neutral),
+          _MiniStat(
+            label: 'Total',
+            value: tasks.length,
+            tone: StatusTone.neutral,
+          ),
         ],
       ),
     );
@@ -218,8 +274,11 @@ class _TaskStatsRow extends ConsumerWidget {
 }
 
 class _MiniStat extends StatelessWidget {
-  const _MiniStat(
-      {required this.label, required this.value, required this.tone});
+  const _MiniStat({
+    required this.label,
+    required this.value,
+    required this.tone,
+  });
 
   final String label;
   final int value;
@@ -231,23 +290,29 @@ class _MiniStat extends StatelessWidget {
     return Expanded(
       child: Container(
         margin: const EdgeInsets.only(right: AppSpacing.sm),
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(AppRadii.md),
           border: Border.all(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
         ),
         child: Column(
           children: [
-            Text('$value',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w800)),
-            Text(label.toUpperCase(),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  letterSpacing: 0.3,
-                  color: theme.colorScheme.onSurfaceVariant,
-                )),
+            Text(
+              '$value',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            Text(
+              label.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                letterSpacing: 0.3,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
       ),
@@ -272,11 +337,16 @@ class _OverviewTab extends ConsumerWidget {
       },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.xxxl,
+        ),
         children: [
           async.when(
             loading: () => const Padding(
-              padding: EdgeInsets.all(24),
+              padding: EdgeInsets.all(AppSpacing.xxl),
               child: Center(child: CircularProgressIndicator()),
             ),
             error: (_, _) => const SizedBox.shrink(),
@@ -291,27 +361,39 @@ class _OverviewTab extends ConsumerWidget {
                   if (overdue.isNotEmpty) ...[
                     _OverdueBanner(count: overdue.length),
                     const SizedBox(height: 16),
-                    ...overdue.map((t) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: TaskCard(task: t),
-                        )),
+                    ...overdue.map(
+                      (t) => Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                        child: TaskCard(task: t),
+                      ),
+                    ),
                   ],
-                  Text('Open tasks',
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(
+                    'Open tasks',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   if (open.isEmpty)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Text('No open tasks.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant)),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppSpacing.lg,
+                      ),
+                      child: Text(
+                        'No open tasks.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     )
                   else
-                    ...open.map((t) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: TaskCard(task: t),
-                        )),
+                    ...open.map(
+                      (t) => Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                        child: TaskCard(task: t),
+                      ),
+                    ),
                 ],
               );
             },
@@ -325,8 +407,9 @@ class _OverviewTab extends ConsumerWidget {
                 InfoRow(label: 'Assigned to', value: customer.assignedUserName),
                 InfoRow(label: 'Created by', value: customer.createdByName),
                 InfoRow(
-                    label: 'Customer since',
-                    value: Formatters.date(customer.createdAt)),
+                  label: 'Customer since',
+                  value: Formatters.date(customer.createdAt),
+                ),
                 if (customer.leadId != null)
                   const InfoRow(label: 'Source', value: 'Converted from lead'),
               ],
@@ -347,7 +430,7 @@ class _OverdueBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(AppRadii.md),
@@ -360,7 +443,9 @@ class _OverdueBanner extends StatelessWidget {
             child: Text(
               '$count overdue task${count > 1 ? 's' : ''} need attention',
               style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600, color: theme.colorScheme.error),
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.error,
+              ),
             ),
           ),
         ],
@@ -389,11 +474,9 @@ class _HistoryTab extends ConsumerWidget {
     }
 
     final entries = <_TimelineEntry>[
-      ...tasks.map((t) =>
-          _TimelineEntry(ts: t.createdAt ?? t.endAt, task: t)),
+      ...tasks.map((t) => _TimelineEntry(ts: t.createdAt ?? t.endAt, task: t)),
       ...history.map((h) => _TimelineEntry(ts: h.createdAt, history: h)),
-    ]..sort((a, b) =>
-        (b.ts ?? DateTime(0)).compareTo(a.ts ?? DateTime(0)));
+    ]..sort((a, b) => (b.ts ?? DateTime(0)).compareTo(a.ts ?? DateTime(0)));
 
     if (entries.isEmpty) {
       return RefreshIndicator(
@@ -405,11 +488,16 @@ class _HistoryTab extends ConsumerWidget {
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 64),
+              padding: const EdgeInsets.symmetric(
+                vertical: AppSpacing.xxxl * 2,
+              ),
               child: Center(
-                child: Text('No service history yet.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                child: Text(
+                  'No service history yet.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
             ),
           ],
@@ -431,23 +519,31 @@ class _HistoryTab extends ConsumerWidget {
       },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.xxxl,
+        ),
         children: [
           for (final entry in groups.entries) ...[
             Padding(
-              padding: const EdgeInsets.only(bottom: 8, top: 4),
+              padding: const EdgeInsets.only(
+                bottom: AppSpacing.sm,
+                top: AppSpacing.xs,
+              ),
               child: Text(
                 entry.key.toUpperCase(),
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      letterSpacing: 0.6,
-                      fontWeight: FontWeight.w700,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  letterSpacing: 0.6,
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
             for (final e in entry.value)
               Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: e.task != null
                     ? _TaskTimelineTile(task: e.task!)
                     : _HistoryTile(item: e.history!),
@@ -475,17 +571,23 @@ class _TaskTimelineTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return SectionCard(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.checklist_rounded,
-                  size: 16, color: theme.colorScheme.primary),
+              Icon(
+                Icons.checklist_rounded,
+                size: AppIconSize.sm,
+                color: theme.colorScheme.primary,
+              ),
               const SizedBox(width: 8),
               const StatusChip(
-                  tone: StatusTone.brand, label: 'Task', dense: true),
+                tone: StatusTone.brand,
+                label: 'Task',
+                dense: true,
+              ),
               const SizedBox(width: 6),
               StatusChip(
                 tone: task.isOverdue ? StatusTone.danger : task.status.tone,
@@ -497,19 +599,26 @@ class _TaskTimelineTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text(task.title,
-              style:
-                  theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis),
-          if (task.resultNote != null && task.resultNote!.trim().isNotEmpty) ...[
+          Text(
+            task.title,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (task.resultNote != null &&
+              task.resultNote!.trim().isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text('“${task.resultNote!}”',
-                style: theme.textTheme.bodySmall?.copyWith(
-                    fontStyle: FontStyle.italic,
-                    color: theme.colorScheme.onSurfaceVariant),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis),
+            Text(
+              '“${task.resultNote!}”',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontStyle: FontStyle.italic,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
           const SizedBox(height: 6),
           Text(
@@ -517,8 +626,9 @@ class _TaskTimelineTile extends StatelessWidget {
               Formatters.dateTime(task.createdAt ?? task.endAt),
               if (task.assignedUserName != null) task.assignedUserName!,
             ].join(' · '),
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: theme.colorScheme.outline),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
           ),
         ],
       ),
@@ -535,73 +645,100 @@ class _HistoryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return SectionCard(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(item.type.icon,
-                  size: 16, color: theme.colorScheme.primary),
+              Icon(
+                item.type.icon,
+                size: AppIconSize.sm,
+                color: theme.colorScheme.primary,
+              ),
               const SizedBox(width: 8),
-              StatusChip(tone: item.type.tone, label: item.type.label, dense: true),
+              StatusChip(
+                tone: item.type.tone,
+                label: item.type.label,
+                dense: true,
+              ),
               if (item.status != null) ...[
                 const SizedBox(width: 6),
                 StatusChip(
-                    tone: StatusTone.neutral,
-                    label: Formatters.humanizeEnum(item.status),
-                    dense: true),
+                  tone: StatusTone.neutral,
+                  label: Formatters.humanizeEnum(item.status),
+                  dense: true,
+                ),
               ],
               const Spacer(),
               if (item.amount != null)
-                Text(Formatters.money(item.amount),
-                    style: theme.textTheme.labelLarge
-                        ?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  Formatters.money(item.amount),
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(item.title,
-              style:
-                  theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis),
+          Text(
+            item.title,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
           if (item.stage != null) ...[
             const SizedBox(height: 2),
-            Text(Formatters.humanizeEnum(item.stage),
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            Text(
+              Formatters.humanizeEnum(item.stage),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ],
           if (item.checkIn != null) ...[
             const SizedBox(height: 4),
             Row(
               children: [
-                Icon(Icons.event_outlined,
-                    size: 13, color: theme.colorScheme.onSurfaceVariant),
+                Icon(
+                  Icons.event_outlined,
+                  size: AppIconSize.xs,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   item.checkOut != null
                       ? '${item.checkIn} → ${item.checkOut}'
                       : item.checkIn!,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
           ],
           if (item.notes != null && item.notes!.trim().isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(item.notes!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                    fontStyle: FontStyle.italic,
-                    color: theme.colorScheme.onSurfaceVariant),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis),
+            Text(
+              item.notes!,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontStyle: FontStyle.italic,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
           if (item.createdAt != null) ...[
             const SizedBox(height: 6),
-            Text(Formatters.dateTime(item.createdAt),
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: theme.colorScheme.outline)),
+            Text(
+              Formatters.dateTime(item.createdAt),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
+            ),
           ],
         ],
       ),
@@ -617,7 +754,12 @@ class _InfoTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.xxxl,
+      ),
       children: [
         SectionCard(
           title: 'Contact information',
@@ -651,15 +793,20 @@ class _InfoTab extends StatelessWidget {
           icon: Icons.manage_accounts_outlined,
           child: Column(
             children: [
-              InfoRow(label: 'Status', value: Formatters.humanizeEnum(customer.status.wire)),
+              InfoRow(
+                label: 'Status',
+                value: Formatters.humanizeEnum(customer.status.wire),
+              ),
               InfoRow(label: 'Assigned to', value: customer.assignedUserName),
               InfoRow(label: 'Created by', value: customer.createdByName),
               InfoRow(
-                  label: 'Customer since',
-                  value: Formatters.dateTime(customer.createdAt)),
+                label: 'Customer since',
+                value: Formatters.dateTime(customer.createdAt),
+              ),
               InfoRow(
-                  label: 'Last updated',
-                  value: Formatters.dateTime(customer.updatedAt)),
+                label: 'Last updated',
+                value: Formatters.dateTime(customer.updatedAt),
+              ),
             ],
           ),
         ),

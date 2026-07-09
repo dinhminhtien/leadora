@@ -22,7 +22,8 @@ class NotificationListController
     if (current == null) return;
     final target = !n.isRead;
     state = AsyncData([
-      for (final item in current) item.id == n.id ? item.copyWith(isRead: target) : item,
+      for (final item in current)
+        item.id == n.id ? item.copyWith(isRead: target) : item,
     ]);
     try {
       await _repo.setRead(n.id, read: target);
@@ -35,7 +36,9 @@ class NotificationListController
   Future<void> markAllRead() async {
     final current = state.valueOrNull;
     if (current == null) return;
-    state = AsyncData([for (final item in current) item.copyWith(isRead: true)]);
+    state = AsyncData([
+      for (final item in current) item.copyWith(isRead: true),
+    ]);
     try {
       await _repo.markAllRead();
     } catch (_) {
@@ -45,13 +48,19 @@ class NotificationListController
   }
 }
 
-final notificationListControllerProvider = AutoDisposeAsyncNotifierProvider<
-    NotificationListController, List<AppNotification>>(NotificationListController.new);
+final notificationListControllerProvider =
+    AutoDisposeAsyncNotifierProvider<
+      NotificationListController,
+      List<AppNotification>
+    >(NotificationListController.new);
 
 /// Unread badge count for the bottom-nav icon. Kept independent so it can be
 /// watched by the shell without keeping the full list alive.
-final unreadNotificationCountProvider =
-    AutoDisposeFutureProvider<int>((ref) async {
-  final list = await ref.watch(notificationRepositoryProvider).getNotifications(unreadOnly: true);
+final unreadNotificationCountProvider = AutoDisposeFutureProvider<int>((
+  ref,
+) async {
+  final list = await ref
+      .watch(notificationRepositoryProvider)
+      .getNotifications(unreadOnly: true);
   return list.length;
 });

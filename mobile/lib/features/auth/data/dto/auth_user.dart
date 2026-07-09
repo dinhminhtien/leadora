@@ -23,6 +23,23 @@ class AuthUser {
 
   bool hasPermission(String code) => permissions.contains(code);
 
+  /// Copy with updated display fields (name / avatar). [clearAvatar] removes
+  /// the avatar; otherwise a null [avatarUrl] keeps the current one.
+  AuthUser copyWith({
+    String? name,
+    String? avatarUrl,
+    bool clearAvatar = false,
+  }) {
+    return AuthUser(
+      id: id,
+      email: email,
+      name: name ?? this.name,
+      roles: roles,
+      permissions: permissions,
+      avatarUrl: clearAvatar ? null : (avatarUrl ?? this.avatarUrl),
+    );
+  }
+
   bool hasAnyRole(Iterable<String> candidates) =>
       candidates.any(roles.contains);
 
@@ -38,13 +55,13 @@ class AuthUser {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'email': email,
-        'name': name,
-        'roles': roles,
-        'permissions': permissions,
-        'avatarUrl': avatarUrl,
-      };
+    'id': id,
+    'email': email,
+    'name': name,
+    'roles': roles,
+    'permissions': permissions,
+    'avatarUrl': avatarUrl,
+  };
 
   static List<String> _stringList(Object? raw) {
     if (raw is List) return raw.map((e) => '$e').toList(growable: false);

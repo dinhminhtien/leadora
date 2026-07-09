@@ -39,6 +39,29 @@ class Profile {
   }
 }
 
+/// Payload for `PUT /profile/me` — mirrors the web `UpdateProfilePayload`.
+/// [phone] / [avatarUrl] are sent as explicit nulls when cleared, matching the
+/// web client (`phone: data.phone || null`).
+class UpdateProfilePayload {
+  const UpdateProfilePayload({
+    required this.fullName,
+    this.phone,
+    this.avatarUrl,
+  });
+
+  final String fullName;
+  final String? phone;
+  final String? avatarUrl;
+
+  Map<String, dynamic> toJson() => {
+    'fullName': fullName.trim(),
+    'phone': (phone == null || phone!.trim().isEmpty) ? null : phone!.trim(),
+    'avatarUrl': (avatarUrl == null || avatarUrl!.trim().isEmpty)
+        ? null
+        : avatarUrl,
+  };
+}
+
 /// Payload for UC-24.13 Change Password.
 class ChangePasswordPayload {
   const ChangePasswordPayload({
@@ -52,8 +75,8 @@ class ChangePasswordPayload {
   final String confirmPassword;
 
   Map<String, dynamic> toJson() => {
-        'currentPassword': currentPassword,
-        'newPassword': newPassword,
-        'confirmPassword': confirmPassword,
-      };
+    'currentPassword': currentPassword,
+    'newPassword': newPassword,
+    'confirmPassword': confirmPassword,
+  };
 }

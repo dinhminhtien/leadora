@@ -18,6 +18,15 @@ class ProfileRepository {
     );
   }
 
+  /// UC-5 — update own name / phone / avatar. `PUT /profile/me`.
+  Future<Profile> updateMyProfile(UpdateProfilePayload payload) {
+    return _client.put<Profile>(
+      ApiPaths.profileMe,
+      data: payload.toJson(),
+      decode: (data) => Profile.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
   Future<void> changePassword(ChangePasswordPayload payload) {
     return _client.put<void>(
       ApiPaths.changePassword,

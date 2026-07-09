@@ -12,31 +12,32 @@ enum LeadStatus {
   final String wire;
 
   static LeadStatus fromWire(String? raw) => LeadStatus.values.firstWhere(
-        (s) => s.wire == raw,
-        orElse: () => LeadStatus.neww,
-      );
+    (s) => s.wire == raw,
+    orElse: () => LeadStatus.neww,
+  );
 
   StatusTone get tone => switch (this) {
-        LeadStatus.neww => StatusTone.info,
-        LeadStatus.contacted => StatusTone.brand,
-        LeadStatus.qualified => StatusTone.warning,
-        LeadStatus.converted => StatusTone.success,
-        LeadStatus.lost => StatusTone.danger,
-      };
+    LeadStatus.neww => StatusTone.info,
+    LeadStatus.contacted => StatusTone.brand,
+    LeadStatus.qualified => StatusTone.warning,
+    LeadStatus.converted => StatusTone.success,
+    LeadStatus.lost => StatusTone.danger,
+  };
 
   /// Terminal states cannot change (CONVERTED only via the conversion flow).
-  bool get isTerminal => this == LeadStatus.converted || this == LeadStatus.lost;
+  bool get isTerminal =>
+      this == LeadStatus.converted || this == LeadStatus.lost;
 
   /// Valid next statuses from [this], mirroring the backend transition rules:
   /// leads advance one stage at a time (NEW → CONTACTED → QUALIFIED) and any
   /// active lead can be marked LOST. CONVERTED is reachable only via conversion.
   List<LeadStatus> get allowedTransitions => switch (this) {
-        LeadStatus.neww => const [LeadStatus.contacted, LeadStatus.lost],
-        LeadStatus.contacted => const [LeadStatus.qualified, LeadStatus.lost],
-        LeadStatus.qualified => const [LeadStatus.lost],
-        LeadStatus.converted => const [],
-        LeadStatus.lost => const [],
-      };
+    LeadStatus.neww => const [LeadStatus.contacted, LeadStatus.lost],
+    LeadStatus.contacted => const [LeadStatus.qualified, LeadStatus.lost],
+    LeadStatus.qualified => const [LeadStatus.lost],
+    LeadStatus.converted => const [],
+    LeadStatus.lost => const [],
+  };
 }
 
 /// Dart mirror of backend `LeadResponse`.
@@ -189,8 +190,9 @@ class LeadFilters {
       search: search == _sentinel ? this.search : search as String?,
       status: status == _sentinel ? this.status : status as LeadStatus?,
       source: source == _sentinel ? this.source : source as String?,
-      isCorporate:
-          isCorporate == _sentinel ? this.isCorporate : isCorporate as bool?,
+      isCorporate: isCorporate == _sentinel
+          ? this.isCorporate
+          : isCorporate as bool?,
       dateFrom: dateFrom == _sentinel ? this.dateFrom : dateFrom as DateTime?,
       dateTo: dateTo == _sentinel ? this.dateTo : dateTo as DateTime?,
       sort: sort ?? this.sort,
@@ -209,8 +211,15 @@ class LeadFilters {
       DateTime(d.year, d.month, d.day).toUtc().toIso8601String();
 
   /// End of [d]'s local calendar day (23:59:59.999) as a UTC ISO-8601 instant.
-  static String utcEndOfLocalDay(DateTime d) =>
-      DateTime(d.year, d.month, d.day, 23, 59, 59, 999).toUtc().toIso8601String();
+  static String utcEndOfLocalDay(DateTime d) => DateTime(
+    d.year,
+    d.month,
+    d.day,
+    23,
+    59,
+    59,
+    999,
+  ).toUtc().toIso8601String();
 
   /// Query params for `GET /leads`. Defaults are omitted; the backend fills
   /// them in (sortBy=createdAt desc, scope=assigned).

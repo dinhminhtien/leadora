@@ -6,7 +6,11 @@ import '../../core/theme/app_dimens.dart';
 /// user is deep-linked to it (e.g. tapping a notification) — mirrors the
 /// web's `useHighlightRow` scroll-and-flash behavior.
 class HighlightGlow extends StatelessWidget {
-  const HighlightGlow({super.key, required this.highlighted, required this.child});
+  const HighlightGlow({
+    super.key,
+    required this.highlighted,
+    required this.child,
+  });
 
   final bool highlighted;
   final Widget child;
@@ -15,16 +19,20 @@ class HighlightGlow extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-      padding: const EdgeInsets.all(2),
+      duration: AppDurations.slow,
+      curve: AppCurves.standard,
+      // The ring sits outside the card, so its radius is the card's plus the
+      // ring's own width.
+      padding: const EdgeInsets.all(AppSpacing.xxs),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppRadii.lg + 2),
+        borderRadius: BorderRadius.circular(AppRadii.lg + AppSpacing.xxs),
         border: Border.all(
           color: highlighted ? scheme.primary : Colors.transparent,
           width: 2,
         ),
-        color: highlighted ? scheme.primary.withValues(alpha: 0.06) : Colors.transparent,
+        color: highlighted
+            ? scheme.primary.withValues(alpha: 0.06)
+            : Colors.transparent,
       ),
       child: child,
     );

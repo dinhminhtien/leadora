@@ -28,7 +28,9 @@ class InteractionRepository {
         'agentId': ?agentId,
       },
       decode: (data) => (data as List)
-          .map((e) => InteractionTimelineEntry.fromJson(e as Map<String, dynamic>))
+          .map(
+            (e) => InteractionTimelineEntry.fromJson(e as Map<String, dynamic>),
+          )
           .toList(),
     );
   }
@@ -36,16 +38,20 @@ class InteractionRepository {
   Future<InteractionTimelineEntry> getInteraction(String id) {
     return _client.get<InteractionTimelineEntry>(
       ApiPaths.interactionTimelineById(id),
-      decode: (data) => InteractionTimelineEntry.fromJson(data as Map<String, dynamic>),
+      decode: (data) =>
+          InteractionTimelineEntry.fromJson(data as Map<String, dynamic>),
     );
   }
 
   /// Log Customer Interaction Note / Record Customer Meeting Summary.
-  Future<InteractionTimelineEntry> createInteraction(CreateInteractionPayload payload) {
+  Future<InteractionTimelineEntry> createInteraction(
+    CreateInteractionPayload payload,
+  ) {
     return _client.post<InteractionTimelineEntry>(
       ApiPaths.interactionTimeline,
       data: payload.toJson(),
-      decode: (data) => InteractionTimelineEntry.fromJson(data as Map<String, dynamic>),
+      decode: (data) =>
+          InteractionTimelineEntry.fromJson(data as Map<String, dynamic>),
     );
   }
 
@@ -56,7 +62,8 @@ class InteractionRepository {
     return _client.put<InteractionTimelineEntry>(
       ApiPaths.interactionTimelineById(id),
       data: payload.toJson(),
-      decode: (data) => InteractionTimelineEntry.fromJson(data as Map<String, dynamic>),
+      decode: (data) =>
+          InteractionTimelineEntry.fromJson(data as Map<String, dynamic>),
     );
   }
 

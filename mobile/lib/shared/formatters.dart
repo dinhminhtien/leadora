@@ -6,15 +6,23 @@ class Formatters {
   const Formatters._();
 
   static final DateFormat _date = DateFormat('dd MMM yyyy');
+  static final DateFormat _shortDate = DateFormat('dd MMM');
   static final DateFormat _dateTime = DateFormat('dd MMM yyyy · HH:mm');
   static final DateFormat _time = DateFormat('HH:mm');
   static final DateFormat _monthYear = DateFormat('MMMM yyyy');
-  static final NumberFormat _currency =
-      NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
+  static final NumberFormat _currency = NumberFormat.currency(
+    locale: 'vi_VN',
+    symbol: '₫',
+    decimalDigits: 0,
+  );
   static final NumberFormat _compact = NumberFormat.compact();
 
   static String date(DateTime? value) =>
       value == null ? '—' : _date.format(value.toLocal());
+
+  /// Day + month without the year — for tight rows where the year is implied.
+  static String shortDate(DateTime? value) =>
+      value == null ? '—' : _shortDate.format(value.toLocal());
 
   static String dateTime(DateTime? value) =>
       value == null ? '—' : _dateTime.format(value.toLocal());
@@ -62,7 +70,9 @@ class Formatters {
     final words = raw.toLowerCase().split(RegExp('[_\\s]+'));
     if (words.isEmpty) return raw;
     final first = words.first;
-    final head = first.isEmpty ? first : first[0].toUpperCase() + first.substring(1);
+    final head = first.isEmpty
+        ? first
+        : first[0].toUpperCase() + first.substring(1);
     return [head, ...words.skip(1)].join(' ');
   }
 

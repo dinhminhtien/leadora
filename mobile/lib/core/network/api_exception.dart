@@ -59,7 +59,7 @@ class TimeoutException extends AppException {
 /// Presentation layers generally ignore this rather than showing an error.
 class RequestCancelledException extends AppException {
   const RequestCancelledException({super.debugDetail})
-      : super('Request cancelled');
+    : super('Request cancelled');
 }
 
 /// 401 — token missing/expired/invalid. Triggers the global logout flow.
@@ -132,7 +132,7 @@ class ServerException extends AppException {
 /// Response body could not be parsed into the expected shape.
 class SerializationException extends AppException {
   const SerializationException({super.debugDetail})
-      : super('Received an unexpected response from the server.');
+    : super('Received an unexpected response from the server.');
 }
 
 /// Fallback for anything unclassified.

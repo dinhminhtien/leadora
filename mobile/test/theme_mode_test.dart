@@ -20,8 +20,7 @@ void main() {
     });
 
     test('restores a persisted choice on startup', () async {
-      SharedPreferences.setMockInitialValues(
-          {'prefs.theme_mode': 'dark'});
+      SharedPreferences.setMockInitialValues({'prefs.theme_mode': 'dark'});
       final container = ProviderContainer();
       addTearDown(container.dispose);
 

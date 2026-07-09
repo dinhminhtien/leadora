@@ -1,13 +1,15 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
+import '../../../../shared/widgets/app_filter_chip.dart';
+import '../../../../shared/widgets/app_search_field.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/empty_state.dart';
+import '../../../../shared/widgets/list_skeleton.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared/widgets/status_chip.dart';
 import '../../../user/data/user_models.dart';
@@ -15,6 +17,15 @@ import '../../../user/data/user_repository.dart';
 import '../../data/task_models.dart';
 import '../providers/task_providers.dart';
 import 'task_calendar_view.dart';
+
+/// Dummy row for the loading skeleton — same widget as a real row so the list
+/// keeps its shape when data lands.
+const _skeletonTask = Task(
+  taskId: '',
+  title: 'Call: Placeholder follow-up task',
+  status: TaskStatus.open,
+  priority: TaskPriority.high,
+);
 
 /// UC-10.2 / UC-10.5 — Follow-up task list with server-side search, quick
 /// status tabs, advanced filters (priority, assignee), pull-to-refresh,
@@ -31,8 +42,6 @@ enum _TaskViewMode { list, calendar }
 
 class _TaskListScreenState extends ConsumerState<TaskListScreen> {
   final _scrollController = ScrollController();
-  final _searchController = TextEditingController();
-  Timer? _debounce;
   _TaskViewMode _viewMode = _TaskViewMode.list;
 
   @override
@@ -43,9 +52,7 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _scrollController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -59,18 +66,14 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
     }
   }
 
-  void _onSearchChanged(String value) {
-    setState(() {}); // toggle the clear (X) suffix
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      _controller.applyFilters(_controller.filters.copyWith(search: value));
-    });
-  }
+  void _onSearchChanged(String term) =>
+      _controller.applyFilters(_controller.filters.copyWith(search: term));
 
-  void _clearSearch() {
-    _debounce?.cancel();
-    setState(() => _searchController.clear());
-    _controller.applyFilters(_controller.filters.copyWith(search: ''));
+  Future<void> _completeTask(Task task) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final error = await _controller.completeTask(task.taskId);
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(error ?? 'Task completed')));
   }
 
   Future<void> _openFilterSheet() async {
@@ -97,11 +100,16 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
         actions: [
           IconButton(
             tooltip: isCalendar ? 'List view' : 'Calendar view',
-            onPressed: () => setState(() => _viewMode =
-                isCalendar ? _TaskViewMode.list : _TaskViewMode.calendar),
-            icon: Icon(isCalendar
-                ? Icons.view_agenda_outlined
-                : Icons.calendar_month_outlined),
+            onPressed: () => setState(
+              () => _viewMode = isCalendar
+                  ? _TaskViewMode.list
+                  : _TaskViewMode.calendar,
+            ),
+            icon: Icon(
+              isCalendar
+                  ? Icons.view_agenda_outlined
+                  : Icons.calendar_month_outlined,
+            ),
           ),
           if (!isCalendar)
             IconButton(
@@ -128,80 +136,79 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
       body: isCalendar
           ? const TaskCalendarView()
           : Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: TextField(
-              controller: _searchController,
-              onChanged: _onSearchChanged,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: 'Search title, customer, contact…',
-                prefixIcon: const Icon(Icons.search_rounded),
-                isDense: true,
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: _clearSearch,
-                      ),
-              ),
-            ),
-          ),
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
               children: [
-                for (final f in TaskFilter.values)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: ChoiceChip(
-                      label: Text(f.label),
-                      selected: filters.quick == f,
-                      onSelected: (_) => _controller.setQuickFilter(f),
+                AppSearchField(
+                  hintText: 'Search title, customer, contact…',
+                  initialValue: filters.search,
+                  onChanged: _onSearchChanged,
+                ),
+                AppFilterChipBar(
+                  children: [
+                    for (final f in TaskFilter.values)
+                      AppFilterChip(
+                        label: f.label,
+                        selected: filters.quick == f,
+                        onTap: () => _controller.setQuickFilter(f),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Expanded(
+                  child: AsyncValueView<TaskListState>(
+                    value: asyncState,
+                    onRetry: _controller.refresh,
+                    loading: ListSkeleton(
+                      separatorHeight: AppSpacing.sm,
+                      itemBuilder: (_) => const TaskCard(task: _skeletonTask),
                     ),
+                    isEmpty: (s) => s.filters.applyQuick(s.items).isEmpty,
+                    empty: EmptyState(
+                      icon: Icons.checklist_rounded,
+                      title: 'No tasks found',
+                      message: 'Try clearing filters or create a new task.',
+                      actionLabel: 'New task',
+                      onAction: () => context.pushNamed(RouteNames.taskCreate),
+                    ),
+                    data: (s) {
+                      final visible = s.filters.applyQuick(s.items);
+                      return RefreshIndicator(
+                        onRefresh: _controller.refresh,
+                        child: ListView.separated(
+                          controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSpacing.lg,
+                            AppSpacing.xs,
+                            AppSpacing.lg,
+                            AppSpacing.fabClearance,
+                          ),
+                          itemCount: visible.length + (s.hasMore ? 1 : 0),
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: AppSpacing.sm),
+                          itemBuilder: (context, index) {
+                            if (index >= visible.length) {
+                              return const Padding(
+                                padding: EdgeInsets.all(AppSpacing.lg),
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
+                            }
+                            final task = visible[index];
+                            return TaskCard(
+                              task: task,
+                              onComplete: task.isOpen
+                                  ? () => _completeTask(task)
+                                  : null,
+                            );
+                          },
+                        ),
+                      );
+                    },
                   ),
+                ),
               ],
             ),
-          ),
-          const SizedBox(height: 4),
-          Expanded(
-            child: AsyncValueView<TaskListState>(
-              value: asyncState,
-              onRetry: _controller.refresh,
-              isEmpty: (s) => s.items.isEmpty,
-              empty: EmptyState(
-                icon: Icons.checklist_rounded,
-                title: 'No tasks found',
-                message: 'Try clearing filters or create a new task.',
-                actionLabel: 'New task',
-                onAction: () => context.pushNamed(RouteNames.taskCreate),
-              ),
-              data: (s) => RefreshIndicator(
-                onRefresh: _controller.refresh,
-                child: ListView.separated(
-                  controller: _scrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
-                  itemCount: s.items.length + (s.hasMore ? 1 : 0),
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    if (index >= s.items.length) {
-                      return const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Center(child: CircularProgressIndicator()),
-                      );
-                    }
-                    return TaskCard(task: s.items[index]);
-                  },
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -228,8 +235,9 @@ class _TaskFilterSheetState extends ConsumerState<_TaskFilterSheet> {
       builder: (_) => const TaskAssigneePicker(),
     );
     if (selected != null) {
-      setState(() =>
-          _draft = _draft.withAssignee(selected.userId, selected.fullName));
+      setState(
+        () => _draft = _draft.withAssignee(selected.userId, selected.fullName),
+      );
     }
   }
 
@@ -238,7 +246,12 @@ class _TaskFilterSheetState extends ConsumerState<_TaskFilterSheet> {
     final theme = Theme.of(context);
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          0,
+          AppSpacing.xl,
+          AppSpacing.lg,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
@@ -279,8 +292,9 @@ class _TaskFilterSheetState extends ConsumerState<_TaskFilterSheet> {
                   ? IconButton(
                       tooltip: 'Clear assignee',
                       icon: const Icon(Icons.close_rounded, size: 20),
-                      onPressed: () =>
-                          setState(() => _draft = _draft.withAssignee(null, null)),
+                      onPressed: () => setState(
+                        () => _draft = _draft.withAssignee(null, null),
+                      ),
                     )
                   : const Icon(Icons.chevron_right_rounded),
               onTap: _pickAssignee,
@@ -313,9 +327,12 @@ class _TaskFilterSheetState extends ConsumerState<_TaskFilterSheet> {
 }
 
 /// Searchable bottom sheet listing assignable users; pops the chosen user.
-/// Shared by the task filter sheet and the task form.
+/// Shared by the task filter sheet and the task form. [excludeUserId] hides a
+/// user from the list — the resign flow must hand over to somebody else.
 class TaskAssigneePicker extends ConsumerStatefulWidget {
-  const TaskAssigneePicker({super.key});
+  const TaskAssigneePicker({super.key, this.excludeUserId});
+
+  final String? excludeUserId;
 
   @override
   ConsumerState<TaskAssigneePicker> createState() => _TaskAssigneePickerState();
@@ -325,11 +342,14 @@ class _TaskAssigneePickerState extends ConsumerState<TaskAssigneePicker> {
   String _query = '';
 
   List<UserSummary> _filter(List<UserSummary> users) {
-    if (_query.isEmpty) return users;
     return users
-        .where((u) =>
-            u.fullName.toLowerCase().contains(_query) ||
-            (u.email?.toLowerCase().contains(_query) ?? false))
+        .where((u) => u.userId != widget.excludeUserId)
+        .where(
+          (u) =>
+              _query.isEmpty ||
+              u.fullName.toLowerCase().contains(_query) ||
+              (u.email?.toLowerCase().contains(_query) ?? false),
+        )
         .toList();
   }
 
@@ -350,8 +370,10 @@ class _TaskAssigneePickerState extends ConsumerState<TaskAssigneePicker> {
             children: [
               Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Assign to',
-                    style: Theme.of(context).textTheme.titleMedium),
+                child: Text(
+                  'Assign to',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -398,94 +420,223 @@ class _TaskAssigneePickerState extends ConsumerState<TaskAssigneePicker> {
   }
 }
 
-/// Reused on the dashboard "upcoming tasks" section too.
+/// Reused on the dashboard "upcoming tasks" section too. [onComplete], when
+/// set, makes the leading circle a one-tap "mark complete" toggle — the mobile
+/// twin of the web table's Done checkbox.
 class TaskCard extends StatelessWidget {
-  const TaskCard({super.key, required this.task});
+  const TaskCard({super.key, required this.task, this.onComplete});
 
   final Task task;
+  final VoidCallback? onComplete;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final overdue = task.isOverdue;
+    final done = task.status == TaskStatus.completed;
+    final cancelled = task.status == TaskStatus.cancelled;
+    final type = task.activityType;
+    // Strip the "Call: " prefix — the activity chip already shows the type.
+    final displayTitle = task.title.startsWith(type.titlePrefix)
+        ? task.title.substring(type.titlePrefix.length)
+        : task.title;
+
     return InkWell(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadii.lg),
       onTap: () => context.pushNamed(
         RouteNames.taskDetail,
         pathParameters: {'id': task.taskId},
       ),
-      child: SectionCard(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  task.status == TaskStatus.completed
-                      ? Icons.check_circle_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                  size: 20,
-                  color: task.status == TaskStatus.completed
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.outline,
+      child: Opacity(
+        opacity: cancelled ? 0.55 : 1,
+        child: SectionCard(
+          // Tighter on the left: the leading checkbox carries its own tap
+          // padding, so a full inset would double it.
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.sm,
+            AppSpacing.md,
+            AppSpacing.lg,
+            AppSpacing.md,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Done toggle — 44dp tap target.
+              SizedBox(
+                width: 44,
+                height: 44,
+                child: IconButton(
+                  tooltip: done
+                      ? 'Completed'
+                      : onComplete == null
+                      ? null
+                      : 'Mark complete',
+                  onPressed: onComplete,
+                  icon: Icon(
+                    done
+                        ? Icons.check_circle_rounded
+                        : cancelled
+                        ? Icons.cancel_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    size: 22,
+                    color: done
+                        ? theme.colorScheme.primary
+                        : overdue
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.outline,
+                  ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    task.title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      decoration: task.status == TaskStatus.completed
-                          ? TextDecoration.lineThrough
-                          : null,
+              ),
+              const SizedBox(width: 2),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            displayTitle.trim().isEmpty
+                                ? task.title
+                                : displayTitle,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              decoration: done
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        StatusChip(
+                          tone: task.priority.tone,
+                          rawStatus: task.priority.wire,
+                          dense: true,
+                        ),
+                      ],
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                StatusChip(tone: task.priority.tone, rawStatus: task.priority.wire, dense: true),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                if (task.relatedName != null) ...[
-                  Icon(Icons.link_rounded, size: 14, color: theme.colorScheme.outline),
-                  const SizedBox(width: 4),
-                  Flexible(
-                    child: Text(
-                      task.relatedName!,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        StatusChip(
+                          tone: StatusTone.neutral,
+                          color: type.color,
+                          icon: type.icon,
+                          label: type.label,
+                          dense: true,
+                        ),
+                        if (task.relatedName != null) ...[
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.link_rounded,
+                            size: 14,
+                            color: scheme.outline,
+                          ),
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(
+                              task.relatedName!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                ],
-                Icon(
-                  Icons.schedule_rounded,
-                  size: 14,
-                  color: overdue ? theme.colorScheme.error : theme.colorScheme.outline,
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.schedule_rounded,
+                          size: 14,
+                          color: overdue ? scheme.error : scheme.outline,
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            _scheduleLabel(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: overdue
+                                  ? scheme.error
+                                  : scheme.onSurfaceVariant,
+                              fontWeight: overdue
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                        if (overdue) ...[
+                          const SizedBox(width: 8),
+                          const StatusChip(
+                            tone: StatusTone.danger,
+                            label: 'Overdue',
+                            dense: true,
+                          ),
+                        ] else if (cancelled) ...[
+                          const SizedBox(width: 8),
+                          const StatusChip(
+                            tone: StatusTone.neutral,
+                            label: 'Cancelled',
+                            dense: true,
+                          ),
+                        ],
+                        if (task.assignedUserName != null) ...[
+                          const Spacer(),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.person_outline_rounded,
+                            size: 14,
+                            color: scheme.outline,
+                          ),
+                          const SizedBox(width: 3),
+                          // Flexible (not a fixed box) so tight widths squeeze
+                          // the name instead of overflowing the row.
+                          Flexible(
+                            child: Text(
+                              task.assignedUserName!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  task.endAt == null ? 'No due date' : Formatters.relative(task.endAt),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: overdue ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant,
-                    fontWeight: overdue ? FontWeight.w700 : FontWeight.w400,
-                  ),
-                ),
-                if (overdue) ...[
-                  const SizedBox(width: 8),
-                  StatusChip(tone: StatusTone.danger, label: 'Overdue', dense: true),
-                ],
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  /// "24 Jun · 09:00–10:00" when scheduled (year only when not this year),
+  /// else the relative due phrasing.
+  String _scheduleLabel() {
+    if (task.startAt != null) {
+      final local = task.startAt!.toLocal();
+      final date = local.year == DateTime.now().year
+          ? Formatters.shortDate(local)
+          : Formatters.date(local);
+      final start = Formatters.time(task.startAt);
+      final end = task.endAt != null ? '–${Formatters.time(task.endAt)}' : '';
+      return '$date · $start$end';
+    }
+    if (task.endAt != null) return 'Due ${Formatters.relative(task.endAt)}';
+    return 'No schedule';
   }
 }

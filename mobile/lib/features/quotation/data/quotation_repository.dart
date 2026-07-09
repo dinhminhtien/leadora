@@ -18,8 +18,9 @@ class QuotationRepository {
   Future<List<Quotation>> getQuotations() {
     return _client.get<List<Quotation>>(
       ApiPaths.quotations,
-      decode: (data) =>
-          (data as List).map((e) => Quotation.fromJson(e as Map<String, dynamic>)).toList(),
+      decode: (data) => (data as List)
+          .map((e) => Quotation.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 

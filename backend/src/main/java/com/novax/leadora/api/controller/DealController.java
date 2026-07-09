@@ -1,6 +1,7 @@
 package com.novax.leadora.api.controller;
 
 import com.novax.leadora.api.dto.request.DealRequest;
+import com.novax.leadora.api.dto.request.UpdateDealStatusRequest;
 import com.novax.leadora.api.dto.response.DealResponse;
 import com.novax.leadora.application.usecase.deal.CreateDealUseCase;
 import com.novax.leadora.application.usecase.deal.GetDealDetailUseCase;
@@ -53,6 +54,18 @@ public class DealController {
             @Valid @RequestBody DealRequest request) {
         DealResponse updated = updateDealUseCase.execute(id, request);
         return ResponseEntity.ok(ApiResponse.success(updated));
+    }
+
+    /**
+     * Close an open deal as won or lost. Unlike PUT, this skips the stage-transition
+     * validation, so marking a deal lost does not require an estimated close date.
+     */
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<ApiResponse<DealResponse>> updateDealStatus(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateDealStatusRequest request) {
+        DealResponse updated = updateDealUseCase.updateDealStatus(id, request.getStatus());
+        return ResponseEntity.ok(ApiResponse.success(updated, "Deal status updated successfully"));
     }
 }
 

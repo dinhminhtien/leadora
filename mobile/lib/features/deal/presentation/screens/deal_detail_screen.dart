@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
 import '../../../../shared/widgets/async_value_view.dart';
+import '../../../../shared/widgets/detail_skeleton.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared/widgets/status_chip.dart';
 import '../../../interaction/presentation/widgets/interaction_summary_card.dart';
@@ -24,11 +26,12 @@ class DealDetailScreen extends ConsumerWidget {
       body: AsyncValueView<Deal>(
         value: async,
         onRetry: () => ref.invalidate(dealDetailProvider(dealId)),
+        loading: const DetailSkeleton(),
         data: (deal) => RefreshIndicator(
           onRefresh: () async => ref.invalidate(dealDetailProvider(dealId)),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.xxxl),
             children: [
               _Header(deal: deal),
               const SizedBox(height: 16),
@@ -37,9 +40,21 @@ class DealDetailScreen extends ConsumerWidget {
                 icon: Icons.contact_page_outlined,
                 child: Column(
                   children: [
-                    InfoRow(label: 'Name', value: deal.contactName, icon: Icons.badge_outlined),
-                    InfoRow(label: 'Email', value: deal.email, icon: Icons.mail_outline),
-                    InfoRow(label: 'Phone', value: deal.phone, icon: Icons.phone_outlined),
+                    InfoRow(
+                      label: 'Name',
+                      value: deal.contactName,
+                      icon: Icons.badge_outlined,
+                    ),
+                    InfoRow(
+                      label: 'Email',
+                      value: deal.email,
+                      icon: Icons.mail_outline,
+                    ),
+                    InfoRow(
+                      label: 'Phone',
+                      value: deal.phone,
+                      icon: Icons.phone_outlined,
+                    ),
                   ],
                 ),
               ),
@@ -49,12 +64,26 @@ class DealDetailScreen extends ConsumerWidget {
                 icon: Icons.timeline_outlined,
                 child: Column(
                   children: [
-                    InfoRow(label: 'Stage', value: deal.stage),
+                    InfoRow(label: 'Stage', value: deal.displayStage),
                     InfoRow(label: 'Owner', value: deal.owner),
-                    InfoRow(label: 'Value', value: Formatters.money(deal.value)),
-                    InfoRow(label: 'Probability', value: deal.probability != null ? '${deal.probability}%' : null),
-                    InfoRow(label: 'Expected close', value: Formatters.date(deal.expectedClose)),
-                    InfoRow(label: 'Created', value: Formatters.date(deal.createdAt)),
+                    InfoRow(
+                      label: 'Value',
+                      value: Formatters.money(deal.value),
+                    ),
+                    InfoRow(
+                      label: 'Probability',
+                      value: deal.probability != null
+                          ? '${deal.probability}%'
+                          : null,
+                    ),
+                    InfoRow(
+                      label: 'Expected close',
+                      value: Formatters.date(deal.expectedClose),
+                    ),
+                    InfoRow(
+                      label: 'Created',
+                      value: Formatters.date(deal.createdAt),
+                    ),
                   ],
                 ),
               ),
@@ -63,11 +92,18 @@ class DealDetailScreen extends ConsumerWidget {
                 SectionCard(
                   title: 'Notes',
                   icon: Icons.sticky_note_2_outlined,
-                  child: Text(deal.notes!, style: Theme.of(context).textTheme.bodyMedium),
+                  child: Text(
+                    deal.notes!,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
                 ),
               ],
               const SizedBox(height: 12),
-              InteractionSummaryCard(linkedType: 'deal', linkedId: deal.id, linkedName: deal.title),
+              InteractionSummaryCard(
+                linkedType: 'deal',
+                linkedId: deal.id,
+                linkedName: deal.title,
+              ),
             ],
           ),
         ),
@@ -90,8 +126,12 @@ class _Header extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(deal.title,
-                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                deal.title,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 6),
               StatusChip(tone: deal.status.tone, rawStatus: deal.status.wire),
             ],

@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
 import '../../../../shared/widgets/async_value_view.dart';
+import '../../../../shared/widgets/detail_skeleton.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared/widgets/status_chip.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
@@ -29,11 +31,13 @@ class QuotationDetailScreen extends ConsumerWidget {
       body: AsyncValueView<Quotation>(
         value: async,
         onRetry: () => ref.invalidate(quotationDetailProvider(quotationId)),
+        loading: const DetailSkeleton(),
         data: (quotation) => RefreshIndicator(
-          onRefresh: () async => ref.invalidate(quotationDetailProvider(quotationId)),
+          onRefresh: () async =>
+              ref.invalidate(quotationDetailProvider(quotationId)),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.xxxl),
             children: [
               _Header(quotation: quotation),
               const SizedBox(height: 16),
@@ -42,9 +46,21 @@ class QuotationDetailScreen extends ConsumerWidget {
                 icon: Icons.person_outline,
                 child: Column(
                   children: [
-                    InfoRow(label: 'Name', value: quotation.contactName, icon: Icons.badge_outlined),
-                    InfoRow(label: 'Email', value: quotation.email, icon: Icons.mail_outline),
-                    InfoRow(label: 'Phone', value: quotation.phone, icon: Icons.phone_outlined),
+                    InfoRow(
+                      label: 'Name',
+                      value: quotation.contactName,
+                      icon: Icons.badge_outlined,
+                    ),
+                    InfoRow(
+                      label: 'Email',
+                      value: quotation.email,
+                      icon: Icons.mail_outline,
+                    ),
+                    InfoRow(
+                      label: 'Phone',
+                      value: quotation.phone,
+                      icon: Icons.phone_outlined,
+                    ),
                   ],
                 ),
               ),
@@ -55,9 +71,18 @@ class QuotationDetailScreen extends ConsumerWidget {
                 child: Column(
                   children: [
                     InfoRow(label: 'Room type', value: quotation.roomType),
-                    InfoRow(label: 'Check-in', value: Formatters.date(quotation.checkInDate)),
-                    InfoRow(label: 'Check-out', value: Formatters.date(quotation.checkOutDate)),
-                    InfoRow(label: 'Valid until', value: Formatters.date(quotation.validUntil)),
+                    InfoRow(
+                      label: 'Check-in',
+                      value: Formatters.date(quotation.checkInDate),
+                    ),
+                    InfoRow(
+                      label: 'Check-out',
+                      value: Formatters.date(quotation.checkOutDate),
+                    ),
+                    InfoRow(
+                      label: 'Valid until',
+                      value: Formatters.date(quotation.validUntil),
+                    ),
                   ],
                 ),
               ),
@@ -67,13 +92,20 @@ class QuotationDetailScreen extends ConsumerWidget {
                 icon: Icons.payments_outlined,
                 child: Column(
                   children: [
-                    InfoRow(label: 'Subtotal', value: Formatters.money(quotation.subtotal)),
+                    InfoRow(
+                      label: 'Subtotal',
+                      value: Formatters.money(quotation.subtotal),
+                    ),
                     if ((quotation.discountPercent ?? 0) > 0)
                       InfoRow(
                         label: 'Discount',
-                        value: '${quotation.discountPercent}% (-${Formatters.money(quotation.discountAmount)})',
+                        value:
+                            '${quotation.discountPercent}% (-${Formatters.money(quotation.discountAmount)})',
                       ),
-                    InfoRow(label: 'Total', value: Formatters.money(quotation.totalAmount)),
+                    InfoRow(
+                      label: 'Total',
+                      value: Formatters.money(quotation.totalAmount),
+                    ),
                   ],
                 ),
               ),
@@ -84,20 +116,30 @@ class QuotationDetailScreen extends ConsumerWidget {
                   icon: Icons.handshake_outlined,
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(quotation.dealName?.trim().isNotEmpty == true
-                        ? quotation.dealName!
-                        : 'View deal'),
-                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                    onTap: () => context.push(Routes.dealDetailPath(quotation.dealId!)),
+                    title: Text(
+                      quotation.dealName?.trim().isNotEmpty == true
+                          ? quotation.dealName!
+                          : 'View deal',
+                    ),
+                    trailing: const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 16,
+                    ),
+                    onTap: () =>
+                        context.push(Routes.dealDetailPath(quotation.dealId!)),
                   ),
                 ),
               ],
-              if (quotation.notes != null && quotation.notes!.trim().isNotEmpty) ...[
+              if (quotation.notes != null &&
+                  quotation.notes!.trim().isNotEmpty) ...[
                 const SizedBox(height: 12),
                 SectionCard(
                   title: 'Notes',
                   icon: Icons.sticky_note_2_outlined,
-                  child: Text(quotation.notes!, style: Theme.of(context).textTheme.bodyMedium),
+                  child: Text(
+                    quotation.notes!,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
                 ),
               ],
               if (quotation.customerId != null) ...[
@@ -114,7 +156,9 @@ class QuotationDetailScreen extends ConsumerWidget {
                   onPressed: () => _showResponseSheet(context, ref, quotation),
                   icon: const Icon(Icons.reply_rounded),
                   label: const Text('Track customer response'),
-                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                  ),
                 ),
             ],
           ),
@@ -123,7 +167,11 @@ class QuotationDetailScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _showResponseSheet(BuildContext context, WidgetRef ref, Quotation quotation) async {
+  Future<void> _showResponseSheet(
+    BuildContext context,
+    WidgetRef ref,
+    Quotation quotation,
+  ) async {
     final selected = await showModalBottomSheet<CustomerResponseType>(
       context: context,
       showDragHandle: true,
@@ -133,7 +181,7 @@ class QuotationDetailScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
+              padding: EdgeInsets.fromLTRB(AppSpacing.xl, AppSpacing.xs, AppSpacing.xl, AppSpacing.md),
               child: Text('Customer response'),
             ),
             for (final r in CustomerResponseType.values)
@@ -159,18 +207,24 @@ class QuotationDetailScreen extends ConsumerWidget {
     final user = ref.read(currentUserProvider);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await ref.read(quotationRepositoryProvider).trackCustomerResponse(
+      await ref
+          .read(quotationRepositoryProvider)
+          .trackCustomerResponse(
             quotationId,
             TrackCustomerResponsePayload(
               customerResponse: selected,
               notes: details.notes,
               lostReason: details.lostReason,
               recordedByName: user?.name,
-              recordedByRole: (user?.roles.isNotEmpty ?? false) ? user!.roles.first : null,
+              recordedByRole: (user?.roles.isNotEmpty ?? false)
+                  ? user!.roles.first
+                  : null,
             ),
           );
       ref.invalidate(quotationDetailProvider(quotationId));
-      messenger.showSnackBar(SnackBar(content: Text('Response recorded: ${_labelFor(selected)}')));
+      messenger.showSnackBar(
+        SnackBar(content: Text('Response recorded: ${_labelFor(selected)}')),
+      );
     } on AppException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -212,14 +266,20 @@ class QuotationDetailScreen extends ConsumerWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () {
               if (needsReason && reasonController.text.trim().isEmpty) return;
               Navigator.pop(context, (
-                notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
-                lostReason:
-                    reasonController.text.trim().isEmpty ? null : reasonController.text.trim(),
+                notes: notesController.text.trim().isEmpty
+                    ? null
+                    : notesController.text.trim(),
+                lostReason: reasonController.text.trim().isEmpty
+                    ? null
+                    : reasonController.text.trim(),
               ));
             },
             child: const Text('Confirm'),
@@ -230,18 +290,18 @@ class QuotationDetailScreen extends ConsumerWidget {
   }
 
   static String _labelFor(CustomerResponseType r) => switch (r) {
-        CustomerResponseType.accepted => 'Accepted',
-        CustomerResponseType.rejected => 'Rejected',
-        CustomerResponseType.interested => 'Interested',
-        CustomerResponseType.needRevision => 'Needs revision',
-      };
+    CustomerResponseType.accepted => 'Accepted',
+    CustomerResponseType.rejected => 'Rejected',
+    CustomerResponseType.interested => 'Interested',
+    CustomerResponseType.needRevision => 'Needs revision',
+  };
 
   static IconData _iconFor(CustomerResponseType r) => switch (r) {
-        CustomerResponseType.accepted => Icons.check_circle_outline,
-        CustomerResponseType.rejected => Icons.cancel_outlined,
-        CustomerResponseType.interested => Icons.star_outline_rounded,
-        CustomerResponseType.needRevision => Icons.edit_outlined,
-      };
+    CustomerResponseType.accepted => Icons.check_circle_outline,
+    CustomerResponseType.rejected => Icons.cancel_outlined,
+    CustomerResponseType.interested => Icons.star_outline_rounded,
+    CustomerResponseType.needRevision => Icons.edit_outlined,
+  };
 }
 
 class _Header extends StatelessWidget {
@@ -258,10 +318,17 @@ class _Header extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(quotation.quoteNo,
-                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                quotation.quoteNo,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 6),
-              StatusChip(tone: quotation.status.tone, rawStatus: quotation.status.wire),
+              StatusChip(
+                tone: quotation.status.tone,
+                rawStatus: quotation.status.wire,
+              ),
             ],
           ),
         ),

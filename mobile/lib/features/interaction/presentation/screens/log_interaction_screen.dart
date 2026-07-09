@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/api_exception.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
 import '../../data/interaction_models.dart';
 import '../../data/interaction_repository.dart';
@@ -27,7 +28,8 @@ class LogInteractionScreen extends ConsumerStatefulWidget {
   final String? initialType;
 
   @override
-  ConsumerState<LogInteractionScreen> createState() => _LogInteractionScreenState();
+  ConsumerState<LogInteractionScreen> createState() =>
+      _LogInteractionScreenState();
 }
 
 class _LogInteractionScreenState extends ConsumerState<LogInteractionScreen> {
@@ -53,15 +55,22 @@ class _LogInteractionScreenState extends ConsumerState<LogInteractionScreen> {
   Widget build(BuildContext context) {
     final isMeeting = _type == InteractionType.meeting;
     return Scaffold(
-      appBar: AppBar(title: Text(isMeeting ? 'Record meeting summary' : 'Log interaction')),
+      appBar: AppBar(
+        title: Text(isMeeting ? 'Record meeting summary' : 'Log interaction'),
+      ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.xxxl),
         children: [
-          if (widget.linkedName != null && widget.linkedName!.trim().isNotEmpty) ...[
+          if (widget.linkedName != null &&
+              widget.linkedName!.trim().isNotEmpty) ...[
             Text('For', style: Theme.of(context).textTheme.labelMedium),
             const SizedBox(height: 4),
-            Text(widget.linkedName!,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            Text(
+              widget.linkedName!,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 16),
           ],
           Text('Type', style: Theme.of(context).textTheme.labelMedium),
@@ -107,10 +116,15 @@ class _LogInteractionScreenState extends ConsumerState<LogInteractionScreen> {
             onPressed: _submitting ? null : _submit,
             icon: _submitting
                 ? const SizedBox(
-                    width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(Icons.check_rounded),
             label: Text(isMeeting ? 'Save summary' : 'Save note'),
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(50),
+            ),
           ),
         ],
       ),
@@ -131,7 +145,13 @@ class _LogInteractionScreenState extends ConsumerState<LogInteractionScreen> {
     );
     if (time == null) return;
     setState(() {
-      _occurredAt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      _occurredAt = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
     });
   }
 
@@ -140,7 +160,11 @@ class _LogInteractionScreenState extends ConsumerState<LogInteractionScreen> {
     if (description.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_type == InteractionType.meeting ? 'Enter a meeting summary' : 'Enter a note'),
+          content: Text(
+            _type == InteractionType.meeting
+                ? 'Enter a meeting summary'
+                : 'Enter a note',
+          ),
         ),
       );
       return;
@@ -160,8 +184,15 @@ class _LogInteractionScreenState extends ConsumerState<LogInteractionScreen> {
       );
       await ref.read(interactionRepositoryProvider).createInteraction(payload);
       ref.invalidate(interactionTimelineProvider(widget.linkedId));
-      messenger.showSnackBar(SnackBar(
-          content: Text(_type == InteractionType.meeting ? 'Meeting summary saved' : 'Note saved')));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            _type == InteractionType.meeting
+                ? 'Meeting summary saved'
+                : 'Note saved',
+          ),
+        ),
+      );
       navigator.pop(true);
     } on AppException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));

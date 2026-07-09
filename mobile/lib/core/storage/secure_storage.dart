@@ -22,17 +22,17 @@ class SecureStorage {
       _storage.read(key: key, aOptions: _androidOptions, iOptions: _iosOptions);
 
   Future<void> write(String key, String value) => _storage.write(
-        key: key,
-        value: value,
-        aOptions: _androidOptions,
-        iOptions: _iosOptions,
-      );
+    key: key,
+    value: value,
+    aOptions: _androidOptions,
+    iOptions: _iosOptions,
+  );
 
   Future<void> delete(String key) => _storage.delete(
-        key: key,
-        aOptions: _androidOptions,
-        iOptions: _iosOptions,
-      );
+    key: key,
+    aOptions: _androidOptions,
+    iOptions: _iosOptions,
+  );
 
   /// Wipe all secure entries — used on logout / on-tamper.
   Future<void> deleteAll() =>
