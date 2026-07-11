@@ -153,7 +153,7 @@ export function NotificationListScreen() {
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-slate-800">Notification Center</h1>
             {unreadCount > 0 && (
-              <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-blue-500 text-white text-[10px] font-bold">
+              <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-white text-[10px] font-bold">
                 {unreadCount}
               </span>
             )}
@@ -199,7 +199,7 @@ export function NotificationListScreen() {
           <div
             onClick={() => { setUnreadOnly((v) => !v); setPage(0); }}
             className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-              unreadOnly ? "bg-blue-500" : "bg-slate-200"
+              unreadOnly ? "bg-primary" : "bg-slate-200"
             }`}
           >
             <span
@@ -267,7 +267,7 @@ export function NotificationListScreen() {
                     {/* Unread dot */}
                     <TableCell className="py-3 px-3 text-center">
                       {!n.isRead ? (
-                        <span className="inline-block w-2 h-2 rounded-full bg-blue-500" title="Unread" />
+                        <span className="inline-block w-2 h-2 rounded-full bg-primary" title="Unread" />
                       ) : (
                         <CheckCircle2 className="inline-block size-3 text-emerald-400" aria-label="Read" />
                       )}

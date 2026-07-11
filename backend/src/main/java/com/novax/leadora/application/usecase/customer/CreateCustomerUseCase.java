@@ -6,6 +6,7 @@ import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerType;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,16 @@ public class CreateCustomerUseCase {
 
     @Transactional
     public CustomerResponse execute(CreateCustomerRequest request) {
+        // BR-09: a corporate customer profile must name its company (mirrors the
+        // same rule enforced for corporate leads).
+        if (request.getCustomerType() == CustomerType.CORPORATE
+                && !StringUtils.hasText(request.getCompanyName())) {
+            throw new BusinessException(
+                    "CUSTOMER_COMPANY_REQUIRED",
+                    "Company name is required for a corporate customer.",
+                    HttpStatus.BAD_REQUEST);
+        }
+
         // Duplicate email check
         if (StringUtils.hasText(request.getEmail())) {
             customerRepository.findFirstByEmail(request.getEmail()).ifPresent(existing -> {

@@ -14,31 +14,32 @@ enum InteractionType {
   const InteractionType(this.wire);
   final String wire;
 
-  static InteractionType fromWire(String? raw) => InteractionType.values.firstWhere(
+  static InteractionType fromWire(String? raw) =>
+      InteractionType.values.firstWhere(
         (t) => t.wire == raw?.toLowerCase(),
         orElse: () => InteractionType.note,
       );
 
   String get label => switch (this) {
-        InteractionType.call => 'Call',
-        InteractionType.email => 'Email',
-        InteractionType.meeting => 'Meeting',
-        InteractionType.note => 'Note',
-      };
+    InteractionType.call => 'Call',
+    InteractionType.email => 'Email',
+    InteractionType.meeting => 'Meeting',
+    InteractionType.note => 'Note',
+  };
 
   IconData get icon => switch (this) {
-        InteractionType.call => Icons.call_rounded,
-        InteractionType.email => Icons.mail_outline_rounded,
-        InteractionType.meeting => Icons.groups_rounded,
-        InteractionType.note => Icons.sticky_note_2_outlined,
-      };
+    InteractionType.call => Icons.call_rounded,
+    InteractionType.email => Icons.mail_outline_rounded,
+    InteractionType.meeting => Icons.groups_rounded,
+    InteractionType.note => Icons.sticky_note_2_outlined,
+  };
 
   StatusTone get tone => switch (this) {
-        InteractionType.call => StatusTone.info,
-        InteractionType.email => StatusTone.brand,
-        InteractionType.meeting => StatusTone.warning,
-        InteractionType.note => StatusTone.neutral,
-      };
+    InteractionType.call => StatusTone.info,
+    InteractionType.email => StatusTone.brand,
+    InteractionType.meeting => StatusTone.warning,
+    InteractionType.note => StatusTone.neutral,
+  };
 }
 
 /// Dart mirror of backend `InteractionTimelineResponse`.
@@ -144,13 +145,13 @@ class CreateInteractionPayload {
   final String? dealId;
 
   Map<String, dynamic> toJson() => {
-        'type': type.wire,
-        'description': description,
-        'occurredAt': occurredAt.toUtc().toIso8601String(),
-        if (leadId != null) 'leadId': leadId,
-        if (customerId != null) 'customerId': customerId,
-        if (dealId != null) 'dealId': dealId,
-      };
+    'type': type.wire,
+    'description': description,
+    'occurredAt': occurredAt.toUtc().toIso8601String(),
+    if (leadId != null) 'leadId': leadId,
+    if (customerId != null) 'customerId': customerId,
+    if (dealId != null) 'dealId': dealId,
+  };
 }
 
 /// Payload for editing an interaction's own fields — PUT /interaction-timeline/{id}.
@@ -166,8 +167,8 @@ class UpdateInteractionPayload {
   final DateTime occurredAt;
 
   Map<String, dynamic> toJson() => {
-        'type': type.wire,
-        'description': description,
-        'occurredAt': occurredAt.toUtc().toIso8601String(),
-      };
+    'type': type.wire,
+    'description': description,
+    'occurredAt': occurredAt.toUtc().toIso8601String(),
+  };
 }

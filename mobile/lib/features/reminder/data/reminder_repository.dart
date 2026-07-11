@@ -17,12 +17,10 @@ class ReminderRepository {
   Future<List<Reminder>> getReminders({String? userId, String? status}) {
     return _client.get<List<Reminder>>(
       ApiPaths.reminders,
-      query: {
-        'userId': ?userId,
-        'status': ?status,
-      },
-      decode: (data) =>
-          (data as List).map((e) => Reminder.fromJson(e as Map<String, dynamic>)).toList(),
+      query: {'userId': ?userId, 'status': ?status},
+      decode: (data) => (data as List)
+          .map((e) => Reminder.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 

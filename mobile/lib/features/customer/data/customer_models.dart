@@ -12,9 +12,9 @@ enum CustomerType {
   final String label;
 
   static CustomerType fromWire(String? raw) => CustomerType.values.firstWhere(
-        (t) => t.wire == raw,
-        orElse: () => CustomerType.individual,
-      );
+    (t) => t.wire == raw,
+    orElse: () => CustomerType.individual,
+  );
 
   bool get isCorporate => this == CustomerType.corporate;
 
@@ -34,11 +34,8 @@ enum CustomerStatus {
   const CustomerStatus(this.wire);
   final String wire;
 
-  static CustomerStatus fromWire(String? raw) =>
-      CustomerStatus.values.firstWhere(
-        (s) => s.wire == raw,
-        orElse: () => CustomerStatus.active,
-      );
+  static CustomerStatus fromWire(String? raw) => CustomerStatus.values
+      .firstWhere((s) => s.wire == raw, orElse: () => CustomerStatus.active);
 
   StatusTone get tone =>
       this == CustomerStatus.active ? StatusTone.success : StatusTone.neutral;
@@ -141,8 +138,18 @@ class CustomerStats {
 /// `CustomerHistoryItem` (deals, bookings, quotations).
 enum CustomerHistoryType {
   deal('DEAL', 'Deal', Icons.handshake_rounded, StatusTone.brand),
-  booking('BOOKING', 'Booking', Icons.event_available_rounded, StatusTone.success),
-  quotation('QUOTATION', 'Quotation', Icons.receipt_long_rounded, StatusTone.warning);
+  booking(
+    'BOOKING',
+    'Booking',
+    Icons.event_available_rounded,
+    StatusTone.success,
+  ),
+  quotation(
+    'QUOTATION',
+    'Quotation',
+    Icons.receipt_long_rounded,
+    StatusTone.warning,
+  );
 
   const CustomerHistoryType(this.wire, this.label, this.icon, this.tone);
   final String wire;
@@ -150,11 +157,8 @@ enum CustomerHistoryType {
   final IconData icon;
   final StatusTone tone;
 
-  static CustomerHistoryType fromWire(String? raw) =>
-      CustomerHistoryType.values.firstWhere(
-        (t) => t.wire == raw,
-        orElse: () => CustomerHistoryType.deal,
-      );
+  static CustomerHistoryType fromWire(String? raw) => CustomerHistoryType.values
+      .firstWhere((t) => t.wire == raw, orElse: () => CustomerHistoryType.deal);
 }
 
 class CustomerHistoryItem {
@@ -195,7 +199,9 @@ class CustomerHistoryItem {
       checkIn: json['checkIn'] as String?,
       checkOut: json['checkOut'] as String?,
       expectedClose: json['expectedClose'] as String?,
-      createdAt: json['createdAt'] is String && (json['createdAt'] as String).isNotEmpty
+      createdAt:
+          json['createdAt'] is String &&
+              (json['createdAt'] as String).isNotEmpty
           ? DateTime.tryParse(json['createdAt'] as String)
           : null,
       notes: json['notes'] as String?,
@@ -226,7 +232,8 @@ class CreateCustomerPayload {
   final String? assignedUserId;
 
   Map<String, dynamic> toJson() {
-    String? clean(String? v) => (v == null || v.trim().isEmpty) ? null : v.trim();
+    String? clean(String? v) =>
+        (v == null || v.trim().isEmpty) ? null : v.trim();
     return {
       'fullName': fullName.trim(),
       'customerType': customerType.wire,
@@ -266,7 +273,8 @@ class UpdateCustomerPayload {
   final String? assignedUserId;
 
   Map<String, dynamic> toJson() {
-    String? clean(String? v) => (v == null || v.trim().isEmpty) ? null : v.trim();
+    String? clean(String? v) =>
+        (v == null || v.trim().isEmpty) ? null : v.trim();
     return {
       'fullName': fullName.trim(),
       'customerType': ?customerType?.wire,

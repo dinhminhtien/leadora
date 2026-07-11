@@ -46,12 +46,17 @@ public class UpdateDealUseCase {
             dealValidation.validateStageTransition(deal.getPipelineStage(), targetStage, deal, request);
             deal.setPipelineStage(targetStage);
 
-            // Auto-assign status based on stage name
-            String stageStr = request.getStage().toLowerCase();
-            if (stageStr.equals("confirmed")) {
-                deal.setStatus(DealStatus.WON);
-            } else if (stageStr.equals("contract")) {
+            // Status follows the stage on terminal transitions. Keyed off the parsed
+            // enum, not the raw string, so wire values ("CLOSED_WON") behave the same
+            // as the legacy web labels ("Confirmed"). "Contract" is the exception: it
+            // reaches CLOSED_WON while the deal is still being drafted, so it stays OPEN.
+            String stageStr = request.getStage().trim().toLowerCase();
+            if (stageStr.equals("contract")) {
                 deal.setStatus(DealStatus.OPEN);
+            } else if (targetStage == DealPipelineStage.CLOSED_WON) {
+                deal.setStatus(DealStatus.WON);
+            } else if (targetStage == DealPipelineStage.CLOSED_LOST) {
+                deal.setStatus(DealStatus.LOST);
             }
         }
 

@@ -23,11 +23,12 @@ class AuthRepository {
     required SecureStorage secureStorage,
     GoogleSignIn? googleSignIn,
     supabase.SupabaseClient? supabaseClient,
-  })  : _client = client,
-        _tokenStore = tokenStore,
-        _secure = secureStorage,
-        _googleSignIn = googleSignIn ?? GoogleSignIn(scopes: ['email', 'profile']),
-        _supabaseClient = supabaseClient ?? supabase.Supabase.instance.client;
+  }) : _client = client,
+       _tokenStore = tokenStore,
+       _secure = secureStorage,
+       _googleSignIn =
+           googleSignIn ?? GoogleSignIn(scopes: ['email', 'profile']),
+       _supabaseClient = supabaseClient ?? supabase.Supabase.instance.client;
 
   final ApiClient _client;
   final TokenStore _tokenStore;
@@ -49,7 +50,7 @@ class AuthRepository {
     return result.user;
   }
 
-  /// Kích hoạt luồng OAuth2 của Supabase đối với Google provider.
+  /// Starts Supabase's OAuth2 flow for the Google provider.
   Future<void> loginWithGoogle() async {
     final String redirectTo;
     if (kIsWeb) {
@@ -65,13 +66,11 @@ class AuthRepository {
     );
   }
 
-  /// Xác minh OAuth session token với Spring Boot Backend.
+  /// Verifies the OAuth session token with the Spring Boot backend.
   Future<AuthUser> verifyOAuthSession(String token) async {
     return _client.get<AuthUser>(
       ApiPaths.oauthVerify,
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
+      headers: {'Authorization': 'Bearer $token'},
       decode: (data) => AuthUser.fromJson(data as Map<String, dynamic>),
     );
   }
@@ -90,10 +89,7 @@ class AuthRepository {
   /// locally even if the server is unreachable.
   Future<void> logout() async {
     try {
-      await _client.post<void>(
-        ApiPaths.logout,
-        decode: (_) {},
-      );
+      await _client.post<void>(ApiPaths.logout, decode: (_) {});
     } catch (_) {
       // Best-effort server revocation; ignore failures.
     } finally {
@@ -109,10 +105,7 @@ class AuthRepository {
   Future<void> forgotPassword(String email) {
     return _client.post<void>(
       ApiPaths.forgotPassword,
-      data: {
-        'email': email,
-        'clientType': 'mobile',
-      },
+      data: {'email': email, 'clientType': 'mobile'},
       decode: (_) {},
     );
   }

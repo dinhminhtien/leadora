@@ -48,7 +48,7 @@ public class UpdateReservationStatusUseCase {
         try {
             newStatus = BookingStatus.valueOf(request.getStatus().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new BusinessRuleException("Trạng thái không hợp lệ: " + request.getStatus());
+            throw new BusinessRuleException("Invalid status: " + request.getStatus());
         }
 
         LocalDate oldCheckIn = booking.getCheckInDate();
@@ -60,7 +60,7 @@ public class UpdateReservationStatusUseCase {
         // Check if dates changed, validate room availability
         if (!newCheckIn.equals(oldCheckIn) || !newCheckOut.equals(oldCheckOut)) {
             if (!newCheckOut.isAfter(newCheckIn)) {
-                throw new BusinessRuleException("Ngày trả phòng phải sau ngày nhận phòng");
+                throw new BusinessRuleException("Check-out date must be after the check-in date");
             }
 
             List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(id);

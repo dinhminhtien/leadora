@@ -26,7 +26,7 @@ import type { SlaRule, SlaRulePayload, SlaActivityType, SlaTracking, SlaDisplayS
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
-// BR-02: chỉ ADMIN và MANAGER được cấu hình rules
+// BR-02: only ADMIN and MANAGER can configure rules
 const CONFIGURE_ROLES = ["ADMIN", "MANAGER"];
 
 // ─── Shared constants ────────────────────────────────────────────────────────
@@ -563,7 +563,7 @@ function RuleForm({
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Status</label>
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <button type="button" onClick={() => set("active", !value.active)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${value.active ? "bg-blue-500" : "bg-slate-200"}`}>
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${value.active ? "bg-primary" : "bg-slate-200"}`}>
               <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${value.active ? "translate-x-4" : "translate-x-1"}`} />
             </button>
             <span className="text-xs text-slate-600 font-semibold">{value.active ? "Active" : "Inactive"}</span>
@@ -571,7 +571,7 @@ function RuleForm({
         </div>
       </div>
       <div className="flex items-center gap-2 pt-1">
-        <Button onClick={onSave} isLoading={isSaving} variant="primary" size="sm" className="gap-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white">
+        <Button onClick={onSave} isLoading={isSaving} variant="primary" size="sm" className="gap-1.5 text-xs font-semibold bg-primary hover:bg-primary/90 text-white">
           <Check className="size-3.5" /> Save Rule
         </Button>
         <Button onClick={onCancel} variant="outline" size="sm" className="gap-1.5 text-xs font-semibold border-slate-200 text-slate-600">
@@ -678,7 +678,7 @@ function ConfigureTab() {
         </p>
         {!isCreating && (
           <Button onClick={() => { setIsCreating(true); setNewForm(EMPTY_FORM); setNewError(null); setEditingId(null); }}
-            variant="primary" size="sm" className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-xs font-semibold text-white">
+            variant="primary" size="sm" className="gap-1.5 bg-primary hover:bg-primary/90 text-xs font-semibold text-white">
             <Plus className="size-3.5" /> New Rule
           </Button>
         )}
@@ -1012,7 +1012,7 @@ export function SlaManagementScreen() {
             onClick={() => setActiveTab(key)}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition -mb-px ${
               activeTab === key
-                ? "border-blue-600 text-blue-600"
+                ? "border-primary text-blue-600"
                 : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >

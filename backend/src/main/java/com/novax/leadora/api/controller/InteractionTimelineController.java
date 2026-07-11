@@ -12,6 +12,7 @@ import com.novax.leadora.application.usecase.timeline.UpdateInteractionTimelineU
 import com.novax.leadora.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -33,11 +34,16 @@ public class InteractionTimelineController {
     private final GetInteractionAuditLogsUseCase getAuditLogsUseCase;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<InteractionTimelineResponse>>> getTimeline(
+    public ResponseEntity<ApiResponse<Page<InteractionTimelineResponse>>> getTimeline(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String type,
-            @RequestParam(required = false) UUID agentId) {
-        List<InteractionTimelineResponse> timeline = getListUseCase.execute(search, type, agentId);
+            @RequestParam(required = false) UUID agentId,
+            @RequestParam(required = false) String linkedType,
+            @RequestParam(required = false) UUID linkedId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Page<InteractionTimelineResponse> timeline =
+                getListUseCase.execute(search, type, agentId, linkedType, linkedId, page, size);
         return ResponseEntity.ok(ApiResponse.success(timeline));
     }
 

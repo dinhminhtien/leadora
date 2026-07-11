@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../../data/lead_models.dart';
 import '../../data/lead_repository.dart';
 import '../providers/lead_providers.dart';
@@ -25,6 +26,7 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
   final _email = TextEditingController();
   final _company = TextEditingController();
   final _source = TextEditingController();
+  final _interestedService = TextEditingController();
   final _notes = TextEditingController();
   bool _isCorporate = false;
   bool _submitting = false;
@@ -32,7 +34,7 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
 
   @override
   void dispose() {
-    for (final c in [_name, _phone, _email, _company, _source, _notes]) {
+    for (final c in [_name, _phone, _email, _company, _source, _interestedService, _notes]) {
       c.dispose();
     }
     super.dispose();
@@ -55,13 +57,16 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final router = GoRouter.of(context);
     try {
-      final lead = await ref.read(leadRepositoryProvider).createLead(
+      final lead = await ref
+          .read(leadRepositoryProvider)
+          .createLead(
             CreateLeadPayload(
               fullName: _name.text.trim(),
               phone: _phone.text.trim(),
               email: _email.text.trim(),
               companyName: _company.text.trim(),
               source: _source.text.trim(),
+              interestedService: _interestedService.text.trim(),
               notes: _notes.text.trim(),
               isCorporate: _isCorporate,
             ),
@@ -92,7 +97,10 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
     }
   }
 
-  Future<void> _showDuplicateDialog(String message, String existingLeadId) async {
+  Future<void> _showDuplicateDialog(
+    String message,
+    String existingLeadId,
+  ) async {
     final view = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -126,10 +134,11 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
       appBar: AppBar(title: const Text('New lead')),
       body: Form(
         key: _formKey,
-        autovalidateMode:
-            _autovalidate ? AutovalidateMode.onUserInteraction : AutovalidateMode.disabled,
+        autovalidateMode: _autovalidate
+            ? AutovalidateMode.onUserInteraction
+            : AutovalidateMode.disabled,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+          padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.huge),
           children: [
             TextFormField(
               controller: _name,
@@ -139,8 +148,9 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
                 labelText: 'Full name *',
                 prefixIcon: Icon(Icons.person_outline),
               ),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Full name is required' : null,
+              validator: (v) => (v == null || v.trim().isEmpty)
+                  ? 'Full name is required'
+                  : null,
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -186,10 +196,23 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
                 hintText: 'e.g. Referral, Website, Walk-in',
               ),
             ),
+            const SizedBox(height: 16),
+            // BR-05: required before a lead enters active follow-up.
+            TextFormField(
+              controller: _interestedService,
+              enabled: !_submitting,
+              decoration: const InputDecoration(
+                labelText: 'Interested service',
+                prefixIcon: Icon(Icons.room_service_outlined),
+                hintText: 'e.g. Wedding banquet, Conference, Rooms',
+              ),
+            ),
             const SizedBox(height: 8),
             SwitchListTile(
               value: _isCorporate,
-              onChanged: _submitting ? null : (v) => setState(() => _isCorporate = v),
+              onChanged: _submitting
+                  ? null
+                  : (v) => setState(() => _isCorporate = v),
               title: const Text('Corporate lead'),
               subtitle: const Text('Organization rather than an individual'),
               contentPadding: EdgeInsets.zero,
@@ -207,10 +230,15 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
             const SizedBox(height: 24),
             FilledButton(
               onPressed: _submitting ? null : _submit,
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+              ),
               child: _submitting
                   ? const SizedBox(
-                      width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
                   : const Text('Create lead'),
             ),
           ],

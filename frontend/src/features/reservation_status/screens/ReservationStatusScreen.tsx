@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { reservationStatusService, type ReservationStatus } from "@/services/reservation_status_service";
+import { toast } from "@/stores/toast_store";
 
 export function ReservationStatusScreen() {
   const [reservations, setReservations] = useState<ReservationStatus[]>([]);
@@ -88,10 +89,10 @@ export function ReservationStatusScreen() {
       if (res && res.success) {
         setDetailData(res.data);
       } else {
-        alert(res.message || "Failed to fetch reservation detail.");
+        toast.error(res.message || "Failed to fetch reservation detail.");
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || "Failed to fetch reservation detail.");
+      toast.error(err.response?.data?.message || err.message || "Failed to fetch reservation detail.");
     } finally {
       setDetailLoading(false);
     }
@@ -108,11 +109,12 @@ export function ReservationStatusScreen() {
         if (showDetailModal && selectedId === id) {
           setDetailData(res.data);
         }
+        toast.success(res.message || "Reservation status updated.");
       } else {
-        alert(res.message || `Failed to update status to ${newStatus}.`);
+        toast.error(res.message || `Failed to update status to ${newStatus}.`);
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || "Failed to update reservation status.");
+      toast.error(err.response?.data?.message || err.message || "Failed to update reservation status.");
     } finally {
       setActionLoading(null);
     }
@@ -139,11 +141,12 @@ export function ReservationStatusScreen() {
         if (showDetailModal && selectedId === cancelId) {
           setDetailData(res.data);
         }
+        toast.success(res.message || "Reservation cancelled.");
       } else {
-        alert(res.message || "Failed to cancel reservation.");
+        toast.error(res.message || "Failed to cancel reservation.");
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || "Failed to cancel reservation.");
+      toast.error(err.response?.data?.message || err.message || "Failed to cancel reservation.");
     } finally {
       setActionLoading(null);
       setCancelId(null);
@@ -331,7 +334,7 @@ export function ReservationStatusScreen() {
                               variant="primary"
                               size="sm"
                               onClick={() => handleStatusChange({ id: res.id, newStatus: "CHECKED_IN", reason: "Guest Checked In" })}
-                              className="p-1 px-2.5 text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white h-7"
+                              className="p-1 px-2.5 text-[10px] font-bold bg-primary hover:bg-primary/90 text-white h-7"
                             >
                               Check In
                             </Button>
@@ -553,7 +556,7 @@ export function ReservationStatusScreen() {
                   variant="primary"
                   size="sm"
                   onClick={() => handleStatusChange({ id: detailData.id, newStatus: "CHECKED_IN", reason: "Guest Checked In" })}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                  className="bg-primary hover:bg-primary/90 text-white font-bold"
                 >
                   Check In Guest
                 </Button>

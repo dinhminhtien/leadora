@@ -1,17 +1,29 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
+import '../../../../shared/widgets/app_filter_chip.dart';
+import '../../../../shared/widgets/app_search_field.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/empty_state.dart';
+import '../../../../shared/widgets/list_skeleton.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared/widgets/status_chip.dart';
 import '../../data/lead_models.dart';
 import '../providers/lead_providers.dart';
+
+/// Dummy row for the loading skeleton — same widget as a real row so the list
+/// keeps its shape when data lands.
+const _skeletonLead = Lead(
+  leadId: '',
+  fullName: 'Placeholder lead name',
+  status: LeadStatus.neww,
+  companyName: 'Placeholder company',
+  phone: '+84 000 000 000',
+);
 
 /// UC-24.14 / UC-24.15 — assigned lead list with search, status filter,
 /// advanced filters (scope, sort, source, type, created-date window),
@@ -25,8 +37,6 @@ class LeadListScreen extends ConsumerStatefulWidget {
 
 class _LeadListScreenState extends ConsumerState<LeadListScreen> {
   final _scrollController = ScrollController();
-  final _searchController = TextEditingController();
-  Timer? _debounce;
 
   @override
   void initState() {
@@ -36,9 +46,7 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _scrollController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -52,22 +60,8 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
     }
   }
 
-  void _onSearchChanged(String value) {
-    // Rebuild so the clear (X) suffix appears/disappears as the user types.
-    setState(() {});
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      _controller.applyFilters(_controller.filters.copyWith(search: value));
-    });
-  }
-
-  void _clearSearch() {
-    // Cancel any pending debounce so a stale search doesn't re-apply itself
-    // right after the field was cleared.
-    _debounce?.cancel();
-    setState(() => _searchController.clear());
-    _controller.applyFilters(_controller.filters.copyWith(search: ''));
-  }
+  void _onSearchChanged(String term) =>
+      _controller.applyFilters(_controller.filters.copyWith(search: term));
 
   Future<void> _openFilterSheet() async {
     final result = await showModalBottomSheet<LeadFilters>(
@@ -108,52 +102,37 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: TextField(
-              controller: _searchController,
-              onChanged: _onSearchChanged,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: 'Search name, phone, company…',
-                prefixIcon: const Icon(Icons.search_rounded),
-                isDense: true,
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: _clearSearch,
-                      ),
+          AppSearchField(
+            hintText: 'Search name, phone, company…',
+            initialValue: filters.search,
+            onChanged: _onSearchChanged,
+          ),
+          AppFilterChipBar(
+            children: [
+              AppFilterChip(
+                label: 'All',
+                selected: filters.status == null,
+                onTap: () =>
+                    _controller.applyFilters(filters.copyWith(status: null)),
               ),
-            ),
-          ),
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: [
-                _StatusFilterChip(
-                  label: 'All',
-                  selected: filters.status == null,
-                  onTap: () => _controller
-                      .applyFilters(filters.copyWith(status: null)),
+              for (final s in LeadStatus.values)
+                AppFilterChip(
+                  label: Formatters.humanizeEnum(s.wire),
+                  selected: filters.status == s,
+                  onTap: () =>
+                      _controller.applyFilters(filters.copyWith(status: s)),
                 ),
-                for (final s in LeadStatus.values)
-                  _StatusFilterChip(
-                    label: Formatters.humanizeEnum(s.wire),
-                    selected: filters.status == s,
-                    onTap: () =>
-                        _controller.applyFilters(filters.copyWith(status: s)),
-                  ),
-              ],
-            ),
+            ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xs),
           Expanded(
             child: AsyncValueView<LeadListState>(
               value: asyncState,
               onRetry: _controller.refresh,
+              loading: ListSkeleton(
+                separatorHeight: AppSpacing.sm,
+                itemBuilder: (_) => _LeadCard(lead: _skeletonLead),
+              ),
               isEmpty: (s) => s.items.isEmpty,
               empty: const EmptyState(
                 icon: Icons.people_outline_rounded,
@@ -165,13 +144,19 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
                 child: ListView.separated(
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.xs,
+                    AppSpacing.lg,
+                    AppSpacing.fabClearance,
+                  ),
                   itemCount: s.items.length + (s.hasMore ? 1 : 0),
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     if (index >= s.items.length) {
                       return const Padding(
-                        padding: EdgeInsets.all(16),
+                        padding: EdgeInsets.all(AppSpacing.lg),
                         child: Center(child: CircularProgressIndicator()),
                       );
                     }
@@ -200,8 +185,9 @@ class _LeadFilterSheet extends StatefulWidget {
 
 class _LeadFilterSheetState extends State<_LeadFilterSheet> {
   late LeadFilters _draft = widget.initial;
-  late final _sourceController =
-      TextEditingController(text: widget.initial.source ?? '');
+  late final _sourceController = TextEditingController(
+    text: widget.initial.source ?? '',
+  );
 
   @override
   void dispose() {
@@ -220,8 +206,12 @@ class _LeadFilterSheetState extends State<_LeadFilterSheet> {
           : null,
     );
     if (picked != null) {
-      setState(() =>
-          _draft = _draft.copyWith(dateFrom: picked.start, dateTo: picked.end));
+      setState(
+        () => _draft = _draft.copyWith(
+          dateFrom: picked.start,
+          dateTo: picked.end,
+        ),
+      );
     }
   }
 
@@ -232,11 +222,17 @@ class _LeadFilterSheetState extends State<_LeadFilterSheet> {
 
     return Padding(
       // Keep the sheet above the keyboard while typing a source.
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            0,
+            AppSpacing.xl,
+            AppSpacing.lg,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
@@ -265,7 +261,8 @@ class _LeadFilterSheetState extends State<_LeadFilterSheet> {
                 ],
                 selected: {_draft.isCorporate},
                 onSelectionChanged: (sel) => setState(
-                    () => _draft = _draft.copyWith(isCorporate: sel.first)),
+                  () => _draft = _draft.copyWith(isCorporate: sel.first),
+                ),
               ),
               const SizedBox(height: 16),
               Text('Sort by', style: theme.textTheme.labelLarge),
@@ -310,8 +307,12 @@ class _LeadFilterSheetState extends State<_LeadFilterSheet> {
                     ? IconButton(
                         tooltip: 'Clear dates',
                         icon: const Icon(Icons.close_rounded, size: 20),
-                        onPressed: () => setState(() => _draft =
-                            _draft.copyWith(dateFrom: null, dateTo: null)),
+                        onPressed: () => setState(
+                          () => _draft = _draft.copyWith(
+                            dateFrom: null,
+                            dateTo: null,
+                          ),
+                        ),
                       )
                     : const Icon(Icons.chevron_right_rounded),
               ),
@@ -343,30 +344,6 @@ class _LeadFilterSheetState extends State<_LeadFilterSheet> {
   }
 }
 
-class _StatusFilterChip extends StatelessWidget {
-  const _StatusFilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) => onTap(),
-      ),
-    );
-  }
-}
-
 class _LeadCard extends StatelessWidget {
   const _LeadCard({required this.lead});
 
@@ -376,13 +353,13 @@ class _LeadCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return InkWell(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadii.lg),
       onTap: () => context.pushNamed(
         RouteNames.leadDetail,
         pathParameters: {'id': lead.leadId},
       ),
       child: SectionCard(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         child: Row(
           children: [
             AppAvatar(name: lead.fullName, radius: 22),
@@ -393,20 +370,23 @@ class _LeadCard extends StatelessWidget {
                 children: [
                   Text(
                     lead.fullName,
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     [
-                      if (lead.companyName != null && lead.companyName!.isNotEmpty)
+                      if (lead.companyName != null &&
+                          lead.companyName!.isNotEmpty)
                         lead.companyName,
                       lead.phone ?? lead.email ?? 'No contact',
                     ].whereType<String>().join(' · '),
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -417,12 +397,17 @@ class _LeadCard extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                StatusChip(tone: lead.status.tone, rawStatus: lead.status.wire, dense: true),
+                StatusChip(
+                  tone: lead.status.tone,
+                  rawStatus: lead.status.wire,
+                  dense: true,
+                ),
                 const SizedBox(height: 6),
                 Text(
                   Formatters.relative(lead.createdAt),
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: theme.colorScheme.outline),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
                 ),
               ],
             ),

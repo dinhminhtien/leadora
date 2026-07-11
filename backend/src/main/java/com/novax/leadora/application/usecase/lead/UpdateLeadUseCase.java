@@ -3,6 +3,7 @@ package com.novax.leadora.application.usecase.lead;
 import com.novax.leadora.api.dto.request.UpdateLeadRequest;
 import com.novax.leadora.api.dto.response.LeadResponse;
 import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
@@ -29,6 +30,7 @@ public class UpdateLeadUseCase {
     private final LeadRepository leadRepository;
     private final UserRepository userRepository;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
+    private final StartSlaTrackingUseCase startSlaTrackingUseCase;
     private final NotificationRepository notificationRepository;
     private final LeadAccessPolicy leadAccessPolicy;
 
@@ -40,6 +42,13 @@ public class UpdateLeadUseCase {
         // UC-8.4 RBAC: same owner-scoping as viewing — a Sales Staff may only
         // modify leads assigned to (or created by) them; MANAGER/ADMIN unscoped.
         leadAccessPolicy.assertCanView(leadAccessPolicy.currentUser(), lead);
+
+        // BR-08: after conversion the lead is an immutable historical snapshot —
+        // reject any edit so the record kept for history/audit can't be rewritten.
+        if (lead.getStatus() == LeadStatus.CONVERTED) {
+            throw new IllegalStateException(
+                    "This lead has been converted and is now a locked historical record; it can no longer be edited.");
+        }
 
         if (StringUtils.hasText(request.getFullName())) {
             lead.setFullName(request.getFullName());
@@ -62,6 +71,9 @@ public class UpdateLeadUseCase {
         if (request.getSource() != null) {
             lead.setSource(request.getSource());
         }
+        if (request.getInterestedService() != null) {
+            lead.setInterestedService(request.getInterestedService());
+        }
         if (request.getNotes() != null) {
             lead.setNotes(request.getNotes());
         }
@@ -73,9 +85,21 @@ public class UpdateLeadUseCase {
             UserEntity assignedUser = userRepository.findById(request.getAssignedUserId()).orElse(null);
             lead.setAssignedUser(assignedUser);
 
-            // UC-15.1: notify the newly (re)assigned sales rep
             if (assignedUser != null && !assignedUser.getUserId().equals(previousAssigneeId)) {
+                // UC-15.1: notify the newly (re)assigned sales rep
                 notifyLeadAssigned(lead, assignedUser);
+
+                // BR-06: SLA enforcement begins on the FIRST assignment (a draft lead
+                // started none at creation). A reassignment (previous owner non-null)
+                // does not restart tracking.
+                if (previousAssigneeId == null) {
+                    try {
+                        startSlaTrackingUseCase.execute("LEAD_RESPONSE", "LEAD", lead.getLeadId());
+                    } catch (Exception e) {
+                        log.warn("SLA tracking start-on-assignment failed for lead {}: {}",
+                                lead.getLeadId(), e.getMessage());
+                    }
+                }
             }
         }
         if (request.getStatus() != null) {
@@ -86,6 +110,26 @@ public class UpdateLeadUseCase {
             if (newStatus != previousStatus && lead.getAssignedUser() == null) {
                 throw new IllegalStateException(
                         "Lead must be assigned to a sales rep before its status can change.");
+            }
+            // BR-05: entering active follow-up (leaving NEW toward CONTACTED/QUALIFIED)
+            // requires the qualifying details — a phone or email to reach the lead, the
+            // inquiry source, and the interested service — not just an assignee. A lead
+            // may still be marked LOST without them.
+            if (previousStatus == LeadStatus.NEW
+                    && newStatus != LeadStatus.NEW
+                    && newStatus != LeadStatus.LOST) {
+                if (!StringUtils.hasText(lead.getEmail()) && !StringUtils.hasText(lead.getPhone())) {
+                    throw new IllegalStateException(
+                            "A phone number or email is required before a lead enters active follow-up.");
+                }
+                if (!StringUtils.hasText(lead.getSource())) {
+                    throw new IllegalStateException(
+                            "The inquiry source is required before a lead enters active follow-up.");
+                }
+                if (!StringUtils.hasText(lead.getInterestedService())) {
+                    throw new IllegalStateException(
+                            "The interested service is required before a lead enters active follow-up.");
+                }
             }
             validateStatusTransition(previousStatus, newStatus);
             lead.setStatus(newStatus);

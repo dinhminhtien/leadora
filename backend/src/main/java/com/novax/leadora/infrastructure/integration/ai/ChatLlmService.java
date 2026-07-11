@@ -40,10 +40,8 @@ public class ChatLlmService {
                from something said earlier in the conversation, TRUST THE REFERENCE DATA — the earlier
                numbers may be stale. Use the conversation history only to understand what the user is
                referring to (follow-ups, pronouns), never as a source of data values.
-            4. LANGUAGE: Reply in the SAME language as the user's latest message — Vietnamese if they
-               write Vietnamese, English if they write English. The REFERENCE DATA section may be in
-               Vietnamese regardless of the question; still answer in the user's language and translate
-               any field labels/values as needed.
+            4. LANGUAGE: Always reply in ENGLISH, regardless of the language the user writes in. The
+               REFERENCE DATA section is in English; present all field labels and values in English.
             5. STYLE: Be concise and well-structured for a chat UI that renders Markdown.
                - Use a **Markdown table** when showing multiple records or comparisons
                  (e.g. several leads/deals/tasks with fields like name, status, value).

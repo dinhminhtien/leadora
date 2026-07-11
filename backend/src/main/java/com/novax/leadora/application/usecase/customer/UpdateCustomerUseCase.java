@@ -6,6 +6,7 @@ import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerType;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -66,6 +67,16 @@ public class UpdateCustomerUseCase {
         if (request.getAssignedUserId() != null) {
             UserEntity assignedUser = userRepository.findById(request.getAssignedUserId()).orElse(null);
             customer.setAssignedUser(assignedUser);
+        }
+
+        // BR-09: validate the resulting state — a corporate customer must name its
+        // company (either or both of type / companyName may have just changed).
+        if (customer.getCustomerType() == CustomerType.CORPORATE
+                && !StringUtils.hasText(customer.getCompanyName())) {
+            throw new BusinessException(
+                    "CUSTOMER_COMPANY_REQUIRED",
+                    "Company name is required for a corporate customer.",
+                    HttpStatus.BAD_REQUEST);
         }
 
         return CustomerResponse.from(customerRepository.save(customer));

@@ -4,8 +4,7 @@
   "API_BASE_URL": "http://192.168.1.11:8085/api/v1",
   "CONNECT_TIMEOUT_MS": "20000",
   "RECEIVE_TIMEOUT_MS": "20000",
-  "ENABLE_CRASHLYTICS": "false",
   "LOG_LEVEL": "info",
   "SUPABASE_URL": "https://duqxepetrnpvfbzkugeu.supabase.co",
-  "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1cXhlcGV0cm5wdmZiemt1Z2V1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4NjIwNTEsImV4cCI6MjA5NTQzODA1MX0.Gmjwyja3i7l50S1glnl68J55iotj9yYK5ObxgGuPrqc"
+  "SUPABASE_ANON_KEY": "..."
 }

@@ -142,7 +142,7 @@ public class ArrivalHandoverResponse {
         }
         return details.stream()
                 .map(d -> {
-                    String name = d.getProductService() != null ? d.getProductService().getName() : "Dịch vụ";
+                    String name = d.getProductService() != null ? d.getProductService().getName() : "Service";
                     return d.getQuantity() != null && d.getQuantity() > 1 ? name + " x" + d.getQuantity() : name;
                 })
                 .collect(Collectors.joining(", "));
@@ -150,16 +150,16 @@ public class ArrivalHandoverResponse {
 
     private static String buildPaymentReference(List<PaymentEntity> payments) {
         if (payments == null || payments.isEmpty()) {
-            return "Chưa có thanh toán";
+            return "No payment yet";
         }
         PaymentEntity deposit = payments.stream()
                 .filter(p -> p.getPaymentType() == PaymentType.DEPOSIT)
                 .findFirst()
                 .orElse(null);
         if (deposit != null && deposit.getStatus() != null) {
-            return "Đặt cọc: " + deposit.getStatus().name();
+            return "Deposit: " + deposit.getStatus().name();
         }
         PaymentEntity latest = payments.get(payments.size() - 1);
-        return latest.getStatus() != null ? "Thanh toán: " + latest.getStatus().name() : "Chưa có thanh toán";
+        return latest.getStatus() != null ? "Payment: " + latest.getStatus().name() : "No payment yet";
     }
 }

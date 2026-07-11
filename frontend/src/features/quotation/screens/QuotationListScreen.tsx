@@ -242,7 +242,7 @@ export function QuotationListScreen() {
           onClick={() => handleTabChange("active")}
           className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
             activeTab === "active"
-              ? "border-blue-600 text-blue-700"
+              ? "border-primary text-blue-700"
               : "border-transparent text-slate-500 hover:text-slate-700"
           }`}
         >

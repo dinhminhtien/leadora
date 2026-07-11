@@ -52,16 +52,16 @@ import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 const PAGE_SIZE = 10;
 
 const READINESS_LABELS: Record<string, string> = {
-  PENDING_REVIEW: "Chưa xem xét",
-  REVIEWED: "Đã xem xét",
-  READY_FOR_ARRIVAL: "Sẵn sàng đón khách",
-  NEED_CLARIFICATION: "Cần làm rõ",
+  PENDING_REVIEW: "Pending review",
+  REVIEWED: "Reviewed",
+  READY_FOR_ARRIVAL: "Ready for arrival",
+  NEED_CLARIFICATION: "Needs clarification",
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  SUBMITTED: "Đã gửi",
-  ACKNOWLEDGED: "Đã tiếp nhận",
-  READY: "Hoàn tất",
+  SUBMITTED: "Submitted",
+  ACKNOWLEDGED: "Acknowledged",
+  READY: "Complete",
 };
 
 function readinessClass(value?: string) {
@@ -191,14 +191,14 @@ export function FrontOfficeHandoverScreen() {
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-slate-800">
             <Headphones className="size-5 text-blue-600" />
-            Bàn giao khách đến (Lễ tân)
+            Arrival Handover (Front Office)
           </h1>
           <p className="text-xs text-slate-400">
-            Bàn giao đã gửi tới Lễ tân để chuẩn bị đón khách — xem chi tiết và cập nhật trạng thái sẵn sàng.
+            Handovers sent to the Front Office to prepare for guest arrival — view details and update readiness.
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <span className="text-xs font-semibold text-slate-500">{totalElements} yêu cầu</span>
+          <span className="text-xs font-semibold text-slate-500">{totalElements} requests</span>
           <Pill text="Front Office" className="bg-blue-100 text-blue-800" />
         </div>
       </div>
@@ -206,7 +206,7 @@ export function FrontOfficeHandoverScreen() {
       {/* KPI cards — customer arrival requests by readiness */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <SummaryCard
-          label="Chưa xem xét"
+          label="Pending review"
           value={summary?.pendingReview}
           icon={<Inbox className="size-4" />}
           color="amber"
@@ -214,7 +214,7 @@ export function FrontOfficeHandoverScreen() {
           onClick={() => filterBy("PENDING_REVIEW")}
         />
         <SummaryCard
-          label="Đã xem xét"
+          label="Reviewed"
           value={summary?.reviewed}
           icon={<Clock3 className="size-4" />}
           color="blue"
@@ -222,7 +222,7 @@ export function FrontOfficeHandoverScreen() {
           onClick={() => filterBy("REVIEWED")}
         />
         <SummaryCard
-          label="Sẵn sàng đón khách"
+          label="Ready for arrival"
           value={summary?.readyForArrival}
           icon={<CheckCircle2 className="size-4" />}
           color="emerald"
@@ -230,7 +230,7 @@ export function FrontOfficeHandoverScreen() {
           onClick={() => filterBy("READY_FOR_ARRIVAL")}
         />
         <SummaryCard
-          label="Cần làm rõ"
+          label="Needs clarification"
           value={summary?.needClarification}
           icon={<AlertTriangle className="size-4" />}
           color="rose"
@@ -247,7 +247,7 @@ export function FrontOfficeHandoverScreen() {
             <Input
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Tìm theo mã booking hoặc tên khách…"
+              placeholder="Search by booking code or guest name…"
               className="pl-9"
             />
           </div>
@@ -259,7 +259,7 @@ export function FrontOfficeHandoverScreen() {
                 setArrivalDate(e.target.value);
                 setPage(0);
               }}
-              title="Lọc theo ngày đến"
+              title="Filter by arrival date"
             />
           </div>
           <div className="lg:w-56">
@@ -270,11 +270,11 @@ export function FrontOfficeHandoverScreen() {
                 setPage(0);
               }}
             >
-              <option value="">Tất cả trạng thái sẵn sàng</option>
-              <option value="PENDING_REVIEW">Chưa xem xét</option>
-              <option value="REVIEWED">Đã xem xét</option>
-              <option value="READY_FOR_ARRIVAL">Sẵn sàng đón khách</option>
-              <option value="NEED_CLARIFICATION">Cần làm rõ</option>
+              <option value="">All readiness statuses</option>
+              <option value="PENDING_REVIEW">Pending review</option>
+              <option value="REVIEWED">Reviewed</option>
+              <option value="READY_FOR_ARRIVAL">Ready for arrival</option>
+              <option value="NEED_CLARIFICATION">Needs clarification</option>
             </Select>
           </div>
         </CardContent>
@@ -286,19 +286,19 @@ export function FrontOfficeHandoverScreen() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Mã booking</TableHead>
-                <TableHead>Khách</TableHead>
-                <TableHead>Ngày đến</TableHead>
-                <TableHead>Phòng / Dịch vụ</TableHead>
-                <TableHead>Yêu cầu đặc biệt</TableHead>
-                <TableHead>Sẵn sàng</TableHead>
+                <TableHead>Booking code</TableHead>
+                <TableHead>Guest</TableHead>
+                <TableHead>Arrival date</TableHead>
+                <TableHead>Room / Service</TableHead>
+                <TableHead>Special requests</TableHead>
+                <TableHead>Ready</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {listQuery.isLoading && (
                 <TableRow>
                   <TableCell colSpan={6} className="py-8 text-center text-xs text-slate-400">
-                    <Loader2 className="mx-auto mb-1 size-4 animate-spin" /> Đang tải…
+                    <Loader2 className="mx-auto mb-1 size-4 animate-spin" /> Loading…
                   </TableCell>
                 </TableRow>
               )}
@@ -311,11 +311,11 @@ export function FrontOfficeHandoverScreen() {
                       </span>
                       <p className="text-sm font-semibold text-slate-600">
                         {readinessFilter || search || arrivalDate
-                          ? "Không có yêu cầu nào khớp bộ lọc"
-                          : "Chưa có yêu cầu khách đến nào"}
+                          ? "No requests match the filters"
+                          : "No arrival requests yet"}
                       </p>
                       <p className="max-w-xs text-xs text-slate-400">
-                        Các bàn giao được Sales/Đặt phòng gửi sang sau khi xác nhận booking sẽ hiển thị ở đây để Lễ tân chuẩn bị đón khách.
+                        Handovers sent by Sales/Reservations after a booking is confirmed appear here for the Front Office to prepare for arrival.
                       </p>
                     </div>
                   </TableCell>
@@ -363,7 +363,7 @@ export function FrontOfficeHandoverScreen() {
             disabled={page <= 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
           >
-            Trước
+            Previous
           </Button>
           <span className="text-slate-500">
             Trang {page + 1}/{totalPages}
@@ -415,7 +415,7 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
     setLocalError(null);
     if (!readiness || !dirty) return;
     if (needsClarification && !note.trim()) {
-      setLocalError("Vui lòng nhập nội dung cần làm rõ.");
+      setLocalError("Please enter the clarification details.");
       return;
     }
     await updateReadiness.mutateAsync({
@@ -435,7 +435,7 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Chi tiết bàn giao
+              Handover details
             </p>
             <h2 className="text-sm font-bold text-slate-800">{detail?.bookingCode || "—"}</h2>
             {detail?.readinessStatus && (
@@ -450,7 +450,7 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
           <button
             onClick={onClose}
             className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
-            title="Đóng"
+            title="Close"
           >
             <X className="size-4" />
           </button>
@@ -460,36 +460,36 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
         <div className="custom-scrollbar flex-1 space-y-4 overflow-y-auto p-4">
           {detailQuery.isLoading ? (
             <div className="flex items-center gap-2 text-xs text-slate-400">
-              <Loader2 className="size-4 animate-spin" /> Đang tải…
+              <Loader2 className="size-4 animate-spin" /> Loading…
             </div>
           ) : !detail ? (
-            <p className="text-xs text-rose-500">Không tải được chi tiết bàn giao.</p>
+            <p className="text-xs text-rose-500">Could not load handover details.</p>
           ) : (
             <>
               {/* Guest / booking */}
               <section className="space-y-2 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-                <InfoRow label="Khách" value={detail.customerName} />
+                <InfoRow label="Guest" value={detail.customerName} />
                 <InfoRow
-                  label="Liên hệ"
+                  label="Contact"
                   value={detail.customerPhone}
                   icon={<Phone className="size-3.5 text-slate-400" />}
                 />
                 <InfoRow
-                  label="Nhận / trả phòng"
+                  label="Check-in / Check-out"
                   value={`${fmtDate(detail.checkInDate)} → ${fmtDate(detail.checkOutDate)}`}
                   icon={<CalendarCheck className="size-3.5 text-slate-400" />}
                 />
-                <InfoRow label="Trạng thái" value={STATUS_LABELS[detail.status ?? ""] ?? detail.status} />
+                <InfoRow label="Status" value={STATUS_LABELS[detail.status ?? ""] ?? detail.status} />
                 <InfoRow
-                  label="Thanh toán / cọc"
+                  label="Payment / Deposit"
                   value={detail.paymentReference}
                   icon={<CreditCard className="size-3.5 text-slate-400" />}
                 />
                 {detail.submittedAt && (
-                  <InfoRow label="Gửi tới Lễ tân" value={fmtDateTime(detail.submittedAt)} />
+                  <InfoRow label="Sent to Front Office" value={fmtDateTime(detail.submittedAt)} />
                 )}
                 {detail.acknowledgedAt && (
-                  <InfoRow label="Tiếp nhận lúc" value={fmtDateTime(detail.acknowledgedAt)} />
+                  <InfoRow label="Acknowledged at" value={fmtDateTime(detail.acknowledgedAt)} />
                 )}
               </section>
 
@@ -497,19 +497,19 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
               <section className="space-y-1">
                 <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   <BedDouble className="size-3.5 text-blue-500" />
-                  Phòng / Dịch vụ
+                  Room / Service
                 </p>
                 <div className="space-y-1 rounded-lg border border-slate-100 bg-white p-2">
                   {detail.rooms && detail.rooms.length > 0 ? (
                     detail.rooms.map((r, i) => (
                       <div key={i} className="flex items-center justify-between text-xs text-slate-600">
                         <span className="font-medium text-slate-700">
-                          {r.productName || "Dịch vụ"}
-                          {r.roomNumber ? ` · Phòng ${r.roomNumber}` : ""}
+                          {r.productName || "Service"}
+                          {r.roomNumber ? ` · Room ${r.roomNumber}` : ""}
                         </span>
                         <span className="text-slate-400">
                           x{r.quantity ?? 1}
-                          {r.nights ? ` · ${r.nights} đêm` : ""}
+                          {r.nights ? ` · ${r.nights} nights` : ""}
                         </span>
                       </div>
                     ))
@@ -520,15 +520,15 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
               </section>
 
               {/* Handover notes (read-only for FO) */}
-              <NoteBlock icon={<Star className="size-3.5 text-amber-500" />} title="Ghi chú VIP" text={detail.vipNotes} />
-              <NoteBlock icon={<BedDouble className="size-3.5 text-blue-500" />} title="Yêu cầu phòng" text={detail.roomPreferences} />
-              <NoteBlock icon={<ClipboardList className="size-3.5 text-slate-500" />} title="Yêu cầu đặc biệt" text={detail.specialRequests} />
-              <NoteBlock icon={<ClipboardList className="size-3.5 text-slate-500" />} title="Ghi chú vận hành" text={detail.operationalNotes} />
+              <NoteBlock icon={<Star className="size-3.5 text-amber-500" />} title="VIP notes" text={detail.vipNotes} />
+              <NoteBlock icon={<BedDouble className="size-3.5 text-blue-500" />} title="Room preferences" text={detail.roomPreferences} />
+              <NoteBlock icon={<ClipboardList className="size-3.5 text-slate-500" />} title="Special requests" text={detail.specialRequests} />
+              <NoteBlock icon={<ClipboardList className="size-3.5 text-slate-500" />} title="Operational notes" text={detail.operationalNotes} />
 
               {/* Readiness update (UC-22.3) */}
               <section className="space-y-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                  Cập nhật trạng thái sẵn sàng
+                  Update readiness status
                 </p>
                 <Select
                   value={readiness}
@@ -538,11 +538,11 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
                   }}
                 >
                   <option value="PENDING_REVIEW" disabled>
-                    Chưa xem xét
+                    Pending review
                   </option>
-                  <option value="REVIEWED">Đã xem xét</option>
-                  <option value="READY_FOR_ARRIVAL">Sẵn sàng đón khách</option>
-                  <option value="NEED_CLARIFICATION">Cần làm rõ</option>
+                  <option value="REVIEWED">Reviewed</option>
+                  <option value="READY_FOR_ARRIVAL">Ready for arrival</option>
+                  <option value="NEED_CLARIFICATION">Needs clarification</option>
                 </Select>
 
                 {needsClarification && (
@@ -553,18 +553,18 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
                       setNote(e.target.value);
                       setLocalError(null);
                     }}
-                    placeholder="Nội dung cần Sales/Đặt phòng làm rõ…"
+                    placeholder="Details for Sales/Reservations to clarify…"
                     className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none"
                   />
                 )}
 
                 {(localError || updateReadiness.isError) && (
                   <p className="text-[11px] text-rose-500">
-                    {localError || "Cập nhật thất bại. Vui lòng thử lại."}
+                    {localError || "Update failed. Please try again."}
                   </p>
                 )}
                 {updateReadiness.isSuccess && !dirty && !localError && (
-                  <p className="text-[11px] text-emerald-600">Đã cập nhật.</p>
+                  <p className="text-[11px] text-emerald-600">Updated.</p>
                 )}
 
                 <Button
@@ -575,18 +575,18 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
                   leftIcon={<Save className="size-3.5" />}
                   onClick={handleSave}
                 >
-                  Lưu trạng thái
+                  Save status
                 </Button>
                 {needsClarification && (
                   <p className="text-[10px] text-slate-400">
-                    Khi chọn “Cần làm rõ”, hệ thống sẽ gửi thông báo cho Sales/Đặt phòng phụ trách.
+                    When you choose “Needs clarification”, the system notifies the responsible Sales/Reservations staff.
                   </p>
                 )}
               </section>
 
               {detail.updatedByName && (
                 <p className="text-[10px] text-slate-400">
-                  Cập nhật gần nhất bởi {detail.updatedByName}
+                  Last updated by {detail.updatedByName}
                 </p>
               )}
             </>

@@ -40,8 +40,9 @@ class AuthController extends AsyncNotifier<AuthUser?> {
       // Bounded so a slow/unreachable backend can never freeze the splash:
       // whatever the retry interceptor is doing under the hood, we stop waiting
       // after 8s and fall through to the login screen.
-      final user =
-          await _repo.fetchProfile().timeout(const Duration(seconds: 8));
+      final user = await _repo.fetchProfile().timeout(
+        const Duration(seconds: 8),
+      );
       _session.update(AuthStatus.authenticated);
       return user;
     } on UnauthorizedException {
@@ -63,10 +64,13 @@ class AuthController extends AsyncNotifier<AuthUser?> {
   }
 
   void _initSupabaseListener() {
-    supabase.Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
+    supabase.Supabase.instance.client.auth.onAuthStateChange.listen((
+      data,
+    ) async {
       final session = data.session;
       final event = data.event;
-      if (session != null && session.accessToken != _tokenStore.accessTokenSync) {
+      if (session != null &&
+          session.accessToken != _tokenStore.accessTokenSync) {
         if (event == supabase.AuthChangeEvent.signedIn ||
             event == supabase.AuthChangeEvent.initialSession ||
             event == supabase.AuthChangeEvent.tokenRefreshed) {
@@ -90,10 +94,7 @@ class AuthController extends AsyncNotifier<AuthUser?> {
   /// Sign in. On success flips the session (router redirects to dashboard).
   /// Errors surface as an [AsyncError] the form renders; the previous state is
   /// preserved so the UI doesn't flash empty on a failed attempt.
-  Future<void> login({
-    required String email,
-    required String password,
-  }) async {
+  Future<void> login({required String email, required String password}) async {
     state = const AsyncLoading<AuthUser?>().copyWithPrevious(state);
     state = await AsyncValue.guard(() async {
       final user = await _repo.login(email: email, password: password);
@@ -112,6 +113,21 @@ class AuthController extends AsyncNotifier<AuthUser?> {
     }
   }
 
+  /// Refresh the signed-in user's display fields after a profile edit — the
+  /// mobile mirror of the web auth store's `updateUserFields`, so the
+  /// dashboard greeting/avatar update without a re-login.
+  void updateUserFields({
+    String? name,
+    String? avatarUrl,
+    bool clearAvatar = false,
+  }) {
+    final user = state.valueOrNull;
+    if (user == null) return;
+    state = AsyncData(
+      user.copyWith(name: name, avatarUrl: avatarUrl, clearAvatar: clearAvatar),
+    );
+  }
+
   /// Sign out. Always resolves the local session to unauthenticated even if the
   /// server revocation call fails.
   Future<void> logout() async {
@@ -121,8 +137,9 @@ class AuthController extends AsyncNotifier<AuthUser?> {
   }
 }
 
-final authControllerProvider =
-    AsyncNotifierProvider<AuthController, AuthUser?>(AuthController.new);
+final authControllerProvider = AsyncNotifierProvider<AuthController, AuthUser?>(
+  AuthController.new,
+);
 
 /// Convenience accessor for the current user (null while loading/signed out).
 final currentUserProvider = Provider<AuthUser?>((ref) {

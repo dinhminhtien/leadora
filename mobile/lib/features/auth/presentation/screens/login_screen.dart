@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/localization/generated/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/widgets/brand_logo.dart';
 import '../providers/auth_controller.dart';
 
@@ -55,7 +56,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       setState(() => _autovalidate = true);
       return;
     }
-    await ref.read(authControllerProvider.notifier).login(
+    await ref
+        .read(authControllerProvider.notifier)
+        .login(
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
@@ -72,8 +75,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ref.listen<AsyncValue<Object?>>(authControllerProvider, (prev, next) {
       if (next.hasError && !next.isLoading) {
         final error = next.error;
-        final message =
-            error is AppException ? error.message : l10n.commonErrorTitle;
+        final message = error is AppException
+            ? error.message
+            : l10n.commonErrorTitle;
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(content: Text(message)));
@@ -84,7 +88,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.xxxl),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
               child: Form(
@@ -100,10 +104,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     Center(
                       child: Container(
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(22),
+                          borderRadius: BorderRadius.circular(AppRadii.xl),
                           boxShadow: [
                             BoxShadow(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.22),
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.22,
+                              ),
                               blurRadius: 20,
                               offset: const Offset(0, 8),
                             ),
@@ -115,15 +121,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 24),
                     Text(
                       l10n.loginTitle,
-                      style: theme.textTheme.headlineMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
                       l10n.loginSubtitle,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 32),
@@ -151,11 +159,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         labelText: l10n.loginPasswordLabel,
                         prefixIcon: const Icon(Icons.lock_outline_rounded),
                         suffixIcon: IconButton(
-                          icon: Icon(_obscurePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined),
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
                           onPressed: () => setState(
-                              () => _obscurePassword = !_obscurePassword),
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
                         ),
                       ),
                       validator: (v) => _validatePassword(v, l10n),
@@ -180,8 +191,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ? const SizedBox(
                               width: 22,
                               height: 22,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2.5),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                              ),
                             )
                           : Text(l10n.loginSubmit),
                     ),
@@ -190,7 +202,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       children: [
                         const Expanded(child: Divider()),
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                           child: Text(
                             'Or',
                             style: theme.textTheme.bodySmall?.copyWith(
@@ -206,25 +218,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       onPressed: isLoading
                           ? null
                           : () => ref
-                              .read(authControllerProvider.notifier)
-                              .loginWithGoogle(),
+                                .read(authControllerProvider.notifier)
+                                .loginWithGoogle(),
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size.fromHeight(52),
                         side: BorderSide(
                           color: theme.colorScheme.outlineVariant,
                         ),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(100),
+                          borderRadius: BorderRadius.circular(AppRadii.pill),
                         ),
                       ),
                       icon: Image.network(
                         'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/24px-Google_%22G%22_logo.svg.png',
                         height: 20,
                         width: 20,
-                        errorBuilder: (context, error, stackTrace) => const Icon(
-                          Icons.login_rounded,
-                          size: 20,
-                        ),
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.login_rounded, size: 20),
                       ),
                       label: const Text('Continue with Google'),
                     ),

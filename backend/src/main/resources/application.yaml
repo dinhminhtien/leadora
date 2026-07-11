@@ -103,10 +103,10 @@ spring:
   ai:
     # Fail-fast retry. Spring AI's default retries a 429 up to 10 times with exponential backoff
     # (2s → ×5 → up to 3 min), so on a quota/rate-limit error the chat/embedding call would HANG
-    # for tens of seconds before surfacing the error ("chat chậm hơn bình thường"). On the Gemini
+    # for tens of seconds before surfacing the error ("chat is slower than usual"). On the Gemini
     # free tier (20 chat req/day, 1000 embed req/day) a 429 is usually a hard daily cap, not a blip,
     # so retrying long is pointless — fail after at most one short retry and let the app show a clear
-    # "hết quota" message immediately. Raise these once billing/paid quota is enabled.
+    # "out of quota" message immediately. Raise these once billing/paid quota is enabled.
     retry:
       max-attempts: ${AI_RETRY_MAX_ATTEMPTS:2}
       backoff:

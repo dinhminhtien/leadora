@@ -139,7 +139,7 @@ public class UpdateHandoverUseCase {
                     }
                     createInteractionTimelineUseCase.execute(timelineReq);
                 } catch (Exception e) {
-                    log.error("Lỗi ghi nhận Interaction Timeline: ", e);
+                    log.error("Failed to record Interaction Timeline: ", e);
                 }
             }
 

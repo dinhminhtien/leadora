@@ -38,7 +38,9 @@ class AppTheme {
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
         foregroundColor: scheme.onSurface,
-        titleTextStyle: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+        titleTextStyle: textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
       ),
 
       cardTheme: CardThemeData(
@@ -56,16 +58,24 @@ class AppTheme {
         filled: true,
         fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
         prefixIconColor: scheme.onSurfaceVariant,
-        labelStyle: textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
-        floatingLabelStyle: textTheme.labelLarge?.copyWith(color: scheme.primary),
-        hintStyle: textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+        labelStyle: textTheme.bodyMedium?.copyWith(
+          color: scheme.onSurfaceVariant,
+        ),
+        floatingLabelStyle: textTheme.labelLarge?.copyWith(
+          color: scheme.primary,
+        ),
+        hintStyle: textTheme.bodyMedium?.copyWith(
+          color: scheme.onSurfaceVariant,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadii.md),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadii.md),
-          borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.7)),
+          borderSide: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.7),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadii.md),
@@ -75,8 +85,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(AppRadii.md),
           borderSide: BorderSide(color: scheme.error, width: 1.2),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.lg,
+        ),
       ),
 
       filledButtonTheme: FilledButtonThemeData(
@@ -85,7 +97,10 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadii.md),
           ),
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700, fontSize: 15.5),
+          textStyle: textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            fontSize: 15.5,
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -95,12 +110,16 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadii.md),
           ),
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          textStyle: textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          textStyle: textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
 
@@ -109,11 +128,18 @@ class AppTheme {
         side: BorderSide.none,
         backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
         selectedColor: scheme.primaryContainer,
-        labelStyle: textTheme.labelLarge
-            ?.copyWith(fontWeight: FontWeight.w600, color: scheme.onSurfaceVariant),
-        secondaryLabelStyle: textTheme.labelLarge
-            ?.copyWith(color: scheme.onPrimaryContainer, fontWeight: FontWeight.w700),
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        labelStyle: textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurfaceVariant,
+        ),
+        secondaryLabelStyle: textTheme.labelLarge?.copyWith(
+          color: scheme.onPrimaryContainer,
+          fontWeight: FontWeight.w700,
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadii.pill),
         ),
@@ -140,7 +166,9 @@ class AppTheme {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
             size: 24,
-            color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
+            color: selected
+                ? scheme.onPrimaryContainer
+                : scheme.onSurfaceVariant,
           );
         }),
       ),
@@ -151,7 +179,9 @@ class AppTheme {
             textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
           ),
           shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.md)),
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadii.md),
+            ),
           ),
         ),
       ),
@@ -160,13 +190,17 @@ class AppTheme {
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.xl)),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppRadii.xl),
+          ),
         ),
       ),
 
       listTileTheme: ListTileThemeData(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.xs,
+        ),
         iconColor: scheme.onSurfaceVariant,
       ),
 
@@ -179,7 +213,9 @@ class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: scheme.inverseSurface,
-        contentTextStyle: textTheme.bodyMedium?.copyWith(color: scheme.onInverseSurface),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(
+          color: scheme.onInverseSurface,
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadii.md),
         ),
@@ -200,23 +236,30 @@ class AppTheme {
   /// platform font automatically when Inter can't be fetched (offline).
   static TextTheme _textTheme(TextTheme base, ColorScheme scheme) {
     final inter = GoogleFonts.interTextTheme(base);
-    return inter.copyWith(
-      displaySmall: inter.displaySmall?.copyWith(
-          fontWeight: FontWeight.w800, letterSpacing: -0.5),
-      headlineMedium: inter.headlineMedium?.copyWith(
-          fontWeight: FontWeight.w800, letterSpacing: -0.5),
-      headlineSmall: inter.headlineSmall?.copyWith(
-          fontWeight: FontWeight.w800, letterSpacing: -0.4),
-      titleLarge: inter.titleLarge?.copyWith(
-          fontWeight: FontWeight.w700, letterSpacing: -0.2),
-      titleMedium: inter.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-      titleSmall: inter.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-      bodyLarge: inter.bodyLarge?.copyWith(height: 1.4),
-      bodyMedium: inter.bodyMedium?.copyWith(height: 1.4),
-      labelLarge: inter.labelLarge?.copyWith(fontWeight: FontWeight.w600),
-    ).apply(
-      bodyColor: scheme.onSurface,
-      displayColor: scheme.onSurface,
-    );
+    return inter
+        .copyWith(
+          displaySmall: inter.displaySmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+          ),
+          headlineMedium: inter.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+          ),
+          headlineSmall: inter.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.4,
+          ),
+          titleLarge: inter.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.2,
+          ),
+          titleMedium: inter.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          titleSmall: inter.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          bodyLarge: inter.bodyLarge?.copyWith(height: 1.4),
+          bodyMedium: inter.bodyMedium?.copyWith(height: 1.4),
+          labelLarge: inter.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+        )
+        .apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface);
   }
 }

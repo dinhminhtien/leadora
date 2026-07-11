@@ -50,7 +50,9 @@ void main() {
 
   group('UpdateTaskPayload', () {
     test('only emits provided fields (partial edit safe)', () {
-      final json = const UpdateTaskPayload(status: TaskStatus.completed).toJson();
+      final json = const UpdateTaskPayload(
+        status: TaskStatus.completed,
+      ).toJson();
       expect(json, {'status': 'COMPLETED'});
     });
   });
@@ -124,14 +126,20 @@ void main() {
 
     test('anchorDate prefers startAt, falls back to endAt (calendar key)', () {
       final both = Task.fromJson({
-        'taskId': 't4', 'title': 'x', 'status': 'OPEN', 'priority': 'LOW',
+        'taskId': 't4',
+        'title': 'x',
+        'status': 'OPEN',
+        'priority': 'LOW',
         'startAt': '2026-07-09T02:00:00Z',
         'endAt': '2026-07-09T03:00:00Z',
       });
       expect(both.anchorDate, DateTime.parse('2026-07-09T02:00:00Z'));
 
       final onlyDue = Task.fromJson({
-        'taskId': 't5', 'title': 'x', 'status': 'OPEN', 'priority': 'LOW',
+        'taskId': 't5',
+        'title': 'x',
+        'status': 'OPEN',
+        'priority': 'LOW',
         'endAt': '2026-07-10T03:00:00Z',
       });
       expect(onlyDue.anchorDate, DateTime.parse('2026-07-10T03:00:00Z'));

@@ -14,7 +14,9 @@ import '../../data/task_repository.dart';
 
 /// Calendar batch — mirrors the web calendar query (one large page, grouped
 /// client-side; the backend has no date-range filter on `GET /tasks`).
-final calendarTasksProvider = AutoDisposeFutureProvider<List<Task>>((ref) async {
+final calendarTasksProvider = AutoDisposeFutureProvider<List<Task>>((
+  ref,
+) async {
   final page = await ref
       .watch(taskRepositoryProvider)
       .getTasks(page: 0, size: 200);
@@ -137,8 +139,7 @@ class _TaskCalendarViewState extends ConsumerState<TaskCalendarView> {
                           month: _monthAt(index),
                           selectedDay: _selectedDay,
                           tasksByDay: byDay,
-                          onSelect: (day) =>
-                              setState(() => _selectedDay = day),
+                          onSelect: (day) => setState(() => _selectedDay = day),
                         ),
                       ),
                     ),
@@ -148,7 +149,11 @@ class _TaskCalendarViewState extends ConsumerState<TaskCalendarView> {
               ),
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 96),
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                  AppSpacing.lg,
+                  96,
+                ),
                 sliver: dayTasks.isEmpty
                     ? SliverToBoxAdapter(
                         child: Padding(
@@ -171,13 +176,12 @@ class _TaskCalendarViewState extends ConsumerState<TaskCalendarView> {
                         itemBuilder: (context, i) {
                           if (i == 0) {
                             return Padding(
-                              padding:
-                                  const EdgeInsets.only(bottom: AppSpacing.xs),
+                              padding: const EdgeInsets.only(
+                                bottom: AppSpacing.xs,
+                              ),
                               child: Text(
                                 '${dayTasks.length} follow-up${dayTasks.length == 1 ? '' : 's'} · ${Formatters.date(_selectedDay)}',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
+                                style: Theme.of(context).textTheme.titleSmall
                                     ?.copyWith(fontWeight: FontWeight.w700),
                               ),
                             );
@@ -212,7 +216,11 @@ class _MonthToolbar extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, AppSpacing.xs, AppSpacing.sm, AppSpacing.xs),
+        AppSpacing.lg,
+        AppSpacing.xs,
+        AppSpacing.sm,
+        AppSpacing.xs,
+      ),
       child: Row(
         children: [
           Expanded(
@@ -221,8 +229,9 @@ class _MonthToolbar extends StatelessWidget {
               child: Text(
                 Formatters.monthYear(month),
                 key: ValueKey(month),
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -302,14 +311,19 @@ class _MonthGrid extends StatelessWidget {
                 for (var dow = 0; dow < 7; dow++)
                   Expanded(
                     child: _DayCell(
-                      day: DateTime(gridStart.year, gridStart.month,
-                          gridStart.day + week * 7 + dow),
+                      day: DateTime(
+                        gridStart.year,
+                        gridStart.month,
+                        gridStart.day + week * 7 + dow,
+                      ),
                       month: month,
                       selectedDay: selectedDay,
-                      tasks: tasksByDay[DateTime(
-                              gridStart.year,
-                              gridStart.month,
-                              gridStart.day + week * 7 + dow)] ??
+                      tasks:
+                          tasksByDay[DateTime(
+                            gridStart.year,
+                            gridStart.month,
+                            gridStart.day + week * 7 + dow,
+                          )] ??
                           const [],
                       onSelect: onSelect,
                     ),
@@ -345,10 +359,10 @@ class _DayCell extends StatelessWidget {
       TaskStatus.completed => AppColors.success,
       TaskStatus.cancelled => AppColors.neutral,
       TaskStatus.open => switch (t.priority) {
-          TaskPriority.high => AppColors.danger,
-          TaskPriority.medium => AppColors.info,
-          TaskPriority.low => AppColors.neutral,
-        },
+        TaskPriority.high => AppColors.danger,
+        TaskPriority.medium => AppColors.info,
+        TaskPriority.low => AppColors.neutral,
+      },
     };
   }
 
@@ -365,10 +379,10 @@ class _DayCell extends StatelessWidget {
     final textColor = isSelected
         ? scheme.onPrimary
         : !inMonth
-            ? scheme.outlineVariant
-            : isToday
-                ? scheme.primary
-                : scheme.onSurface;
+        ? scheme.outlineVariant
+        : isToday
+        ? scheme.primary
+        : scheme.onSurface;
 
     return InkResponse(
       onTap: () => onSelect(day),
@@ -395,8 +409,9 @@ class _DayCell extends StatelessWidget {
                 '${day.day}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: textColor,
-                  fontWeight:
-                      isToday || isSelected ? FontWeight.w800 : FontWeight.w500,
+                  fontWeight: isToday || isSelected
+                      ? FontWeight.w800
+                      : FontWeight.w500,
                 ),
               ),
             ),
@@ -411,8 +426,10 @@ class _DayCell extends StatelessWidget {
                           Container(
                             width: 5,
                             height: 5,
-                            margin:
-                                const EdgeInsets.symmetric(horizontal: 1),
+                            // Off the spacing scale on purpose: a 5dp dot needs
+                            // a 1dp gutter — AppSpacing.xxs would fuse three
+                            // dots into a bar inside a dense month cell.
+                            margin: const EdgeInsets.symmetric(horizontal: 1),
                             decoration: BoxDecoration(
                               color: _dotColor(t),
                               shape: BoxShape.circle,
@@ -455,7 +472,8 @@ class _AgendaCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadii.lg),
             border: Border.all(
-                color: scheme.outlineVariant.withValues(alpha: 0.6)),
+              color: scheme.outlineVariant.withValues(alpha: 0.6),
+            ),
           ),
           child: IntrinsicHeight(
             child: Row(
@@ -466,8 +484,7 @@ class _AgendaCard extends StatelessWidget {
                 const SizedBox(width: AppSpacing.md),
                 // Time column.
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
                   child: SizedBox(
                     width: 44,
                     child: Column(
@@ -477,15 +494,15 @@ class _AgendaCard extends StatelessWidget {
                           Formatters.time(task.anchorDate),
                           style: theme.textTheme.labelLarge?.copyWith(
                             fontWeight: FontWeight.w800,
-                            color:
-                                task.isOverdue ? AppColors.danger : null,
+                            color: task.isOverdue ? AppColors.danger : null,
                           ),
                         ),
                         if (task.endAt != null && task.startAt != null)
                           Text(
                             Formatters.time(task.endAt),
                             style: theme.textTheme.labelSmall?.copyWith(
-                                color: scheme.onSurfaceVariant),
+                              color: scheme.onSurfaceVariant,
+                            ),
                           ),
                       ],
                     ),
@@ -495,7 +512,11 @@ class _AgendaCard extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(
-                        0, AppSpacing.md, AppSpacing.md, AppSpacing.md),
+                      0,
+                      AppSpacing.md,
+                      AppSpacing.md,
+                      AppSpacing.md,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -505,16 +526,20 @@ class _AgendaCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
-                            decoration:
-                                done ? TextDecoration.lineThrough : null,
+                            decoration: done
+                                ? TextDecoration.lineThrough
+                                : null,
                           ),
                         ),
                         if (task.relatedName != null) ...[
                           const SizedBox(height: 2),
                           Row(
                             children: [
-                              Icon(Icons.person_outline_rounded,
-                                  size: 14, color: scheme.outline),
+                              Icon(
+                                Icons.person_outline_rounded,
+                                size: 14,
+                                color: scheme.outline,
+                              ),
                               const SizedBox(width: AppSpacing.xs),
                               Flexible(
                                 child: Text(
@@ -522,7 +547,8 @@ class _AgendaCard extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.bodySmall?.copyWith(
-                                      color: scheme.onSurfaceVariant),
+                                    color: scheme.onSurfaceVariant,
+                                  ),
                                 ),
                               ),
                             ],
@@ -535,23 +561,27 @@ class _AgendaCard extends StatelessWidget {
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             StatusChip(
-                                tone: task.status.tone,
-                                rawStatus: task.status.wire,
-                                dense: true),
+                              tone: task.status.tone,
+                              rawStatus: task.status.wire,
+                              dense: true,
+                            ),
                             StatusChip(
-                                tone: task.priority.tone,
-                                rawStatus: task.priority.wire,
-                                dense: true),
+                              tone: task.priority.tone,
+                              rawStatus: task.priority.wire,
+                              dense: true,
+                            ),
                             if (task.isOverdue)
                               const StatusChip(
-                                  tone: StatusTone.danger,
-                                  label: 'Overdue',
-                                  dense: true),
+                                tone: StatusTone.danger,
+                                label: 'Overdue',
+                                dense: true,
+                              ),
                             if (task.assignedUserName != null)
                               Text(
                                 task.assignedUserName!,
                                 style: theme.textTheme.labelSmall?.copyWith(
-                                    color: scheme.onSurfaceVariant),
+                                  color: scheme.onSurfaceVariant,
+                                ),
                               ),
                           ],
                         ),

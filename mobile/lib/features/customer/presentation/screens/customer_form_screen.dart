@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/network/api_exception.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../../../task/presentation/screens/task_list_screen.dart'
     show TaskAssigneePicker;
 import '../../../user/data/user_models.dart';
@@ -18,11 +19,7 @@ enum CustomerFormMode { create, edit }
 /// go_router `extra` (instant); refetches by [customerId] if it was dropped
 /// (e.g. process death) so the form still opens.
 class CustomerFormLoader extends ConsumerWidget {
-  const CustomerFormLoader({
-    super.key,
-    required this.customerId,
-    this.initial,
-  });
+  const CustomerFormLoader({super.key, required this.customerId, this.initial});
 
   final String customerId;
   final Customer? initial;
@@ -30,20 +27,18 @@ class CustomerFormLoader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (initial != null) {
-      return CustomerFormScreen(
-          mode: CustomerFormMode.edit, customer: initial);
+      return CustomerFormScreen(mode: CustomerFormMode.edit, customer: initial);
     }
     final async = ref.watch(customerDetailProvider(customerId));
     return async.when(
-      data: (c) =>
-          CustomerFormScreen(mode: CustomerFormMode.edit, customer: c),
+      data: (c) => CustomerFormScreen(mode: CustomerFormMode.edit, customer: c),
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (error, _) => Scaffold(
         appBar: AppBar(),
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(AppSpacing.xxl),
             child: Text(
               error is AppException
                   ? error.message
@@ -62,8 +57,10 @@ class CustomerFormLoader extends ConsumerWidget {
 /// contact, address, status on edit, assignee).
 class CustomerFormScreen extends ConsumerStatefulWidget {
   const CustomerFormScreen({super.key, required this.mode, this.customer})
-      : assert(mode == CustomerFormMode.create || customer != null,
-            'edit requires the source customer');
+    : assert(
+        mode == CustomerFormMode.create || customer != null,
+        'edit requires the source customer',
+      );
 
   final CustomerFormMode mode;
   final Customer? customer;
@@ -145,7 +142,8 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
       _snack('A name is required.');
       return;
     }
-    if (_email.text.trim().isNotEmpty && !_emailRe.hasMatch(_email.text.trim())) {
+    if (_email.text.trim().isNotEmpty &&
+        !_emailRe.hasMatch(_email.text.trim())) {
       setState(() => _autovalidate = true);
       _snack('Please enter a valid email address.');
       return;
@@ -158,16 +156,18 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
     try {
       final Customer saved;
       if (_isCreate) {
-        saved = await repo.createCustomer(CreateCustomerPayload(
-          fullName: _fullName.text,
-          customerType: _type,
-          companyName: _isCorporate ? _companyName.text : null,
-          phone: _phone.text,
-          email: _email.text,
-          taxCode: _isCorporate ? _taxCode.text : null,
-          address: _address.text,
-          assignedUserId: _assigneeId,
-        ));
+        saved = await repo.createCustomer(
+          CreateCustomerPayload(
+            fullName: _fullName.text,
+            customerType: _type,
+            companyName: _isCorporate ? _companyName.text : null,
+            phone: _phone.text,
+            email: _email.text,
+            taxCode: _isCorporate ? _taxCode.text : null,
+            address: _address.text,
+            assignedUserId: _assigneeId,
+          ),
+        );
       } else {
         saved = await repo.updateCustomer(
           widget.customer!.customerId,
@@ -191,8 +191,11 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
         unawaited(ref.read(customerListControllerProvider.notifier).refresh());
       }
       ref.invalidate(customerStatsProvider);
-      messenger.showSnackBar(SnackBar(
-          content: Text(_isCreate ? 'Customer created' : 'Customer updated')));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(_isCreate ? 'Customer created' : 'Customer updated'),
+        ),
+      );
       router.pop();
     } on AppException catch (e) {
       if (mounted) setState(() => _submitting = false);
@@ -200,35 +203,37 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
     }
   }
 
-  void _snack(String message) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  void _snack(String message) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(message)));
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-          title: Text(_isCreate ? 'New customer' : 'Edit customer')),
+      appBar: AppBar(title: Text(_isCreate ? 'New customer' : 'Edit customer')),
       body: Form(
         key: _formKey,
         autovalidateMode: _autovalidate
             ? AutovalidateMode.onUserInteraction
             : AutovalidateMode.disabled,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+          padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.huge),
           children: [
             Text('Customer type', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
             SegmentedButton<CustomerType>(
               segments: const [
                 ButtonSegment(
-                    value: CustomerType.individual,
-                    icon: Icon(Icons.person_rounded),
-                    label: Text('Individual')),
+                  value: CustomerType.individual,
+                  icon: Icon(Icons.person_rounded),
+                  label: Text('Individual'),
+                ),
                 ButtonSegment(
-                    value: CustomerType.corporate,
-                    icon: Icon(Icons.apartment_rounded),
-                    label: Text('Corporate')),
+                  value: CustomerType.corporate,
+                  icon: Icon(Icons.apartment_rounded),
+                  label: Text('Corporate'),
+                ),
               ],
               selected: {_type},
               onSelectionChanged: _submitting
@@ -241,8 +246,9 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
               enabled: !_submitting,
               textCapitalization: TextCapitalization.words,
               decoration: InputDecoration(
-                labelText:
-                    _isCorporate ? 'Representative name *' : 'Full name *',
+                labelText: _isCorporate
+                    ? 'Representative name *'
+                    : 'Full name *',
                 prefixIcon: const Icon(Icons.badge_outlined),
               ),
               validator: (v) =>
@@ -257,6 +263,10 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
                   labelText: 'Company name',
                   prefixIcon: Icon(Icons.apartment_outlined),
                 ),
+                // BR-09: a corporate customer must name its company.
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Company name is required for a corporate customer'
+                    : null,
               ),
             ],
             const SizedBox(height: 16),
@@ -278,7 +288,8 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
                 labelText: _isCorporate ? 'Business email' : 'Email',
                 prefixIcon: const Icon(Icons.email_outlined),
               ),
-              validator: (v) => (v != null &&
+              validator: (v) =>
+                  (v != null &&
                       v.trim().isNotEmpty &&
                       !_emailRe.hasMatch(v.trim()))
                   ? 'Invalid email'
@@ -314,9 +325,13 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
               SegmentedButton<CustomerStatus>(
                 segments: const [
                   ButtonSegment(
-                      value: CustomerStatus.active, label: Text('Active')),
+                    value: CustomerStatus.active,
+                    label: Text('Active'),
+                  ),
                   ButtonSegment(
-                      value: CustomerStatus.inactive, label: Text('Inactive')),
+                    value: CustomerStatus.inactive,
+                    label: Text('Inactive'),
+                  ),
                 ],
                 selected: {_status},
                 onSelectionChanged: _submitting
@@ -331,20 +346,22 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
               onClear: _assigneeId == null || _submitting
                   ? null
                   : () => setState(() {
-                        _assigneeId = null;
-                        _assigneeName = null;
-                      }),
+                      _assigneeId = null;
+                      _assigneeName = null;
+                    }),
             ),
             const SizedBox(height: 28),
             FilledButton(
               onPressed: _submitting ? null : _submit,
-              style:
-                  FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+              ),
               child: _submitting
                   ? const SizedBox(
                       width: 22,
                       height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2.5))
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
                   : Text(_isCreate ? 'Create customer' : 'Save changes'),
             ),
           ],
@@ -366,7 +383,7 @@ class _AssigneeTile extends StatelessWidget {
     final theme = Theme.of(context);
     final hasValue = name != null;
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadii.md),
       onTap: onTap,
       child: InputDecorator(
         decoration: InputDecoration(

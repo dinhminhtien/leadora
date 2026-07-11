@@ -28,5 +28,5 @@ class ResetPasswordController extends AutoDisposeAsyncNotifier<void> {
 
 final resetPasswordControllerProvider =
     AutoDisposeAsyncNotifierProvider<ResetPasswordController, void>(
-  ResetPasswordController.new,
-);
+      ResetPasswordController.new,
+    );
