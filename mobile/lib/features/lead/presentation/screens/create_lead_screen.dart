@@ -26,6 +26,7 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
   final _email = TextEditingController();
   final _company = TextEditingController();
   final _source = TextEditingController();
+  final _interestedService = TextEditingController();
   final _notes = TextEditingController();
   bool _isCorporate = false;
   bool _submitting = false;
@@ -33,7 +34,7 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
 
   @override
   void dispose() {
-    for (final c in [_name, _phone, _email, _company, _source, _notes]) {
+    for (final c in [_name, _phone, _email, _company, _source, _interestedService, _notes]) {
       c.dispose();
     }
     super.dispose();
@@ -65,6 +66,7 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
               email: _email.text.trim(),
               companyName: _company.text.trim(),
               source: _source.text.trim(),
+              interestedService: _interestedService.text.trim(),
               notes: _notes.text.trim(),
               isCorporate: _isCorporate,
             ),
@@ -192,6 +194,17 @@ class _CreateLeadScreenState extends ConsumerState<CreateLeadScreen> {
                 labelText: 'Source',
                 prefixIcon: Icon(Icons.campaign_outlined),
                 hintText: 'e.g. Referral, Website, Walk-in',
+              ),
+            ),
+            const SizedBox(height: 16),
+            // BR-05: required before a lead enters active follow-up.
+            TextFormField(
+              controller: _interestedService,
+              enabled: !_submitting,
+              decoration: const InputDecoration(
+                labelText: 'Interested service',
+                prefixIcon: Icon(Icons.room_service_outlined),
+                hintText: 'e.g. Wedding banquet, Conference, Rooms',
               ),
             ),
             const SizedBox(height: 8),

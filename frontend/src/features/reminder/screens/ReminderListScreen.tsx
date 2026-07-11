@@ -273,7 +273,7 @@ export function ReminderListScreen() {
               onClick={() => setViewMode("list")}
               className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition ${
                 viewMode === "list"
-                  ? "bg-blue-600 text-white"
+                  ? "bg-primary text-white"
                   : "bg-white text-slate-500 hover:bg-slate-50"
               }`}
             >
@@ -283,7 +283,7 @@ export function ReminderListScreen() {
               onClick={() => setViewMode("calendar")}
               className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition ${
                 viewMode === "calendar"
-                  ? "bg-blue-600 text-white"
+                  ? "bg-primary text-white"
                   : "bg-white text-slate-500 hover:bg-slate-50"
               }`}
             >

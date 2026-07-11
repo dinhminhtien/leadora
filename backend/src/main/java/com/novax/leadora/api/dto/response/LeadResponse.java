@@ -22,6 +22,7 @@ public class LeadResponse {
     private String address;
     private Boolean isCorporate;
     private String source;
+    private String interestedService;
     private LeadStatus status;
     private String notes;
     private OffsetDateTime convertedAt;
@@ -46,6 +47,7 @@ public class LeadResponse {
                 .address(entity.getAddress())
                 .isCorporate(entity.getIsCorporate())
                 .source(entity.getSource())
+                .interestedService(entity.getInterestedService())
                 .status(entity.getStatus())
                 .notes(entity.getNotes())
                 .convertedAt(entity.getConvertedAt())

@@ -44,14 +44,14 @@ public class UploadDocumentUseCase {
     @Transactional
     public DocumentResponse execute(UserEntity user, String title, MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new IllegalStateException("Tệp tài liệu trống hoặc không hợp lệ.");
+            throw new IllegalStateException("The document file is empty or invalid.");
         }
 
         // Size gate first — cheapest rejection, and we never buffer an oversized file into memory.
         if (file.getSize() > MAX_FILE_SIZE_BYTES) {
             throw new IllegalStateException(
-                    "Tệp vượt quá dung lượng cho phép (tối đa 5MB). "
-                            + "Vui lòng chọn tệp nhỏ hơn hoặc tách nhỏ tài liệu.");
+                    "The file exceeds the maximum allowed size (5MB). "
+                            + "Please choose a smaller file or split the document.");
         }
 
         String fileName = StringUtils.hasText(file.getOriginalFilename())
@@ -61,7 +61,7 @@ public class UploadDocumentUseCase {
         String lowerName = fileName.toLowerCase();
         if (ALLOWED_EXTENSIONS.stream().noneMatch(lowerName::endsWith)) {
             throw new IllegalStateException(
-                    "Định dạng tệp không được hỗ trợ. Chỉ chấp nhận: PDF, DOCX, DOC, TXT, MD.");
+                    "Unsupported file format. Accepted: PDF, DOCX, DOC, TXT, MD.");
         }
 
         String resolvedTitle = StringUtils.hasText(title) ? title.trim() : fileName;
@@ -72,7 +72,7 @@ public class UploadDocumentUseCase {
         try {
             bytes = file.getBytes();
         } catch (IOException e) {
-            throw new IllegalStateException("Không đọc được nội dung tệp: " + e.getMessage());
+            throw new IllegalStateException("Could not read the file content: " + e.getMessage());
         }
 
         // Persist the metadata row as "processing" (chunkCount == 0). saveAndFlush so the row is
@@ -91,6 +91,6 @@ public class UploadDocumentUseCase {
         // Hand off the heavy parse → chunk → embed → store work to the background executor.
         documentIngestService.ingestInBackground(doc.getDocumentId(), resolvedTitle, fileName, bytes);
 
-        return DocumentResponse.from(doc); // chunkCount == 0 → UI shows "Đang xử lý…"
+        return DocumentResponse.from(doc); // chunkCount == 0 → UI shows "Processing…"
     }
 }

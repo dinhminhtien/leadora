@@ -30,11 +30,16 @@ public class UpdateTaskUseCase {
     private final LeadRepository leadRepository;
     private final CustomerRepository customerRepository;
     private final DealRepository dealRepository;
+    private final TaskAccessPolicy accessPolicy;
 
     @Transactional
     public TaskResponse execute(UUID taskId, UpdateTaskRequest request) {
         TaskEntity task = taskRepository.findWithRelationsById(taskId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task", taskId));
+
+        // BR-02: a Sales Staff may only update their own task (IDOR guard).
+        UserEntity currentUser = accessPolicy.currentUser();
+        accessPolicy.assertCanView(currentUser, task);
 
         if (StringUtils.hasText(request.getTitle())) {
             task.setTitle(request.getTitle());
@@ -66,6 +71,11 @@ public class UpdateTaskUseCase {
         }
 
         if (request.getAssignedUserId() != null) {
+            // BR-18: reassigning to a different user is a Manager/Admin action.
+            UUID currentAssigneeId = task.getAssignedUser() != null ? task.getAssignedUser().getUserId() : null;
+            if (!request.getAssignedUserId().equals(currentAssigneeId)) {
+                accessPolicy.assertFullAccess(currentUser);
+            }
             UserEntity assignedUser = userRepository.findById(request.getAssignedUserId())
                     .orElseThrow(() -> new ResourceNotFoundException("User", request.getAssignedUserId()));
             task.setAssignedUser(assignedUser);

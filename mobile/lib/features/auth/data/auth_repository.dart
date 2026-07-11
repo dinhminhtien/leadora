@@ -50,7 +50,7 @@ class AuthRepository {
     return result.user;
   }
 
-  /// Kích hoạt luồng OAuth2 của Supabase đối với Google provider.
+  /// Starts Supabase's OAuth2 flow for the Google provider.
   Future<void> loginWithGoogle() async {
     final String redirectTo;
     if (kIsWeb) {
@@ -66,7 +66,7 @@ class AuthRepository {
     );
   }
 
-  /// Xác minh OAuth session token với Spring Boot Backend.
+  /// Verifies the OAuth session token with the Spring Boot backend.
   Future<AuthUser> verifyOAuthSession(String token) async {
     return _client.get<AuthUser>(
       ApiPaths.oauthVerify,

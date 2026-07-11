@@ -103,47 +103,43 @@ class ProfileScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               const _AppearanceCard(),
               const SizedBox(height: 16),
-              Card(
-                elevation: 0,
-                margin: EdgeInsets.zero,
-                color: Theme.of(context).colorScheme.surfaceContainerLow,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppRadii.lg),
-                ),
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.edit_outlined),
-                      title: const Text('Edit profile'),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => context.pushNamed(
-                        RouteNames.profileEdit,
-                        extra: profile,
-                      ),
+              // Account actions grouped together; the destructive Log out sits
+              // in its own card below so it's never a mis-tap away from Edit.
+              _ActionGroupCard(
+                children: [
+                  _ActionTile(
+                    icon: Icons.edit_outlined,
+                    label: 'Edit profile',
+                    onTap: () => context.pushNamed(
+                      RouteNames.profileEdit,
+                      extra: profile,
                     ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    ListTile(
-                      leading: const Icon(Icons.lock_outline_rounded),
-                      title: const Text('Change password'),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => context.pushNamed(RouteNames.changePassword),
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    ListTile(
-                      leading: Icon(
-                        Icons.logout_rounded,
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                      title: Text(
-                        'Log out',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                      onTap: () => _confirmLogout(context, ref),
-                    ),
-                  ],
-                ),
+                  ),
+                  const _ActionDivider(),
+                  _ActionTile(
+                    icon: Icons.lock_outline_rounded,
+                    label: 'Change password',
+                    onTap: () => context.pushNamed(RouteNames.changePassword),
+                  ),
+                  const _ActionDivider(),
+                  _ActionTile(
+                    icon: Icons.info_outline_rounded,
+                    label: 'About',
+                    onTap: () => _showAbout(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _ActionGroupCard(
+                children: [
+                  _ActionTile(
+                    icon: Icons.logout_rounded,
+                    label: 'Log out',
+                    destructive: true,
+                    showChevron: false,
+                    onTap: () => _confirmLogout(context, ref),
+                  ),
+                ],
               ),
               const SizedBox(height: 20),
               Center(
@@ -185,6 +181,133 @@ class ProfileScreen extends ConsumerWidget {
     await ref.read(authControllerProvider.notifier).logout();
     // The router's redirect guard reacts to the session change and returns to
     // login automatically; no manual navigation needed.
+  }
+
+  Future<void> _showAbout(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.sm,
+            AppSpacing.xl,
+            AppSpacing.xl,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(AppRadii.md),
+                    ),
+                    child: Icon(Icons.hub_rounded, color: scheme.primary),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Leadora Mobile',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        'Version $_appVersion',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                'The hospitality CRM companion — manage leads, deals, bookings '
+                'and customer interactions on the go.',
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                '© 2026 Novax AI',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.outline,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A rounded, low-emphasis surface that groups tappable [_ActionTile]s. Matches
+/// the flat card language used across the app (tonal surface, no shadow).
+class _ActionGroupCard extends StatelessWidget {
+  const _ActionGroupCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
+class _ActionDivider extends StatelessWidget {
+  const _ActionDivider();
+
+  @override
+  Widget build(BuildContext context) =>
+      const Divider(height: 1, indent: 16, endIndent: 16);
+}
+
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.destructive = false,
+    this.showChevron = true,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool destructive;
+  final bool showChevron;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = destructive ? scheme.error : null;
+    return ListTile(
+      leading: Icon(icon, color: color),
+      title: Text(label, style: color == null ? null : TextStyle(color: color)),
+      trailing: showChevron
+          ? Icon(Icons.chevron_right_rounded, color: scheme.outline)
+          : null,
+      onTap: onTap,
+    );
   }
 }
 

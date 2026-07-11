@@ -75,6 +75,6 @@ public class ArrivalHandoverController {
     ) {
         UserEntity actor = currentUserProvider.resolve(userId);
         ArrivalHandoverResponse response = updateHandoverReadinessUseCase.execute(id, request, actor);
-        return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật trạng thái sẵn sàng thành công"));
+        return ResponseEntity.ok(ApiResponse.success(response, "Readiness status updated successfully"));
     }
 }

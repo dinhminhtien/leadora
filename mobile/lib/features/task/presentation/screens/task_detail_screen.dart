@@ -139,14 +139,10 @@ class TaskDetailScreen extends ConsumerWidget {
                       label: 'Overdue',
                       icon: Icons.warning_amber_rounded,
                     ),
-                  if (task.dealId != null)
-                    const StatusChip(
-                      tone: StatusTone.success,
-                      label: 'Linked deal',
-                      icon: Icons.handshake_outlined,
-                    ),
                 ],
               ),
+              const SizedBox(height: AppSpacing.lg),
+              _RelatedRecordCard(task: task),
               if (task.isOverdue) ...[
                 const SizedBox(height: AppSpacing.lg),
                 _OverdueBanner(task: task),
@@ -402,6 +398,176 @@ class _OverdueBanner extends StatelessWidget {
 }
 
 /// Start → End with duration and an "active now" pulse, like the web drawer.
+/// Business-context header — which Deal / Customer / Lead this task serves, that
+/// record's key fields, and a button that opens it. Task FKs only cover
+/// deal/customer/lead, so those are the three kinds handled.
+class _RelatedRecordCard extends StatelessWidget {
+  const _RelatedRecordCard({required this.task});
+
+  final Task task;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final cfg = _RelatedConfig.of(task);
+
+    if (cfg == null) {
+      return SectionCard(
+        title: 'Related to',
+        icon: Icons.link_off_rounded,
+        child: Text(
+          'This task isn’t linked to a deal, customer, or lead.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'RELATED TO',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              StatusChip(
+                tone: StatusTone.neutral,
+                color: cfg.color,
+                icon: cfg.icon,
+                label: cfg.typeLabel,
+                dense: true,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: cfg.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadii.md),
+                ),
+                child: Icon(cfg.icon, color: cfg.color),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  cfg.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          for (final row in cfg.rows)
+            InfoRow(label: row.$1, value: row.$2, icon: row.$3),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonalIcon(
+              onPressed: () => context.push(cfg.route),
+              icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+              label: Text(cfg.openLabel),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Per-kind presentation + navigation target for [_RelatedRecordCard].
+class _RelatedConfig {
+  const _RelatedConfig({
+    required this.color,
+    required this.icon,
+    required this.typeLabel,
+    required this.name,
+    required this.rows,
+    required this.openLabel,
+    required this.route,
+  });
+
+  final Color color;
+  final IconData icon;
+  final String typeLabel;
+  final String name;
+  final List<(String, String, IconData)> rows;
+  final String openLabel;
+  final String route;
+
+  static _RelatedConfig? of(Task task) {
+    if (task.dealId != null) {
+      return _RelatedConfig(
+        color: AppColors.success,
+        icon: Icons.handshake_rounded,
+        typeLabel: 'Deal',
+        name: task.dealName ?? 'Deal',
+        rows: [
+          ('Stage', Formatters.humanizeEnum(task.dealStage), Icons.timeline_rounded),
+          ('Value', Formatters.money(task.dealValue), Icons.payments_outlined),
+          ('Customer', task.dealCustomerName ?? '—', Icons.badge_outlined),
+          ('Owner', task.dealOwnerName ?? '—', Icons.person_outline_rounded),
+        ],
+        openLabel: 'Open deal',
+        route: Routes.dealDetailPath(task.dealId!),
+      );
+    }
+    if (task.customerId != null) {
+      return _RelatedConfig(
+        color: AppColors.info,
+        icon: Icons.badge_rounded,
+        typeLabel: 'Customer',
+        name: task.customerName ?? 'Customer',
+        rows: [
+          ('Company', task.customerCompanyName ?? '—', Icons.business_outlined),
+          ('Phone', task.customerPhone ?? '—', Icons.phone_outlined),
+          ('Email', task.customerEmail ?? '—', Icons.mail_outline_rounded),
+        ],
+        openLabel: 'Open customer',
+        route: Routes.customerDetailPath(task.customerId!),
+      );
+    }
+    if (task.leadId != null) {
+      return _RelatedConfig(
+        color: AppColors.accentPurple,
+        icon: Icons.person_search_rounded,
+        typeLabel: 'Lead',
+        name: task.leadName ?? 'Lead',
+        rows: [
+          ('Company', task.leadCompanyName ?? '—', Icons.business_outlined),
+          ('Status', Formatters.humanizeEnum(task.leadStatus), Icons.flag_outlined),
+          ('Source', Formatters.humanizeEnum(task.leadSource), Icons.input_rounded),
+          ('Owner', task.leadOwnerName ?? '—', Icons.person_outline_rounded),
+        ],
+        openLabel: 'Open lead',
+        route: Routes.leadDetailPath(task.leadId!),
+      );
+    }
+    return null;
+  }
+}
+
 class _ScheduleCard extends StatelessWidget {
   const _ScheduleCard({required this.task});
 

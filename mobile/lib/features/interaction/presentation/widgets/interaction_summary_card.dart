@@ -29,7 +29,9 @@ class InteractionSummaryCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(interactionTimelineProvider(linkedId));
+    final async = ref.watch(
+      interactionTimelineProvider((linkedType: linkedType, linkedId: linkedId)),
+    );
     final theme = Theme.of(context);
 
     return SectionCard(

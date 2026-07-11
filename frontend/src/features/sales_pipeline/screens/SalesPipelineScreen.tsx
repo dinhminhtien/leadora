@@ -53,7 +53,7 @@ const getStageStyles = (stage: Deal["stage"]) => {
       return {
         border: "border-t-4 border-t-blue-500/80",
         badge: "!bg-blue-50 !text-blue-700 border !border-blue-200/50",
-        dot: "bg-blue-500"
+        dot: "bg-primary"
       };
     case "Proposal":
       return {
@@ -152,6 +152,7 @@ export function SalesPipelineScreen() {
       }
     } catch (err) {
       console.error("Failed to fetch deals", err);
+      showError("Could not load the pipeline. Please check your connection and try again.");
     } finally {
       if (shouldShowSpinner) {
         setLoading(false);

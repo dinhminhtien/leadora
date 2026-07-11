@@ -31,6 +31,10 @@ export function SubmitFeedbackScreen({ token }: SubmitFeedbackScreenProps) {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // Inline, non-destructive error for submission failures — kept separate from
+  // `errorMsg` (which is a full-page "Invalid Survey Link" takeover for token
+  // validation) so a failed submit never wipes the guest's answers.
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     async function validate() {
@@ -65,6 +69,7 @@ export function SubmitFeedbackScreen({ token }: SubmitFeedbackScreenProps) {
     if (!comment.trim()) return;
 
     setSubmitting(true);
+    setSubmitError(null);
     try {
       let finalComment = comment;
       if (selectedCategories.length > 0) {
@@ -80,12 +85,12 @@ export function SubmitFeedbackScreen({ token }: SubmitFeedbackScreenProps) {
       if (response.success) {
         setSubmitted(true);
       } else {
-        setErrorMsg(response.message || "Submitting feedback failed.");
+        setSubmitError(response.message || "Submitting feedback failed. Please try again.");
       }
     } catch (err: any) {
       console.error("Submission error:", err);
-      const msg = err.response?.data?.message || "An error occurred during submission.";
-      alert(msg);
+      const msg = err.response?.data?.message || "An error occurred during submission. Please try again.";
+      setSubmitError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -390,6 +395,16 @@ export function SubmitFeedbackScreen({ token }: SubmitFeedbackScreenProps) {
                 className="w-full rounded-xl border border-border bg-zinc-100/55 dark:bg-zinc-900/55 p-3.5 text-sm text-foreground placeholder-muted-foreground/60 focus:outline-none focus:border-primary focus:bg-white dark:focus:bg-zinc-950 focus:ring-4 focus:ring-primary/10 transition resize-none leading-relaxed"
               />
             </div>
+
+            {submitError && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 p-3 text-xs font-medium text-danger"
+              >
+                <AlertCircle className="size-4 shrink-0 mt-px" />
+                <span>{submitError}</span>
+              </div>
+            )}
 
             <Button
               type="submit"

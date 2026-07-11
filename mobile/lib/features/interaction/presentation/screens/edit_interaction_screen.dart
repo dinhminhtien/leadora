@@ -6,43 +6,37 @@ import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
 import '../../data/interaction_models.dart';
 import '../../data/interaction_repository.dart';
-import '../providers/interaction_providers.dart';
 
-/// Log Customer Interaction Note + Record Customer Meeting Summary on Mobile.
+/// Edit an existing interaction — mirrors the backend `PUT /interaction-timeline/{id}`
+/// (partial edit of type/description/occurredAt; the linked record can't move).
 ///
-/// Both use cases share the same backend endpoint
-/// (`POST /interaction-timeline`), differentiated only by `type` — this
-/// screen covers both via [initialType] ("note" or "meeting").
-class LogInteractionScreen extends ConsumerStatefulWidget {
-  const LogInteractionScreen({
-    super.key,
-    required this.linkedType,
-    required this.linkedId,
-    this.linkedName,
-    this.initialType,
-  });
+/// Prefilled from the [entry] handed in by the detail screen. Pops `true` on a
+/// successful save so the caller can refresh the detail, its history and the
+/// timeline.
+class EditInteractionScreen extends ConsumerStatefulWidget {
+  const EditInteractionScreen({super.key, required this.entry});
 
-  final String linkedType;
-  final String linkedId;
-  final String? linkedName;
-  final String? initialType;
+  final InteractionTimelineEntry entry;
 
   @override
-  ConsumerState<LogInteractionScreen> createState() =>
-      _LogInteractionScreenState();
+  ConsumerState<EditInteractionScreen> createState() =>
+      _EditInteractionScreenState();
 }
 
-class _LogInteractionScreenState extends ConsumerState<LogInteractionScreen> {
+class _EditInteractionScreenState extends ConsumerState<EditInteractionScreen> {
   late InteractionType _type;
   late DateTime _occurredAt;
-  final _descriptionController = TextEditingController();
+  late final TextEditingController _descriptionController;
   bool _submitting = false;
 
   @override
   void initState() {
     super.initState();
-    _type = InteractionType.fromWire(widget.initialType);
-    _occurredAt = DateTime.now();
+    _type = widget.entry.type;
+    _occurredAt = widget.entry.occurredAt ?? DateTime.now();
+    _descriptionController = TextEditingController(
+      text: widget.entry.description,
+    );
   }
 
   @override
@@ -53,42 +47,44 @@ class _LogInteractionScreenState extends ConsumerState<LogInteractionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isMeeting = _type == InteractionType.meeting;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isMeeting ? 'Record meeting summary' : 'Log interaction'),
-      ),
+      appBar: AppBar(title: const Text('Edit interaction')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.xxxl),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.xxxl,
+        ),
         children: [
-          if (widget.linkedName != null &&
-              widget.linkedName!.trim().isNotEmpty) ...[
+          if (widget.entry.linkedName != null &&
+              widget.entry.linkedName != 'N/A') ...[
             Text('For', style: Theme.of(context).textTheme.labelMedium),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xs),
             Text(
-              widget.linkedName!,
+              widget.entry.linkedName!,
               style: Theme.of(
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
           ],
           Text('Type', style: Theme.of(context).textTheme.labelMedium),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.sm),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
             children: [
               for (final t in InteractionType.values)
                 ChoiceChip(
-                  avatar: Icon(t.icon, size: 16),
+                  avatar: Icon(t.icon, size: AppIconSize.sm),
                   label: Text(t.label),
                   selected: _type == t,
                   onSelected: (_) => setState(() => _type = t),
                 ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.event_outlined),
@@ -97,21 +93,19 @@ class _LogInteractionScreenState extends ConsumerState<LogInteractionScreen> {
             trailing: const Icon(Icons.edit_calendar_outlined),
             onTap: _pickOccurredAt,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.md),
           TextField(
             controller: _descriptionController,
             minLines: 4,
             maxLines: 8,
-            decoration: InputDecoration(
-              labelText: isMeeting ? 'Meeting summary' : 'Note',
-              hintText: isMeeting
-                  ? 'Summarize what was discussed and agreed…'
-                  : 'What happened in this interaction?',
-              border: const OutlineInputBorder(),
+            decoration: const InputDecoration(
+              labelText: 'Description',
+              hintText: 'What happened in this interaction?',
+              border: OutlineInputBorder(),
               alignLabelWithHint: true,
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xxl),
           FilledButton.icon(
             onPressed: _submitting ? null : _submit,
             icon: _submitting
@@ -121,7 +115,7 @@ class _LogInteractionScreenState extends ConsumerState<LogInteractionScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.check_rounded),
-            label: Text(isMeeting ? 'Save summary' : 'Save note'),
+            label: const Text('Save changes'),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(50),
             ),
@@ -157,45 +151,29 @@ class _LogInteractionScreenState extends ConsumerState<LogInteractionScreen> {
 
   Future<void> _submit() async {
     final description = _descriptionController.text.trim();
+    final messenger = ScaffoldMessenger.of(context);
     if (description.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _type == InteractionType.meeting
-                ? 'Enter a meeting summary'
-                : 'Enter a note',
-          ),
-        ),
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Enter a description')),
       );
       return;
     }
 
     setState(() => _submitting = true);
-    final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     try {
-      final payload = CreateInteractionPayload(
-        type: _type,
-        description: description,
-        occurredAt: _occurredAt,
-        leadId: widget.linkedType == 'lead' ? widget.linkedId : null,
-        customerId: widget.linkedType == 'customer' ? widget.linkedId : null,
-        dealId: widget.linkedType == 'deal' ? widget.linkedId : null,
-      );
-      await ref.read(interactionRepositoryProvider).createInteraction(payload);
-      ref.invalidate(
-        interactionTimelineProvider(
-          (linkedType: widget.linkedType, linkedId: widget.linkedId),
-        ),
-      );
+      await ref
+          .read(interactionRepositoryProvider)
+          .updateInteraction(
+            widget.entry.id,
+            UpdateInteractionPayload(
+              type: _type,
+              description: description,
+              occurredAt: _occurredAt,
+            ),
+          );
       messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            _type == InteractionType.meeting
-                ? 'Meeting summary saved'
-                : 'Note saved',
-          ),
-        ),
+        const SnackBar(content: Text('Interaction updated')),
       );
       navigator.pop(true);
     } on AppException catch (e) {
