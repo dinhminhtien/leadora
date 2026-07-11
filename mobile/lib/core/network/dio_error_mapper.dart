@@ -86,7 +86,8 @@ class DioErrorMapper {
       default:
         if (status >= 500) {
           return ServerException(
-            message: message ??
+            message:
+                message ??
                 'Something went wrong on our end. Please try again later.',
             errorCode: code,
             debugDetail: detail,

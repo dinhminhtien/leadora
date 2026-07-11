@@ -24,11 +24,7 @@ class LeadRepository {
   }) {
     return _client.getPaged<Lead>(
       ApiPaths.leads,
-      query: {
-        ...filters.toQuery(),
-        'page': page,
-        'size': size,
-      },
+      query: {...filters.toQuery(), 'page': page, 'size': size},
       decodeItem: (item) => Lead.fromJson(item as Map<String, dynamic>),
       cancelToken: cancelToken,
     );
@@ -57,6 +53,16 @@ class LeadRepository {
       ApiPaths.leadById(leadId),
       data: {'status': status.wire},
       decode: (data) => Lead.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  /// UC-8.5 — convert a lead into a customer. The response wraps the customer id
+  /// plus the (now CONVERTED) lead; callers usually just need success + the id.
+  Future<String> convertLead(String leadId, ConvertLeadPayload payload) {
+    return _client.post<String>(
+      ApiPaths.leadConvert(leadId),
+      data: payload.toJson(),
+      decode: (data) => (data as Map<String, dynamic>)['customerId'] as String,
     );
   }
 }

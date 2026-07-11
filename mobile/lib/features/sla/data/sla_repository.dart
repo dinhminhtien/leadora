@@ -14,15 +14,16 @@ class SlaRepository {
   /// UC-17.3 — View SLA on Mobile. [entityType] / [displayStatus] mirror the
   /// backend's own filter params (LEAD/QUOTATION/BOOKING/TASK and
   /// WITHIN_SLA/WARNING/BREACHED); both are optional server-side filters.
-  Future<List<SlaTrackingEntry>> getMonitoring({String? entityType, String? displayStatus}) {
+  Future<List<SlaTrackingEntry>> getMonitoring({
+    String? entityType,
+    String? displayStatus,
+  }) {
     return _client.get<List<SlaTrackingEntry>>(
       ApiPaths.slaMonitoring,
-      query: {
-        'entityType': ?entityType,
-        'displayStatus': ?displayStatus,
-      },
-      decode: (data) =>
-          (data as List).map((e) => SlaTrackingEntry.fromJson(e as Map<String, dynamic>)).toList(),
+      query: {'entityType': ?entityType, 'displayStatus': ?displayStatus},
+      decode: (data) => (data as List)
+          .map((e) => SlaTrackingEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 }

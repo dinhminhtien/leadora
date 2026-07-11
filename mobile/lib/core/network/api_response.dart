@@ -32,10 +32,7 @@ class ApiResponse<T> {
   /// [decodeData] converts the raw `data` node into `T`. It is only invoked
   /// when `data` is non-null, so `Void`/no-content responses (login-less
   /// endpoints like logout) parse cleanly with `T == void`/`Object?`.
-  factory ApiResponse.parse(
-    Object? body,
-    T Function(Object? data) decodeData,
-  ) {
+  factory ApiResponse.parse(Object? body, T Function(Object? data) decodeData) {
     if (body is! Map<String, dynamic>) {
       throw SerializationException(
         debugDetail: 'Expected a JSON object envelope, got ${body.runtimeType}',

@@ -8,21 +8,17 @@ import '../../data/customer_repository.dart';
 /// Search + type/status filters backing the customer list. Mirrors the web
 /// Customer Profiles screen, which sends the same query params server-side.
 class CustomerFilters {
-  const CustomerFilters({
-    this.search = '',
-    this.customerType,
-    this.status,
-  });
+  const CustomerFilters({this.search = '', this.customerType, this.status});
 
   final String search;
   final CustomerType? customerType;
   final CustomerStatus? status;
 
   CustomerFilters copyWith({String? search}) => CustomerFilters(
-        search: search ?? this.search,
-        customerType: customerType,
-        status: status,
-      );
+    search: search ?? this.search,
+    customerType: customerType,
+    status: status,
+  );
 
   /// copyWith can't null a field out, so type/status get explicit setters.
   CustomerFilters withType(CustomerType? type) =>
@@ -68,7 +64,8 @@ class CustomerListState {
   }
 }
 
-class CustomerListController extends AutoDisposeAsyncNotifier<CustomerListState> {
+class CustomerListController
+    extends AutoDisposeAsyncNotifier<CustomerListState> {
   static const _pageSize = 10;
 
   CustomerRepository get _repo => ref.read(customerRepositoryProvider);
@@ -107,7 +104,8 @@ class CustomerListController extends AutoDisposeAsyncNotifier<CustomerListState>
     final current = state.valueOrNull ?? const CustomerListState();
     state = const AsyncLoading<CustomerListState>().copyWithPrevious(state);
     state = await AsyncValue.guard(
-        () => _fetch(current.copyWith(filters: filters)));
+      () => _fetch(current.copyWith(filters: filters)),
+    );
   }
 
   Future<void> loadMore() async {
@@ -123,13 +121,15 @@ class CustomerListController extends AutoDisposeAsyncNotifier<CustomerListState>
         page: current.nextPage,
         size: _pageSize,
       );
-      state = AsyncData(current.copyWith(
-        items: [...current.items, ...page.items],
-        totalElements: page.totalElements,
-        nextPage: current.nextPage + 1,
-        hasMore: page.hasMore,
-        isLoadingMore: false,
-      ));
+      state = AsyncData(
+        current.copyWith(
+          items: [...current.items, ...page.items],
+          totalElements: page.totalElements,
+          nextPage: current.nextPage + 1,
+          hasMore: page.hasMore,
+          isLoadingMore: false,
+        ),
+      );
     } catch (_) {
       state = AsyncData(current.copyWith(isLoadingMore: false));
     }
@@ -138,7 +138,8 @@ class CustomerListController extends AutoDisposeAsyncNotifier<CustomerListState>
 
 final customerListControllerProvider =
     AutoDisposeAsyncNotifierProvider<CustomerListController, CustomerListState>(
-        CustomerListController.new);
+      CustomerListController.new,
+    );
 
 /// Global counts for the stat cards. Kept alive so it survives list rebuilds;
 /// invalidate after a create/update to refresh the numbers.
@@ -148,24 +149,27 @@ final customerStatsProvider = FutureProvider<CustomerStats>((ref) {
 
 final customerDetailProvider =
     AutoDisposeFutureProvider.family<Customer, String>((ref, customerId) {
-  return ref.watch(customerRepositoryProvider).getCustomer(customerId);
-});
+      return ref.watch(customerRepositoryProvider).getCustomer(customerId);
+    });
 
 final customerHistoryProvider =
-    AutoDisposeFutureProvider.family<List<CustomerHistoryItem>, String>(
-        (ref, customerId) {
-  return ref.watch(customerRepositoryProvider).getHistory(customerId);
-});
+    AutoDisposeFutureProvider.family<List<CustomerHistoryItem>, String>((
+      ref,
+      customerId,
+    ) {
+      return ref.watch(customerRepositoryProvider).getHistory(customerId);
+    });
 
 /// Follow-up tasks linked to a customer — reuses the task repository's
 /// `customerId` filter. Pulls a generous page so the detail screen can compute
 /// open/overdue/completed counts locally, mirroring the web behaviour.
 final customerTasksProvider =
-    AutoDisposeFutureProvider.family<List<Task>, String>((ref, customerId) async {
-  final page = await ref.watch(taskRepositoryProvider).getTasks(
-        customerId: customerId,
-        page: 0,
-        size: 100,
-      );
-  return page.items;
-});
+    AutoDisposeFutureProvider.family<List<Task>, String>((
+      ref,
+      customerId,
+    ) async {
+      final page = await ref
+          .watch(taskRepositoryProvider)
+          .getTasks(customerId: customerId, page: 0, size: 100);
+      return page.items;
+    });

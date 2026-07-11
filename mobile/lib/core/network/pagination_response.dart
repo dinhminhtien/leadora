@@ -54,7 +54,8 @@ class PaginationResponse<T> {
     final rawContent = data['content'];
     if (rawContent is! List) {
       throw SerializationException(
-        debugDetail: 'Paged "content" was ${rawContent.runtimeType}, not a List',
+        debugDetail:
+            'Paged "content" was ${rawContent.runtimeType}, not a List',
       );
     }
     final items = rawContent.map(decodeItem).toList(growable: false);
@@ -84,14 +85,14 @@ class PaginationResponse<T> {
 
   /// Build an empty page (used as an initial state before first fetch).
   factory PaginationResponse.empty({int size = 10}) => PaginationResponse<T>(
-        items: const [],
-        page: 0,
-        size: size,
-        totalElements: 0,
-        totalPages: 0,
-        isFirst: true,
-        isLast: true,
-      );
+    items: const [],
+    page: 0,
+    size: size,
+    totalElements: 0,
+    totalPages: 0,
+    isFirst: true,
+    isLast: true,
+  );
 
   /// Append the next page's items onto this one — for infinite-scroll
   /// accumulation. Metadata is taken from the newer page.

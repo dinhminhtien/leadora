@@ -101,7 +101,7 @@ public class GlobalExceptionHandler {
         log.warn("Upload too large: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
                 .body(ApiResponse.businessError("UPLOAD_TOO_LARGE",
-                        "Tệp vượt quá dung lượng cho phép (tối đa 5MB).", null));
+                        "The file exceeds the maximum allowed size (5MB).", null));
     }
 
     /**
@@ -114,7 +114,7 @@ public class GlobalExceptionHandler {
         log.warn("Malformed request body: {}", ex.getMessage());
         return ResponseEntity.badRequest()
                 .body(ApiResponse.businessError("MALFORMED_REQUEST",
-                        "Nội dung yêu cầu không hợp lệ (JSON sai định dạng hoặc sai mã hoá).", null));
+                        "The request body is invalid (malformed or wrongly encoded JSON).", null));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

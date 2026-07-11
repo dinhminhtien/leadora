@@ -18,24 +18,22 @@ enum QuotationStatus {
   const QuotationStatus(this.wire);
   final String wire;
 
-  static QuotationStatus fromWire(String? raw) => QuotationStatus.values.firstWhere(
-        (s) => s.wire == raw,
-        orElse: () => QuotationStatus.draft,
-      );
+  static QuotationStatus fromWire(String? raw) => QuotationStatus.values
+      .firstWhere((s) => s.wire == raw, orElse: () => QuotationStatus.draft);
 
   StatusTone get tone => switch (this) {
-        QuotationStatus.draft => StatusTone.neutral,
-        QuotationStatus.pendingApproval => StatusTone.warning,
-        QuotationStatus.approved => StatusTone.brand,
-        QuotationStatus.sent => StatusTone.info,
-        QuotationStatus.interested => StatusTone.info,
-        QuotationStatus.accepted => StatusTone.success,
-        QuotationStatus.rejected => StatusTone.danger,
-        QuotationStatus.pendingRevision => StatusTone.warning,
-        QuotationStatus.expired => StatusTone.neutral,
-        QuotationStatus.closed => StatusTone.neutral,
-        QuotationStatus.converted => StatusTone.success,
-      };
+    QuotationStatus.draft => StatusTone.neutral,
+    QuotationStatus.pendingApproval => StatusTone.warning,
+    QuotationStatus.approved => StatusTone.brand,
+    QuotationStatus.sent => StatusTone.info,
+    QuotationStatus.interested => StatusTone.info,
+    QuotationStatus.accepted => StatusTone.success,
+    QuotationStatus.rejected => StatusTone.danger,
+    QuotationStatus.pendingRevision => StatusTone.warning,
+    QuotationStatus.expired => StatusTone.neutral,
+    QuotationStatus.closed => StatusTone.neutral,
+    QuotationStatus.converted => StatusTone.success,
+  };
 
   /// UC-14.6 PRE-1 — customer response can only be recorded while the
   /// quotation is out with the customer (mirrors TrackCustomerResponseUseCase).

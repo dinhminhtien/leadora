@@ -51,7 +51,11 @@ class ApiClient {
     CancelToken? cancelToken,
   }) {
     return _request<PaginationResponse<T>>(
-      () => _dio.get<dynamic>(path, queryParameters: query, cancelToken: cancelToken),
+      () => _dio.get<dynamic>(
+        path,
+        queryParameters: query,
+        cancelToken: cancelToken,
+      ),
       (data) => PaginationResponse<T>.parse(data, decodeItem),
     );
   }
@@ -96,8 +100,12 @@ class ApiClient {
     CancelToken? cancelToken,
   }) {
     return _request(
-      () => _dio.patch<dynamic>(path,
-          data: data, queryParameters: query, cancelToken: cancelToken),
+      () => _dio.patch<dynamic>(
+        path,
+        data: data,
+        queryParameters: query,
+        cancelToken: cancelToken,
+      ),
       decode,
     );
   }

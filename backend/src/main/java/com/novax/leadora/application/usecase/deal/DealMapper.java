@@ -26,6 +26,7 @@ public class DealMapper {
                 .value(deal.getExpectedRevenue())
                 .probability(calculateProbability(deal.getPipelineStage(), deal.getStatus()))
                 .stage(mapStageToString(deal.getPipelineStage(), deal.getStatus()))
+                .stageCode(deal.getPipelineStage())
                 .owner(ownerName)
                 .status(mapStatusToString(deal.getStatus()))
                 .expectedClose(deal.getExpectedCloseDate())

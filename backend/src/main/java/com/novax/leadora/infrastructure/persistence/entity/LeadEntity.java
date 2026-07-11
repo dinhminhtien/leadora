@@ -50,6 +50,12 @@ public class LeadEntity extends BaseEntity {
     @Column(name = "source", length = 40)
     private String source;
 
+    /** BR-05: the hotel service/product the lead is interested in (free text — no
+     *  fixed service catalog exists yet). Required before a lead enters active
+     *  follow-up; nullable so an unassigned NEW draft can be stored without it. */
+    @Column(name = "interested_service", length = 100)
+    private String interestedService;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private LeadStatus status;

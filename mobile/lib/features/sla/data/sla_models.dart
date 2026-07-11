@@ -11,16 +11,17 @@ enum SlaDisplayStatus {
   const SlaDisplayStatus(this.wire);
   final String wire;
 
-  static SlaDisplayStatus fromWire(String? raw) => SlaDisplayStatus.values.firstWhere(
+  static SlaDisplayStatus fromWire(String? raw) =>
+      SlaDisplayStatus.values.firstWhere(
         (s) => s.wire == raw,
         orElse: () => SlaDisplayStatus.withinSla,
       );
 
   StatusTone get tone => switch (this) {
-        SlaDisplayStatus.withinSla => StatusTone.success,
-        SlaDisplayStatus.warning => StatusTone.warning,
-        SlaDisplayStatus.breached => StatusTone.danger,
-      };
+    SlaDisplayStatus.withinSla => StatusTone.success,
+    SlaDisplayStatus.warning => StatusTone.warning,
+    SlaDisplayStatus.breached => StatusTone.danger,
+  };
 }
 
 /// Dart mirror of backend `SlaMonitoringResponse` — UC-17.3 View SLA (mobile).
@@ -55,21 +56,24 @@ class SlaTrackingEntry {
   bool get isResolved => resolvedAt != null;
 
   IconData get icon => switch (entityType.toUpperCase()) {
-        'LEAD' => Icons.person_outline_rounded,
-        'QUOTATION' => Icons.receipt_long_outlined,
-        'TASK' => Icons.checklist_rounded,
-        'BOOKING' => Icons.event_available_rounded,
-        _ => Icons.timer_outlined,
-      };
+    'LEAD' => Icons.person_outline_rounded,
+    'QUOTATION' => Icons.receipt_long_outlined,
+    'TASK' => Icons.checklist_rounded,
+    'BOOKING' => Icons.event_available_rounded,
+    _ => Icons.timer_outlined,
+  };
 
   factory SlaTrackingEntry.fromJson(Map<String, dynamic> json) {
-    DateTime? parse(Object? v) => v is String && v.isNotEmpty ? DateTime.tryParse(v) : null;
+    DateTime? parse(Object? v) =>
+        v is String && v.isNotEmpty ? DateTime.tryParse(v) : null;
     return SlaTrackingEntry(
       trackingId: json['trackingId'] as String,
       entityType: json['entityType'] as String? ?? '',
       entityId: json['entityId'] as String? ?? '',
       activityType: json['activityType'] as String? ?? '',
-      displayStatus: SlaDisplayStatus.fromWire(json['displayStatus'] as String?),
+      displayStatus: SlaDisplayStatus.fromWire(
+        json['displayStatus'] as String?,
+      ),
       hoursRemaining: (json['hoursRemaining'] as num?)?.toInt() ?? 0,
       startedAt: parse(json['startedAt']),
       deadlineAt: parse(json['deadlineAt']),

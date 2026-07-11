@@ -39,7 +39,7 @@ public class DocumentIngestService {
         try {
             int chunks = ragService.ingest(documentId, title, fileName, content);
             if (chunks == 0) {
-                throw new IllegalStateException("Không trích xuất được nội dung văn bản từ tệp này.");
+                throw new IllegalStateException("Could not extract any text content from this file.");
             }
 
             // Replace-by-title AFTER the new version is fully live: a failed re-upload must

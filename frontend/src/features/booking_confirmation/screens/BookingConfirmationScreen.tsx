@@ -14,6 +14,7 @@ import { customerProfileService, type CustomerProfile } from "@/services/custome
 import { quotationService, type Quotation } from "@/services/quotation_service";
 import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
+import { toast } from "@/stores/toast_store";
 
 type TabType = "queue" | "checker";
 
@@ -139,26 +140,26 @@ export function BookingConfirmationScreen() {
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to load booking request details.");
+      toast.error("Failed to load booking request details.");
     }
   };
 
   // UC-18.5: Approve booking request via live API call
   const handleApprove = async (id: string) => {
-    if (confirm!("Are you sure you want to approve this booking request?")) return;
+    if (!window.confirm("Are you sure you want to approve this booking request?")) return;
     setActionLoading(true);
     try {
       const res = await bookingConfirmationService.processRequest(id, {
         status: "CONFIRMED"
       });
       if (res.success) {
-        alert("Booking request approved successfully.");
+        toast.success("Booking request approved successfully.");
         setShowDetailModal(false);
         loadBookings();
       }
     } catch (err) {
       const axiosError = err as { response?: { data?: { message?: string } } };
-      alert(axiosError.response?.data?.message || "Failed to approve booking request.");
+      toast.error(axiosError.response?.data?.message || "Failed to approve booking request.");
     } finally {
       setActionLoading(false);
     }
@@ -170,8 +171,8 @@ export function BookingConfirmationScreen() {
   };
 
   const handleRejectSubmit = async () => {
-    if (rejectionReason.trim!()) {
-      alert("Please specify a rejection reason.");
+    if (!rejectionReason.trim()) {
+      toast.warning("Please specify a rejection reason.");
       return;
     }
     if (!selectedBooking) return;
@@ -182,7 +183,7 @@ export function BookingConfirmationScreen() {
         rejectionReason: rejectionReason.trim()
       });
       if (res.success) {
-        alert("Booking request rejected.");
+        toast.success("Booking request rejected.");
         setShowRejectModal(false);
         setShowDetailModal(false);
         setRejectionReason("");
@@ -190,7 +191,7 @@ export function BookingConfirmationScreen() {
       }
     } catch (err) {
       const axiosError = err as { response?: { data?: { message?: string } } };
-      alert(axiosError.response?.data?.message || "Failed to reject booking request.");
+      toast.error(axiosError.response?.data?.message || "Failed to reject booking request.");
     } finally {
       setActionLoading(false);
     }
@@ -271,7 +272,7 @@ export function BookingConfirmationScreen() {
       });
 
       if (res.success) {
-        alert(`Booking request submitted successfully! Booking Code: ${res.data.bookingCode}`);
+        toast.success(`Booking request submitted successfully! Booking Code: ${res.data.bookingCode}`);
         setFormCustomerId("");
         setFormQuotationId("");
         setFormCheckIn("");
@@ -311,7 +312,7 @@ export function BookingConfirmationScreen() {
   };
 
   const handleDownload = (bNum: string) => {
-    alert(`Successfully generated PDF Booking Confirmation & Slip for reservation: ${bNum}`);
+    toast.success(`Generated PDF Booking Confirmation & Slip for reservation: ${bNum}`);
   };
 
   return (

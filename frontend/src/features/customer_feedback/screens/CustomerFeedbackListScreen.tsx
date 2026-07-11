@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/Select";
 import { customerFeedbackService, type CustomerFeedback } from "@/services/customer_feedback_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
+import { toast } from "@/stores/toast_store";
 
 export function CustomerFeedbackListScreen() {
   const { user } = useAuthStore();
@@ -98,10 +99,15 @@ export function CustomerFeedbackListScreen() {
           });
         }
         fetchFeedbacks();
+        toast.success(
+          newStatus === "REVIEWED"
+            ? "Feedback marked as reviewed."
+            : "Feedback dismissed.",
+        );
       }
     } catch (error: any) {
       console.error("Error updating feedback review status:", error);
-      alert(error.response?.data?.message || "Failed to update review status.");
+      toast.error(error.response?.data?.message || "Failed to update review status.");
     } finally {
       setUpdatingStatus(false);
     }
@@ -176,7 +182,7 @@ export function CustomerFeedbackListScreen() {
                 className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition"
               />
             </div>
-            <Button type="submit" variant="primary" className="py-2 px-4 text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700">
+            <Button type="submit" variant="primary" className="py-2 px-4 text-xs font-semibold bg-primary text-white hover:bg-primary/90">
               Search
             </Button>
           </form>

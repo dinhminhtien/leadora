@@ -2,6 +2,7 @@ package com.novax.leadora.application.usecase.task;
 
 import com.novax.leadora.api.dto.response.TaskResponse;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskPriority;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
@@ -21,6 +22,7 @@ import java.util.UUID;
 public class GetTaskListUseCase {
 
     private final TaskRepository taskRepository;
+    private final TaskAccessPolicy accessPolicy;
 
     @Transactional(readOnly = true)
     public Page<TaskResponse> execute(
@@ -33,12 +35,20 @@ public class GetTaskListUseCase {
             int page,
             int size
     ) {
+        // BR-02: authorization is enforced here, not on the client. Sales Staff
+        // are hard-scoped to their own tasks (any client-supplied assignedUserId
+        // is ignored for them); Manager/Admin are unscoped and may filter by any
+        // assignee via the request param.
+        UserEntity currentUser = accessPolicy.currentUser();
+        UUID scopedOwnerId = accessPolicy.listScopeOwnerId(currentUser);
+        UUID effectiveAssignee = scopedOwnerId != null ? scopedOwnerId : parseUuid(assignedUserId);
+
         // Sort is defined by TaskSpecification.defaultSort() — pass unsorted Pageable.
         Specification<TaskEntity> spec = Specification.allOf(
                 TaskSpecification.search(StringUtils.hasText(search) ? search.trim() : null),
                 TaskSpecification.hasStatus(parseEnum(TaskStatus.class, status)),
                 TaskSpecification.hasPriority(parseEnum(TaskPriority.class, priority)),
-                TaskSpecification.assignedTo(parseUuid(assignedUserId)),
+                TaskSpecification.assignedTo(effectiveAssignee),
                 TaskSpecification.forCustomer(parseUuid(customerId)),
                 overdue ? TaskSpecification.isOverdue() : null,
                 TaskSpecification.defaultSort()

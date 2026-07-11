@@ -27,6 +27,7 @@ public class ResolveTaskUseCase {
     private final TaskRepository taskRepository;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     private final ReminderRepository reminderRepository;
+    private final TaskAccessPolicy accessPolicy;
 
     /**
      * UC-17.5: User marks an SLA-tracked task as resolved.
@@ -39,6 +40,10 @@ public class ResolveTaskUseCase {
     public TaskResponse execute(UUID taskId) {
         TaskEntity task = taskRepository.findWithRelationsById(taskId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task", taskId));
+
+        // BR-02: only the task's assignee (Sales) or a Manager/Admin may resolve
+        // it — the endpoint itself is only isAuthenticated(), so enforce here.
+        accessPolicy.assertCanView(accessPolicy.currentUser(), task);
 
         // E3: task already resolved
         if (task.getStatus() == TaskStatus.COMPLETED || task.getStatus() == TaskStatus.CANCELLED) {

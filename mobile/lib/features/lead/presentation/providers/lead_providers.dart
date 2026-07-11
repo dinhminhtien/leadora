@@ -67,8 +67,9 @@ class LeadListController extends AutoDisposeAsyncNotifier<LeadListState> {
   Future<void> refresh() async {
     final current = state.valueOrNull ?? const LeadListState();
     state = const AsyncLoading<LeadListState>().copyWithPrevious(state);
-    state =
-        (await AsyncValue.guard(() => _fetch(current))).copyWithPrevious(state);
+    state = (await AsyncValue.guard(
+      () => _fetch(current),
+    )).copyWithPrevious(state);
   }
 
   /// Replace the filter set and reload from the top.
@@ -78,15 +79,17 @@ class LeadListController extends AutoDisposeAsyncNotifier<LeadListState> {
     // Seed the loading state with the *requested* filters so the chips/badge
     // reflect the selection immediately, and so a failed fetch + retry re-runs
     // these filters rather than silently restoring the old ones.
-    state = const AsyncLoading<LeadListState>()
-        .copyWithPrevious(AsyncData(next), isRefresh: true);
-    state =
-        (await AsyncValue.guard(() => _fetch(next))).copyWithPrevious(state);
+    state = const AsyncLoading<LeadListState>().copyWithPrevious(
+      AsyncData(next),
+      isRefresh: true,
+    );
+    state = (await AsyncValue.guard(
+      () => _fetch(next),
+    )).copyWithPrevious(state);
   }
 
   /// Current filters, for screens composing an updated set.
-  LeadFilters get filters =>
-      state.valueOrNull?.filters ?? const LeadFilters();
+  LeadFilters get filters => state.valueOrNull?.filters ?? const LeadFilters();
 
   /// Infinite scroll: append the next page.
   Future<void> loadMore() async {
@@ -99,12 +102,14 @@ class LeadListController extends AutoDisposeAsyncNotifier<LeadListState> {
         page: current.nextPage,
         size: _pageSize,
       );
-      state = AsyncData(current.copyWith(
-        items: [...current.items, ...page.items],
-        nextPage: current.nextPage + 1,
-        hasMore: page.hasMore,
-        isLoadingMore: false,
-      ));
+      state = AsyncData(
+        current.copyWith(
+          items: [...current.items, ...page.items],
+          nextPage: current.nextPage + 1,
+          hasMore: page.hasMore,
+          isLoadingMore: false,
+        ),
+      );
     } catch (_) {
       // Keep the accumulated list; just stop the spinner. A retry re-triggers.
       state = AsyncData(current.copyWith(isLoadingMore: false));
@@ -114,10 +119,13 @@ class LeadListController extends AutoDisposeAsyncNotifier<LeadListState> {
 
 final leadListControllerProvider =
     AutoDisposeAsyncNotifierProvider<LeadListController, LeadListState>(
-        LeadListController.new);
+      LeadListController.new,
+    );
 
 /// Single-lead detail, keyed by id.
-final leadDetailProvider =
-    AutoDisposeFutureProvider.family<Lead, String>((ref, leadId) {
+final leadDetailProvider = AutoDisposeFutureProvider.family<Lead, String>((
+  ref,
+  leadId,
+) {
   return ref.watch(leadRepositoryProvider).getLead(leadId);
 });

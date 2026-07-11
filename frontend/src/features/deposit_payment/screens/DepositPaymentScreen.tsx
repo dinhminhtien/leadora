@@ -350,7 +350,7 @@ export function DepositPaymentScreen() {
         <button
           onClick={() => { setActiveTab("requests"); setPaymentsPage(0); }}
           className={`px-5 py-3 text-xs font-bold border-b-2 transition-all ${activeTab === "requests"
-            ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold"
+            ? "border-primary text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold"
             : "border-transparent text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-300"
             }`}
         >
@@ -359,7 +359,7 @@ export function DepositPaymentScreen() {
         <button
           onClick={() => { setActiveTab("bookings"); setBookingsPage(0); }}
           className={`px-5 py-3 text-xs font-bold border-b-2 transition-all ${activeTab === "bookings"
-            ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold"
+            ? "border-primary text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold"
             : "border-transparent text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-300"
             }`}
         >
@@ -757,7 +757,7 @@ export function DepositPaymentScreen() {
                   variant="success"
                   size="sm"
                   disabled={submittingRequest}
-                  className="text-xs font-bold px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5"
+                  className="text-xs font-bold px-5 py-2 bg-primary hover:bg-primary/90 text-white flex items-center gap-1.5"
                 >
                   {submittingRequest ? <RefreshCw className="size-3.5 animate-spin" /> : null}
                   Generate Payment Request
@@ -1109,7 +1109,7 @@ export function DepositPaymentScreen() {
                   handleOpenGenerateModal(selectedBookingForDetails);
                   setSelectedBookingForDetails(null);
                 }}
-                className="bg-blue-650 hover:bg-blue-700 text-white font-bold"
+                className="bg-primary hover:bg-primary/90 text-white font-bold"
               >
                 Generate Payment Request
               </Button>

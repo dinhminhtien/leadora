@@ -61,7 +61,7 @@ public class SendChatMessageUseCase {
         // Auto-title the session from the first user message.
         boolean firstTurn = history.isEmpty();
         if (firstTurn && (!StringUtils.hasText(session.getTitle())
-                || "Cuộc trò chuyện mới".equals(session.getTitle()))) {
+                || "New conversation".equals(session.getTitle()))) {
             session.setTitle(truncate(content, TITLE_MAX));
         }
 

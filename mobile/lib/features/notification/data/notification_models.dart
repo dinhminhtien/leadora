@@ -23,15 +23,15 @@ class AppNotification {
   final DateTime? createdAt;
 
   AppNotification copyWith({bool? isRead}) => AppNotification(
-        id: id,
-        title: title,
-        message: message,
-        isRead: isRead ?? this.isRead,
-        type: type,
-        relatedEntity: relatedEntity,
-        relatedId: relatedId,
-        createdAt: createdAt,
-      );
+    id: id,
+    title: title,
+    message: message,
+    isRead: isRead ?? this.isRead,
+    type: type,
+    relatedEntity: relatedEntity,
+    relatedId: relatedId,
+    createdAt: createdAt,
+  );
 
   /// Icon derived from the backend `type` / `relatedEntity` for a richer list.
   IconData get icon {

@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
+import '../../../../shared/widgets/app_filter_chip.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/highlight_glow.dart';
@@ -78,37 +80,27 @@ class _SlaListScreenState extends ConsumerState<SlaListScreen> {
       appBar: AppBar(title: const Text('SLA monitoring')),
       body: Column(
         children: [
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: ChoiceChip(
-                    label: const Text('All'),
-                    selected: _filter == null,
-                    onSelected: (_) => setState(() => _filter = null),
-                  ),
+          AppFilterChipBar(
+            children: [
+              AppFilterChip(
+                label: 'All',
+                selected: _filter == null,
+                onTap: () => setState(() => _filter = null),
+              ),
+              for (final s in SlaDisplayStatus.values)
+                AppFilterChip(
+                  label: Formatters.humanizeEnum(s.wire),
+                  selected: _filter == s,
+                  onTap: () => setState(() => _filter = s),
                 ),
-                for (final s in SlaDisplayStatus.values)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: ChoiceChip(
-                      label: Text(Formatters.humanizeEnum(s.wire)),
-                      selected: _filter == s,
-                      onSelected: (_) => setState(() => _filter = s),
-                    ),
-                  ),
-              ],
-            ),
+            ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xs),
           Expanded(
             child: AsyncValueView<List<SlaTrackingEntry>>(
               value: async,
-              onRetry: () => ref.invalidate(slaMonitoringProvider(_filter?.wire)),
+              onRetry: () =>
+                  ref.invalidate(slaMonitoringProvider(_filter?.wire)),
               isEmpty: (items) => items.isEmpty,
               empty: const EmptyState(
                 icon: Icons.verified_outlined,
@@ -116,15 +108,24 @@ class _SlaListScreenState extends ConsumerState<SlaListScreen> {
                 message: 'No SLA trackers match this filter.',
               ),
               data: (items) => RefreshIndicator(
-                onRefresh: () async => ref.invalidate(slaMonitoringProvider(_filter?.wire)),
+                onRefresh: () async =>
+                    ref.invalidate(slaMonitoringProvider(_filter?.wire)),
                 child: ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.xs,
+                    AppSpacing.lg,
+                    AppSpacing.xxxl,
+                  ),
                   itemCount: items.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final entry = items[index];
-                    final highlighted = _highlightId != null && entry.trackingId == _highlightId;
+                    final highlighted =
+                        _highlightId != null &&
+                        entry.trackingId == _highlightId;
                     return Builder(
                       builder: (itemContext) {
                         if (highlighted && _scrolledIds.add(entry.trackingId)) {
@@ -167,16 +168,16 @@ class _SlaCard extends StatelessWidget {
     final hoursLabel = entry.isResolved
         ? 'Resolved'
         : hours < 0
-            ? '${-hours}h overdue'
-            : '${hours}h left';
+        ? '${-hours}h overdue'
+        : '${hours}h left';
 
     return HighlightGlow(
       highlighted: highlighted,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadii.lg),
         onTap: route == null ? null : () => context.push(route),
         child: SectionCard(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Row(
             children: [
               Icon(entry.icon, size: 22, color: theme.colorScheme.primary),
@@ -187,15 +188,18 @@ class _SlaCard extends StatelessWidget {
                   children: [
                     Text(
                       '${Formatters.humanizeEnum(entry.activityType)} · ${Formatters.humanizeEnum(entry.entityType)}',
-                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Deadline ${Formatters.dateTime(entry.deadlineAt)}',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -212,7 +216,9 @@ class _SlaCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     hoursLabel,
-                    style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
                   ),
                 ],
               ),

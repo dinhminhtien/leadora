@@ -41,6 +41,7 @@ public class ResignTaskUseCase {
 
     private final TaskRepository taskRepository;
     private final UserRepository userRepository;
+    private final TaskAccessPolicy accessPolicy;
 
     @Transactional
     public TaskResponse execute(UUID originalTaskId, ResignTaskRequest request) {
@@ -48,9 +49,18 @@ public class ResignTaskUseCase {
         TaskEntity originalTask = taskRepository.findWithRelationsById(originalTaskId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task", originalTaskId));
 
-        // [2] Resolve assignee (if provided in request, use it; otherwise keep original)
+        // [2] Authorization. BR-02: must own the task (or be a manager) to touch
+        // it at all. BR-18: reassigning to a *different* user is Manager/Admin
+        // only — an owner may reschedule their own task but not hand it off.
+        UserEntity currentUser = accessPolicy.currentUser();
+        accessPolicy.assertCanView(currentUser, originalTask);
+
         UserEntity assignedUser = originalTask.getAssignedUser();
         if (request.getAssignedUserId() != null) {
+            UUID currentAssigneeId = assignedUser != null ? assignedUser.getUserId() : null;
+            if (!request.getAssignedUserId().equals(currentAssigneeId)) {
+                accessPolicy.assertFullAccess(currentUser);
+            }
             assignedUser = userRepository.findById(request.getAssignedUserId())
                     .orElseThrow(() -> new ResourceNotFoundException("User", request.getAssignedUserId()));
         }

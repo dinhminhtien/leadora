@@ -1,12 +1,17 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/network/api_exception.dart';
 import '../../data/task_models.dart';
 import '../../data/task_repository.dart';
 
 /// Quick status tabs for the task list — the primary, always-visible filter.
+/// Mirrors the web tab set (All / Today / Upcoming / Overdue / Completed);
+/// Today and Upcoming are narrowed client-side over the fetched items, exactly
+/// like the web screen filters its current page.
 enum TaskFilter {
   all('All'),
-  open('Open'),
+  today('Today'),
+  upcoming('Upcoming'),
   overdue('Overdue'),
   completed('Completed');
 
@@ -19,7 +24,7 @@ enum TaskFilter {
 /// the web Follow-up Tasks screen, which sends the same query params.
 class TaskFilters {
   const TaskFilters({
-    this.quick = TaskFilter.open,
+    this.quick = TaskFilter.all,
     this.search = '',
     this.priority,
     this.assignedUserId,
@@ -57,28 +62,54 @@ class TaskFilters {
 
   /// Explicit clearing (copyWith can't set a field back to null).
   TaskFilters withPriority(TaskPriority? p) => TaskFilters(
-        quick: quick,
-        search: search,
-        priority: p,
-        assignedUserId: assignedUserId,
-        assignedUserName: assignedUserName,
-      );
+    quick: quick,
+    search: search,
+    priority: p,
+    assignedUserId: assignedUserId,
+    assignedUserName: assignedUserName,
+  );
 
   TaskFilters withAssignee(String? id, String? name) => TaskFilters(
-        quick: quick,
-        search: search,
-        priority: priority,
-        assignedUserId: id,
-        assignedUserName: name,
-      );
+    quick: quick,
+    search: search,
+    priority: priority,
+    assignedUserId: id,
+    assignedUserName: name,
+  );
 
   /// The backend `status` + `overdue` params implied by the quick tab.
+  /// Today / Upcoming fetch everything and narrow client-side (web parity).
   ({String? status, bool overdue}) get statusQuery => switch (quick) {
-        TaskFilter.all => (status: null, overdue: false),
-        TaskFilter.open => (status: 'OPEN', overdue: false),
-        TaskFilter.overdue => (status: null, overdue: true),
-        TaskFilter.completed => (status: 'COMPLETED', overdue: false),
-      };
+    TaskFilter.all ||
+    TaskFilter.today ||
+    TaskFilter.upcoming => (status: null, overdue: false),
+    TaskFilter.overdue => (status: null, overdue: true),
+    TaskFilter.completed => (status: 'COMPLETED', overdue: false),
+  };
+
+  /// Client-side narrowing for the Today / Upcoming tabs. Grouping is by the
+  /// task's `startAt` local date, matching the web `taskDateKey`.
+  List<Task> applyQuick(List<Task> items) {
+    if (quick != TaskFilter.today && quick != TaskFilter.upcoming) return items;
+    final now = DateTime.now();
+    final tomorrow = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).add(const Duration(days: 1));
+    bool isActionable(Task t) =>
+        t.status != TaskStatus.completed && t.status != TaskStatus.cancelled;
+    bool isToday(DateTime d) =>
+        d.year == now.year && d.month == now.month && d.day == now.day;
+    return [
+      for (final t in items)
+        if (t.startAt != null && isActionable(t))
+          if (quick == TaskFilter.today
+              ? isToday(t.startAt!.toLocal())
+              : !t.startAt!.toLocal().isBefore(tomorrow) && !t.isOverdue)
+            t,
+    ];
+  }
 }
 
 class TaskListState {
@@ -119,8 +150,7 @@ class TaskListController extends AutoDisposeAsyncNotifier<TaskListState> {
   TaskRepository get _repo => ref.read(taskRepositoryProvider);
 
   /// Current filters, readable synchronously by the screen.
-  TaskFilters get filters =>
-      state.valueOrNull?.filters ?? const TaskFilters();
+  TaskFilters get filters => state.valueOrNull?.filters ?? const TaskFilters();
 
   @override
   Future<TaskListState> build() => _fetch(const TaskListState());
@@ -161,7 +191,35 @@ class TaskListController extends AutoDisposeAsyncNotifier<TaskListState> {
     final current = state.valueOrNull ?? const TaskListState();
     state = const AsyncLoading<TaskListState>().copyWithPrevious(state);
     state = await AsyncValue.guard(
-        () => _fetch(current.copyWith(filters: filters)));
+      () => _fetch(current.copyWith(filters: filters)),
+    );
+  }
+
+  /// Quick-complete from the list, with an optimistic flip (web parity: the
+  /// row checkbox completes immediately and rolls back on failure). Uses the
+  /// dedicated resolve endpoint so SLA tracking and reminders settle too.
+  /// Returns null on success, or the error message for the caller's snackbar.
+  Future<String?> completeTask(String taskId) async {
+    final current = state.valueOrNull;
+    if (current == null) return null;
+    state = AsyncData(
+      current.copyWith(
+        items: [
+          for (final t in current.items)
+            t.taskId == taskId ? t.withStatus(TaskStatus.completed) : t,
+        ],
+      ),
+    );
+    try {
+      await _repo.resolve(taskId);
+      return null;
+    } on AppException catch (e) {
+      state = AsyncData(current); // roll back the optimistic flip
+      return e.message;
+    } catch (_) {
+      state = AsyncData(current);
+      return 'Could not complete the task.';
+    }
   }
 
   Future<void> loadMore() async {
@@ -180,12 +238,14 @@ class TaskListController extends AutoDisposeAsyncNotifier<TaskListState> {
         page: current.nextPage,
         size: _pageSize,
       );
-      state = AsyncData(current.copyWith(
-        items: [...current.items, ...page.items],
-        nextPage: current.nextPage + 1,
-        hasMore: page.hasMore,
-        isLoadingMore: false,
-      ));
+      state = AsyncData(
+        current.copyWith(
+          items: [...current.items, ...page.items],
+          nextPage: current.nextPage + 1,
+          hasMore: page.hasMore,
+          isLoadingMore: false,
+        ),
+      );
     } catch (_) {
       state = AsyncData(current.copyWith(isLoadingMore: false));
     }
@@ -194,9 +254,12 @@ class TaskListController extends AutoDisposeAsyncNotifier<TaskListState> {
 
 final taskListControllerProvider =
     AutoDisposeAsyncNotifierProvider<TaskListController, TaskListState>(
-        TaskListController.new);
+      TaskListController.new,
+    );
 
-final taskDetailProvider =
-    AutoDisposeFutureProvider.family<Task, String>((ref, taskId) {
+final taskDetailProvider = AutoDisposeFutureProvider.family<Task, String>((
+  ref,
+  taskId,
+) {
   return ref.watch(taskRepositoryProvider).getTask(taskId);
 });

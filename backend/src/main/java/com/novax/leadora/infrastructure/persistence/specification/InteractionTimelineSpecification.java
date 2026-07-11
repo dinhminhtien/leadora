@@ -18,11 +18,14 @@ public final class InteractionTimelineSpecification {
             String search,
             String type,
             UUID agentId,
+            String linkedType,
+            UUID linkedId,
             boolean unscoped,
             UUID scopedUserId
     ) {
         return (root, query, cb) -> {
-            // Eager load associations to avoid N+1 queries
+            // Eager load associations to avoid N+1 queries. Skipped for the
+            // count query Spring runs for pagination (result type Long).
             if (Long.class != query.getResultType()) {
                 root.fetch("user",     JoinType.LEFT);
                 root.fetch("lead",     JoinType.LEFT);
@@ -58,6 +61,22 @@ public final class InteractionTimelineSpecification {
             if (agentId != null) {
                 var userJoin = root.join("user", JoinType.LEFT);
                 predicates.add(cb.equal(userJoin.get("userId"), agentId));
+            }
+
+            // Filter to interactions attached to one linked record (used by the
+            // per-record timeline on web/mobile). Matches the direct FK, so an
+            // interaction logged against a lead is returned for that lead even
+            // though the mapper resolves its display link by deal>lead>customer.
+            if (linkedId != null && linkedType != null && !linkedType.isBlank()) {
+                switch (linkedType.toLowerCase().trim()) {
+                    case "lead" -> predicates.add(
+                            cb.equal(root.join("lead", JoinType.LEFT).get("leadId"), linkedId));
+                    case "customer" -> predicates.add(
+                            cb.equal(root.join("customer", JoinType.LEFT).get("customerId"), linkedId));
+                    case "deal" -> predicates.add(
+                            cb.equal(root.join("deal", JoinType.LEFT).get("dealId"), linkedId));
+                    default -> { /* unknown linkedType: ignore, per contract's lenient-filter rule */ }
+                }
             }
 
             // Security visibility scoping for Sales Staff

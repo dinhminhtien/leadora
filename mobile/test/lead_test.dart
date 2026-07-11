@@ -17,10 +17,14 @@ void main() {
     });
 
     test('allowedTransitions mirror the backend one-step-forward rule', () {
-      expect(LeadStatus.neww.allowedTransitions,
-          [LeadStatus.contacted, LeadStatus.lost]);
-      expect(LeadStatus.contacted.allowedTransitions,
-          [LeadStatus.qualified, LeadStatus.lost]);
+      expect(LeadStatus.neww.allowedTransitions, [
+        LeadStatus.contacted,
+        LeadStatus.lost,
+      ]);
+      expect(LeadStatus.contacted.allowedTransitions, [
+        LeadStatus.qualified,
+        LeadStatus.lost,
+      ]);
       // QUALIFIED can only be lost via status update — CONVERTED goes through
       // the conversion flow, never a plain status change.
       expect(LeadStatus.qualified.allowedTransitions, [LeadStatus.lost]);
@@ -91,8 +95,15 @@ void main() {
         'source': 'Referral',
         'isCorporate': true,
         'dateFrom': DateTime(2026, 7, 1).toUtc().toIso8601String(),
-        'dateTo':
-            DateTime(2026, 7, 6, 23, 59, 59, 999).toUtc().toIso8601String(),
+        'dateTo': DateTime(
+          2026,
+          7,
+          6,
+          23,
+          59,
+          59,
+          999,
+        ).toUtc().toIso8601String(),
         'sortBy': 'fullName',
         'sortDir': 'asc',
         'scope': 'created',
@@ -111,13 +122,14 @@ void main() {
       // lead created 00:30 local time is inside the window even when that
       // moment falls on the previous UTC calendar day.
       expect(DateTime.parse(from).toLocal(), DateTime(2026, 7, 6));
-      expect(DateTime.parse(to).toLocal(),
-          DateTime(2026, 7, 6, 23, 59, 59, 999));
+      expect(
+        DateTime.parse(to).toLocal(),
+        DateTime(2026, 7, 6, 23, 59, 59, 999),
+      );
     });
 
     test('activeAdvancedCount ignores search and status (inline filters)', () {
-      const inlineOnly =
-          LeadFilters(search: 'x', status: LeadStatus.qualified);
+      const inlineOnly = LeadFilters(search: 'x', status: LeadStatus.qualified);
       expect(inlineOnly.activeAdvancedCount, 0);
 
       final advanced = inlineOnly.copyWith(

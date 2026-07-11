@@ -73,7 +73,10 @@ class CustomerRepository {
   }
 
   /// Update a customer profile — `PUT /customers/{id}`.
-  Future<Customer> updateCustomer(String customerId, UpdateCustomerPayload payload) {
+  Future<Customer> updateCustomer(
+    String customerId,
+    UpdateCustomerPayload payload,
+  ) {
     return _client.put<Customer>(
       ApiPaths.customerById(customerId),
       data: payload.toJson(),

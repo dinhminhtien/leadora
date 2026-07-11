@@ -380,7 +380,7 @@ export function ReportingScreen() {
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${activeTab === tab.key
-                ? "border-blue-600 text-blue-700"
+                ? "border-primary text-blue-700"
                 : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
               }`}
           >

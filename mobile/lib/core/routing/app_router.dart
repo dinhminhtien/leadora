@@ -11,14 +11,28 @@ import '../../features/customer/presentation/screens/customer_form_screen.dart';
 import '../../features/customer/presentation/screens/customer_list_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_shell.dart';
+import '../../features/dashboard/presentation/screens/more_screen.dart';
+import '../../features/booking/presentation/screens/booking_detail_screen.dart';
+import '../../features/booking/presentation/screens/booking_list_screen.dart';
+import '../../features/deal/presentation/screens/create_deal_screen.dart';
 import '../../features/deal/presentation/screens/deal_detail_screen.dart';
+import '../../features/deal/presentation/screens/deal_list_screen.dart';
+import '../../features/deal/presentation/screens/pipeline_screen.dart';
+import '../../features/payment/presentation/screens/generate_payment_screen.dart';
+import '../../features/payment/presentation/screens/payment_detail_screen.dart';
+import '../../features/payment/presentation/screens/payment_list_screen.dart';
+import '../../features/interaction/data/interaction_models.dart';
+import '../../features/interaction/presentation/screens/edit_interaction_screen.dart';
+import '../../features/interaction/presentation/screens/interaction_detail_screen.dart';
 import '../../features/interaction/presentation/screens/interaction_timeline_screen.dart';
 import '../../features/interaction/presentation/screens/log_interaction_screen.dart';
 import '../../features/lead/presentation/screens/create_lead_screen.dart';
 import '../../features/lead/presentation/screens/lead_detail_screen.dart';
 import '../../features/lead/presentation/screens/lead_list_screen.dart';
 import '../../features/notification/presentation/screens/notification_list_screen.dart';
+import '../../features/profile/data/profile_models.dart';
 import '../../features/profile/presentation/screens/change_password_screen.dart';
+import '../../features/profile/presentation/screens/edit_profile_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/quotation/presentation/screens/quotation_detail_screen.dart';
 import '../../features/quotation/presentation/screens/quotation_list_screen.dart';
@@ -28,6 +42,7 @@ import '../../features/task/data/task_models.dart';
 import '../../features/task/presentation/screens/task_detail_screen.dart';
 import '../../features/task/presentation/screens/task_form_screen.dart';
 import '../../features/task/presentation/screens/task_list_screen.dart';
+import '../config/env.dart';
 import '../widgets/splash_screen.dart';
 import 'app_session.dart';
 import 'routes.dart';
@@ -36,10 +51,10 @@ import 'routes.dart';
 /// is isolated per tab.
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 final _shellHomeKey = GlobalKey<NavigatorState>(debugLabel: 'shell-home');
+final _shellDealsKey = GlobalKey<NavigatorState>(debugLabel: 'shell-deals');
 final _shellLeadsKey = GlobalKey<NavigatorState>(debugLabel: 'shell-leads');
 final _shellTasksKey = GlobalKey<NavigatorState>(debugLabel: 'shell-tasks');
-final _shellQuotationsKey = GlobalKey<NavigatorState>(debugLabel: 'shell-quotations');
-final _shellProfileKey = GlobalKey<NavigatorState>(debugLabel: 'shell-profile');
+final _shellMoreKey = GlobalKey<NavigatorState>(debugLabel: 'shell-more');
 
 /// The app router. Depends on [appSessionProvider] so the redirect guard and
 /// `refreshListenable` react to auth changes. Built once and kept alive.
@@ -50,7 +65,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     navigatorKey: _rootNavigatorKey,
     initialLocation: Routes.splash,
     refreshListenable: session,
-    debugLogDiagnostics: true,
+    // Route-transition logging is dev-only noise; keep release builds silent.
+    debugLogDiagnostics: Env.isDev,
     redirect: (context, state) => _guard(session, state),
     routes: [
       GoRoute(
@@ -77,8 +93,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
 
-      // Full-screen routes reached only via notification deep-link — no
-      // list/tab entry point exists yet (see NotificationListScreen._relatedRoute).
+      // Secondary modules — reached from the More hub. Full-screen over the
+      // shell, so they keep their own back stack.
+      GoRoute(
+        path: Routes.quotations,
+        name: RouteNames.quotations,
+        builder: (_, _) => const QuotationListScreen(),
+      ),
       GoRoute(
         path: Routes.quotationDetail,
         name: RouteNames.quotationDetail,
@@ -86,9 +107,66 @@ final routerProvider = Provider<GoRouter>((ref) {
             QuotationDetailScreen(quotationId: state.pathParameters['id']!),
       ),
       GoRoute(
-        path: Routes.dealDetail,
-        name: RouteNames.dealDetail,
-        builder: (_, state) => DealDetailScreen(dealId: state.pathParameters['id']!),
+        path: Routes.profile,
+        name: RouteNames.profile,
+        builder: (_, _) => const ProfileScreen(),
+        routes: [
+          GoRoute(
+            path: Routes.profileEditSub,
+            name: RouteNames.profileEdit,
+            builder: (_, state) =>
+                EditProfileLoader(initial: state.extra as Profile?),
+          ),
+          GoRoute(
+            path: Routes.changePasswordSub,
+            name: RouteNames.changePassword,
+            builder: (_, _) => const ChangePasswordScreen(),
+          ),
+        ],
+      ),
+
+      // Payments — list → detail, plus the generate-request form. `new` is
+      // declared before `detail/:id` and uses a distinct literal segment so it
+      // can never be parsed as a payment id.
+      GoRoute(
+        path: Routes.payments,
+        name: RouteNames.payments,
+        builder: (_, _) => const PaymentListScreen(),
+        routes: [
+          GoRoute(
+            path: Routes.paymentCreateSub,
+            name: RouteNames.paymentCreate,
+            builder: (_, _) => const GeneratePaymentScreen(),
+          ),
+          GoRoute(
+            path: Routes.paymentDetailSub,
+            name: RouteNames.paymentDetail,
+            builder: (_, state) =>
+                PaymentDetailScreen(paymentId: state.pathParameters['id']!),
+          ),
+        ],
+      ),
+
+      // Bookings — read-only list → detail.
+      GoRoute(
+        path: Routes.bookings,
+        name: RouteNames.bookings,
+        builder: (_, _) => const BookingListScreen(),
+        routes: [
+          GoRoute(
+            path: Routes.bookingDetailSub,
+            name: RouteNames.bookingDetail,
+            builder: (_, state) =>
+                BookingDetailScreen(bookingId: state.pathParameters['id']!),
+          ),
+        ],
+      ),
+
+      // Sales pipeline — Kanban over the same /deals list the Deals tab uses.
+      GoRoute(
+        path: Routes.pipeline,
+        name: RouteNames.pipeline,
+        builder: (_, _) => const PipelineScreen(),
       ),
 
       // Browse entry points — reached from the Dashboard quick actions and
@@ -107,8 +185,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.reminders,
         name: RouteNames.reminders,
-        builder: (_, state) =>
-            ReminderListScreen(highlightId: state.uri.queryParameters['highlight']),
+        builder: (_, state) => ReminderListScreen(
+          highlightId: state.uri.queryParameters['highlight'],
+        ),
       ),
 
       // Customer profiles — full-screen browse (no dedicated tab), reached from
@@ -164,11 +243,36 @@ final routerProvider = Provider<GoRouter>((ref) {
           initialType: state.uri.queryParameters['type'],
         ),
       ),
+      // View Interaction Detail — the pushing card passes the loaded entry as
+      // `extra` for an instant header; the screen refreshes it via its provider.
+      GoRoute(
+        path: Routes.interactionDetail,
+        name: RouteNames.interactionDetail,
+        builder: (_, state) => InteractionDetailScreen(
+          id: state.pathParameters['id']!,
+          initial: state.extra is InteractionTimelineEntry
+              ? state.extra as InteractionTimelineEntry
+              : null,
+        ),
+      ),
+      GoRoute(
+        path: Routes.editInteraction,
+        name: RouteNames.editInteraction,
+        builder: (_, state) =>
+            EditInteractionScreen(entry: state.extra as InteractionTimelineEntry),
+      ),
 
-      // Authenticated tabbed area.
-      StatefulShellRoute.indexedStack(
+      // Authenticated tabbed area. A custom branch container cross-fades
+      // between tabs while keeping every branch's state alive (see
+      // AnimatedBranchContainer), replacing the instant IndexedStack swap.
+      StatefulShellRoute(
         builder: (_, _, navigationShell) =>
             DashboardShell(navigationShell: navigationShell),
+        navigatorContainerBuilder: (_, navigationShell, children) =>
+            AnimatedBranchContainer(
+              currentIndex: navigationShell.currentIndex,
+              children: children,
+            ),
         branches: [
           // Tab 1 — Dashboard.
           StatefulShellBranch(
@@ -181,7 +285,36 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // Tab 2 — Leads (+ full-screen create/detail).
+          // Tab 2 — Deals (+ full-screen create/detail).
+          StatefulShellBranch(
+            navigatorKey: _shellDealsKey,
+            routes: [
+              GoRoute(
+                path: Routes.deals,
+                name: RouteNames.deals,
+                builder: (_, _) => const DealListScreen(),
+                routes: [
+                  // Declared before `detail/:id` is irrelevant here (distinct
+                  // literal segments), but `new` must never be parsed as an id —
+                  // hence the `detail/` prefix on the detail route.
+                  GoRoute(
+                    path: Routes.dealCreateSub,
+                    name: RouteNames.dealCreate,
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (_, _) => const CreateDealScreen(),
+                  ),
+                  GoRoute(
+                    path: Routes.dealDetailSub,
+                    name: RouteNames.dealDetail,
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (_, state) =>
+                        DealDetailScreen(dealId: state.pathParameters['id']!),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          // Tab 3 — Leads (+ full-screen create/detail).
           StatefulShellBranch(
             navigatorKey: _shellLeadsKey,
             routes: [
@@ -207,7 +340,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // Tab 3 — Follow-up tasks (+ full-screen detail).
+          // Tab 4 — Follow-up tasks (+ full-screen detail).
           StatefulShellBranch(
             navigatorKey: _shellTasksKey,
             routes: [
@@ -254,33 +387,15 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // Tab 4 — Quotations.
+          // Tab 5 — More: hub for Quotations, Customers, Notifications,
+          // Reminders, SLA and Profile.
           StatefulShellBranch(
-            navigatorKey: _shellQuotationsKey,
+            navigatorKey: _shellMoreKey,
             routes: [
               GoRoute(
-                path: Routes.quotations,
-                name: RouteNames.quotations,
-                builder: (_, _) => const QuotationListScreen(),
-              ),
-            ],
-          ),
-          // Tab 5 — Profile (+ full-screen change password).
-          StatefulShellBranch(
-            navigatorKey: _shellProfileKey,
-            routes: [
-              GoRoute(
-                path: Routes.profile,
-                name: RouteNames.profile,
-                builder: (_, _) => const ProfileScreen(),
-                routes: [
-                  GoRoute(
-                    path: Routes.changePasswordSub,
-                    name: RouteNames.changePassword,
-                    parentNavigatorKey: _rootNavigatorKey,
-                    builder: (_, _) => const ChangePasswordScreen(),
-                  ),
-                ],
+                path: Routes.more,
+                name: RouteNames.more,
+                builder: (_, _) => const MoreScreen(),
               ),
             ],
           ),
