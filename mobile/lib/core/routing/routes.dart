@@ -96,6 +96,14 @@ class Routes {
   static const String logInteraction =
       '/interactions/:linkedType/:linkedId/log';
 
+  // Single-interaction detail + edit. Singular `/interaction/...` so it never
+  // collides with the `/interactions/:linkedType/:linkedId` timeline pattern.
+  static const String interactionDetail = '/interaction/:id';
+  static const String editInteraction = '/interaction/:id/edit';
+
+  static String interactionDetailPath(String id) => '/interaction/$id';
+  static String editInteractionPath(String id) => '/interaction/$id/edit';
+
   static String interactionTimelinePath(
     String linkedType,
     String linkedId, {
@@ -165,4 +173,6 @@ class RouteNames {
   static const String reminders = 'reminders';
   static const String interactionTimeline = 'interactionTimeline';
   static const String logInteraction = 'logInteraction';
+  static const String interactionDetail = 'interactionDetail';
+  static const String editInteraction = 'editInteraction';
 }

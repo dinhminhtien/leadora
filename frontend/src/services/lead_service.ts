@@ -15,6 +15,7 @@ export type Lead = {
   address: string | null;
   isCorporate: boolean;
   source: string | null;
+  interestedService: string | null;
   status: LeadStatus;
   notes: string | null;
   convertedAt: string | null;
@@ -35,6 +36,7 @@ export type CreateLeadPayload = {
   address?: string;
   isCorporate?: boolean;
   source?: string;
+  interestedService?: string;
   notes?: string;
   assignedUserId?: string;
 };
@@ -47,6 +49,7 @@ export type UpdateLeadPayload = {
   address?: string;
   isCorporate?: boolean;
   source?: string;
+  interestedService?: string;
   status?: LeadStatus;
   notes?: string;
   assignedUserId?: string;
@@ -60,6 +63,8 @@ export type ConvertLeadPayload = {
   companyName?: string;
   taxCode?: string;
   address?: string;
+  /** BR-07: Sales Manager approval reason when converting a non-QUALIFIED lead. */
+  reason?: string;
 };
 
 export type ConvertLeadResponse = {

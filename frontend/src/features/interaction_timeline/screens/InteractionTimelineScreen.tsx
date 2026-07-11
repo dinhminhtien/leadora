@@ -128,7 +128,10 @@ export function InteractionTimelineScreen() {
     setLoading(true);
     setError(null);
     try {
-      const params: any = {};
+      // This screen shows the full recent history with no pager UI, so request
+      // a generous page — the backend list is paged (default size 20) and would
+      // otherwise silently cap the timeline.
+      const params: any = { page: 0, size: 200 };
       if (searchVal.trim()) {
         params.search = searchVal.trim();
       }
@@ -141,7 +144,7 @@ export function InteractionTimelineScreen() {
 
       const response = await interactionTimelineService.getList(params);
       if (response && response.success && response.data) {
-        setInteractions(response.data);
+        setInteractions(response.data.content ?? []);
       } else {
         setError(response?.message || "Failed to load interaction timeline");
       }

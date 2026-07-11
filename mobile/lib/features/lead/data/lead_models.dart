@@ -52,6 +52,7 @@ class Lead {
     this.address,
     this.isCorporate = false,
     this.source,
+    this.interestedService,
     this.notes,
     this.convertedAt,
     this.customerId,
@@ -71,6 +72,7 @@ class Lead {
   final String? address;
   final bool isCorporate;
   final String? source;
+  final String? interestedService;
   final String? notes;
   final DateTime? convertedAt;
   final String? customerId;
@@ -95,6 +97,7 @@ class Lead {
       address: json['address'] as String?,
       isCorporate: json['isCorporate'] as bool? ?? false,
       source: json['source'] as String?,
+      interestedService: json['interestedService'] as String?,
       notes: json['notes'] as String?,
       convertedAt: parse(json['convertedAt']),
       customerId: json['customerId'] as String?,
@@ -250,6 +253,7 @@ class CreateLeadPayload {
     this.address,
     this.isCorporate,
     this.source,
+    this.interestedService,
     this.notes,
   });
 
@@ -260,6 +264,7 @@ class CreateLeadPayload {
   final String? address;
   final bool? isCorporate;
   final String? source;
+  final String? interestedService;
   final String? notes;
 
   Map<String, dynamic> toJson() {
@@ -274,7 +279,52 @@ class CreateLeadPayload {
     put('address', address);
     put('isCorporate', isCorporate);
     put('source', source);
+    put('interestedService', interestedService);
     put('notes', notes);
+    return map;
+  }
+}
+
+/// Payload for UC-8.5 Convert Lead to Customer — POST /leads/{id}/convert.
+/// Customer details are inherited from the lead; [reason] carries a Sales
+/// Manager's approval when converting a lead that is not yet QUALIFIED (BR-07).
+class ConvertLeadPayload {
+  const ConvertLeadPayload({
+    required this.customerType,
+    required this.fullName,
+    this.email,
+    this.phone,
+    this.companyName,
+    this.taxCode,
+    this.address,
+    this.reason,
+  });
+
+  /// 'INDIVIDUAL' or 'CORPORATE' — mirrors the backend `CustomerType` enum.
+  final String customerType;
+  final String fullName;
+  final String? email;
+  final String? phone;
+  final String? companyName;
+  final String? taxCode;
+  final String? address;
+  final String? reason;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'customerType': customerType,
+      'fullName': fullName,
+    };
+    void put(String k, String? v) {
+      if (v != null && v.trim().isNotEmpty) map[k] = v.trim();
+    }
+
+    put('email', email);
+    put('phone', phone);
+    put('companyName', companyName);
+    put('taxCode', taxCode);
+    put('address', address);
+    put('reason', reason);
     return map;
   }
 }

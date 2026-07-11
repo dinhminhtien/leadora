@@ -12,27 +12,32 @@ class InteractionRepository {
 
   final ApiClient _client;
 
-  /// List interactions visible to the current user (scoped server-side to
-  /// the caller unless they're a manager). The backend has no linkedId
-  /// filter, so callers filter the result client-side by linkedId.
-  Future<List<InteractionTimelineEntry>> getInteractions({
+  /// Interactions attached to one linked record (lead/customer/deal), newest
+  /// first. Filtering and paging happen server-side (`linkedType`+`linkedId`,
+  /// `Page<InteractionTimelineResponse>` ordered by `occurredAt DESC`). A single
+  /// record's history is small, so we request one generous page rather than
+  /// wiring infinite scroll here.
+  Future<List<InteractionTimelineEntry>> getRecordInteractions({
+    required String linkedType,
+    required String linkedId,
     String? search,
     InteractionType? type,
-    String? agentId,
-  }) {
-    return _client.get<List<InteractionTimelineEntry>>(
+    int size = 100,
+  }) async {
+    final page = await _client.getPaged<InteractionTimelineEntry>(
       ApiPaths.interactionTimeline,
       query: {
+        'linkedType': linkedType,
+        'linkedId': linkedId,
         if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
         'type': ?type?.wire,
-        'agentId': ?agentId,
+        'page': 0,
+        'size': size,
       },
-      decode: (data) => (data as List)
-          .map(
-            (e) => InteractionTimelineEntry.fromJson(e as Map<String, dynamic>),
-          )
-          .toList(),
+      decodeItem: (item) =>
+          InteractionTimelineEntry.fromJson(item as Map<String, dynamic>),
     );
+    return page.items;
   }
 
   Future<InteractionTimelineEntry> getInteraction(String id) {

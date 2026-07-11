@@ -255,7 +255,7 @@ function UserFormDrawer({
 
           <div className="pt-4 flex gap-3 border-t border-slate-100">
             <Button type="submit" variant="primary" isLoading={isPending}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-xs font-semibold">
+              className="w-full bg-primary hover:bg-primary/90 text-xs font-semibold">
               {mode === "create" ? "Create Account" : "Save Changes"}
             </Button>
             <Button type="button" variant="outline" onClick={onClose}
@@ -324,7 +324,7 @@ function UsersTab({ roles }: { roles: Role[] }) {
             </span>
             <Button variant="primary" size="sm" onClick={() => setDrawer({ mode: "create" })}
               leftIcon={<UserPlus className="size-3.5" />}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold">
+              className="bg-primary hover:bg-primary/90 text-white text-xs font-semibold">
               Create User
             </Button>
           </div>
@@ -414,7 +414,7 @@ function UsersTab({ roles }: { roles: Role[] }) {
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => Math.max(0, Math.min(page - 2, totalPages - 5)) + i).map(p => (
                 <button key={p} onClick={() => setPage(p)}
                   className={`size-7 text-xs font-semibold rounded-lg border transition
-                    ${p === page ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "border-slate-200 text-slate-500 hover:bg-white"}`}>
+                    ${p === page ? "bg-primary text-white border-primary shadow-sm" : "border-slate-200 text-slate-500 hover:bg-white"}`}>
                   {p + 1}
                 </button>
               ))}
@@ -518,7 +518,7 @@ function RoleCard({ role, allPermissions }: { role: Role; allPermissions: Permis
           <Button variant="primary" size="sm" onClick={handleSave} disabled={!dirty}
             isLoading={setPermissions.isPending}
             leftIcon={saved ? <Check className="size-3.5" /> : <Save className="size-3.5" />}
-            className={`text-xs font-semibold ${saved ? "bg-emerald-600 hover:bg-emerald-600" : "bg-blue-600 hover:bg-blue-700"} text-white disabled:opacity-40`}>
+            className={`text-xs font-semibold ${saved ? "bg-emerald-600 hover:bg-emerald-600" : "bg-primary hover:bg-primary/90"} text-white disabled:opacity-40`}>
             {saved ? "Saved" : "Save"}
           </Button>
         </div>

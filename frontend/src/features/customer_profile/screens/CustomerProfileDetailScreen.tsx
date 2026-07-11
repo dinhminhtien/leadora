@@ -101,7 +101,15 @@ function EditCustomerDrawer({
 
   function handleSubmit(e: React.FormEvent | React.MouseEvent) {
     e.preventDefault();
-    if (form.fullName!?.trim()) return;
+    if (!form.fullName?.trim()) {
+      toast.error("Full name is required.");
+      return;
+    }
+    // BR-09: a corporate customer profile must name its company.
+    if (form.customerType === "CORPORATE" && !form.companyName?.trim()) {
+      toast.error("Company name is required for a corporate customer.");
+      return;
+    }
     updateMutation.mutate(
       {
         ...form,
@@ -166,7 +174,7 @@ function EditCustomerDrawer({
 
           {isCorporate && (
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Company Name</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Company Name *</label>
               <Input value={form.companyName ?? ""} onChange={e => set("companyName", e.target.value)} />
             </div>
           )}

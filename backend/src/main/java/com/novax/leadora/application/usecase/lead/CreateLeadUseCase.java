@@ -69,6 +69,7 @@ public class CreateLeadUseCase {
                 .address(request.getAddress())
                 .isCorporate(Boolean.TRUE.equals(request.getIsCorporate()))
                 .source(request.getSource())
+                .interestedService(request.getInterestedService())
                 .status(LeadStatus.NEW)
                 .notes(request.getNotes())
                 .assignedUser(assignedUser)
@@ -77,11 +78,16 @@ public class CreateLeadUseCase {
 
         LeadEntity saved = leadRepository.save(lead);
 
-        // UC-17.2: start SLA tracking — non-fatal if no rule configured
-        try {
-            startSlaTrackingUseCase.execute("LEAD_RESPONSE", "LEAD", saved.getLeadId());
-        } catch (Exception e) {
-            log.warn("SLA tracking failed for lead {}: {}", saved.getLeadId(), e.getMessage());
+        // BR-06: SLA/follow-up enforcement begins only once a lead is assigned to a
+        // sales rep. An unassigned draft starts no SLA timer (hence no warning/breach/
+        // escalation, no overdue flag, no reminder). When the lead is later assigned,
+        // UpdateLeadUseCase starts tracking then.
+        if (assignedUser != null) {
+            try {
+                startSlaTrackingUseCase.execute("LEAD_RESPONSE", "LEAD", saved.getLeadId());
+            } catch (Exception e) {
+                log.warn("SLA tracking failed for lead {}: {}", saved.getLeadId(), e.getMessage());
+            }
         }
 
         // UC-15.1: notify the assigned sales rep, if the lead was created already assigned

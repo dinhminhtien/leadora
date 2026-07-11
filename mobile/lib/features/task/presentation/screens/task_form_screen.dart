@@ -138,6 +138,11 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           email: t.customerEmail,
           companyName: t.customerCompanyName,
         );
+      } else if (t.dealId != null) {
+        _entity = TaskEntityLink(
+          dealId: t.dealId,
+          name: t.dealName ?? 'Deal',
+        );
       }
       if (_isResign) {
         // A resign hands the follow-up to someone else — force a fresh pick.
@@ -368,6 +373,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
               description: _description.text,
               leadId: _entity?.leadId,
               customerId: _entity?.customerId,
+              dealId: _entity?.dealId,
               primaryContactName: _primaryContactName.text,
               primaryContactPhone: _primaryContactPhone.text,
               startAt: _startAt,
@@ -387,6 +393,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
               resultNote: _resultNote.text,
               leadId: _entity?.leadId,
               customerId: _entity?.customerId,
+              dealId: _entity?.dealId,
               primaryContactName: _primaryContactName.text,
               primaryContactPhone: _primaryContactPhone.text,
               startAt: _startAt,
@@ -690,6 +697,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
 
 /// The 6 Pipedrive-style activity type chips (3 per row), matching the web
 /// create drawer's selector grid.
+/// Compact quick-select chips for the task activity type — one tap, no dialog.
+/// Wraps to as many per row as the width allows (≈3 on a phone, all six on a
+/// tablet/desktop), keeping the field short so the data inputs get the space.
 class _ActivityTypeGrid extends StatelessWidget {
   const _ActivityTypeGrid({
     required this.selected,
@@ -703,71 +713,83 @@ class _ActivityTypeGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: [
+        for (final type in TaskActivityType.values)
+          _ActivityTypeChip(
+            type: type,
+            selected: selected == type,
+            enabled: enabled,
+            onTap: () => onSelected(type),
+          ),
+      ],
+    );
+  }
+}
+
+class _ActivityTypeChip extends StatelessWidget {
+  const _ActivityTypeChip({
+    required this.type,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final TaskActivityType type;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const gap = 8.0;
-        final width = (constraints.maxWidth - gap * 2) / 3;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            for (final type in TaskActivityType.values)
-              SizedBox(
-                width: width,
-                child: Material(
-                  color: selected == type
-                      ? type.color.withValues(alpha: dark ? 0.24 : 0.10)
-                      : scheme.surfaceContainerLow,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadii.md),
-                    side: BorderSide(
-                      color: selected == type
-                          ? type.color.withValues(alpha: 0.55)
-                          : scheme.outlineVariant.withValues(alpha: 0.6),
-                    ),
-                  ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(AppRadii.md),
-                    onTap: enabled ? () => onSelected(type) : null,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 10,
-                        horizontal: 4,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            type.icon,
-                            size: 18,
-                            color: selected == type
-                                ? type.color
-                                : scheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            type.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: selected == type
-                                  ? type.color
-                                  : scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+    final fg = selected ? type.color : scheme.onSurfaceVariant;
+    // Transparent Material + InkWell gives the ripple; the AnimatedContainer
+    // fades the fill/border on selection so the change reads as a light motion.
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        customBorder: const StadiumBorder(),
+        child: AnimatedContainer(
+          duration: AppDurations.fast,
+          curve: AppCurves.standard,
+          constraints: const BoxConstraints(minHeight: 40),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            color: selected
+                ? type.color.withValues(alpha: dark ? 0.24 : 0.10)
+                : scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            border: Border.all(
+              color: selected
+                  ? type.color.withValues(alpha: 0.55)
+                  : scheme.outlineVariant.withValues(alpha: 0.6),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(type.icon, size: AppIconSize.sm, color: fg),
+              const SizedBox(width: 6),
+              Text(
+                type.label,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: fg,
                 ),
               ),
-          ],
-        );
-      },
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -795,12 +817,28 @@ class _EntityLinkTile extends StatelessWidget {
     if (e == null) {
       return _PickerTile(
         icon: Icons.link_rounded,
-        label: 'Linked lead / customer',
+        label: 'Linked deal / lead / customer',
         value: null,
         placeholder: 'Not linked (optional)',
         onTap: enabled ? onPick : null,
       );
     }
+    final (avatarBg, avatarFg) = switch (e.kind) {
+      TaskEntityKind.lead => (scheme.primaryContainer, scheme.onPrimaryContainer),
+      TaskEntityKind.customer => (
+        scheme.tertiaryContainer,
+        scheme.onTertiaryContainer,
+      ),
+      TaskEntityKind.deal => (
+        scheme.secondaryContainer,
+        scheme.onSecondaryContainer,
+      ),
+    };
+    final kindLabel = switch (e.kind) {
+      TaskEntityKind.lead => 'Lead',
+      TaskEntityKind.customer => 'Customer',
+      TaskEntityKind.deal => 'Deal',
+    };
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
@@ -815,18 +853,16 @@ class _EntityLinkTile extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 16,
-            backgroundColor: e.isLead
-                ? scheme.primaryContainer
-                : scheme.tertiaryContainer,
-            child: Text(
-              Formatters.initials(e.name),
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: e.isLead
-                    ? scheme.onPrimaryContainer
-                    : scheme.onTertiaryContainer,
-              ),
-            ),
+            backgroundColor: avatarBg,
+            child: e.isDeal
+                ? Icon(Icons.handshake_rounded, size: 16, color: avatarFg)
+                : Text(
+                    Formatters.initials(e.name),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: avatarFg,
+                    ),
+                  ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -842,7 +878,7 @@ class _EntityLinkTile extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${e.isLead ? 'Lead' : 'Customer'}'
+                  '$kindLabel'
                   '${e.detail.isEmpty ? '' : ' · ${e.detail}'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

@@ -35,9 +35,12 @@ class _InteractionTimelineScreenState
     extends ConsumerState<InteractionTimelineScreen> {
   InteractionType? _filter;
 
+  InteractionTimelineArg get _arg =>
+      (linkedType: widget.linkedType, linkedId: widget.linkedId);
+
   @override
   Widget build(BuildContext context) {
-    final async = ref.watch(interactionTimelineProvider(widget.linkedId));
+    final async = ref.watch(interactionTimelineProvider(_arg));
 
     return Scaffold(
       appBar: AppBar(
@@ -79,7 +82,7 @@ class _InteractionTimelineScreenState
             child: AsyncValueView<List<InteractionTimelineEntry>>(
               value: async,
               onRetry: () =>
-                  ref.invalidate(interactionTimelineProvider(widget.linkedId)),
+                  ref.invalidate(interactionTimelineProvider(_arg)),
               isEmpty: (items) => _visible(items).isEmpty,
               empty: const EmptyState(
                 icon: Icons.forum_outlined,
@@ -88,9 +91,8 @@ class _InteractionTimelineScreenState
                     'Calls, emails, meetings, and notes will show up here.',
               ),
               data: (items) => RefreshIndicator(
-                onRefresh: () async => ref.invalidate(
-                  interactionTimelineProvider(widget.linkedId),
-                ),
+                onRefresh: () async =>
+                    ref.invalidate(interactionTimelineProvider(_arg)),
                 child: ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(
@@ -102,8 +104,10 @@ class _InteractionTimelineScreenState
                   itemCount: _visible(items).length,
                   separatorBuilder: (_, _) =>
                       const SizedBox(height: AppSpacing.sm),
-                  itemBuilder: (context, index) =>
-                      _InteractionCard(entry: _visible(items)[index]),
+                  itemBuilder: (context, index) => _InteractionCard(
+                    entry: _visible(items)[index],
+                    onTap: () => _openDetail(_visible(items)[index]),
+                  ),
                 ),
               ),
             ),
@@ -116,17 +120,31 @@ class _InteractionTimelineScreenState
   List<InteractionTimelineEntry> _visible(
     List<InteractionTimelineEntry> items,
   ) => _filter == null ? items : items.where((e) => e.type == _filter).toList();
+
+  Future<void> _openDetail(InteractionTimelineEntry entry) async {
+    final changed = await context.pushNamed<bool>(
+      RouteNames.interactionDetail,
+      pathParameters: {'id': entry.id},
+      extra: entry,
+    );
+    // An edit made from the detail screen returns true — refresh the timeline.
+    if (changed == true) ref.invalidate(interactionTimelineProvider(_arg));
+  }
 }
 
 class _InteractionCard extends StatelessWidget {
-  const _InteractionCard({required this.entry});
+  const _InteractionCard({required this.entry, this.onTap});
 
   final InteractionTimelineEntry entry;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return SectionCard(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SectionCard(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,7 +174,12 @@ class _InteractionCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(entry.description, style: theme.textTheme.bodyMedium),
+          Text(
+            entry.description,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium,
+          ),
           const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
@@ -166,15 +189,25 @@ class _InteractionCard extends StatelessWidget {
                 color: theme.colorScheme.outline,
               ),
               const SizedBox(width: AppSpacing.xs),
-              Text(
-                entry.agentName,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              Expanded(
+                child: Text(
+                  entry.agentName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: AppIconSize.md,
+                color: theme.colorScheme.outline,
               ),
             ],
           ),
         ],
+      ),
       ),
     );
   }

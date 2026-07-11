@@ -89,10 +89,10 @@ public class RagService {
             if (hits == null || hits.isEmpty()) {
                 return "";
             }
-            StringBuilder sb = new StringBuilder("== Trích đoạn tài liệu công ty liên quan ==\n");
+            StringBuilder sb = new StringBuilder("== Relevant company document excerpts ==\n");
             for (Document d : hits) {
                 Object title = d.getMetadata().get(META_TITLE);
-                sb.append("[").append(title != null ? title : "Tài liệu").append("]\n");
+                sb.append("[").append(title != null ? title : "Document").append("]\n");
                 sb.append(d.getText()).append("\n---\n");
             }
             return sb.toString();

@@ -263,6 +263,10 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
                   labelText: 'Company name',
                   prefixIcon: Icon(Icons.apartment_outlined),
                 ),
+                // BR-09: a corporate customer must name its company.
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Company name is required for a corporate customer'
+                    : null,
               ),
             ],
             const SizedBox(height: 16),

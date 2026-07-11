@@ -211,7 +211,7 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
             {/* Step banner */}
             <div className="flex items-center gap-2 text-[10px] text-slate-500 font-semibold">
               <span className="flex items-center gap-1">
-                <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[8px] font-bold">1</span>
+                <span className="w-4 h-4 rounded-full bg-primary text-white flex items-center justify-center text-[8px] font-bold">1</span>
                 Review Details
               </span>
               <span className="flex-1 border-t border-slate-200" />

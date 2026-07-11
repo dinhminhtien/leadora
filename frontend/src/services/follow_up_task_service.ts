@@ -42,6 +42,15 @@ export type Task = {
   isOverdue: boolean | null;
   createdAt: string;
   updatedAt: string;
+  // Extended linked-record context — only present on the detail response
+  // (GET /tasks/{id}); omitted on list rows.
+  dealStage?: string | null;
+  dealValue?: number | null;
+  dealCustomerName?: string | null;
+  dealOwnerName?: string | null;
+  leadStatus?: string | null;
+  leadSource?: string | null;
+  leadOwnerName?: string | null;
 };
 
 export type UserSummary = {

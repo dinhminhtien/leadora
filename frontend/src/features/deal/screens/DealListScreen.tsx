@@ -123,6 +123,7 @@ export function DealListScreen() {
         }
       } catch (err) {
         console.error("Failed to fetch deals from API", err);
+        showError("Could not load deals. Please check your connection and try again.");
       }
     };
     const fetchUsers = async () => {

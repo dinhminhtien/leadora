@@ -43,7 +43,7 @@ const SORT_OPTIONS = [
 ];
 
 const EMPTY_FORM: CreateLeadPayload = {
-  fullName: "", email: "", phone: "", companyName: "", address: "", isCorporate: false, source: "Website Inquiry", notes: "",
+  fullName: "", email: "", phone: "", companyName: "", address: "", isCorporate: false, source: "Website Inquiry", interestedService: "", notes: "",
 };
 
 // Lead type (individual vs corporate/organization) — `isCorporate` boolean on the lead.
@@ -273,6 +273,15 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
             </Select>
           </div>
 
+          {/* BR-05: required before a lead enters active follow-up. */}
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600">Interested Service</label>
+            <Input placeholder="e.g. Wedding banquet, Conference, Rooms…"
+              value={form.interestedService ?? ""}
+              onChange={e => field("interestedService", e.target.value)}
+              className="py-1.5" />
+          </div>
+
           {/* Manager only: assign the new lead to a sales staff member.
               Staff leave this blank — their lead is created unassigned and shows under "Created by me". */}
           {canAssign && (
@@ -335,7 +344,7 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
 
           <div className="pt-4 flex gap-3 border-t border-slate-100">
             <Button type="submit" variant="primary" isLoading={createMutation.isPending}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-xs font-semibold">
+              className="w-full bg-primary hover:bg-primary/90 text-xs font-semibold">
               Create Lead
             </Button>
             <Button type="button" variant="outline" onClick={onClose}
@@ -524,7 +533,7 @@ function LeadTable({
             {pageNumbers.map(p => (
               <button key={p} onClick={() => onPageChange(p)}
                 className={`size-7 text-xs font-semibold rounded-lg border transition
-                  ${p === page ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "border-slate-200 text-slate-500 hover:bg-white"}`}>
+                  ${p === page ? "bg-primary text-white border-primary shadow-sm" : "border-slate-200 text-slate-500 hover:bg-white"}`}>
                 {p + 1}
               </button>
             ))}
@@ -703,7 +712,7 @@ export function LeadListScreen() {
                     ${sortOption === opt.value ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}>
                   <opt.icon className="size-3.5 text-slate-400" />
                   {opt.label}
-                  {sortOption === opt.value && <span className="ml-auto size-1.5 rounded-full bg-blue-500" />}
+                  {sortOption === opt.value && <span className="ml-auto size-1.5 rounded-full bg-primary" />}
                 </button>
               ))}
             </div>
@@ -719,7 +728,7 @@ export function LeadListScreen() {
           <SlidersHorizontal className="size-3.5" />
           Filters
           {activeFilterCount > 0 && (
-            <span className="flex items-center justify-center size-4 rounded-full bg-blue-600 text-white text-[9px] font-extrabold">
+            <span className="flex items-center justify-center size-4 rounded-full bg-primary text-white text-[9px] font-extrabold">
               {activeFilterCount}
             </span>
           )}
@@ -815,7 +824,7 @@ export function LeadListScreen() {
         <div className="flex gap-2">
           <Button variant="primary" size="sm" onClick={() => setDrawer(true)}
             leftIcon={<Plus className="size-3.5" />}
-            className="bg-blue-600 hover:bg-blue-700 font-semibold text-xs text-white">
+            className="bg-primary hover:bg-primary/90 font-semibold text-xs text-white">
             New Lead
           </Button>
         </div>

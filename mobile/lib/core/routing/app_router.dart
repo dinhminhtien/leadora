@@ -21,6 +21,9 @@ import '../../features/deal/presentation/screens/pipeline_screen.dart';
 import '../../features/payment/presentation/screens/generate_payment_screen.dart';
 import '../../features/payment/presentation/screens/payment_detail_screen.dart';
 import '../../features/payment/presentation/screens/payment_list_screen.dart';
+import '../../features/interaction/data/interaction_models.dart';
+import '../../features/interaction/presentation/screens/edit_interaction_screen.dart';
+import '../../features/interaction/presentation/screens/interaction_detail_screen.dart';
 import '../../features/interaction/presentation/screens/interaction_timeline_screen.dart';
 import '../../features/interaction/presentation/screens/log_interaction_screen.dart';
 import '../../features/lead/presentation/screens/create_lead_screen.dart';
@@ -239,6 +242,24 @@ final routerProvider = Provider<GoRouter>((ref) {
           linkedName: state.uri.queryParameters['name'],
           initialType: state.uri.queryParameters['type'],
         ),
+      ),
+      // View Interaction Detail — the pushing card passes the loaded entry as
+      // `extra` for an instant header; the screen refreshes it via its provider.
+      GoRoute(
+        path: Routes.interactionDetail,
+        name: RouteNames.interactionDetail,
+        builder: (_, state) => InteractionDetailScreen(
+          id: state.pathParameters['id']!,
+          initial: state.extra is InteractionTimelineEntry
+              ? state.extra as InteractionTimelineEntry
+              : null,
+        ),
+      ),
+      GoRoute(
+        path: Routes.editInteraction,
+        name: RouteNames.editInteraction,
+        builder: (_, state) =>
+            EditInteractionScreen(entry: state.extra as InteractionTimelineEntry),
       ),
 
       // Authenticated tabbed area. A custom branch container cross-fades

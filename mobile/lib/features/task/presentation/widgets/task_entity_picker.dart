@@ -5,36 +5,58 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../shared/formatters.dart';
 import '../../../customer/data/customer_repository.dart';
+import '../../../deal/data/deal_repository.dart';
 import '../../../lead/data/lead_models.dart';
 import '../../../lead/data/lead_repository.dart';
 
-/// The lead **or** customer a task is linked to. Mirrors the web
-/// `EntitySearchPicker` selection — exactly one of [leadId] / [customerId]
-/// is set.
+/// Which kind of record a task is being linked to.
+enum TaskEntityKind { lead, customer, deal }
+
+/// The lead, customer **or** deal a task is linked to. Mirrors the web
+/// `EntitySearchPicker` selection — exactly one of [leadId] / [customerId] /
+/// [dealId] is set (the backend task supports all three FKs).
 class TaskEntityLink {
   const TaskEntityLink({
     this.leadId,
     this.customerId,
+    this.dealId,
     required this.name,
     this.phone,
     this.email,
     this.companyName,
+    this.subtitle,
   }) : assert(
-         (leadId != null) ^ (customerId != null),
-         'Link exactly one of lead / customer',
+         (leadId != null ? 1 : 0) +
+                 (customerId != null ? 1 : 0) +
+                 (dealId != null ? 1 : 0) ==
+             1,
+         'Link exactly one of lead / customer / deal',
        );
 
   final String? leadId;
   final String? customerId;
+  final String? dealId;
   final String name;
   final String? phone;
   final String? email;
   final String? companyName;
 
-  bool get isLead => leadId != null;
+  /// Descriptive line for deals (e.g. stage), where the contact fields below
+  /// don't apply.
+  final String? subtitle;
 
-  String get detail =>
-      [email, phone, companyName].whereType<String>().join(' · ');
+  bool get isLead => leadId != null;
+  bool get isDeal => dealId != null;
+
+  TaskEntityKind get kind => isDeal
+      ? TaskEntityKind.deal
+      : isLead
+      ? TaskEntityKind.lead
+      : TaskEntityKind.customer;
+
+  String get detail => subtitle != null && subtitle!.isNotEmpty
+      ? subtitle!
+      : [email, phone, companyName].whereType<String>().join(' · ');
 }
 
 /// Searchable Lead / Customer picker used by the task form — the mobile
@@ -49,13 +71,19 @@ class TaskEntityPickerSheet extends ConsumerStatefulWidget {
 }
 
 class _TaskEntityPickerSheetState extends ConsumerState<TaskEntityPickerSheet> {
-  bool _customerTab = false;
+  TaskEntityKind _kind = TaskEntityKind.lead;
   final _search = TextEditingController();
   Timer? _debounce;
   String _query = '';
   bool _loading = false;
   List<TaskEntityLink> _results = const [];
   Object? _error;
+
+  String get _kindPlural => switch (_kind) {
+    TaskEntityKind.lead => 'leads',
+    TaskEntityKind.customer => 'customers',
+    TaskEntityKind.deal => 'deals',
+  };
 
   @override
   void dispose() {
@@ -72,10 +100,10 @@ class _TaskEntityPickerSheetState extends ConsumerState<TaskEntityPickerSheet> {
     });
   }
 
-  void _switchTab(bool customer) {
-    if (_customerTab == customer) return;
+  void _switchKind(TaskEntityKind kind) {
+    if (_kind == kind) return;
     setState(() {
-      _customerTab = customer;
+      _kind = kind;
       _results = const [];
       _error = null;
     });
@@ -96,46 +124,59 @@ class _TaskEntityPickerSheetState extends ConsumerState<TaskEntityPickerSheet> {
       _error = null;
     });
     final query = _query;
-    final customerTab = _customerTab;
+    final kind = _kind;
     try {
       final List<TaskEntityLink> results;
-      if (customerTab) {
-        final page = await ref
-            .read(customerRepositoryProvider)
-            .getCustomers(search: query, size: 8);
-        results = [
-          for (final c in page.items)
-            TaskEntityLink(
-              customerId: c.customerId,
-              name: c.fullName,
-              phone: c.phone,
-              email: c.email,
-              companyName: c.companyName,
-            ),
-        ];
-      } else {
-        final page = await ref
-            .read(leadRepositoryProvider)
-            .getLeads(filters: LeadFilters(search: query), size: 8);
-        results = [
-          for (final l in page.items)
-            TaskEntityLink(
-              leadId: l.leadId,
-              name: l.fullName,
-              phone: l.phone,
-              email: l.email,
-              companyName: l.companyName,
-            ),
-        ];
+      switch (kind) {
+        case TaskEntityKind.customer:
+          final page = await ref
+              .read(customerRepositoryProvider)
+              .getCustomers(search: query, size: 8);
+          results = [
+            for (final c in page.items)
+              TaskEntityLink(
+                customerId: c.customerId,
+                name: c.fullName,
+                phone: c.phone,
+                email: c.email,
+                companyName: c.companyName,
+              ),
+          ];
+        case TaskEntityKind.deal:
+          final deals = await ref
+              .read(dealRepositoryProvider)
+              .getDeals(search: query);
+          results = [
+            for (final d in deals.take(8))
+              TaskEntityLink(
+                dealId: d.id,
+                name: d.title,
+                subtitle: d.stageLabel ?? d.stage?.label,
+              ),
+          ];
+        case TaskEntityKind.lead:
+          final page = await ref
+              .read(leadRepositoryProvider)
+              .getLeads(filters: LeadFilters(search: query), size: 8);
+          results = [
+            for (final l in page.items)
+              TaskEntityLink(
+                leadId: l.leadId,
+                name: l.fullName,
+                phone: l.phone,
+                email: l.email,
+                companyName: l.companyName,
+              ),
+          ];
       }
-      // Ignore responses that arrive after the query/tab moved on.
-      if (!mounted || query != _query || customerTab != _customerTab) return;
+      // Ignore responses that arrive after the query/kind moved on.
+      if (!mounted || query != _query || kind != _kind) return;
       setState(() {
         _results = results;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted || query != _query || customerTab != _customerTab) return;
+      if (!mounted || query != _query || kind != _kind) return;
       setState(() {
         _error = e;
         _loading = false;
@@ -168,22 +209,27 @@ class _TaskEntityPickerSheetState extends ConsumerState<TaskEntityPickerSheet> {
                 ),
               ),
               const SizedBox(height: 12),
-              SegmentedButton<bool>(
+              SegmentedButton<TaskEntityKind>(
                 showSelectedIcon: false,
                 segments: const [
                   ButtonSegment(
-                    value: false,
+                    value: TaskEntityKind.lead,
                     label: Text('Lead'),
                     icon: Icon(Icons.person_search_rounded, size: 18),
                   ),
                   ButtonSegment(
-                    value: true,
+                    value: TaskEntityKind.customer,
                     label: Text('Customer'),
                     icon: Icon(Icons.contacts_rounded, size: 18),
                   ),
+                  ButtonSegment(
+                    value: TaskEntityKind.deal,
+                    label: Text('Deal'),
+                    icon: Icon(Icons.handshake_rounded, size: 18),
+                  ),
                 ],
-                selected: {_customerTab},
-                onSelectionChanged: (s) => _switchTab(s.first),
+                selected: {_kind},
+                onSelectionChanged: (s) => _switchKind(s.first),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -192,9 +238,7 @@ class _TaskEntityPickerSheetState extends ConsumerState<TaskEntityPickerSheet> {
                 onChanged: _onChanged,
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
-                  hintText: _customerTab
-                      ? 'Search customers…'
-                      : 'Search leads…',
+                  hintText: 'Search $_kindPlural…',
                   prefixIcon: const Icon(Icons.search_rounded),
                   isDense: true,
                 ),
@@ -227,36 +271,51 @@ class _TaskEntityPickerSheetState extends ConsumerState<TaskEntityPickerSheet> {
     }
     if (_results.isEmpty) {
       return _CenteredNote(
-        icon: Icons.person_off_outlined,
-        message:
-            'No ${_customerTab ? 'customers' : 'leads'} found for "$_query".',
+        icon: Icons.search_off_rounded,
+        message: 'No $_kindPlural found for "$_query".',
       );
     }
     return ListView.builder(
       itemCount: _results.length,
       itemBuilder: (context, i) {
         final item = _results[i];
+        final (avatarBg, avatarFg) = switch (item.kind) {
+          TaskEntityKind.lead => (
+            scheme.primaryContainer,
+            scheme.onPrimaryContainer,
+          ),
+          TaskEntityKind.customer => (
+            scheme.tertiaryContainer,
+            scheme.onTertiaryContainer,
+          ),
+          TaskEntityKind.deal => (
+            scheme.secondaryContainer,
+            scheme.onSecondaryContainer,
+          ),
+        };
         return ListTile(
           leading: CircleAvatar(
-            backgroundColor: item.isLead
-                ? scheme.primaryContainer
-                : scheme.tertiaryContainer,
-            child: Text(
-              Formatters.initials(item.name),
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: item.isLead
-                    ? scheme.onPrimaryContainer
-                    : scheme.onTertiaryContainer,
-              ),
-            ),
+            backgroundColor: avatarBg,
+            child: item.isDeal
+                ? Icon(Icons.handshake_rounded, size: 18, color: avatarFg)
+                : Text(
+                    Formatters.initials(item.name),
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: avatarFg,
+                    ),
+                  ),
           ),
           title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: item.detail.isEmpty
               ? null
               : Text(item.detail, maxLines: 1, overflow: TextOverflow.ellipsis),
           trailing: Text(
-            item.isLead ? 'LEAD' : 'CUSTOMER',
+            switch (item.kind) {
+              TaskEntityKind.lead => 'LEAD',
+              TaskEntityKind.customer => 'CUSTOMER',
+              TaskEntityKind.deal => 'DEAL',
+            },
             style: theme.textTheme.labelSmall?.copyWith(
               color: scheme.onSurfaceVariant,
               fontWeight: FontWeight.w700,

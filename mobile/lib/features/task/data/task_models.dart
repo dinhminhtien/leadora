@@ -102,6 +102,13 @@ class Task {
     this.customerCompanyName,
     this.dealId,
     this.dealName,
+    this.dealStage,
+    this.dealValue,
+    this.dealCustomerName,
+    this.dealOwnerName,
+    this.leadStatus,
+    this.leadSource,
+    this.leadOwnerName,
     this.primaryContactName,
     this.primaryContactPhone,
     this.startAt,
@@ -133,6 +140,17 @@ class Task {
   final String? customerCompanyName;
   final String? dealId;
   final String? dealName;
+
+  // Extended linked-record context — present only on the detail response
+  // (GET /tasks/{id}); null on list rows. Backs the Related Record card.
+  final String? dealStage;
+  final double? dealValue;
+  final String? dealCustomerName;
+  final String? dealOwnerName;
+  final String? leadStatus;
+  final String? leadSource;
+  final String? leadOwnerName;
+
   final String? primaryContactName;
   final String? primaryContactPhone;
   final DateTime? startAt;
@@ -186,6 +204,13 @@ class Task {
     customerCompanyName: customerCompanyName,
     dealId: dealId,
     dealName: dealName,
+    dealStage: dealStage,
+    dealValue: dealValue,
+    dealCustomerName: dealCustomerName,
+    dealOwnerName: dealOwnerName,
+    leadStatus: leadStatus,
+    leadSource: leadSource,
+    leadOwnerName: leadOwnerName,
     primaryContactName: primaryContactName,
     primaryContactPhone: primaryContactPhone,
     startAt: startAt,
@@ -221,6 +246,13 @@ class Task {
       customerCompanyName: json['customerCompanyName'] as String?,
       dealId: json['dealId'] as String?,
       dealName: json['dealName'] as String?,
+      dealStage: json['dealStage'] as String?,
+      dealValue: (json['dealValue'] as num?)?.toDouble(),
+      dealCustomerName: json['dealCustomerName'] as String?,
+      dealOwnerName: json['dealOwnerName'] as String?,
+      leadStatus: json['leadStatus'] as String?,
+      leadSource: json['leadSource'] as String?,
+      leadOwnerName: json['leadOwnerName'] as String?,
       primaryContactName: json['primaryContactName'] as String?,
       primaryContactPhone: json['primaryContactPhone'] as String?,
       startAt: parse(json['startAt']),

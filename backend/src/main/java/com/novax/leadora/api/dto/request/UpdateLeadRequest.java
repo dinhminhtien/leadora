@@ -33,6 +33,10 @@ public class UpdateLeadRequest {
     @Size(max = 100)
     private String source;
 
+    /** BR-05: hotel service/product the lead is interested in. */
+    @Size(max = 100)
+    private String interestedService;
+
     private LeadStatus status;
 
     private String notes;

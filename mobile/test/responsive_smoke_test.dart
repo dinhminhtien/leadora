@@ -29,6 +29,7 @@ import 'package:leadora_mobile/features/dashboard/presentation/screens/more_scre
 import 'package:leadora_mobile/features/deal/presentation/screens/create_deal_screen.dart';
 import 'package:leadora_mobile/features/deal/presentation/screens/deal_detail_screen.dart';
 import 'package:leadora_mobile/features/deal/presentation/screens/deal_list_screen.dart';
+import 'package:leadora_mobile/features/interaction/presentation/screens/interaction_detail_screen.dart';
 import 'package:leadora_mobile/features/interaction/presentation/screens/interaction_timeline_screen.dart';
 import 'package:leadora_mobile/features/interaction/presentation/screens/log_interaction_screen.dart';
 import 'package:leadora_mobile/features/lead/presentation/screens/create_lead_screen.dart';
@@ -328,17 +329,47 @@ final Map<String, Object?> _cannedByPath = {
       'createdAt': _iso(const Duration(days: -1)),
     },
   ],
-  '/interaction-timeline': [
+  // Spring `Page<InteractionTimelineResponse>` shape — the mobile client now
+  // reads the per-record timeline via getPaged (linkedType+linkedId filter).
+  '/interaction-timeline': {
+    'content': [
+      {
+        'id': 'i1',
+        'type': 'CALL',
+        'description': 'Intro call — discussed rate expectations and dates.',
+        'agentName': 'Minh Nguyen',
+        'linkedName': 'Saigon Riverside Hotel',
+        'linkedType': 'CUSTOMER',
+        'linkedId': 'c1',
+        'occurredAt': _iso(const Duration(days: -3)),
+        'createdAt': _iso(const Duration(days: -3)),
+      },
+    ],
+    'number': 0,
+    'size': 20,
+    'totalElements': 1,
+    'totalPages': 1,
+    'first': true,
+    'last': true,
+  },
+  '/interaction-timeline/i1': {
+    'id': 'i1',
+    'type': 'CALL',
+    'description': 'Intro call — discussed rate expectations and dates.',
+    'agentName': 'Minh Nguyen',
+    'linkedName': 'Saigon Riverside Hotel',
+    'linkedType': 'CUSTOMER',
+    'linkedId': 'c1',
+    'occurredAt': _iso(const Duration(days: -3)),
+    'createdAt': _iso(const Duration(days: -3)),
+  },
+  '/interaction-timeline/i1/audit-logs': [
     {
-      'id': 'i1',
-      'type': 'CALL',
-      'description': 'Intro call — discussed rate expectations and dates.',
-      'agentName': 'Minh Nguyen',
-      'linkedName': 'Saigon Riverside Hotel',
-      'linkedType': 'CUSTOMER',
-      'linkedId': 'c1',
-      'occurredAt': _iso(const Duration(days: -3)),
-      'createdAt': _iso(const Duration(days: -3)),
+      'auditId': 'a1',
+      'action': 'CREATED',
+      'changedByName': 'Minh Nguyen',
+      'changedByRole': 'SALES',
+      'timestamp': _iso(const Duration(days: -3)),
     },
   ],
   '/users': [
@@ -736,6 +767,11 @@ void main() {
       linkedId: 'c1',
       linkedName: 'Saigon Riverside Hotel',
     ),
+  );
+  smokeTest(
+    'InteractionDetailScreen',
+    () => const InteractionDetailScreen(id: 'i1'),
+    expectText: 'Intro call — discussed rate expectations and dates.',
   );
 
   // Browse entry points
