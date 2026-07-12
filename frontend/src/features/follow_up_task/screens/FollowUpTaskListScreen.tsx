@@ -1957,7 +1957,7 @@ export function FollowUpTaskListScreen() {
     return (
       <tr
         ref={setRowRef(task.taskId)}
-        className={`group border-b border-slate-200 dark:border-slate-700 transition-colors cursor-pointer ${done ? "opacity-60" : task.status === "CANCELLED" ? "opacity-40" : ""} ${overdue ? "hover:bg-[#4F1B1C]/40 dark:hover:bg-[#4F1B1C]/40" : "hover:bg-slate-100/60 dark:hover:bg-slate-800/80"} ${highlightedId === task.taskId ? "!bg-amber-50 dark:!bg-amber-500/10 ring-2 ring-inset ring-amber-400" : ""}`}
+        className={`group border-b border-slate-200 dark:border-slate-700 transition-colors cursor-pointer ${done ? "opacity-60" : task.status === "CANCELLED" ? "opacity-40" : ""} ${overdue ? "hover:bg-[#4F1B1C]/40 dark:hover:bg-[#4F1B1C]/40" : "hover:bg-slate-100/60 dark:hover:bg-slate-800/80"} ${highlightedId === task.taskId ? "bg-amber-50! dark:bg-amber-500/10! ring-2 ring-inset ring-amber-400" : ""}`}
         onClick={() => setSelectedTask(task)}
       >
         {/* Done toggle */}

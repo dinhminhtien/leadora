@@ -216,8 +216,8 @@ export function FloatingAssistant() {
           style={fullscreen ? undefined : { left: panelLeft, top: panelTop, width: PANEL_W, height: panelH }}
           className={
             fullscreen
-              ? "fixed inset-3 z-[62] flex flex-col overflow-hidden rounded-2xl border border-primary/20 bg-white shadow-2xl shadow-black/10 animate-in fade-in zoom-in-95 duration-200"
-              : "fixed z-[60] flex flex-col overflow-hidden rounded-3xl border border-primary/20 bg-white shadow-2xl shadow-black/10 animate-in fade-in zoom-in-95 duration-200"
+              ? "fixed inset-3 z-62 flex flex-col overflow-hidden rounded-2xl border border-primary/20 bg-white shadow-2xl shadow-black/10 animate-in fade-in zoom-in-95 duration-200"
+              : "fixed z-60 flex flex-col overflow-hidden rounded-3xl border border-primary/20 bg-white shadow-2xl shadow-black/10 animate-in fade-in zoom-in-95 duration-200"
           }
         >
           <AssistantPanel
@@ -238,7 +238,7 @@ export function FloatingAssistant() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         style={{ left: launcher.x, top: launcher.y, width: LAUNCHER_SIZE, height: LAUNCHER_SIZE }}
-        className="fixed z-[61] flex touch-none select-none items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary shadow-xl shadow-black/20 ring-4 ring-white transition-transform duration-150 hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing"
+        className="fixed z-61 flex touch-none select-none items-center justify-center rounded-full bg-linear-to-br from-primary to-primary shadow-xl shadow-black/20 ring-4 ring-white transition-transform duration-150 hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing"
         title={isOpen ? "Minimize Lia" : "Open Lia assistant"}
         aria-label="Lia assistant"
       >
@@ -431,7 +431,7 @@ function AssistantPanel({
   return (
     <>
       {/* Header */}
-      <div className="flex items-center gap-2.5 bg-gradient-to-r from-primary to-primary px-3.5 py-2.5 text-white">
+      <div className="flex items-center gap-2.5 bg-linear-to-r from-primary to-primary px-3.5 py-2.5 text-white">
         <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white/20">
           <LiaMascot variant="head" size={30} animated={false} />
         </div>
@@ -597,7 +597,7 @@ function ConfirmDialog({
   // Full-widget overlay + centered card. z-index sits above the panel (z-60/62) and launcher (z-61).
   return (
     <div
-      className="absolute inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 animate-in fade-in duration-150"
+      className="absolute inset-0 z-70 flex items-center justify-center bg-black/40 p-4 animate-in fade-in duration-150"
       onClick={onCancel}
       role="dialog"
       aria-modal="true"
@@ -905,7 +905,7 @@ const MD_COMPONENTS: Components = {
 
 function ChatMarkdown({ text }: { text: string }) {
   return (
-    <div className="break-words">
+    <div className="wrap-break-word">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
         {text}
       </ReactMarkdown>

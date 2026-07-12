@@ -17,9 +17,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+
+import java.time.Duration;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,7 +42,16 @@ public class PaymentCheckScheduler {
 
     private final PaymentRepository paymentRepository;
     private final UpdatePaymentStatusUseCase updatePaymentStatusUseCase;
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate = createRestTemplate();
+
+    private static RestTemplate createRestTemplate() {
+        java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofSeconds(10));
+        return new RestTemplate(factory);
+    }
 
     private static final Pattern MEMO_PATTERN = Pattern.compile(
             "LEADORAPAY([0-9A-F-]{15,36})", 
@@ -153,11 +165,14 @@ public class PaymentCheckScheduler {
         List<BankTransaction> results = new ArrayList<>();
         try {
             HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.CONNECTION, "close");
+            headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            headers.set(HttpHeaders.ACCEPT, "application/json");
             
             if ("casso".equalsIgnoreCase(apiProvider)) {
                 headers.set("Authorization", "Apikey " + apiToken);
                 HttpEntity<Void> entity = new HttpEntity<>(headers);
-                ResponseEntity<CassoResponse> response = restTemplate.exchange(
+                ResponseEntity<CassoResponse> response = exchangeWithRetry(
                         apiUrl, HttpMethod.GET, entity, CassoResponse.class);
                 
                 if (response.getBody() != null && response.getBody().getError() == 0 && response.getBody().getData() != null) {
@@ -177,7 +192,7 @@ public class PaymentCheckScheduler {
                 // Default to SePay API
                 headers.set("Authorization", "Bearer " + apiToken);
                 HttpEntity<Void> entity = new HttpEntity<>(headers);
-                ResponseEntity<SePayResponse> response = restTemplate.exchange(
+                ResponseEntity<SePayResponse> response = exchangeWithRetry(
                         apiUrl, HttpMethod.GET, entity, SePayResponse.class);
                 
                 if (response.getBody() != null) {
@@ -201,9 +216,34 @@ public class PaymentCheckScheduler {
                 }
             }
         } catch (Exception e) {
-            log.error("Failed to fetch transaction logs from " + apiProvider + " API gateway", e);
+            log.error("Failed to fetch transaction logs from " + apiProvider + " API gateway after retries", e);
         }
         return results;
+    }
+
+    private <T> ResponseEntity<T> exchangeWithRetry(
+            String url, HttpMethod method, HttpEntity<?> requestEntity, Class<T> responseType) {
+        int maxAttempts = 3;
+        long backoffMs = 1000;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return restTemplate.exchange(url, method, requestEntity, responseType);
+            } catch (org.springframework.web.client.ResourceAccessException e) {
+                if (attempt == maxAttempts) {
+                    throw e;
+                }
+                log.warn("Transient network error on request to {} (attempt {}/{}): {}. Retrying in {}ms...", 
+                        url, attempt, maxAttempts, e.getMessage(), backoffMs);
+                try {
+                    Thread.sleep(backoffMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+                backoffMs *= 2; // Exponential backoff
+            }
+        }
+        throw new IllegalStateException("Unexpected state in exchangeWithRetry");
     }
 
     @Getter
