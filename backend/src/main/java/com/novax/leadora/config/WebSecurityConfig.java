@@ -71,6 +71,15 @@ public class WebSecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
                         .bearerTokenResolver(request -> {
+                            String path = request.getRequestURI();
+                            if ("/".equals(path) || "/error".equals(path) || "/api/v1/health".equals(path)
+                                    || path.startsWith("/api/v1/feedback/public/")
+                                    || path.startsWith("/api/v1/auth/login")
+                                    || path.startsWith("/api/v1/auth/logout")
+                                    || path.startsWith("/api/v1/auth/forgot-password")
+                                    || path.startsWith("/api/v1/auth/reset-password")) {
+                                return null;
+                            }
                             // Extract Bearer token without throwing — returns null instead of throwing on
                             // invalid input
                             String header = request.getHeader("Authorization");
