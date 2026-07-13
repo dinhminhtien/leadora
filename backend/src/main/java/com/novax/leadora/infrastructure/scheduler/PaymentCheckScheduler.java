@@ -1,6 +1,7 @@
 package com.novax.leadora.infrastructure.scheduler;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novax.leadora.api.dto.request.UpdatePaymentStatusRequest;
 import com.novax.leadora.application.usecase.payment.UpdatePaymentStatusUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.PaymentEntity;
@@ -17,9 +18,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+
+import java.time.Duration;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,7 +43,18 @@ public class PaymentCheckScheduler {
 
     private final PaymentRepository paymentRepository;
     private final UpdatePaymentStatusUseCase updatePaymentStatusUseCase;
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate = createRestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private static RestTemplate createRestTemplate() {
+        java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
+                .version(java.net.http.HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(15))
+                .build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofSeconds(15));
+        return new RestTemplate(factory);
+    }
 
     private static final Pattern MEMO_PATTERN = Pattern.compile(
             "LEADORAPAY([0-9A-F-]{15,36})", 
@@ -153,57 +168,124 @@ public class PaymentCheckScheduler {
         List<BankTransaction> results = new ArrayList<>();
         try {
             HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.CONNECTION, "close");
+            headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            headers.set(HttpHeaders.ACCEPT, "application/json");
             
             if ("casso".equalsIgnoreCase(apiProvider)) {
                 headers.set("Authorization", "Apikey " + apiToken);
                 HttpEntity<Void> entity = new HttpEntity<>(headers);
-                ResponseEntity<CassoResponse> response = restTemplate.exchange(
-                        apiUrl, HttpMethod.GET, entity, CassoResponse.class);
+                ResponseEntity<String> response = exchangeWithRetry(
+                        apiUrl, HttpMethod.GET, entity, String.class);
                 
-                if (response.getBody() != null && response.getBody().getError() == 0 && response.getBody().getData() != null) {
-                    List<CassoRecord> records = response.getBody().getData().getRecords();
-                    if (records != null) {
-                        for (CassoRecord rec : records) {
-                            results.add(BankTransaction.builder()
-                                    .referenceNumber(rec.getTid())
-                                    .creditAmount(rec.getAmount())
-                                    .description(rec.getDescription())
-                                    .transactionDate(rec.getWhen())
-                                    .build());
+                String body = response.getBody();
+                if (body == null || body.trim().isEmpty()) {
+                    log.warn("Received empty response from Casso API gateway");
+                    return results;
+                }
+                
+                if (body.trim().startsWith("<")) {
+                    log.warn("Received HTML/XML response from Casso API gateway (possibly WAF block or server error): {}", 
+                            body.substring(0, Math.min(body.length(), 200)));
+                    return results;
+                }
+
+                try {
+                    CassoResponse cassoResponse = objectMapper.readValue(body, CassoResponse.class);
+                    if (cassoResponse != null && cassoResponse.getError() == 0 && cassoResponse.getData() != null) {
+                        List<CassoRecord> records = cassoResponse.getData().getRecords();
+                        if (records != null) {
+                            for (CassoRecord rec : records) {
+                                results.add(BankTransaction.builder()
+                                        .referenceNumber(rec.getTid())
+                                        .creditAmount(rec.getAmount())
+                                        .description(rec.getDescription())
+                                        .transactionDate(rec.getWhen())
+                                        .build());
+                            }
                         }
                     }
+                } catch (Exception parseEx) {
+                    log.error("Failed to parse Casso JSON response: {}. Content: {}", 
+                            parseEx.getMessage(), body.substring(0, Math.min(body.length(), 500)));
                 }
             } else {
                 // Default to SePay API
                 headers.set("Authorization", "Bearer " + apiToken);
                 HttpEntity<Void> entity = new HttpEntity<>(headers);
-                ResponseEntity<SePayResponse> response = restTemplate.exchange(
-                        apiUrl, HttpMethod.GET, entity, SePayResponse.class);
+                ResponseEntity<String> response = exchangeWithRetry(
+                        apiUrl, HttpMethod.GET, entity, String.class);
                 
-                if (response.getBody() != null) {
-                    List<SePayTransaction> txns = response.getBody().getTransactions();
-                    if (txns == null) {
-                        txns = response.getBody().getData();
-                    }
-                    if (txns != null) {
-                        for (SePayTransaction t : txns) {
-                            // Only count credit transactions (amount_in > 0)
-                            if (t.getAmount_in() > 0) {
-                                results.add(BankTransaction.builder()
-                                        .referenceNumber(t.getReference_number())
-                                        .creditAmount(t.getAmount_in())
-                                        .description(t.getTransaction_content())
-                                        .transactionDate(t.getTransaction_date())
-                                        .build());
+                String body = response.getBody();
+                if (body == null || body.trim().isEmpty()) {
+                    log.warn("Received empty response from SePay API gateway");
+                    return results;
+                }
+                
+                if (body.trim().startsWith("<")) {
+                    log.warn("Received HTML/XML response from SePay API gateway (possibly WAF block or server error): {}", 
+                            body.substring(0, Math.min(body.length(), 200)));
+                    return results;
+                }
+
+                try {
+                    SePayResponse sePayResponse = objectMapper.readValue(body, SePayResponse.class);
+                    if (sePayResponse != null) {
+                        List<SePayTransaction> txns = sePayResponse.getTransactions();
+                        if (txns == null) {
+                            txns = sePayResponse.getData();
+                        }
+                        if (txns != null) {
+                            for (SePayTransaction t : txns) {
+                                // Only count credit transactions (amount_in > 0)
+                                if (t.getAmount_in() > 0) {
+                                    results.add(BankTransaction.builder()
+                                            .referenceNumber(t.getReference_number())
+                                            .creditAmount(t.getAmount_in())
+                                            .description(t.getTransaction_content())
+                                            .transactionDate(t.getTransaction_date())
+                                            .build());
+                                }
                             }
                         }
                     }
+                } catch (Exception parseEx) {
+                    log.error("Failed to parse SePay JSON response: {}. Content: {}", 
+                            parseEx.getMessage(), body.substring(0, Math.min(body.length(), 500)));
                 }
             }
+        } catch (org.springframework.web.client.RestClientException e) {
+            log.warn("Failed to fetch transaction logs from {} API gateway: {} (root cause: {})", 
+                    apiProvider, e.getMessage(), e.getRootCause() != null ? e.getRootCause().getMessage() : "unknown");
         } catch (Exception e) {
-            log.error("Failed to fetch transaction logs from " + apiProvider + " API gateway", e);
+            log.error("Unexpected error fetching transaction logs from " + apiProvider, e);
         }
         return results;
+    }
+
+    private <T> ResponseEntity<T> exchangeWithRetry(
+            String url, HttpMethod method, HttpEntity<?> requestEntity, Class<T> responseType) {
+        int maxAttempts = 3;
+        long backoffMs = 1000;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return restTemplate.exchange(url, method, requestEntity, responseType);
+            } catch (org.springframework.web.client.RestClientException e) {
+                if (attempt == maxAttempts) {
+                    throw e;
+                }
+                log.warn("Transient network error on request to {} (attempt {}/{}): {}. Retrying in {}ms...", 
+                        url, attempt, maxAttempts, e.getMessage(), backoffMs);
+                try {
+                    Thread.sleep(backoffMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+                backoffMs *= 2; // Exponential backoff
+            }
+        }
+        throw new IllegalStateException("Unexpected state in exchangeWithRetry");
     }
 
     @Getter
