@@ -62,7 +62,7 @@ public class WebSecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/forgot-password",
+                        .requestMatchers("/", "/error", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/forgot-password",
                                 "/api/v1/auth/reset-password", "/api/v1/health", "/api/v1/feedback/public/**")
                         .permitAll()
                         .requestMatchers("/api/v1/auth/profile").authenticated()

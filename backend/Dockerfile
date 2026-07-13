@@ -2,6 +2,9 @@
 FROM maven:3.9.6-eclipse-temurin-21-alpine AS builder
 WORKDIR /app
 
+# Upgrade OS packages to patch vulnerabilities (p11-kit, expat, etc.)
+RUN apk update && apk upgrade --no-cache
+
 # Copy pom.xml to download dependencies first (leveraging Docker layer cache)
 COPY pom.xml .
 RUN mvn dependency:go-offline -B
@@ -13,6 +16,9 @@ RUN mvn clean package -DskipTests -B
 # Stage 2: Create the lightweight runtime container
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
+
+# Upgrade OS packages to patch vulnerabilities (p11-kit, expat, etc.)
+RUN apk update && apk upgrade --no-cache
 
 # Create a system group and user to run the app securely as non-root
 RUN addgroup -S spring && adduser -S spring -G spring
