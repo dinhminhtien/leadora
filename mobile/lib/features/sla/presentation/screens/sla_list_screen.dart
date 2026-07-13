@@ -11,6 +11,10 @@ import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/highlight_glow.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared/widgets/status_chip.dart';
+import '../../../lead/data/lead_repository.dart';
+import '../../../quotation/data/quotation_models.dart';
+import '../../../quotation/data/quotation_repository.dart';
+import '../../../task/data/task_repository.dart';
 import '../../data/sla_models.dart';
 import '../providers/sla_providers.dart';
 
@@ -27,6 +31,52 @@ String? _relatedRoute(SlaTrackingEntry e) {
       return Routes.taskDetailPath(e.entityId);
     case 'QUOTATION':
       return Routes.quotationDetailPath(e.entityId);
+    default:
+      return null;
+  }
+}
+
+/// Quotation statuses with nothing left to action — mirrors the web
+/// `QUOTATION_DONE_STATUSES` check in `SlaManagementScreen.tsx`.
+const _quotationDoneStatuses = {
+  QuotationStatus.converted,
+  QuotationStatus.closed,
+  QuotationStatus.expired,
+  QuotationStatus.rejected,
+};
+
+/// Confirms the record an SLA entry points at is still there (and, for
+/// quotations, still actionable) before navigating — SLA tracking rows can
+/// outlive the entity they reference (deleted, or already resolved
+/// elsewhere). Returns `null` when it's safe to navigate, otherwise a
+/// user-facing message to show instead.
+Future<String?> _checkBeforeNavigate(WidgetRef ref, SlaTrackingEntry entry) async {
+  switch (entry.entityType.toUpperCase()) {
+    case 'LEAD':
+      try {
+        await ref.read(leadRepositoryProvider).getLead(entry.entityId);
+        return null;
+      } catch (_) {
+        return 'This lead no longer exists.';
+      }
+    case 'TASK':
+      try {
+        await ref.read(taskRepositoryProvider).getTask(entry.entityId);
+        return null;
+      } catch (_) {
+        return 'This task no longer exists.';
+      }
+    case 'QUOTATION':
+      try {
+        final quotation = await ref.read(quotationRepositoryProvider).getQuotation(entry.entityId);
+        if (_quotationDoneStatuses.contains(quotation.status)) {
+          return 'This quotation has already been processed '
+              '(status: ${quotation.status.wire.replaceAll('_', ' ')}).';
+        }
+        return null;
+      } catch (_) {
+        return 'This quotation no longer exists.';
+      }
     default:
       return null;
   }
@@ -153,14 +203,45 @@ class _SlaListScreenState extends ConsumerState<SlaListScreen> {
   }
 }
 
-class _SlaCard extends StatelessWidget {
+class _SlaCard extends ConsumerStatefulWidget {
   const _SlaCard({required this.entry, this.highlighted = false});
 
   final SlaTrackingEntry entry;
   final bool highlighted;
 
   @override
+  ConsumerState<_SlaCard> createState() => _SlaCardState();
+}
+
+class _SlaCardState extends ConsumerState<_SlaCard> {
+  bool _checking = false;
+
+  Future<void> _handleTap(String route) async {
+    setState(() => _checking = true);
+    final blockedMessage = await _checkBeforeNavigate(ref, widget.entry);
+    if (!mounted) return;
+    setState(() => _checking = false);
+
+    if (blockedMessage != null) {
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Can't open this record"),
+          content: Text(blockedMessage),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+          ],
+        ),
+      );
+      return;
+    }
+
+    if (context.mounted) context.push(route);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final entry = widget.entry;
     final theme = Theme.of(context);
     final route = _relatedRoute(entry);
     final hours = entry.hoursRemaining;
@@ -171,15 +252,24 @@ class _SlaCard extends StatelessWidget {
             : '${hours}h left';
 
     return HighlightGlow(
-      highlighted: highlighted,
+      highlighted: widget.highlighted,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: route == null ? null : () => context.push(route),
+        onTap: route == null || _checking ? null : () => _handleTap(route),
         child: SectionCard(
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              Icon(entry.icon, size: 22, color: theme.colorScheme.primary),
+              _checking
+                  ? SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.primary,
+                      ),
+                    )
+                  : Icon(entry.icon, size: 22, color: theme.colorScheme.primary),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

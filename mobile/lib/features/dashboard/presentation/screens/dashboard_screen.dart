@@ -405,11 +405,13 @@ class _RecentNotifications extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(recentNotificationsProvider);
     final theme = Theme.of(context);
+    final unreadCount = async.valueOrNull?.where((n) => !n.isRead).length ?? 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionHeader(
           title: 'Recent notifications',
+          count: unreadCount,
           onSeeAll: () => context.pushNamed(RouteNames.notifications),
         ),
         const SizedBox(height: 8),
@@ -427,17 +429,38 @@ class _RecentNotifications extends ConsumerWidget {
                     children: [
                       for (var i = 0; i < items.length; i++) ...[
                         if (i > 0) const Divider(height: 1),
-                        ListTile(
-                          dense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                          leading: Icon(items[i].icon, color: theme.colorScheme.primary, size: 20),
-                          title: Text(items[i].title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontWeight: items[i].isRead ? FontWeight.w500 : FontWeight.w700)),
-                          subtitle: Text(Formatters.relative(items[i].createdAt),
-                              style: theme.textTheme.labelSmall),
+                        // Unread rows get a tinted background + a leading dot;
+                        // read rows fade — mirrors the web preview dropdown.
+                        Container(
+                          color: items[i].isRead
+                              ? null
+                              : theme.colorScheme.primaryContainer.withValues(alpha: 0.10),
+                          child: Opacity(
+                            opacity: items[i].isRead ? 0.7 : 1,
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                              leading: Icon(items[i].icon, color: theme.colorScheme.primary, size: 20),
+                              title: Text(items[i].title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontWeight:
+                                          items[i].isRead ? FontWeight.w500 : FontWeight.w700)),
+                              subtitle: Text(Formatters.relative(items[i].createdAt),
+                                  style: theme.textTheme.labelSmall),
+                              trailing: items[i].isRead
+                                  ? null
+                                  : Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.primary,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                            ),
+                          ),
                         ),
                       ],
                     ],
@@ -450,17 +473,40 @@ class _RecentNotifications extends ConsumerWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, required this.onSeeAll});
+  const _SectionHeader({required this.title, required this.onSeeAll, this.count = 0});
   final String title;
   final VoidCallback onSeeAll;
+  final int count;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            if (count > 0) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.error,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  count > 9 ? '9+' : '$count',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onError,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+            ],
+          ],
+        ),
         TextButton(onPressed: onSeeAll, child: const Text('See all')),
       ],
     );

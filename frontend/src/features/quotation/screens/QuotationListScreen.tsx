@@ -18,6 +18,7 @@ import type { Quotation } from "@/services/quotation_service";
 export type { Quotation } from "@/services/quotation_service";
 import { useQuotations, useExpireOverdue, useSubmitQuotation } from "@/features/quotation/hooks/use_quotations";
 import { useAuthStore } from "@/stores/auth_store";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 const ACTIVE_STATUSES: Quotation["status"][] = [
   "draft", "pending_approval", "approved", "sent", "accepted", "interested", "pending_revision",
@@ -39,6 +40,7 @@ type ClosureLog = {
 export function QuotationListScreen() {
   const { data: serverQuotes = [], isLoading } = useQuotations();
   const { user } = useAuthStore();
+  const { highlightedId, setRowRef } = useHighlightRow();
   const expireOverdue = useExpireOverdue();
   const submitQuotation = useSubmitQuotation();
   const [submittingId, setSubmittingId] = useState<string | null>(null);
@@ -335,7 +337,15 @@ export function QuotationListScreen() {
               </TableRow>
             ) : filteredQuotes.length > 0 ? (
               filteredQuotes.map((q) => (
-                <TableRow key={q.id} className={`border-b border-slate-100 transition ${DONE_STATUSES.includes(q.status) ? "opacity-60 hover:opacity-100 bg-slate-50/40 hover:bg-slate-50/80" : "hover:bg-slate-50/70"}`}>
+                <TableRow
+                  key={q.id}
+                  ref={setRowRef(q.id)}
+                  className={`border-b border-slate-100 transition ${
+                    highlightedId === q.id ? "bg-amber-50 ring-2 ring-inset ring-amber-400" :
+                    DONE_STATUSES.includes(q.status) ? "opacity-60 hover:opacity-100 bg-slate-50/40 hover:bg-slate-50/80" :
+                    "hover:bg-slate-50/70"
+                  }`}
+                >
                   <TableCell className="py-3 px-4 text-xs font-bold text-blue-600">
                     <span className="flex items-center gap-1.5">
                       <FileSpreadsheet className="size-3.5 text-slate-400" />

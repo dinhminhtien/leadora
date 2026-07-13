@@ -84,7 +84,16 @@ class _NotificationListScreenState extends ConsumerState<NotificationListScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notifications'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Notifications'),
+            if (unreadCount > 0) ...[
+              const SizedBox(width: 8),
+              _CountPill(count: unreadCount),
+            ],
+          ],
+        ),
         actions: [
           if (unreadCount > 0)
             TextButton(
@@ -162,6 +171,29 @@ class _NotificationListScreenState extends ConsumerState<NotificationListScreen>
   }
 }
 
+/// Small numeric badge — caps at "9+" past single digits, mirroring the web
+/// header bell (`unreadCount > 9 ? "9+" : unreadCount`).
+class _CountPill extends StatelessWidget {
+  const _CountPill({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(color: scheme.error, borderRadius: BorderRadius.circular(999)),
+      child: Text(
+        count > 9 ? '9+' : '$count',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onError,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
+    );
+  }
+}
+
 class _NotificationTile extends StatelessWidget {
   const _NotificationTile({required this.notification, required this.onTap});
 
@@ -172,44 +204,52 @@ class _NotificationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final unread = !notification.isRead;
-    return ListTile(
-      onTap: onTap,
-      leading: CircleAvatar(
-        backgroundColor: unread
-            ? theme.colorScheme.primaryContainer
-            : theme.colorScheme.surfaceContainerHighest,
-        child: Icon(
-          notification.icon,
-          color: unread ? theme.colorScheme.onPrimaryContainer : theme.colorScheme.outline,
-          size: 20,
-        ),
-      ),
-      title: Text(
-        notification.title,
-        style: theme.textTheme.bodyLarge?.copyWith(
-          fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
-        ),
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (notification.message.isNotEmpty)
-            Text(notification.message, maxLines: 2, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 2),
-          Text(
-            Formatters.relative(notification.createdAt),
-            style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
+    // Unread rows get a tinted background + full opacity; read rows fade to
+    // 70% opacity — mirrors the web table's `bg-blue-50/30` vs `opacity-70`.
+    return Container(
+      color: unread ? theme.colorScheme.primaryContainer.withValues(alpha: 0.10) : null,
+      child: Opacity(
+        opacity: unread ? 1 : 0.7,
+        child: ListTile(
+          onTap: onTap,
+          leading: CircleAvatar(
+            backgroundColor: unread
+                ? theme.colorScheme.primaryContainer
+                : theme.colorScheme.surfaceContainerHighest,
+            child: Icon(
+              notification.icon,
+              color: unread ? theme.colorScheme.onPrimaryContainer : theme.colorScheme.outline,
+              size: 20,
+            ),
           ),
-        ],
+          title: Text(
+            notification.title,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (notification.message.isNotEmpty)
+                Text(notification.message, maxLines: 2, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 2),
+              Text(
+                Formatters.relative(notification.createdAt),
+                style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
+              ),
+            ],
+          ),
+          trailing: unread
+              ? Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
+                )
+              : Icon(Icons.check_circle_rounded, size: 16, color: theme.colorScheme.outline),
+          isThreeLine: notification.message.isNotEmpty,
+        ),
       ),
-      trailing: unread
-          ? Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
-            )
-          : null,
-      isThreeLine: notification.message.isNotEmpty,
     );
   }
 }
