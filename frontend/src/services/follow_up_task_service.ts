@@ -10,10 +10,30 @@ import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_c
 export type TaskStatus = "OPEN" | "COMPLETED" | "CANCELLED";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
+/**
+ * What kind of work a task is — mirrors the backend `ActivityType` enum.
+ *
+ * This was once inferred by parsing the title ("Call: …"). It is a real column
+ * now (`tasks.activity_type`); the title is just a title.
+ */
+export type ActivityType =
+  | "TASK"
+  | "CALL"
+  | "EMAIL"
+  | "MEETING"
+  | "SITE_VISIT"
+  | "FOLLOW_UP";
+
 export type Task = {
   taskId: string;
   title: string;
   description: string | null;
+  /**
+   * The backend always sends this, defaulting to TASK for rows written before the
+   * activity-type backfill. Typed optional anyway so a response from an older
+   * backend can't produce `undefined` at a call site that assumed otherwise.
+   */
+  activityType?: ActivityType | null;
   priority: TaskPriority;
   status: TaskStatus;
   /** ISO datetime with timezone offset, e.g. "2026-06-24T09:00:00+07:00" */
@@ -65,6 +85,8 @@ export type CreateTaskPayload = {
   description?: string;
   assignedUserId: string;
   priority: TaskPriority;
+  /** Required by the backend — a new task must say what kind of work it is. */
+  activityType: ActivityType;
   resultNote?: string;
   leadId?: string;
   customerId?: string;
@@ -81,6 +103,7 @@ export type UpdateTaskPayload = {
   assignedUserId?: string;
   priority?: TaskPriority;
   status?: TaskStatus;
+  activityType?: ActivityType;
   resultNote?: string;
   leadId?: string;
   customerId?: string;

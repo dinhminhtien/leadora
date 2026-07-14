@@ -6,6 +6,7 @@ import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.ReminderEntity;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ReminderStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.ReminderRepository;
@@ -28,6 +29,7 @@ public class ResolveTaskUseCase {
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     private final ReminderRepository reminderRepository;
     private final TaskAccessPolicy accessPolicy;
+    private final TaskNotifier taskNotifier;
 
     /**
      * UC-17.5: User marks an SLA-tracked task as resolved.
@@ -43,7 +45,8 @@ public class ResolveTaskUseCase {
 
         // BR-02: only the task's assignee (Sales) or a Manager/Admin may resolve
         // it — the endpoint itself is only isAuthenticated(), so enforce here.
-        accessPolicy.assertCanView(accessPolicy.currentUser(), task);
+        UserEntity currentUser = accessPolicy.currentUser();
+        accessPolicy.assertCanView(currentUser, task);
 
         // E3: task already resolved
         if (task.getStatus() == TaskStatus.COMPLETED || task.getStatus() == TaskStatus.CANCELLED) {
@@ -76,6 +79,9 @@ public class ResolveTaskUseCase {
                 remindersCancelled++;
             }
         }
+
+        // The creator raised this follow-up; close the loop for them.
+        taskNotifier.completed(task, currentUser);
 
         // POST-3: audit log
         log.info("Task resolved (UC-17.5): taskId={}, remindersCancelled={}",

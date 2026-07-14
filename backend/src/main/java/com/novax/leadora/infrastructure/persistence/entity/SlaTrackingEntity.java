@@ -55,3 +55,4 @@ public class SlaTrackingEntity extends BaseEntity {
     @Column(name = "resolved_at")
     private OffsetDateTime resolvedAt;
 }
+

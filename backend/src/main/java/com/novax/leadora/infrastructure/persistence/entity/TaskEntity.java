@@ -1,5 +1,6 @@
 package com.novax.leadora.infrastructure.persistence.entity;
 
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskPriority;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import jakarta.persistence.*;
@@ -37,6 +38,19 @@ public class TaskEntity extends BaseEntity {
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
+
+    /**
+     * What kind of work this is (Call / Meeting / …). Was parsed out of {@link #title}
+     * until the activity-type migration; it is real data now.
+     *
+     * <p>Deliberately mapped as nullable even though the migrated column is NOT NULL:
+     * a row written before the backfill can still hold NULL, and loading one must not
+     * blow up. Writers always set a value, and {@code TaskResponse} never emits null —
+     * see {@link ActivityType#orDefault}.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "activity_type", length = 30)
+    private ActivityType activityType;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "priority", nullable = false, length = 10)

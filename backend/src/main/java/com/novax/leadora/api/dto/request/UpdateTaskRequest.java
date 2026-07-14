@@ -15,6 +15,13 @@ public class UpdateTaskRequest {
     private UUID assignedUserId;
     private String priority;
     private String status;
+
+    /**
+     * CALL / EMAIL / MEETING / SITE_VISIT / FOLLOW_UP / TASK. Optional, like every
+     * field here — omitting it leaves the task's current type alone (except on a
+     * legacy row that has none, which is normalised to TASK).
+     */
+    private String activityType;
     private String resultNote;
     private UUID leadId;
     private UUID customerId;

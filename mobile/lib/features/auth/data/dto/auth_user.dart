@@ -1,3 +1,19 @@
+/// Role names exactly as the backend spells them (`RoleEntity.roleName`), so no
+/// screen has to string-match a role inline.
+class AppRoles {
+  const AppRoles._();
+
+  static const String admin = 'ADMIN';
+  static const String manager = 'MANAGER';
+  static const String sales = 'SALES';
+  static const String salesStaff = 'SALES_STAFF';
+
+  /// Roles the backend grants unscoped access to — the Dart mirror of
+  /// `BaseAccessPolicy.FULL_ACCESS_ROLES`. Everyone else is scoped to the
+  /// records they own.
+  static const Set<String> fullAccess = {manager, admin};
+}
+
 /// Authenticated user — Dart mirror of `LoginResponse.UserInfo`.
 ///
 /// Carries effective [permissions] (e.g. `LEAD_VIEW`) and [roles] (e.g.
@@ -42,6 +58,10 @@ class AuthUser {
 
   bool hasAnyRole(Iterable<String> candidates) =>
       candidates.any(roles.contains);
+
+  /// True for MANAGER / ADMIN — the roles that see and act on every record
+  /// rather than only their own (`BaseAccessPolicy.FULL_ACCESS_ROLES`).
+  bool get hasFullAccess => hasAnyRole(AppRoles.fullAccess);
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(

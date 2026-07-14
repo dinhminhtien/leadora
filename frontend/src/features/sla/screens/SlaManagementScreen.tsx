@@ -23,8 +23,56 @@ import {
 } from "@/features/sla/hooks/use_sla";
 import { useResolveTask } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import type { SlaRule, SlaRulePayload, SlaActivityType, SlaTracking, SlaDisplayStatus, SlaActivityBreakdown } from "@/services/sla_service";
+import { quotationService, type QuotationStatus } from "@/services/quotation_service";
+import { leadService } from "@/services/lead_service";
+import { taskService } from "@/services/follow_up_task_service";
+import { operationalHandoverService } from "@/services/operational_handover_service";
+import { depositPaymentService } from "@/services/deposit_payment_service";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
+
+// Quotation has no standalone detail page — "Go to" only makes sense while it's
+// still actionable from the list. Mirrors QuotationListScreen's DONE_STATUSES.
+const QUOTATION_DONE_STATUSES: QuotationStatus[] = ["converted", "closed", "expired", "rejected"];
+
+// Before navigating from an SLA card, confirm the underlying record is still
+// there — SLA tracking rows can outlive the entity they point at (deleted,
+// or the entity moved past the point where the destination screen is useful).
+// Each entry fetches the record by id; `isDone` + `doneMessage` are only set
+// where landing on the destination is genuinely a dead end (see quotation:
+// no detail page, only an active/done list).
+type EntityCheck = {
+  getById: (id: string) => Promise<{ data: unknown }>;
+  isDone?: (item: unknown) => boolean;
+  doneMessage?: (item: unknown) => string;
+  notFoundMessage: string;
+};
+
+const ENTITY_CHECKS: Record<string, EntityCheck> = {
+  QUOTATION: {
+    getById: (id) => quotationService.getById(id),
+    isDone: (item) => QUOTATION_DONE_STATUSES.includes((item as { status: QuotationStatus }).status),
+    doneMessage: (item) =>
+      `This quotation has already been processed (status: ${(item as { status: QuotationStatus }).status.replace("_", " ")}).`,
+    notFoundMessage: "This quotation no longer exists.",
+  },
+  LEAD: {
+    getById: (id) => leadService.getById(id),
+    notFoundMessage: "This lead no longer exists.",
+  },
+  TASK: {
+    getById: (id) => taskService.getById(id),
+    notFoundMessage: "This task no longer exists.",
+  },
+  HANDOVER: {
+    getById: (id) => operationalHandoverService.getById(id),
+    notFoundMessage: "This handover record no longer exists.",
+  },
+  PAYMENT: {
+    getById: (id) => depositPaymentService.getById(id),
+    notFoundMessage: "This payment record no longer exists.",
+  },
+};
 
 // BR-02: only ADMIN and MANAGER can configure rules
 const CONFIGURE_ROLES = ["ADMIN", "MANAGER"];
@@ -35,7 +83,6 @@ const ACTIVITY_LABELS: Record<string, string> = {
   LEAD_RESPONSE:              "Lead Response",
   QUOTATION_SENT:             "Quotation Dispatch",
   FOLLOW_UP_TASK:             "Follow-up Task",
-  BOOKING_CONFIRM:            "Booking Confirmation",
   PAYMENT_DEPOSIT:            "Payment Deposit",
   HANDOVER_SUBMISSION:        "Handover Submission",
   QUOTATION_APPROVAL:         "Quotation Approval",
@@ -45,7 +92,6 @@ const ACTIVITY_LABELS: Record<string, string> = {
 const ENTITY_TYPE_LABELS: Record<string, string> = {
   LEAD:      "Lead",
   QUOTATION: "Quotation",
-  BOOKING:   "Booking",
   TASK:      "Task",
   PAYMENT:   "Payment",
   HANDOVER:  "Handover",
@@ -66,13 +112,16 @@ const DISPLAY_STATUS_LABEL: Record<SlaDisplayStatus, string> = {
 };
 
 function getEntityRoute(entityType: string, entityId: string): string | null {
+  const highlight = `highlight=${encodeURIComponent(entityId)}`;
   switch (entityType.toUpperCase()) {
     case "LEAD":      return ROUTE_PATHS.leadDetail(entityId);
-    case "QUOTATION": return ROUTE_PATHS.quotations;
-    case "BOOKING":   return ROUTE_PATHS.bookingConfirmation;
-    case "TASK":      return ROUTE_PATHS.followUpTasks;
+    // No standalone quotation detail page exists (only /quotations,
+    // /quotations/[id]/revise) — route to the list (with highlight), not
+    // ROUTE_PATHS.quotationDetail, which 404s since that page was never built.
+    case "QUOTATION": return `${ROUTE_PATHS.quotations}?${highlight}`;
+    case "TASK":      return `${ROUTE_PATHS.followUpTasks}?${highlight}`;
     case "PAYMENT":   return ROUTE_PATHS.depositPayment;
-    case "HANDOVER":  return ROUTE_PATHS.operationalHandover;
+    case "HANDOVER":  return `${ROUTE_PATHS.operationalHandover}?${highlight}`;
     default:          return null;
   }
 }
@@ -92,6 +141,8 @@ function MonitorTab() {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolveTarget, setResolveTarget] = useState<{ trackingId: string; entityId?: string; isTask: boolean } | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
+  const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [infoDialog, setInfoDialog] = useState<{ title: string; message: string } | null>(null);
   const { show: showToast, ToastContainer } = useToast();
 
   const { data: records = [], isLoading } = useSlaMonitoring(
@@ -109,39 +160,21 @@ function MonitorTab() {
     if (!resolveTarget) return;
     const { trackingId, entityId, isTask } = resolveTarget;
     setResolvingId(trackingId);
-
-    const getStatus = (err: unknown) =>
-      (err as { response?: { status?: number } })?.response?.status;
-
     try {
       if (isTask && entityId) {
         try {
           await resolveTaskMutation.mutateAsync(entityId);
-          // Task resolved successfully — SLA tracking auto-resolved by backend
-        } catch (taskErr: unknown) {
-          const taskStatus = getStatus(taskErr);
-          // 404 = task deleted; 409 = task already resolved — both are "done", fall through to SLA tracking
-          if (taskStatus !== 404 && taskStatus !== 409) throw taskErr;
-          try {
+        } catch (e: unknown) {
+          const status = (e as { response?: { status?: number } })?.response?.status;
+          if (status === 404) {
             await resolveMutation.mutateAsync(trackingId);
-          } catch (slaErr: unknown) {
-            // 409 from SLA tracking = already resolved — treat as success
-            if (getStatus(slaErr) !== 409) throw slaErr;
-          }
+          } else throw e;
         }
         showToast("Task marked as completed. SLA tracking and reminders resolved.");
       } else {
-        try {
-          await resolveMutation.mutateAsync(trackingId);
-        } catch (e: unknown) {
-          // 409 = SLA tracking already resolved — treat as success
-          if (getStatus(e) !== 409) throw e;
-        }
+        await resolveMutation.mutateAsync(trackingId);
         showToast("SLA breach marked as resolved.");
       }
-      // Always invalidate after a successful resolve, even when 409s were treated as success
-      // (onSuccess from mutations only fires when they don't throw)
-      await queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] });
       setResolveTarget(null);
       setResolveError(null);
     } catch (e: unknown) {
@@ -152,9 +185,42 @@ function MonitorTab() {
     }
   };
 
+  // Confirm the underlying record is still there (and, for quotations, still
+  // actionable) before navigating — SLA tracking rows can outlive the entity
+  // they point at, and several destinations (quotation) have no way to signal
+  // "not found" themselves. Avoids the dead-end 404/blank list users hit
+  // when the record was deleted or already moved past the point of interest.
+  const handleNavigate = async (r: SlaTracking) => {
+    const route = getEntityRoute(r.entityType, r.entityId);
+    if (!route) return;
+
+    const check = ENTITY_CHECKS[r.entityType.toUpperCase()];
+    if (!check) {
+      router.push(route);
+      return;
+    }
+
+    setCheckingId(r.trackingId);
+    try {
+      const res = await check.getById(r.entityId);
+      if (check.isDone?.(res.data)) {
+        setInfoDialog({ title: "Can't open this record", message: check.doneMessage!(res.data) });
+        return;
+      }
+      router.push(route);
+    } catch {
+      setInfoDialog({ title: "Can't open this record", message: check.notFoundMessage });
+    } finally {
+      setCheckingId(null);
+    }
+  };
+
   return (
     <>
       <ToastContainer />
+      {infoDialog && (
+        <InfoDialog title={infoDialog.title} message={infoDialog.message} onClose={() => setInfoDialog(null)} />
+      )}
       {resolveTarget && (
         <ResolveDialog
           title={resolveTarget.isTask ? "Resolve Task" : "Resolve SLA Breach"}
@@ -226,13 +292,14 @@ function MonitorTab() {
             <SlaTrackingRow
               key={r.trackingId}
               record={r}
-              onNavigate={(path) => router.push(path)}
+              onNavigate={() => handleNavigate(r)}
+              isNavigating={checkingId === r.trackingId}
               onResolve={
-                r.displayStatus === "BREACHED"
-                  ? r.entityType === "TASK"
-                    ? () => setResolveTarget({ trackingId: r.trackingId, entityId: r.entityId, isTask: true })
-                    : () => setResolveTarget({ trackingId: r.trackingId, isTask: false })
-                  : undefined
+                r.entityType === "TASK"
+                  ? () => setResolveTarget({ trackingId: r.trackingId, entityId: r.entityId, isTask: true })
+                  : r.displayStatus === "BREACHED"
+                    ? () => setResolveTarget({ trackingId: r.trackingId, isTask: false })
+                    : undefined
               }
               resolveLabel={r.entityType === "TASK" ? "Resolve Task" : "Resolve"}
               isResolving={resolvingId === r.trackingId}
@@ -250,6 +317,7 @@ function MonitorTab() {
 function SlaTrackingRow({
   record: r,
   onNavigate,
+  isNavigating,
   onResolve,
   resolveLabel = "Resolve",
   isResolving,
@@ -257,7 +325,8 @@ function SlaTrackingRow({
   isHighlighted,
 }: {
   record: SlaTracking;
-  onNavigate: (path: string) => void;
+  onNavigate: () => void;
+  isNavigating?: boolean;
   onResolve?: () => void;
   resolveLabel?: string;
   isResolving?: boolean;
@@ -268,12 +337,16 @@ function SlaTrackingRow({
   const isUrgent = r.displayStatus === "BREACHED" || r.displayStatus === "WARNING";
 
   return (
-    <Card ref={rowRef} className={`border shadow-xs ${
-      isHighlighted ? "ring-2 ring-inset ring-amber-400 bg-amber-50" :
-      r.displayStatus === "BREACHED"   ? "border-red-200 bg-red-50/30"   :
-      r.displayStatus === "WARNING"    ? "border-amber-200 bg-amber-50/20" :
-      "border-slate-100 bg-white"
-    }`}>
+    <Card
+      ref={rowRef}
+      onClick={route && !isNavigating ? onNavigate : undefined}
+      className={`border shadow-xs transition ${route ? "cursor-pointer hover:border-blue-200 hover:shadow-sm" : ""} ${
+        isHighlighted ? "ring-2 ring-inset ring-amber-400 bg-amber-50" :
+        r.displayStatus === "BREACHED"   ? "border-red-200 bg-red-50/30"   :
+        r.displayStatus === "WARNING"    ? "border-amber-200 bg-amber-50/20" :
+        "border-slate-100 bg-white"
+      }`}
+    >
       <CardContent className="p-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-start gap-3 flex-1 min-w-0">
           {isUrgent && (
@@ -320,7 +393,7 @@ function SlaTrackingRow({
           {/* UC-17.4 / UC-17.5: Resolve button — label and behavior differ by entity type */}
           {onResolve && (
             <Button
-              onClick={onResolve}
+              onClick={(e) => { e.stopPropagation(); onResolve(); }}
               isLoading={isResolving}
               variant="outline"
               size="sm"
@@ -331,7 +404,8 @@ function SlaTrackingRow({
           )}
           {route && (
             <Button
-              onClick={() => onNavigate(route)}
+              onClick={(e) => { e.stopPropagation(); onNavigate(); }}
+              isLoading={isNavigating}
               variant="outline"
               size="sm"
               className="gap-1 text-[10px] border-slate-200 font-semibold text-slate-600"
@@ -376,6 +450,32 @@ function useToast() {
   ), [toasts]);
 
   return { show, ToastContainer };
+}
+
+// ─── Info Dialog ────────────────────────────────────────────────────────────────
+
+function InfoDialog({ title, message, onClose }: { title: string; message: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm mx-4 p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="flex-shrink-0 flex items-center justify-center size-10 rounded-full bg-amber-50">
+            <AlertTriangle className="size-5 text-amber-500" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">{message}</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-end pt-1">
+          <Button onClick={onClose} size="sm" className="text-xs font-semibold">
+            OK
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Confirm Dialog ───────────────────────────────────────────────────────────
@@ -479,7 +579,7 @@ function ResolveDialog({
 // ─── Configure tab ────────────────────────────────────────────────────────────
 
 const ACTIVITY_OPTIONS: SlaActivityType[] = [
-  "LEAD_RESPONSE", "QUOTATION_SENT", "FOLLOW_UP_TASK", "BOOKING_CONFIRM",
+  "LEAD_RESPONSE", "QUOTATION_SENT", "FOLLOW_UP_TASK",
   "PAYMENT_DEPOSIT", "HANDOVER_SUBMISSION", "QUOTATION_APPROVAL", "CUSTOMER_FEEDBACK_RESPONSE",
 ];
 
@@ -563,7 +663,7 @@ function RuleForm({
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Status</label>
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <button type="button" onClick={() => set("active", !value.active)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${value.active ? "bg-primary" : "bg-slate-200"}`}>
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${value.active ? "bg-blue-500" : "bg-slate-200"}`}>
               <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${value.active ? "translate-x-4" : "translate-x-1"}`} />
             </button>
             <span className="text-xs text-slate-600 font-semibold">{value.active ? "Active" : "Inactive"}</span>
@@ -571,7 +671,7 @@ function RuleForm({
         </div>
       </div>
       <div className="flex items-center gap-2 pt-1">
-        <Button onClick={onSave} isLoading={isSaving} variant="primary" size="sm" className="gap-1.5 text-xs font-semibold bg-primary hover:bg-primary/90 text-white">
+        <Button onClick={onSave} isLoading={isSaving} variant="primary" size="sm" className="gap-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white">
           <Check className="size-3.5" /> Save Rule
         </Button>
         <Button onClick={onCancel} variant="outline" size="sm" className="gap-1.5 text-xs font-semibold border-slate-200 text-slate-600">
@@ -678,7 +778,7 @@ function ConfigureTab() {
         </p>
         {!isCreating && (
           <Button onClick={() => { setIsCreating(true); setNewForm(EMPTY_FORM); setNewError(null); setEditingId(null); }}
-            variant="primary" size="sm" className="gap-1.5 bg-primary hover:bg-primary/90 text-xs font-semibold text-white">
+            variant="primary" size="sm" className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-xs font-semibold text-white">
             <Plus className="size-3.5" /> New Rule
           </Button>
         )}
@@ -1012,7 +1112,7 @@ export function SlaManagementScreen() {
             onClick={() => setActiveTab(key)}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition -mb-px ${
               activeTab === key
-                ? "border-primary text-blue-600"
+                ? "border-blue-600 text-blue-600"
                 : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
