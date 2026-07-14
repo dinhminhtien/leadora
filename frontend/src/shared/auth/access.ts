@@ -113,6 +113,11 @@ export function canAccessPath(
   // SALES / MANAGER — permission driven.
   const required = requiredPermissionFor(pathname);
   if (required === "HANDOVER_VIEW") return true; // Allowed by default for handover pages
+  // SLA monitoring must always work for every Sales/Manager user — it's basic
+  // operational visibility (view-only; Configure tab is separately gated to
+  // ADMIN/MANAGER), not something that should silently break if an Admin never
+  // granted the SLA_VIEW permission.
+  if (required === "SLA_VIEW") return true;
   // Quotation approval is Manager-only on the backend (@PreAuthorize hasRole('MANAGER'))
   // — enforce that here too, so a stray QUOTATION_APPROVE grant to a non-manager role
   // can't surface a nav link / route whose API calls would just 403 anyway.

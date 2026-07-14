@@ -2,12 +2,15 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.ReviseQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,12 +19,14 @@ import java.math.RoundingMode;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReviseQuotationUseCase {
 
     private final QuotationRepository quotationRepository;
     private final QuotationDetailRepository quotationDetailRepository;
+    private final CurrentUserProvider currentUserProvider;
 
     @Transactional
     public QuotationResponse execute(UUID parentId, ReviseQuotationRequest request) {
@@ -51,10 +56,19 @@ public class ReviseQuotationUseCase {
         // Always save as DRAFT — status is resolved on explicit Submit
         QuotationStatus status = QuotationStatus.DRAFT;
 
+        // The reviser owns the new version (drives SALES owner-scoping). Non-fatal if unresolved.
+        UserEntity creator = null;
+        try {
+            creator = currentUserProvider.resolve(null);
+        } catch (Exception e) {
+            log.warn("Could not resolve creator for quotation revision: {}", e.getMessage());
+        }
+
         // POST-1: Create new version (BR-22: preserve previous, create new)
         QuotationEntity revision = QuotationEntity.builder()
                 .deal(parent.getDeal())
                 .customer(parent.getCustomer())
+                .createdBy(creator)
                 .version((parent.getVersion() != null ? parent.getVersion() : 1) + 1)
                 .roomType(request.getRoomType())
                 .checkInDate(request.getCheckInDate())

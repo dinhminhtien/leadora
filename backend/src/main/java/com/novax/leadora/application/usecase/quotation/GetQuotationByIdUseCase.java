@@ -14,11 +14,16 @@ import java.util.UUID;
 public class GetQuotationByIdUseCase {
 
     private final QuotationRepository quotationRepository;
+    private final QuotationAccessPolicy quotationAccessPolicy;
 
     @Transactional(readOnly = true)
     public QuotationResponse execute(UUID quotationId) {
         QuotationEntity entity = quotationRepository.findById(quotationId)
                 .orElseThrow(() -> new RuntimeException("Quotation not found: " + quotationId));
+
+        // A Sales Staff may only open quotations they created; MANAGER/ADMIN per policy.
+        quotationAccessPolicy.assertCanView(quotationAccessPolicy.currentUser(), entity);
+
         return QuotationResponse.from(entity);
     }
 }
