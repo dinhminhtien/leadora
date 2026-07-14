@@ -40,11 +40,14 @@ import {
   useResignTask,
   useUsers,
 } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
+import { useAuthStore } from "@/stores/auth_store";
+import { hasFullAccess } from "@/shared/auth/access";
 import {
   taskService,
   type Task,
   type TaskPriority,
   type TaskStatus,
+  type ActivityType,
   type CreateTaskPayload,
   type UpdateTaskPayload,
   type ResignTaskPayload,
@@ -68,9 +71,23 @@ const ACTIVITY_TYPES = [
   { type: "SITE_VISIT", label: "Site Visit", Icon: MapPin, activeClass: "border-orange-400 bg-orange-50 text-orange-700", idleClass: "border-slate-200 bg-white text-slate-500 hover:border-orange-300 hover:text-orange-600" },
   { type: "FOLLOW_UP", label: "Follow-up", Icon: RefreshCw, activeClass: "border-teal-400 bg-teal-50 text-teal-700", idleClass: "border-slate-200 bg-white text-slate-500 hover:border-teal-300 hover:text-teal-600" },
   { type: "TASK", label: "Task", Icon: CheckSquare2, activeClass: "border-slate-500 bg-slate-100 text-slate-700", idleClass: "border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700" },
-] as const;
+] as const satisfies readonly { type: ActivityType; label: string; [k: string]: unknown }[];
 
-type ActivityType = typeof ACTIVITY_TYPES[number]["type"];
+/**
+ * The task's activity type, as told to us by the server.
+ *
+ * This is a *read*, not a guess: the title is never inspected. The `?? "TASK"` only
+ * covers a row the activity-type backfill hasn't reached (or an older backend that
+ * doesn't send the field), which is exactly the value the server itself defaults to.
+ */
+function activityTypeOf(task: Task): ActivityType {
+  return task.activityType ?? "TASK";
+}
+
+/** UI metadata (label / icon / colours) for a type. Always resolves. */
+function activityInfo(type: ActivityType) {
+  return ACTIVITY_TYPES.find(a => a.type === type) ?? ACTIVITY_TYPES[5]; // TASK
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -583,12 +600,15 @@ function TaskDetailDrawer({
   users,
   onReassign,
   initialEditing = false,
+  canAssignOthers,
 }: {
   task: Task;
   onClose: () => void;
   users: UserOption[];
   onReassign: () => void;
   initialEditing?: boolean;
+  /** Manager/Admin. Staff may edit their own task but not hand it to anyone else. */
+  canAssignOthers: boolean;
 }) {
   // The list task carries only dealId/dealName (lean list mapper); the deal
   // stage/value/customer/owner and lead status/source/owner come only from the
@@ -604,6 +624,8 @@ function TaskDetailDrawer({
     assignedUserId: task.assignedUserId ?? "",
     priority: task.priority,
     status: task.status,
+    // A pre-backfill task reports no type; it edits as TASK rather than blank.
+    activityType: activityTypeOf(task),
     resultNote: task.resultNote ?? "",
     leadId: task.leadId ?? undefined,
     customerId: task.customerId ?? undefined,
@@ -686,8 +708,8 @@ function TaskDetailDrawer({
 
   const updateMutation = useUpdateTask(task.taskId);
   const taskOverdue = isOverdue(task);
-  const actType = detectActivityType(task.title);
-  const typeInfo = ACTIVITY_TYPES.find(a => a.type === actType)!;
+  const actType = activityTypeOf(task);
+  const typeInfo = activityInfo(actType);
 
   function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
@@ -720,7 +742,7 @@ function TaskDetailDrawer({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 ml-3">
-            {!editing && task.status !== "CANCELLED" && (
+            {!editing && task.status !== "CANCELLED" && canAssignOthers && (
               <button
                 onClick={() => { onClose(); onReassign(); }}
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition"
@@ -752,21 +774,32 @@ function TaskDetailDrawer({
             /* ── Edit Form ── */
             <form onSubmit={handleSubmit} className="space-y-5">
 
-              {/* Title */}
+              {/* Activity type — a real field now. These buttons used to overwrite the
+                  title with "Meeting: ", which threw away whatever the user had
+                  written; they now set the type and leave the title alone. */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-600">Activity Type *</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {ACTIVITY_TYPES.map(({ type, label, Icon, activeClass, idleClass }) => {
+                    const active = (form.activityType ?? "TASK") === type;
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setForm(f => ({ ...f, activityType: type }))}
+                        className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-[11px] font-semibold transition-all duration-150 active:scale-95 ${active ? `${activeClass} shadow-sm` : idleClass}`}
+                      >
+                        <Icon className="size-3" />{label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Title — just the subject of the work. */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-600">Title *</label>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {ACTIVITY_TYPES.map(({ type, label, Icon }) => (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => setForm(f => ({ ...f, title: `${label}: ` }))}
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-100"
-                    >
-                      <Icon className="size-3" />{label}
-                    </button>
-                  ))}
-                </div>
                 <Input
                   required
                   value={form.title ?? ""}
@@ -808,13 +841,23 @@ function TaskDetailDrawer({
                 </div>
               </div>
 
-              {/* Assigned Staff */}
+              {/* Assigned Staff — staff see who owns the task, managers can move it. */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-600">Assigned Staff *</label>
-                <Select value={form.assignedUserId ?? ""} onChange={e => setForm(f => ({ ...f, assignedUserId: e.target.value }))} className="py-2">
-                  <option value="">Select staff member…</option>
-                  {users.map(u => <option key={u.userId} value={u.userId}>{u.fullName}</option>)}
-                </Select>
+                {canAssignOthers ? (
+                  <Select value={form.assignedUserId ?? ""} onChange={e => setForm(f => ({ ...f, assignedUserId: e.target.value }))} className="py-2">
+                    <option value="">Select staff member…</option>
+                    {users.map(u => <option key={u.userId} value={u.userId}>{u.fullName}</option>)}
+                  </Select>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                      <User className="size-3.5 text-slate-400" />
+                      {task.assignedUserName ?? "You"}
+                    </div>
+                    <p className="text-[11px] text-slate-400">Only a manager can assign this to someone else.</p>
+                  </>
+                )}
               </div>
 
               {/* Schedule — Start at / End at */}
@@ -877,15 +920,28 @@ function TaskDetailDrawer({
                 </div>
               </div>
 
-              {/* Link to Entity */}
-              <EntitySearchPicker
-                selectedLead={selectedLead}
-                selectedCustomer={selectedCustomer}
-                selectedDeal={selectedDeal}
-                onSelectLead={handleSelectLead}
-                onSelectCustomer={handleSelectCustomer}
-                onSelectDeal={handleSelectDeal}
-              />
+              {/* Link to Entity. Re-pointing a task at a different lead/customer/deal
+                  rewrites its business context, so UpdateTaskUseCase restricts that to
+                  a manager — staff see the link they're working against, read-only. */}
+              {canAssignOthers ? (
+                <EntitySearchPicker
+                  selectedLead={selectedLead}
+                  selectedCustomer={selectedCustomer}
+                  selectedDeal={selectedDeal}
+                  onSelectLead={handleSelectLead}
+                  onSelectCustomer={handleSelectCustomer}
+                  onSelectDeal={handleSelectDeal}
+                />
+              ) : (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-600">Linked Record</label>
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                    <Briefcase className="size-3.5 text-slate-400" />
+                    {linkedEntityLabel(task) || "Not linked"}
+                  </div>
+                  <p className="text-[11px] text-slate-400">Only a manager can link this task to a different record.</p>
+                </div>
+              )}
 
               {/* Primary Contact */}
               <div className="space-y-1.5">
@@ -1418,16 +1474,29 @@ function CreateTaskDrawer({
   onClose,
   users,
   initialDueDate,
+  canAssignOthers,
+  currentUserId,
+  currentUserName,
 }: {
   onClose: () => void;
   users: UserOption[];
   initialDueDate?: string;
+  /** Manager/Admin. Staff may only raise tasks for themselves. */
+  canAssignOthers: boolean;
+  currentUserId: string;
+  currentUserName: string;
 }) {
   const [activityType, setActivityType] = useState<ActivityType>("FOLLOW_UP");
   const [form, setForm] = useState<CreateTaskPayload>({
     title: "",
     description: "",
-    assignedUserId: users[0]?.userId ?? "",
+    // Kept in sync from `activityType` on submit; a type is always selected, so the
+    // required field can never go out empty.
+    activityType: "FOLLOW_UP",
+    // A new task starts out yours — the only value a staff member is allowed to
+    // send, and the sane default for a manager. (It used to default to whoever
+    // happened to be first in the user list.)
+    assignedUserId: currentUserId,
     priority: "MEDIUM",
     startAt: initialDueDate ? buildISODateTime(initialDueDate, "09:00") : undefined,
     endAt: initialDueDate ? buildISODateTime(initialDueDate, "10:00") : undefined,
@@ -1439,65 +1508,52 @@ function CreateTaskDrawer({
   const [selectedDeal, setSelectedDeal] = useState<DealResult | null>(null);
   const createMutation = useCreateTask();
 
+  // Linking a record seeds an *empty* title with that record's name, and fills in
+  // the contact. It no longer prepends "Call: " — the activity type is a field of
+  // its own now, and the title is only ever what the task is about.
   function handleSelectLead(lead: Lead | null) {
     setSelectedLead(lead);
-    setForm(f => {
-      const titleIsAuto = !f.title.trim() || ACTIVITY_TYPES.some(a => f.title === `${a.label}: `);
-      return {
-        ...f,
-        leadId: lead?.leadId ?? undefined,
-        customerId: undefined,
-        dealId: undefined,
-        primaryContactName: lead?.fullName ?? "",
-        primaryContactPhone: lead?.phone ?? "",
-        title: lead && titleIsAuto ? `${ACTIVITY_TYPES.find(a => a.type === activityType)?.label ?? "Call"}: ${lead.fullName}` : f.title,
-      };
-    });
+    setForm(f => ({
+      ...f,
+      leadId: lead?.leadId ?? undefined,
+      customerId: undefined,
+      dealId: undefined,
+      primaryContactName: lead?.fullName ?? "",
+      primaryContactPhone: lead?.phone ?? "",
+      title: lead && !f.title.trim() ? lead.fullName : f.title,
+    }));
     if (lead) { setSelectedCustomer(null); setSelectedDeal(null); }
   }
 
   function handleSelectCustomer(customer: CustomerResult | null) {
     setSelectedCustomer(customer);
-    setForm(f => {
-      const titleIsAuto = !f.title.trim() || ACTIVITY_TYPES.some(a => f.title === `${a.label}: `);
-      return {
-        ...f,
-        customerId: customer?.customerId ?? undefined,
-        leadId: undefined,
-        dealId: undefined,
-        primaryContactName: customer?.fullName ?? "",
-        primaryContactPhone: customer?.phone ?? "",
-        title: customer && titleIsAuto ? `${ACTIVITY_TYPES.find(a => a.type === activityType)?.label ?? "Call"}: ${customer.fullName}` : f.title,
-      };
-    });
+    setForm(f => ({
+      ...f,
+      customerId: customer?.customerId ?? undefined,
+      leadId: undefined,
+      dealId: undefined,
+      primaryContactName: customer?.fullName ?? "",
+      primaryContactPhone: customer?.phone ?? "",
+      title: customer && !f.title.trim() ? customer.fullName : f.title,
+    }));
     if (customer) { setSelectedLead(null); setSelectedDeal(null); }
   }
 
   function handleSelectDeal(deal: DealResult | null) {
     setSelectedDeal(deal);
-    setForm(f => {
-      const titleIsAuto = !f.title.trim() || ACTIVITY_TYPES.some(a => f.title === `${a.label}: `);
-      return {
-        ...f,
-        dealId: deal?.dealId ?? undefined,
-        leadId: undefined,
-        customerId: undefined,
-        title: deal && titleIsAuto ? `${ACTIVITY_TYPES.find(a => a.type === activityType)?.label ?? "Call"}: ${deal.title}` : f.title,
-      };
-    });
+    setForm(f => ({
+      ...f,
+      dealId: deal?.dealId ?? undefined,
+      leadId: undefined,
+      customerId: undefined,
+      title: deal && !f.title.trim() ? deal.title : f.title,
+    }));
     if (deal) { setSelectedLead(null); setSelectedCustomer(null); }
   }
 
-  // FIX: update title when switching types — replaces any previously auto-generated title
+  /** Picking a type changes only the type. The title is the user's to write. */
   function handleActivityTypeChange(type: ActivityType) {
     setActivityType(type);
-    const newLabel = ACTIVITY_TYPES.find(a => a.type === type)?.label ?? "";
-    const isAutoGenerated =
-      form.title === "" ||
-      ACTIVITY_TYPES.some(a => form.title === `${a.label}: `);
-    if (isAutoGenerated) {
-      setForm(f => ({ ...f, title: `${newLabel}: ` }));
-    }
   }
 
   function applyDatePreset(days: number) {
@@ -1516,6 +1572,9 @@ function CreateTaskDrawer({
     if (!form.title.trim() || !form.assignedUserId || !form.startAt) return;
     createMutation.mutate({
       ...form,
+      // The selector is the single source of truth for this — it is required by the
+      // backend, and there is always exactly one type selected.
+      activityType,
       primaryContactName: form.primaryContactName?.trim() || undefined,
       primaryContactPhone: form.primaryContactPhone?.trim() || undefined,
     }, {
@@ -1697,17 +1756,31 @@ function CreateTaskDrawer({
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-600">Assigned Staff *</label>
-              <Select
-                required
-                value={form.assignedUserId}
-                onChange={e => setForm(f => ({ ...f, assignedUserId: e.target.value }))}
-                className="py-2"
-              >
-                <option value="">Select staff member…</option>
-                {users.map(u => (
-                  <option key={u.userId} value={u.userId}>{u.fullName}</option>
-                ))}
-              </Select>
+              {canAssignOthers ? (
+                <Select
+                  required
+                  value={form.assignedUserId}
+                  onChange={e => setForm(f => ({ ...f, assignedUserId: e.target.value }))}
+                  className="py-2"
+                >
+                  <option value="">Select staff member…</option>
+                  {/* Yourself first — the common case is a manager noting their own follow-up. */}
+                  {currentUserId && <option value={currentUserId}>{currentUserName} (Me)</option>}
+                  {users
+                    .filter(u => u.userId !== currentUserId)
+                    .map(u => (
+                      <option key={u.userId} value={u.userId}>{u.fullName}</option>
+                    ))}
+                </Select>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                    <User className="size-3.5 text-slate-400" />
+                    {currentUserName} (Me)
+                  </div>
+                  <p className="text-[11px] text-slate-400">Only a manager can assign a task to someone else.</p>
+                </>
+              )}
             </div>
           </div>
 
@@ -1820,14 +1893,6 @@ function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// Detect activity type from title prefix ("Call: …")
-function detectActivityType(title: string): ActivityType {
-  const found = ACTIVITY_TYPES.find(a =>
-    title.toLowerCase().startsWith(a.label.toLowerCase() + ":")
-  );
-  return found?.type ?? "TASK";
-}
-
 /** Returns true when the task's scheduled window covers the given date string. */
 function taskCoversDay(task: Task, ds: string): boolean {
   const start = task.startAt ? extractLocalDate(task.startAt) : null;
@@ -1865,6 +1930,13 @@ export function FollowUpTaskListScreen() {
   const queryClient = useQueryClient();
   const { data: usersData } = useUsers();
   const users = useMemo(() => usersData?.data ?? [], [usersData]);
+
+  // BR-18: routing work to somebody else — on create, on edit, or by reassigning —
+  // is a Manager/Admin action, enforced by CreateTaskUseCase / UpdateTaskUseCase /
+  // ResignTaskUseCase. Staff raise and work their own tasks, so the controls that
+  // would only come back 403 are not shown to them.
+  const currentUser = useAuthStore(s => s.user);
+  const canAssignOthers = hasFullAccess(currentUser);
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: TaskStatus }) =>
@@ -1927,7 +1999,7 @@ export function FollowUpTaskListScreen() {
     }
 
     if (activityTypeFilter) {
-      filtered = filtered.filter(t => detectActivityType(t.title) === activityTypeFilter);
+      filtered = filtered.filter(t => activityTypeOf(t) === activityTypeFilter);
     }
 
     return filtered;
@@ -1947,8 +2019,8 @@ export function FollowUpTaskListScreen() {
   function TaskRow({ task }: { task: Task }) {
     const overdue = isOverdue(task);
     const done = task.status === "COMPLETED";
-    const actType = detectActivityType(task.title);
-    const typeInfo = ACTIVITY_TYPES.find(a => a.type === actType)!;
+    const actType = activityTypeOf(task);
+    const typeInfo = activityInfo(actType);
     // Customer / Lead / Deal name — prominently shown
     const contactName = task.customerName ?? task.leadName ?? task.primaryContactName ?? null;
     const entityName = linkedEntityLabel(task);
@@ -2104,7 +2176,7 @@ export function FollowUpTaskListScreen() {
 
     // Separate multi-day tasks (span ≥2 days) from single-day tasks
     const filteredCalTasks = calTasks.filter(
-      t => !activityTypeFilter || detectActivityType(t.title) === activityTypeFilter
+      t => !activityTypeFilter || activityTypeOf(t) === activityTypeFilter
     );
 
     const multiDayTasks = filteredCalTasks.filter(t => {
@@ -2178,13 +2250,13 @@ export function FollowUpTaskListScreen() {
                 const isActive = !done && task.startAt && task.endAt
                   && new Date(task.startAt).getTime() <= nowMs
                   && new Date(task.endAt).getTime() >= nowMs;
-                const actType = detectActivityType(task.title);
+                const actType = activityTypeOf(task);
                 const chipCls = done
                   ? "bg-slate-100 border-slate-200 text-slate-400"
                   : overdue
                     ? "bg-[#FCEBEB] border-[#F7C1C1] text-[#791F1F]"
                     : ACTIVITY_CHIP[actType];
-                const typeInfo = ACTIVITY_TYPES.find(a => a.type === actType)!;
+                const typeInfo = activityInfo(actType);
                 return (
                   <button
                     key={task.taskId}
@@ -2237,9 +2309,9 @@ export function FollowUpTaskListScreen() {
               <div key={ds} className={`flex flex-col border-r border-slate-100 last:border-r-0 ${isToday ? "bg-[#E6F1FB]/20" : ""}`}>
                 <div className="flex-1 px-1.5 py-2 space-y-1.5 overflow-y-auto min-h-[160px] max-h-[360px]">
                   {dayTasks.map(task => {
-                    const actType = detectActivityType(task.title);
+                    const actType = activityTypeOf(task);
                     const chipCls = ACTIVITY_CHIP[actType];
-                    const typeInfo = ACTIVITY_TYPES.find(a => a.type === actType)!;
+                    const typeInfo = activityInfo(actType);
                     const done = task.status === "COMPLETED";
                     const overdue = isOverdue(task);
                     const contact = task.customerName ?? task.leadName ?? task.primaryContactName;
@@ -2549,7 +2621,16 @@ export function FollowUpTaskListScreen() {
       )}
 
       {/* ── Shared drawers ───────────────────────────────────────────────── */}
-      {isCreateOpen && <CreateTaskDrawer onClose={() => { setIsCreateOpen(false); setCreateDueDate(undefined); }} users={users} initialDueDate={createDueDate} />}
+      {isCreateOpen && (
+        <CreateTaskDrawer
+          onClose={() => { setIsCreateOpen(false); setCreateDueDate(undefined); }}
+          users={users}
+          initialDueDate={createDueDate}
+          canAssignOthers={canAssignOthers}
+          currentUserId={currentUser?.id ?? ""}
+          currentUserName={currentUser?.name ?? "You"}
+        />
+      )}
       {selectedTask && (
         <TaskDetailDrawer
           task={selectedTask}
@@ -2557,9 +2638,14 @@ export function FollowUpTaskListScreen() {
           users={users}
           onReassign={() => { setReassignTask(selectedTask); setSelectedTask(null); setOpenTaskInEdit(false); }}
           initialEditing={openTaskInEdit}
+          canAssignOthers={canAssignOthers}
         />
       )}
-      {reassignTask && <ReassignFollowUpModal task={reassignTask} onClose={() => setReassignTask(null)} users={users} />}
+      {/* Guarded twice over: the trigger is hidden for staff, and the modal itself
+          refuses to mount without the authority to use it. */}
+      {reassignTask && canAssignOthers && (
+        <ReassignFollowUpModal task={reassignTask} onClose={() => setReassignTask(null)} users={users} />
+      )}
     </div>
   );
 }

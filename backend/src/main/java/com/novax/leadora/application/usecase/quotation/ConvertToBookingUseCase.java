@@ -2,7 +2,6 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.ConvertToBookingRequest;
 import com.novax.leadora.api.dto.response.BookingResponse;
-import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
@@ -10,21 +9,18 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.UUID;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ConvertToBookingUseCase {
 
     private final QuotationRepository quotationRepository;
     private final BookingRepository bookingRepository;
-    private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Transactional
     public BookingResponse execute(UUID quotationId, ConvertToBookingRequest request) {
@@ -76,14 +72,6 @@ public class ConvertToBookingUseCase {
         // POST-1: Update quotation status to CONVERTED
         quotation.setStatus(QuotationStatus.CONVERTED);
         quotationRepository.save(quotation);
-
-        // POST-3: Start BOOKING_CONFIRM SLA tracking (UC-14.7 / BR-28)
-        try {
-            startSlaTrackingUseCase.execute("BOOKING_CONFIRM", "BOOKING", saved.getBookingId());
-        } catch (Exception e) {
-            log.warn("Could not start BOOKING_CONFIRM SLA tracking for bookingId={}: {}",
-                    saved.getBookingId(), e.getMessage());
-        }
 
         return BookingResponse.from(saved);
     }

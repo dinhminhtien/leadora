@@ -214,8 +214,7 @@ class LeadDetailScreen extends ConsumerWidget {
     Lead lead,
   ) async {
     // BR-07: only a Manager/Admin may override the "must be QUALIFIED" rule.
-    final roles = ref.read(currentUserProvider)?.roles ?? const <String>[];
-    final canOverride = roles.contains('MANAGER') || roles.contains('ADMIN');
+    final canOverride = ref.read(currentUserProvider)?.hasFullAccess ?? false;
 
     final converted = await showModalBottomSheet<bool>(
       context: context,

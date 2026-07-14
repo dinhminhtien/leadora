@@ -96,14 +96,6 @@ public class SlaController {
         return ResponseEntity.ok(ApiResponse.success(null, "SLA breach resolved"));
     }
 
-    /** Backfill SLA tracking records for quotations created before a rule existed (Admin/Manager only) */
-    @PostMapping("/backfill/quotations")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<ApiResponse<Integer>> backfillQuotations() {
-        int count = backfillSlaTrackingUseCase.executeForQuotations();
-        return ResponseEntity.ok(ApiResponse.success(count, count + " quotation SLA tracking records created"));
-    }
-
     /** UC-17.6 — View SLA performance report (Admin, Manager, Reservation Staff, Front Office) */
     @GetMapping("/report")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'RESERVATION_STAFF', 'FRONT_OFFICE')")

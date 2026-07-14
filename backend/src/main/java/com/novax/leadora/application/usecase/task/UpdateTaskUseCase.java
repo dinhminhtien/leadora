@@ -5,6 +5,7 @@ import com.novax.leadora.api.dto.response.TaskResponse;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskPriority;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -31,6 +33,7 @@ public class UpdateTaskUseCase {
     private final CustomerRepository customerRepository;
     private final DealRepository dealRepository;
     private final TaskAccessPolicy accessPolicy;
+    private final TaskNotifier taskNotifier;
 
     @Transactional
     public TaskResponse execute(UUID taskId, UpdateTaskRequest request) {
@@ -41,6 +44,11 @@ public class UpdateTaskUseCase {
         UserEntity currentUser = accessPolicy.currentUser();
         accessPolicy.assertCanView(currentUser, task);
 
+        // Snapshot the fields whose *transition* (not final value) drives a
+        // notification — they are mutated in place further down.
+        UserEntity previousAssignee = task.getAssignedUser();
+        TaskStatus previousStatus = task.getStatus();
+
         if (StringUtils.hasText(request.getTitle())) {
             task.setTitle(request.getTitle());
         }
@@ -49,6 +57,16 @@ public class UpdateTaskUseCase {
         }
         if (request.getResultNote() != null) {
             task.setResultNote(request.getResultNote());
+        }
+
+        // The activity type is now editable in its own right. Omitting it leaves the
+        // task's current type alone — except on a row written before the backfill,
+        // which carries none and is normalised to TASK on the way past, so an edit
+        // never leaves a task without a type.
+        if (StringUtils.hasText(request.getActivityType())) {
+            task.setActivityType(ActivityType.fromWire(request.getActivityType()));
+        } else if (task.getActivityType() == null) {
+            task.setActivityType(ActivityType.DEFAULT);
         }
 
         if (StringUtils.hasText(request.getPriority())) {
@@ -72,7 +90,7 @@ public class UpdateTaskUseCase {
 
         if (request.getAssignedUserId() != null) {
             // BR-18: reassigning to a different user is a Manager/Admin action.
-            UUID currentAssigneeId = task.getAssignedUser() != null ? task.getAssignedUser().getUserId() : null;
+            UUID currentAssigneeId = previousAssignee != null ? previousAssignee.getUserId() : null;
             if (!request.getAssignedUserId().equals(currentAssigneeId)) {
                 accessPolicy.assertFullAccess(currentUser);
             }
@@ -81,13 +99,20 @@ public class UpdateTaskUseCase {
             task.setAssignedUser(assignedUser);
         }
 
-        if (request.getLeadId() != null) {
+        // Re-pointing a task at a different lead/customer/deal rewrites its
+        // business context, so it is a Manager/Admin action too. Re-sending the
+        // *same* link is not a change — clients post the whole form back on every
+        // edit, so only a genuine move is blocked.
+        if (request.getLeadId() != null && changesLink(request.getLeadId(), currentLeadId(task))) {
+            accessPolicy.assertFullAccess(currentUser);
             task.setLead(leadRepository.findById(request.getLeadId()).orElse(null));
         }
-        if (request.getCustomerId() != null) {
+        if (request.getCustomerId() != null && changesLink(request.getCustomerId(), currentCustomerId(task))) {
+            accessPolicy.assertFullAccess(currentUser);
             task.setCustomer(customerRepository.findById(request.getCustomerId()).orElse(null));
         }
-        if (request.getDealId() != null) {
+        if (request.getDealId() != null && changesLink(request.getDealId(), currentDealId(task))) {
+            accessPolicy.assertFullAccess(currentUser);
             task.setDeal(dealRepository.findById(request.getDealId()).orElse(null));
         }
 
@@ -110,6 +135,41 @@ public class UpdateTaskUseCase {
         if (request.getPrimaryContactPhone() != null) {
             task.setPrimaryContactPhone(request.getPrimaryContactPhone());
         }
-        return TaskResponse.from(taskRepository.save(task));
+
+        TaskEntity saved = taskRepository.save(task);
+
+        UserEntity newAssignee = saved.getAssignedUser();
+        if (!sameUser(previousAssignee, newAssignee)) {
+            taskNotifier.assigned(saved, newAssignee, currentUser);
+            taskNotifier.reassignedAway(saved, previousAssignee, newAssignee, currentUser);
+        }
+        if (previousStatus != TaskStatus.COMPLETED && saved.getStatus() == TaskStatus.COMPLETED) {
+            taskNotifier.completed(saved, currentUser);
+        }
+
+        return TaskResponse.from(saved);
+    }
+
+    /** True when the requested link points somewhere other than where the task points today. */
+    private static boolean changesLink(UUID requested, UUID current) {
+        return !requested.equals(current);
+    }
+
+    private static UUID currentLeadId(TaskEntity task) {
+        return task.getLead() != null ? task.getLead().getLeadId() : null;
+    }
+
+    private static UUID currentCustomerId(TaskEntity task) {
+        return task.getCustomer() != null ? task.getCustomer().getCustomerId() : null;
+    }
+
+    private static UUID currentDealId(TaskEntity task) {
+        return task.getDeal() != null ? task.getDeal().getDealId() : null;
+    }
+
+    private static boolean sameUser(UserEntity a, UserEntity b) {
+        UUID left = a != null ? a.getUserId() : null;
+        UUID right = b != null ? b.getUserId() : null;
+        return Objects.equals(left, right);
     }
 }

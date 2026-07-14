@@ -238,6 +238,23 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, roleDashboard, permKey]);
 
+  // Which single nav link is "active" for the current pathname. Sibling routes can
+  // nest (e.g. /quotations/pending-approvals starts with /quotations), so a plain
+  // prefix check would light up both "Quotations" and "Pending Approvals" at once —
+  // pick the longest (most specific) matching href instead.
+  const activeHref = useMemo(() => {
+    let best: string | null = null;
+    for (const group of visibleGroups) {
+      for (const item of group.items) {
+        const matches = pathname === item.href || pathname.startsWith(item.href + "/");
+        if (matches && (best === null || item.href.length > best.length)) {
+          best = item.href;
+        }
+      }
+    }
+    return best;
+  }, [visibleGroups, pathname]);
+
   // Guard: a user landing on a route they may not access (deep link, stale tab,
   // or the bare /dashboard dispatcher) is sent to their own dashboard.
   useEffect(() => {
@@ -334,7 +351,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 </p>
               )}
               {group.items.map(({ href, label, Icon }) => {
-                const isActive = pathname === href || pathname.startsWith(href + "/");
+                const isActive = href === activeHref;
                 return (
                   <Link
                     key={href}

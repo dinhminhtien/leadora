@@ -19,6 +19,19 @@ export function getUserRole(user?: { roles?: string[] } | null): AppRole {
   return "SALES";
 }
 
+/**
+ * Whether the user acts on every record or only their own.
+ *
+ * Mirrors `BaseAccessPolicy.FULL_ACCESS_ROLES` on the backend (MANAGER, ADMIN).
+ * Everyone else is scoped to what they own, so a control that reaches into
+ * someone else's record — assigning work, reassigning it, re-pointing it at a
+ * different customer — must be hidden from them rather than left to 403.
+ */
+export function hasFullAccess(user?: { roles?: string[] } | null): boolean {
+  const role = getUserRole(user);
+  return role === "MANAGER" || role === "ADMIN";
+}
+
 /** The home dashboard URL for each role. Front Office lands directly on its arrival-handover desk. */
 export const DASHBOARD_PATHS: Record<AppRole, string> = {
   SALES: "/dashboard/staff",
@@ -113,5 +126,9 @@ export function canAccessPath(
   // SALES / MANAGER — permission driven.
   const required = requiredPermissionFor(pathname);
   if (required === "HANDOVER_VIEW") return true; // Allowed by default for handover pages
+  // Quotation approval is Manager-only on the backend (@PreAuthorize hasRole('MANAGER'))
+  // — enforce that here too, so a stray QUOTATION_APPROVE grant to a non-manager role
+  // can't surface a nav link / route whose API calls would just 403 anyway.
+  if (required === "QUOTATION_APPROVE" && role !== "MANAGER") return false;
   return required != null && permissions.includes(required);
 }

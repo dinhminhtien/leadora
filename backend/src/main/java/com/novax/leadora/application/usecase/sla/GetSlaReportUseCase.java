@@ -30,7 +30,6 @@ public class GetSlaReportUseCase {
             "LEAD_RESPONSE",              "Lead Response",
             "QUOTATION_SENT",             "Quotation Dispatch",
             "FOLLOW_UP_TASK",             "Follow-up Task",
-            "BOOKING_CONFIRM",            "Booking Confirmation",
             "PAYMENT_DEPOSIT",            "Payment Deposit",
             "HANDOVER_SUBMISSION",        "Handover Submission",
             "QUOTATION_APPROVAL",         "Quotation Approval",
