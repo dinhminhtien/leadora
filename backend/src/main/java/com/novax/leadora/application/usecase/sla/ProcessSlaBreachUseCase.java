@@ -5,7 +5,6 @@ import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.SlaTrackingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.SlaStatus;
-import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.OpHandoverRepository;
@@ -35,7 +34,6 @@ public class ProcessSlaBreachUseCase {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final LeadRepository leadRepository;
-    private final BookingRepository bookingRepository;
     private final TaskRepository taskRepository;
     private final QuotationRepository quotationRepository;
     private final PaymentRepository paymentRepository;
@@ -109,8 +107,6 @@ public class ProcessSlaBreachUseCase {
             return switch (tracking.getEntityType()) {
                 case "LEAD" -> leadRepository.findById(tracking.getEntityId())
                         .map(l -> l.getAssignedUser()).orElse(null);
-                case "BOOKING" -> bookingRepository.findById(tracking.getEntityId())
-                        .map(b -> b.getAssignedUser()).orElse(null);
                 case "TASK" -> taskRepository.findById(tracking.getEntityId())
                         .map(t -> t.getAssignedUser()).orElse(null);
                 case "QUOTATION" -> quotationRepository.findById(tracking.getEntityId())
@@ -135,7 +131,6 @@ public class ProcessSlaBreachUseCase {
             case "LEAD_RESPONSE"              -> "Lead Response";
             case "QUOTATION_SENT"             -> "Quotation Dispatch";
             case "FOLLOW_UP_TASK"             -> "Follow-up Task";
-            case "BOOKING_CONFIRM"            -> "Booking Confirmation";
             case "PAYMENT_DEPOSIT"            -> "Payment Deposit";
             case "HANDOVER_SUBMISSION"        -> "Handover Submission";
             case "QUOTATION_APPROVAL"         -> "Quotation Approval";
@@ -148,7 +143,6 @@ public class ProcessSlaBreachUseCase {
         return switch (entityType) {
             case "LEAD" -> "Lead";
             case "QUOTATION" -> "Quotation";
-            case "BOOKING" -> "Booking";
             case "TASK" -> "Task";
             default -> entityType;
         };

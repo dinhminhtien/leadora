@@ -3,7 +3,6 @@ package com.novax.leadora.application.usecase.booking;
 import com.novax.leadora.api.dto.request.ProcessBookingRequest;
 import com.novax.leadora.api.dto.response.BookingDetailResponse;
 import com.novax.leadora.api.dto.response.BookingResponse;
-import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
@@ -29,7 +28,6 @@ public class ProcessBookingUseCase {
 
     private final BookingRepository bookingRepository;
     private final BookingDetailRepository bookingDetailRepository;
-    private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     private final NotificationRepository notificationRepository;
 
     @Transactional
@@ -58,13 +56,6 @@ public class ProcessBookingUseCase {
         }
 
         BookingEntity saved = bookingRepository.save(booking);
-
-        // UC-17.2: booking confirmation decision made — auto-resolve BOOKING_CONFIRM SLA tracking
-        try {
-            resolveSlaBreachUseCase.executeByEntity("BOOKING", bookingId);
-        } catch (Exception e) {
-            log.warn("SLA auto-resolve failed for booking {}: {}", bookingId, e.getMessage());
-        }
 
         // UC-15.1: notify the assigned staff of the booking status decision
         if (saved.getAssignedUser() != null) {
