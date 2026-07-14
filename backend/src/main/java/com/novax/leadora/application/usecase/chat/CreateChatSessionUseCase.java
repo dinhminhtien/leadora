@@ -15,7 +15,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class CreateChatSessionUseCase {
 
-    private static final String DEFAULT_TITLE = "Cuộc trò chuyện mới";
+    private static final String DEFAULT_TITLE = "New conversation";
 
     private final AiChatSessionRepository sessionRepository;
 

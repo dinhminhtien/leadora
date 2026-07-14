@@ -1,9 +1,12 @@
 package com.novax.leadora.common.security;
 
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.UserStatus;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -54,17 +57,19 @@ public class CurrentUserProvider {
             if (StringUtils.hasText(subject)) {
                 UserEntity user = tryLoad(subject);
                 if (user != null) {
-                    return user;
+                    return requireActiveUser(user);
                 }
             }
 
-            // Fallback: try loading by verified email claim from JWT
+            // OAuth / SSO: resolve by verified email — account must be pre-provisioned by Admin.
             String email = jwt.getClaimAsString("email");
             if (StringUtils.hasText(email)) {
-                UserEntity user = userRepository.findWithRoleByEmailIgnoreCase(email.trim()).orElse(null);
-                if (user != null) {
-                    return user;
-                }
+                return userRepository.findWithRoleByEmailIgnoreCase(email.trim())
+                        .map(this::requireActiveUser)
+                        .orElseThrow(() -> new BusinessException(
+                                "ACCOUNT_NOT_PROVISIONED",
+                                "You do not have access to this system. Please contact your administrator.",
+                                HttpStatus.FORBIDDEN));
             }
         }
 
@@ -72,20 +77,20 @@ public class CurrentUserProvider {
         if (StringUtils.hasText(headerUserId)) {
             UserEntity user = tryLoad(headerUserId);
             if (user != null) {
-                return user;
+                return requireActiveUser(user);
             }
         }
 
         // 3. Dev-only fallback: AI_CHAT_DEV_USER_ID env variable.
         // Intentionally disabled in production to prevent unauthorized access.
         boolean isDevProfile = Arrays.stream(activeProfiles.split(","))
-                .map(String::trim)
+                .map(s -> s.trim())
                 .anyMatch("dev"::equalsIgnoreCase);
 
         if (isDevProfile && StringUtils.hasText(devUserId)) {
             UserEntity user = tryLoad(devUserId);
             if (user != null) {
-                return user;
+                return requireActiveUser(user);
             }
         }
 
@@ -96,9 +101,22 @@ public class CurrentUserProvider {
 
     private UserEntity tryLoad(String rawId) {
         try {
-            return userRepository.findById(UUID.fromString(rawId.trim())).orElse(null);
+            return userRepository.findWithRoleByUserId(UUID.fromString(rawId.trim())).orElse(null);
         } catch (IllegalArgumentException ex) {
             return null; // not a UUID — ignore and fall through
         }
+    }
+
+    private UserEntity requireActiveUser(UserEntity user) {
+        // Only LOCKED accounts are blocked. INACTIVE is a reversible "dormant" state (from the
+        // 7-day idle job) — it is allowed through and is reactivated to ACTIVE on explicit login
+        // (see LoginActivityService). This keeps a dormant user from being bounced out of the app.
+        if (user.getStatus() == UserStatus.LOCKED) {
+            throw new BusinessException(
+                    "ACCOUNT_LOCKED",
+                    "Your account has been locked. Please contact the Admin for assistance.",
+                    HttpStatus.FORBIDDEN);
+        }
+        return user;
     }
 }

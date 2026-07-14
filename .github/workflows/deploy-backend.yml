@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - dev
-      - test
       - main
     paths:
       - 'backend/**'
@@ -21,7 +20,7 @@ env:
   # Dedicated service account for Cloud Run container runtime (least privilege)
   RUNTIME_SERVICE_ACCOUNT: leadora-runtime@leadora-499809.iam.gserviceaccount.com
 
-# Cấp quyền cho workflow lấy OpenID Connect (OIDC) token từ GitHub để auth với GCP
+# Grant the workflow permission to obtain an OpenID Connect (OIDC) token from GitHub to authenticate with GCP
 permissions:
   contents: read
   id-token: write
@@ -35,7 +34,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # 1. Authenticate với Google Cloud qua Workload Identity Federation (Không cần JSON Key)
+    # 1. Authenticate with Google Cloud via Workload Identity Federation (no JSON key needed)
     - name: Google Auth
       id: auth
       uses: google-github-actions/auth@v2
@@ -47,7 +46,7 @@ jobs:
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
-    # 3. Cấu hình Docker đăng nhập vào Artifact Registry
+    # 3. Configure Docker to log in to Artifact Registry
     - name: Configure Docker
       run: |
         gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
@@ -56,12 +55,12 @@ jobs:
     - name: Build and Push Docker Image
       run: |
         IMAGE_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
-        # Di chuyển vào thư mục backend và build Dockerfile
+        # Move into the backend directory and build the Dockerfile
         docker build -t $IMAGE_TAG ./backend
         docker push $IMAGE_TAG
         echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
 
-    # 5. Deploy lên Cloud Run
+    # 5. Deploy to Cloud Run
     - name: Deploy to Cloud Run
       run: |
         gcloud run deploy ${{ env.SERVICE_NAME }} \

@@ -8,7 +8,10 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
-@Table(name = "bookings")
+@Table(name = "bookings", indexes = {
+    @Index(name = "idx_bookings_created_at", columnList = "created_at"),
+    @Index(name = "idx_bookings_assigned_user_id", columnList = "assigned_user_id")
+})
 @Getter
 @Setter
 @NoArgsConstructor

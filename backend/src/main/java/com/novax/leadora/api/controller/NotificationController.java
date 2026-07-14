@@ -3,34 +3,52 @@ package com.novax.leadora.api.controller;
 import com.novax.leadora.api.dto.response.NotificationResponse;
 import com.novax.leadora.application.usecase.notification.GetNotificationByIdUseCase;
 import com.novax.leadora.application.usecase.notification.GetNotificationsUseCase;
+import com.novax.leadora.application.usecase.notification.GetUnreadNotificationCountUseCase;
 import com.novax.leadora.application.usecase.notification.MarkAllReadUseCase;
 import com.novax.leadora.application.usecase.notification.MarkNotificationReadUseCase;
 import com.novax.leadora.common.response.ApiResponse;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/v1/notifications")
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 public class NotificationController {
 
     private final GetNotificationsUseCase getNotificationsUseCase;
     private final GetNotificationByIdUseCase getNotificationByIdUseCase;
     private final MarkNotificationReadUseCase markNotificationReadUseCase;
     private final MarkAllReadUseCase markAllReadUseCase;
+    private final GetUnreadNotificationCountUseCase getUnreadNotificationCountUseCase;
+    private final CurrentUserProvider currentUserProvider;
 
-    /** UC-15.1 — List notifications for a user */
+    /** UC-15.1 — Paginated notification list for the authenticated user */
     @GetMapping
-    public ResponseEntity<ApiResponse<List<NotificationResponse>>> getNotifications(
-            @RequestParam UUID userId,
-            @RequestParam(required = false, defaultValue = "false") Boolean unreadOnly) {
-        List<NotificationResponse> list = getNotificationsUseCase.execute(userId, unreadOnly);
-        return ResponseEntity.ok(ApiResponse.success(list));
+    public ResponseEntity<ApiResponse<Page<NotificationResponse>>> getNotifications(
+            @RequestParam(required = false, defaultValue = "false") Boolean unreadOnly,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        UUID userId = currentUserProvider.resolve(null).getUserId();
+        Page<NotificationResponse> result =
+                getNotificationsUseCase.execute(userId, unreadOnly, PageRequest.of(page, size));
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    /** UC-15.1 — Lightweight unread count for the bell badge */
+    @GetMapping("/unread-count")
+    public ResponseEntity<ApiResponse<Map<String, Long>>> getUnreadCount() {
+        UUID userId = currentUserProvider.resolve(null).getUserId();
+        long count = getUnreadNotificationCountUseCase.execute(userId);
+        return ResponseEntity.ok(ApiResponse.success(Map.of("count", count)));
     }
 
     /** UC-15.2 — Access a notification (auto marks as read) */
@@ -49,9 +67,10 @@ public class NotificationController {
         return ResponseEntity.ok(ApiResponse.success(response, "Notification updated"));
     }
 
-    /** UC-15.1 — Mark all notifications as read for a user */
+    /** UC-15.1 — Mark all notifications as read for the authenticated user */
     @PatchMapping("/mark-all-read")
-    public ResponseEntity<ApiResponse<Map<String, Integer>>> markAllRead(@RequestParam UUID userId) {
+    public ResponseEntity<ApiResponse<Map<String, Integer>>> markAllRead() {
+        UUID userId = currentUserProvider.resolve(null).getUserId();
         Map<String, Integer> result = markAllReadUseCase.execute(userId);
         return ResponseEntity.ok(ApiResponse.success(result, "All notifications marked as read"));
     }

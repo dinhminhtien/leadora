@@ -58,6 +58,8 @@ export type SlaReport = {
   byActivityType: SlaActivityBreakdown[];
 };
 
+export type SlaTrackingStatus = "ACTIVE" | "BREACHED" | "RESOLVED";
+
 export type SlaTracking = {
   trackingId: string;
   entityType: string;
@@ -66,6 +68,8 @@ export type SlaTracking = {
   startedAt: string;
   deadlineAt: string;
   warningAt: string;
+  resolvedAt?: string;
+  slaStatus: SlaTrackingStatus;
   displayStatus: SlaDisplayStatus;
   hoursRemaining: number;
 };

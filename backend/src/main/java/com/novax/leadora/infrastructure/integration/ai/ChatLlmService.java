@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Wraps the Spring AI {@link ChatClient} (Ollama). The system prompt is the second line of
+ * Wraps the Spring AI {@link ChatClient} (Google Gemini). The system prompt is the second line of
  * defence behind {@code IntentClassifier}: it re-states the read-only and business-only policy
  * and forbids inventing data not present in the supplied reference block (BR-35/BR-36).
  */
@@ -32,13 +32,16 @@ public class ChatLlmService {
             2. BUSINESS SCOPE ONLY: Only answer questions about sales/CRM data (leads, customers, deals,
                tasks, revenue, SLA, quotations, bookings...) and company documents/policies. Politely
                decline anything off-topic (math, programming, general life/entertainment...).
-            3. GROUND IN PROVIDED DATA: Base answers only on the "REFERENCE DATA" section below (if any)
-               and the conversation so far. Do not invent or guess figures. If no relevant data is
-               available, say clearly that you found no information you are allowed to access.
-            4. LANGUAGE: Reply in the SAME language as the user's latest message — Vietnamese if they
-               write Vietnamese, English if they write English. The REFERENCE DATA section may be in
-               Vietnamese regardless of the question; still answer in the user's language and translate
-               any field labels/values as needed.
+            3. GROUND IN PROVIDED DATA: Base answers on the "REFERENCE DATA" section below (if any).
+               Do not invent or guess figures. If no relevant data is available, say clearly that you
+               found no information you are allowed to access.
+            3b. FRESHNESS: The REFERENCE DATA is re-queried live from the database for THIS question and
+               is the authoritative, current snapshot. If a figure, count, status or list in it differs
+               from something said earlier in the conversation, TRUST THE REFERENCE DATA — the earlier
+               numbers may be stale. Use the conversation history only to understand what the user is
+               referring to (follow-ups, pronouns), never as a source of data values.
+            4. LANGUAGE: Always reply in ENGLISH, regardless of the language the user writes in. The
+               REFERENCE DATA section is in English; present all field labels and values in English.
             5. STYLE: Be concise and well-structured for a chat UI that renders Markdown.
                - Use a **Markdown table** when showing multiple records or comparisons
                  (e.g. several leads/deals/tasks with fields like name, status, value).
@@ -83,7 +86,9 @@ public class ChatLlmService {
 
         String systemText = SYSTEM_PROMPT;
         if (StringUtils.hasText(referenceBlock)) {
-            systemText = systemText + "\n\n=== REFERENCE DATA (use only this) ===\n" + referenceBlock;
+            systemText = systemText
+                    + "\n\n=== REFERENCE DATA (current live snapshot — authoritative, "
+                    + "overrides any older figures mentioned earlier) ===\n" + referenceBlock;
         } else {
             systemText = systemText + "\n\n(No reference data was retrieved for this request.)";
         }

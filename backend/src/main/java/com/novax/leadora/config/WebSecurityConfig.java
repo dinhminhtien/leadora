@@ -56,8 +56,8 @@ public class WebSecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/forgot-password",
-                                "/api/v1/auth/reset-password")
+                        .requestMatchers("/", "/error", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/forgot-password",
+                                "/api/v1/auth/reset-password", "/api/v1/health", "/api/v1/feedback/public/**")
                         .permitAll()
                         .requestMatchers("/api/v1/auth/profile").authenticated()
                         .requestMatchers("/api/v1/**").authenticated()
@@ -65,6 +65,15 @@ public class WebSecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
                         .bearerTokenResolver(request -> {
+                            String path = request.getRequestURI();
+                            if ("/".equals(path) || "/error".equals(path) || "/api/v1/health".equals(path)
+                                    || path.startsWith("/api/v1/feedback/public/")
+                                    || path.startsWith("/api/v1/auth/login")
+                                    || path.startsWith("/api/v1/auth/logout")
+                                    || path.startsWith("/api/v1/auth/forgot-password")
+                                    || path.startsWith("/api/v1/auth/reset-password")) {
+                                return null;
+                            }
                             // Extract Bearer token without throwing — returns null instead of throwing on
                             // invalid input
                             String header = request.getHeader("Authorization");
@@ -111,6 +120,9 @@ public class WebSecurityConfig {
 
         // 3. Return a delegating decoder based on the JWT header algorithm
         return token -> {
+            if (tokenBlacklistService.isBlacklisted(token)) {
+                throw new JwtException("Token is blacklisted");
+            }
             try {
                 var jwt = JWTParser.parse(token);
                 if (jwt instanceof SignedJWT signedJwt) {
@@ -121,6 +133,8 @@ public class WebSecurityConfig {
                     }
                 }
                 return hs256Decoder.decode(token);
+            } catch (JwtException ex) {
+                throw ex; // Let validation/expiration exceptions pass through directly
             } catch (Exception ex) {
                 throw new JwtException("Failed to decode JWT: " + ex.getMessage(), ex);
             }

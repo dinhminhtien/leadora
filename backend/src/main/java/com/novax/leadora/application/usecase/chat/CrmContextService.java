@@ -18,6 +18,7 @@ import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -44,46 +45,58 @@ public class CrmContextService {
     private final TaskRepository taskRepository;
 
     /**
-     * Top-privilege mode: login/RBAC isn't wired yet and the assistant is granted full access,
-     * so "my data" questions see ALL records (not just one arbitrary fallback user). Set
-     * {@code AI_CHAT_TOP_PRIVILEGE=false} to scope strictly to the acting user once login lands.
+     * Roles allowed to see ALL CRM records via chat. A Sales Staff (or any other role) is scoped
+     * to their own assigned records only — so "show me the leads" returns just their leads, while
+     * a Manager/Admin sees the whole team's. Optionally widened by {@code AI_CHAT_TOP_PRIVILEGE}
+     * (dev escape hatch) — default false now that login/RBAC is wired.
      */
-    @Value("${AI_CHAT_TOP_PRIVILEGE:true}")
+    private static final Set<String> FULL_SCOPE_ROLES = Set.of("MANAGER", "ADMIN");
+
+    @Value("${AI_CHAT_TOP_PRIVILEGE:false}")
     private boolean topPrivilege;
 
-    /** Facts about leads/deals/tasks the user may view (all records in top-privilege mode). */
+    /** Whether {@code user}'s role may read every record (team-wide), vs only their own. */
+    public boolean canSeeAllData(UserEntity user) {
+        if (topPrivilege) return true;
+        String role = (user.getRole() != null && user.getRole().getRoleName() != null)
+                ? user.getRole().getRoleName().trim().toUpperCase() : "";
+        return FULL_SCOPE_ROLES.contains(role);
+    }
+
+    /** Facts about leads/deals/tasks the user may view (team-wide for Manager/Admin, else own). */
     public String assignedContext(UserEntity user) {
         UUID userId = user.getUserId();
-        List<LeadEntity> leads = topPrivilege
+        boolean all = canSeeAllData(user);
+        List<LeadEntity> leads = all
                 ? leadRepository.findAll() : leadRepository.findByAssignedUser_UserId(userId);
-        List<DealEntity> deals = topPrivilege
+        List<DealEntity> deals = all
                 ? dealRepository.findAll() : dealRepository.findByAssignedUser_UserId(userId);
-        List<TaskEntity> tasks = topPrivilege
+        List<TaskEntity> tasks = all
                 ? taskRepository.findAll() : taskRepository.findByAssignedUser_UserId(userId);
 
         StringBuilder sb = new StringBuilder();
-        sb.append(topPrivilege
-                ? "== Dữ liệu CRM (chế độ toàn quyền — chưa bật phân quyền) ==\n"
-                : "== Dữ liệu CRM được giao cho " + user.getFullName() + " ==\n");
+        sb.append(all
+                ? "== Full CRM data (manager access) ==\n"
+                : "== CRM data assigned to " + user.getFullName() + " ==\n");
 
         // Leads — counts by status + an actual listing so the assistant can enumerate them.
         Map<Object, Long> leadByStatus = leads.stream()
-                .collect(Collectors.groupingBy(LeadEntity::getStatus, Collectors.counting()));
-        sb.append("Leads: tổng ").append(leads.size())
+                .collect(Collectors.groupingBy(l -> l.getStatus(), Collectors.counting()));
+        sb.append("Leads: total ").append(leads.size())
                 .append(" ").append(leadByStatus).append("\n");
         if (!leads.isEmpty()) {
-            sb.append("Danh sách lead (mới nhất trước, tối đa ").append(MAX_LEADS).append("):\n");
+            sb.append("Lead list (newest first, up to ").append(MAX_LEADS).append("):\n");
             leads.stream()
-                    .sorted(Comparator.comparing(LeadEntity::getCreatedAt,
+                    .sorted(Comparator.comparing((LeadEntity l) -> l.getCreatedAt(),
                             Comparator.nullsFirst(Comparator.naturalOrder())).reversed())
                     .limit(MAX_LEADS)
                     .forEach(l -> sb.append("  - \"").append(l.getFullName())
                             .append("\" | ").append(l.getStatus())
-                            .append(" | công ty: ").append(nullToDash(l.getCompanyName()))
+                            .append(" | company: ").append(nullToDash(l.getCompanyName()))
                             .append(" | email: ").append(nullToDash(l.getEmail()))
-                            .append(" | nguồn: ").append(nullToDash(l.getSource()))
+                            .append(" | source: ").append(nullToDash(l.getSource()))
                             .append(assigneeSuffix(l))
-                            .append(" | tạo lúc: ").append(l.getCreatedAt())
+                            .append(" | created: ").append(l.getCreatedAt())
                             .append("\n"));
         }
 
@@ -91,37 +104,37 @@ public class CrmContextService {
         long openDeals = deals.stream().filter(d -> d.getStatus() == DealStatus.OPEN).count();
         BigDecimal openValue = deals.stream()
                 .filter(d -> d.getStatus() == DealStatus.OPEN && d.getExpectedRevenue() != null)
-                .map(DealEntity::getExpectedRevenue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(d -> d.getExpectedRevenue())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
         BigDecimal wonValue = deals.stream()
                 .filter(d -> d.getStatus() == DealStatus.WON && d.getExpectedRevenue() != null)
-                .map(DealEntity::getExpectedRevenue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        sb.append("Deals: tổng ").append(deals.size())
-                .append(", đang mở ").append(openDeals)
-                .append(", giá trị kỳ vọng (OPEN) ").append(openValue)
-                .append(", giá trị đã thắng (WON) ").append(wonValue).append("\n");
+                .map(d -> d.getExpectedRevenue())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
+        sb.append("Deals: total ").append(deals.size())
+                .append(", open ").append(openDeals)
+                .append(", expected value (OPEN) ").append(openValue)
+                .append(", won value (WON) ").append(wonValue).append("\n");
         if (!deals.isEmpty()) {
-            sb.append("Chi tiết deal (tối đa ").append(MAX_DEALS).append("):\n");
+            sb.append("Deal details (up to ").append(MAX_DEALS).append("):\n");
             deals.stream().limit(MAX_DEALS).forEach(d -> sb.append("  - \"").append(d.getDealName())
                     .append("\" | ").append(d.getPipelineStage())
                     .append(" | ").append(d.getStatus())
-                    .append(" | giá trị ").append(d.getExpectedRevenue())
-                    .append(" | dự kiến chốt ").append(d.getExpectedCloseDate()).append("\n"));
+                    .append(" | value ").append(d.getExpectedRevenue())
+                    .append(" | expected close ").append(d.getExpectedCloseDate()).append("\n"));
         }
 
         // Tasks (overdue derived: status == OPEN && endAt < now())
         OffsetDateTime now = OffsetDateTime.now();
         long openTasks = tasks.stream().filter(t -> t.getStatus() == TaskStatus.OPEN).count();
         List<TaskEntity> overdue = tasks.stream().filter(t -> isOverdue(t, now)).toList();
-        sb.append("Tasks: tổng ").append(tasks.size())
-                .append(", đang mở/đang làm ").append(openTasks)
-                .append(", quá hạn ").append(overdue.size()).append("\n");
+        sb.append("Tasks: total ").append(tasks.size())
+                .append(", open/in progress ").append(openTasks)
+                .append(", overdue ").append(overdue.size()).append("\n");
         if (!overdue.isEmpty()) {
-            sb.append("Công việc quá hạn (tối đa ").append(MAX_TASKS).append("):\n");
+            sb.append("Overdue tasks (up to ").append(MAX_TASKS).append("):\n");
             overdue.stream().limit(MAX_TASKS).forEach(t -> sb.append("  - \"").append(t.getTitle())
-                    .append("\" | hạn ").append(t.getEndAt())
-                    .append(" | ưu tiên ").append(t.getPriority())
+                    .append("\" | due ").append(t.getEndAt())
+                    .append(" | priority ").append(t.getPriority())
                     .append(" | ").append(t.getStatus()).append("\n"));
         }
 
@@ -139,44 +152,44 @@ public class CrmContextService {
         long lostDeals = deals.stream().filter(d -> d.getStatus() == DealStatus.LOST).count();
         BigDecimal wonValue = deals.stream()
                 .filter(d -> d.getStatus() == DealStatus.WON && d.getExpectedRevenue() != null)
-                .map(DealEntity::getExpectedRevenue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(d -> d.getExpectedRevenue())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
         BigDecimal openValue = deals.stream()
                 .filter(d -> d.getStatus() == DealStatus.OPEN && d.getExpectedRevenue() != null)
-                .map(DealEntity::getExpectedRevenue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(d -> d.getExpectedRevenue())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         StringBuilder sb = new StringBuilder();
-        sb.append("== Tổng hợp toàn đội bán hàng ==\n");
-        sb.append("Deals: tổng ").append(deals.size())
-                .append(" (mở ").append(openDeals)
-                .append(", thắng ").append(wonDeals)
+        sb.append("== Whole sales team summary ==\n");
+        sb.append("Deals: total ").append(deals.size())
+                .append(" (open ").append(openDeals)
+                .append(", won ").append(wonDeals)
                 .append(", thua ").append(lostDeals).append(")")
-                .append(", giá trị WON ").append(wonValue)
-                .append(", giá trị pipeline (OPEN) ").append(openValue).append("\n");
-        sb.append("Leads: tổng ").append(leads.size()).append("\n");
+                .append(", WON value ").append(wonValue)
+                .append(", pipeline value (OPEN) ").append(openValue).append("\n");
+        sb.append("Leads: total ").append(leads.size()).append("\n");
         OffsetDateTime nowTeam = OffsetDateTime.now();
-        sb.append("Tasks: tổng ").append(tasks.size())
-                .append(", quá hạn ").append(tasks.stream().filter(t -> isOverdue(t, nowTeam)).count())
+        sb.append("Tasks: total ").append(tasks.size())
+                .append(", overdue ").append(tasks.stream().filter(t -> isOverdue(t, nowTeam)).count())
                 .append("\n");
 
         // Per-rep breakdown (group by assigned user)
         Map<String, List<DealEntity>> dealsByRep = deals.stream()
                 .filter(d -> d.getAssignedUser() != null)
                 .collect(Collectors.groupingBy(d -> repLabel(d.getAssignedUser())));
-        sb.append("Theo nhân viên (tối đa ").append(MAX_REPS).append("):\n");
+        sb.append("By staff member (up to ").append(MAX_REPS).append("):\n");
         dealsByRep.entrySet().stream().limit(MAX_REPS).forEach(e -> {
             List<DealEntity> rep = e.getValue();
             long open = rep.stream().filter(d -> d.getStatus() == DealStatus.OPEN).count();
             long won = rep.stream().filter(d -> d.getStatus() == DealStatus.WON).count();
             BigDecimal value = rep.stream()
                     .filter(d -> d.getStatus() == DealStatus.WON && d.getExpectedRevenue() != null)
-                    .map(DealEntity::getExpectedRevenue)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    .map(d -> d.getExpectedRevenue())
+                    .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
             sb.append("  - ").append(e.getKey())
-                    .append(": deals mở ").append(open)
-                    .append(", thắng ").append(won)
-                    .append(", giá trị WON ").append(value).append("\n");
+                    .append(": open deals ").append(open)
+                    .append(", won ").append(won)
+                    .append(", WON value ").append(value).append("\n");
         });
 
         return sb.toString();
@@ -192,7 +205,7 @@ public class CrmContextService {
 
     private String assigneeSuffix(LeadEntity lead) {
         UserEntity assignee = lead.getAssignedUser();
-        return assignee != null ? " | phụ trách: " + repLabel(assignee) : " | phụ trách: (chưa giao)";
+        return assignee != null ? " | assigned to: " + repLabel(assignee) : " | assigned to: (unassigned)";
     }
 
     private boolean isOverdue(TaskEntity t, OffsetDateTime now) {

@@ -1,45 +1,92 @@
-import { apiClient, type ApiResponse } from "@/services/api_client";
-import type { ListQuery } from "@/shared/types/api";
+import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_client";
 
-export type DepositPayment = Record<string, unknown> & {
-  id: string;
-  amount?: number;
-  status?: string;
+export type PaymentStatus = "PENDING" | "PAID" | "FAILED" | "CANCELLED" | "EXPIRED";
+export type PaymentType = "DEPOSIT" | "FULL_PAYMENT";
+
+export type Payment = {
+  paymentId: string;
+  bookingId: string;
+  bookingCode: string;
+  customerId?: string;
+  customerName?: string;
+  createdById?: string;
+  createdByName?: string;
+  paymentMethod?: string;
+  gatewayProvider?: string;
+  gatewayTransactionId?: string;
+  amount: number;
+  paymentType: PaymentType;
+  status: PaymentStatus;
+  dueDate?: string;
+  paidAt?: string;
+  qrCodeUrl?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
-export type DepositPaymentPayload = Record<string, unknown>;
+export type GeneratePaymentPayload = {
+  bookingId: string;
+  amount: number;
+  paymentType: PaymentType;
+  paymentMethod?: string;
+  notes?: string;
+  dueDate?: string;
+};
 
-const ENDPOINT = "/deposit-payments";
+export type UpdatePaymentStatusPayload = {
+  status: PaymentStatus;
+  verificationNote?: string;
+};
+
+export type PaymentQuery = {
+  search?: string;
+  status?: string;
+  paymentType?: string;
+  sortBy?: string;
+  sortDir?: string;
+  page?: number;
+  size?: number;
+};
+
+const ENDPOINT = "/payments";
 
 export const depositPaymentService = {
-  async getList(params?: ListQuery) {
-    const response = await apiClient.get<ApiResponse<DepositPayment[]>>(
+  async getList(params?: PaymentQuery) {
+    const response = await apiClient.get<ApiResponse<PageResponse<Payment>>>(
       ENDPOINT,
-      { params },
+      { params }
     );
     return response.data;
   },
 
   async getById(id: string) {
-    const response = await apiClient.get<ApiResponse<DepositPayment>>(
-      `${ENDPOINT}/${id}`,
+    const response = await apiClient.get<ApiResponse<Payment>>(
+      `${ENDPOINT}/${id}`
     );
     return response.data;
   },
 
-  async create(payload: DepositPaymentPayload) {
-    const response = await apiClient.post<ApiResponse<DepositPayment>>(
+  async generate(payload: GeneratePaymentPayload) {
+    const response = await apiClient.post<ApiResponse<Payment>>(
       ENDPOINT,
-      payload,
+      payload
     );
     return response.data;
   },
 
-  async update(id: string, payload: DepositPaymentPayload) {
-    const response = await apiClient.put<ApiResponse<DepositPayment>>(
-      `${ENDPOINT}/${id}`,
-      payload,
+  async updateStatus(id: string, payload: UpdatePaymentStatusPayload) {
+    const response = await apiClient.patch<ApiResponse<Payment>>(
+      `${ENDPOINT}/${id}/status`,
+      payload
     );
     return response.data;
   },
+
+  async cancel(id: string) {
+    const response = await apiClient.patch<ApiResponse<Payment>>(
+      `${ENDPOINT}/${id}/cancel`
+    );
+    return response.data;
+  }
 };

@@ -10,7 +10,11 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "payments")
+@Table(name = "payments", indexes = {
+    @Index(name = "idx_payments_status", columnList = "status"),
+    @Index(name = "idx_payments_paid_at", columnList = "paid_at"),
+    @Index(name = "idx_payments_created_at", columnList = "created_at")
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -61,5 +65,13 @@ public class PaymentEntity extends BaseEntity {
     private String qrCodeUrl;
 
     @Column(name = "notes", columnDefinition = "TEXT")
-    private String notes;
+    private String verificationNote;
+
+    public String getNotes() {
+        return verificationNote;
+    }
+
+    public void setNotes(String notes) {
+        this.verificationNote = notes;
+    }
 }

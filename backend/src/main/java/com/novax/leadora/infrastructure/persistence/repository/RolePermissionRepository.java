@@ -25,6 +25,10 @@ public interface RolePermissionRepository extends JpaRepository<RolePermissionEn
 
     long countByRole_RoleId(Integer roleId);
 
+    /** Effective permission codes granted to a role — drives frontend gating. */
+    @Query("SELECT rp.permission.permissionCode FROM RolePermissionEntity rp WHERE rp.role.roleId = :roleId")
+    List<String> findPermissionCodesByRoleId(@Param("roleId") Integer roleId);
+
     /** UC-6.4 — wipe a role's permission set before re-applying the requested one. */
     @Modifying
     @Query("DELETE FROM RolePermissionEntity rp WHERE rp.role.roleId = :roleId")

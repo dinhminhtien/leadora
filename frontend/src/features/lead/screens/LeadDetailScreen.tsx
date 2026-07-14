@@ -1,15 +1,20 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   ChevronLeft, Mail, Phone, Building2, User, Calendar,
   FileText, Clock, MessageSquare, Sparkles, CheckCircle2,
   Circle, Edit3, X, Loader2, Save, AlertCircle, UserPlus,
-  ArrowRight, ShieldCheck, ShieldAlert,
-  BadgeCheck, Building, ServerCrash,
+  ArrowRight, ShieldCheck, ShieldAlert, Lock,
+  BadgeCheck, Building, ServerCrash, UserCog,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useLeadDetail, useUpdateLead, useConvertLead } from "@/features/lead/hooks/use_leads";
+import { useUsers } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
+import type { UserSummary } from "@/services/follow_up_task_service";
+import { useAuthStore } from "@/stores/auth_store";
+import { getUserRole } from "@/shared/auth/access";
 import type { Lead, LeadStatus, UpdateLeadPayload, CustomerType } from "@/services/lead_service";
 
 // ── Status pipeline config ────────────────────────────────────────────────────
@@ -57,6 +62,9 @@ function allowedStatusOptions(current: LeadStatus): LeadStatus[] {
 const SOURCE_OPTIONS = [
   "Website Inquiry", "Referral", "Social Media", "Cold Call", "Walk-in", "Event",
 ];
+
+// Letters (any language), spaces and basic name punctuation — no digits/symbols.
+const NAME_ALLOWED = /^[\p{L}\s.'-]+$/u;
 
 // ── Mock interaction data ─────────────────────────────────────────────────────
 
@@ -108,14 +116,21 @@ function ConvertModal({
 }) {
   const convertMutation = useConvertLead(lead.leadId);
   const [done, setDone] = useState(false);
+  const [reason, setReason] = useState("");
 
   const isQualified = lead.status === "QUALIFIED";
   const isCorporate = lead.isCorporate;
   const customerType: CustomerType = isCorporate ? "CORPORATE" : "INDIVIDUAL";
 
+  // BR-07: a non-qualified lead can still be converted, but only by a Sales
+  // Manager/Admin who documents an approval reason. Sales staff never see this.
+  const role = getUserRole(useAuthStore(s => s.user));
+  const canOverride = role === "MANAGER" || role === "ADMIN";
+  const canConfirm = isQualified || (canOverride && reason.trim().length > 0);
+
   // Confirmation only — every detail already lives on the lead (captured at create/edit time).
   const handleConfirm = () => {
-    if (!isQualified) return;
+    if (!canConfirm) return;
     convertMutation.mutate(
       {
         customerType,
@@ -125,6 +140,7 @@ function ConvertModal({
         companyName: lead.companyName ?? "",
         taxCode:     "",
         address:     lead.address ?? "",
+        reason:      isQualified ? undefined : reason.trim(),
       },
       {
         onSuccess: () => setDone(true),
@@ -190,6 +206,23 @@ function ConvertModal({
               <p className="text-xs text-emerald-700 font-medium">
                 This lead is qualified — you can convert it into a customer right now.
               </p>
+            </div>
+          ) : canOverride ? (
+            <div className="mb-5">
+              <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <ShieldAlert className="size-4 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-amber-700">Manager override</p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    This lead is <strong>{lead.status}</strong>, not yet Qualified. As a manager you may approve
+                    an exception — record the reason below to enable conversion.
+                  </p>
+                </div>
+              </div>
+              <label className="block mt-3 text-xs font-semibold text-slate-700">Approval reason <span className="text-rose-500">*</span></label>
+              <textarea rows={2} value={reason} onChange={e => setReason(e.target.value)}
+                placeholder="e.g. Walk-in guest with a confirmed booking — converting ahead of qualification."
+                className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100 transition resize-none" />
             </div>
           ) : (
             <div className="flex items-start gap-3 px-4 py-3 mb-5 bg-amber-50 border border-amber-200 rounded-xl">
@@ -262,12 +295,12 @@ function ConvertModal({
             Cancel
           </button>
           <button type="button" onClick={handleConfirm}
-            disabled={convertMutation.isPending || !isQualified}
+            disabled={convertMutation.isPending || !canConfirm}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition active:scale-95">
             {convertMutation.isPending
               ? <Loader2 className="size-4 animate-spin" />
               : <BadgeCheck className="size-4" />}
-            {convertMutation.isPending ? "Processing…" : "Confirm Conversion"}
+            {convertMutation.isPending ? "Processing…" : isQualified ? "Confirm Conversion" : "Approve & Convert"}
           </button>
         </div>
       </div>
@@ -277,9 +310,18 @@ function ConvertModal({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function LeadDetailScreen({ leadId }: { leadId: string }) {
-  const { data: resp, isLoading, isError } = useLeadDetail(leadId);
+export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string; editMode?: boolean }) {
+  const router = useRouter();
+  const { data: resp, isLoading, isError, error } = useLeadDetail(leadId);
   const updateMutation = useUpdateLead(leadId);
+
+  // Managers may (re)assign a lead to a sales staff member; staff cannot.
+  const role = getUserRole(useAuthStore(s => s.user));
+  const canAssign = role === "MANAGER";
+  const { data: usersResp } = useUsers();
+  const salesUsers: UserSummary[] = (usersResp?.data ?? []).filter(
+    u => (u.roleName ?? "").toUpperCase() === "SALES",
+  );
 
   const [editOpen, setEditOpen]       = useState(false);
   const [editForm, setEditForm]       = useState<UpdateLeadPayload>({});
@@ -292,42 +334,107 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
 
   const lead = resp?.data;
 
+  const isStaff = role === "SALES";
+  // A lead with no assignee is a "draft" — used below to hide Convert in the full detail.
+  const isUnassigned = !lead?.assignedUserId;
+  // EDIT-ONLY mode is driven by the navigation context, NOT the assignment field:
+  // the list links "Created by me" rows to ?mode=edit, while "Assigned to me" rows go
+  // to the plain detail URL. This is necessary because a staff-created lead can also be
+  // assigned to that same staff (assigned_user_id == created_by), so the assignment
+  // field alone can't tell the two views apart. Restricted = staff arriving via that link.
+  const restricted = isStaff && editMode;
+  const seededRef = useRef(false);
+
+  // Seed the edit form from the lead. Declared before the early returns so both the
+  // restricted-mode effect and the normal "Edit" button can use it.
+  const seedEditForm = () => {
+    if (!lead) return;
+    setEditForm({
+      fullName: lead.fullName, email: lead.email ?? "", phone: lead.phone ?? "",
+      companyName: lead.companyName ?? "", address: lead.address ?? "", isCorporate: lead.isCorporate,
+      source: lead.source ?? "", interestedService: lead.interestedService ?? "", notes: lead.notes ?? "",
+      status: lead.status,
+      assignedUserId: lead.assignedUserId ?? "",
+    });
+    setEditErrors({});
+    setEditServerErr("");
+  };
+  const openEdit = () => { seedEditForm(); setEditOpen(true); };
+
+  // In restricted mode the edit form IS the whole page, so seed it once the lead loads.
+  useEffect(() => {
+    if (restricted && lead && !seededRef.current) {
+      seededRef.current = true;
+      seedEditForm();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restricted, lead]);
+
   if (isLoading) return (
     <div className="flex items-center justify-center h-64 gap-2 text-slate-400">
       <Loader2 className="size-5 animate-spin" /> Loading lead…
     </div>
   );
 
-  if (isError || !lead) return (
-    <div className="flex items-center justify-center h-64 gap-2 text-rose-500">
-      <AlertCircle className="size-5" /> Lead not found.
-    </div>
-  );
-
-  const openEdit = () => {
-    setEditForm({
-      fullName: lead.fullName, email: lead.email ?? "", phone: lead.phone ?? "",
-      companyName: lead.companyName ?? "", address: lead.address ?? "", isCorporate: lead.isCorporate,
-      source: lead.source ?? "", notes: lead.notes ?? "",
-      status: lead.status,
-    });
-    setEditErrors({});
-    setEditServerErr("");
-    setEditOpen(true);
-  };
+  // Distinguish "no permission" (403) from "doesn't exist" (404 / malformed id) so the
+  // user gets a clear Access Denied screen instead of an indefinite loading state.
+  if (isError || !lead) {
+    const status = (error as any)?.response?.status;
+    if (status === 403) {
+      return (
+        <div className="flex flex-col items-center justify-center h-[60vh] text-center px-6">
+          <div className="flex items-center justify-center size-16 rounded-full bg-rose-50 mb-5">
+            <Lock className="size-7 text-rose-500" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-800">Access Denied</h2>
+          <p className="text-sm text-slate-500 mt-1.5 max-w-sm">
+            You don’t have permission to view this lead. It may belong to another sales
+            representative. Contact your Sales Manager if you believe this is a mistake.
+          </p>
+          <Link href="/leads"
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-primary rounded-xl hover:bg-primary/90 transition">
+            <ChevronLeft className="size-4" /> Back to Leads
+          </Link>
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center px-6">
+        <div className="flex items-center justify-center size-16 rounded-full bg-slate-100 mb-5">
+          <AlertCircle className="size-7 text-slate-400" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-800">Lead not found</h2>
+        <p className="text-sm text-slate-500 mt-1.5 max-w-sm">
+          This lead doesn’t exist or may have been removed.
+        </p>
+        <Link href="/leads"
+          className="mt-6 inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-primary rounded-xl hover:bg-primary/90 transition">
+          <ChevronLeft className="size-4" /> Back to Leads
+        </Link>
+      </div>
+    );
+  }
 
   const validateEdit = (): boolean => {
     const errs: typeof editErrors = {};
-    if (!editForm.fullName?.trim()) {
+    const name = editForm.fullName?.trim() ?? "";
+    if (!name) {
       errs.fullName = "Full name is required";
-    } else if (/\d/.test(editForm.fullName)) {
+    } else if (/\d/.test(name)) {
       errs.fullName = "Full name cannot contain numbers";
+    } else if (!NAME_ALLOWED.test(name)) {
+      errs.fullName = "Full name cannot contain special characters";
     }
     if (editForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.email)) {
-      errs.email = "Invalid email format (must contain @)";
+      errs.email = "Invalid email format (e.g. name@domain.com)";
     }
-    if (editForm.phone && !/^\d{10,11}$/.test((editForm.phone ?? "").replace(/\s/g, ""))) {
-      errs.phone = "Phone number must be 10–11 digits";
+    if (editForm.phone) {
+      const digits = editForm.phone.replace(/\s/g, "");
+      if (/[^\d]/.test(digits)) {
+        errs.phone = "Phone number can only contain digits (no letters or symbols)";
+      } else if (!/^\d{10,11}$/.test(digits)) {
+        errs.phone = "Phone number must be 10–11 digits";
+      }
     }
     if (editForm.isCorporate && !editForm.companyName?.trim()) {
       errs.companyName = "Company name is required for an organization";
@@ -340,8 +447,15 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
     e.preventDefault();
     if (!validateEdit()) return;
     setEditServerErr("");
-    updateMutation.mutate(editForm, {
-      onSuccess: () => setEditOpen(false),
+    // Empty assignee ("") → undefined: the backend field is a UUID (an empty string
+    // would fail to deserialize), and a null/absent value leaves the assignment unchanged.
+    const payload: UpdateLeadPayload = { ...editForm, assignedUserId: editForm.assignedUserId || undefined };
+    updateMutation.mutate(payload, {
+      onSuccess: () => {
+        // Restricted mode has no detail page to return to — go back to the list.
+        if (restricted) router.push("/leads");
+        else setEditOpen(false);
+      },
       onError: (err: any) => {
         if (err?.response?.status >= 500) {
           setEditServerErr("Server error — please contact your Admin.");
@@ -362,10 +476,158 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
     setLogText("");
   };
 
+  // ── Restricted EDIT-ONLY page (staff + unassigned created-by-me lead) ──────────
+  // No detail panels, no pipeline, no convert, no status — info fields only.
+  if (restricted) {
+    const editField = (key: keyof UpdateLeadPayload, value: string) => {
+      setEditForm(f => ({ ...f, [key]: value }));
+      if (editErrors[key as keyof typeof editErrors]) setEditErrors(er => ({ ...er, [key]: undefined }));
+    };
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        {/* Top bar */}
+        <div className="flex items-center gap-3">
+          <Link href="/leads"
+            className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition border border-slate-200">
+            <ChevronLeft className="size-4" />
+          </Link>
+          <div>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Edit Lead</span>
+            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">{lead.fullName}</h1>
+          </div>
+        </div>
+
+        {/* Draft notice */}
+        <div className="flex items-start gap-2.5 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+          <AlertCircle className="size-4 shrink-0 mt-0.5 text-amber-500" />
+          <p>This lead hasn’t been assigned yet. You can edit its details; a Manager must
+            assign it to a sales rep before it can change status or be converted.</p>
+        </div>
+
+        {/* Edit form */}
+        <form onSubmit={handleSave} className="bg-white rounded-xl border border-slate-100 shadow-sm p-6 space-y-5">
+          {editServerErr && (
+            <div className="flex items-center gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-600">
+              <ServerCrash className="size-4 shrink-0" />{editServerErr}
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700">Full Name <span className="text-rose-500">*</span></label>
+            <input value={editForm.fullName ?? ""}
+              onChange={e => editField("fullName", e.target.value)}
+              className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
+                ${editErrors.fullName ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
+            {editErrors.fullName && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.fullName}</p>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">Email</label>
+              <input type="text" value={editForm.email ?? ""}
+                onChange={e => editField("email", e.target.value)}
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
+                  ${editErrors.email ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
+              {editErrors.email && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.email}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">Phone Number</label>
+              <input value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
+                onChange={e => editField("phone", e.target.value)}
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
+                  ${editErrors.phone ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
+              {editErrors.phone && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.phone}</p>}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700">Address</label>
+            <input value={editForm.address ?? ""}
+              onChange={e => editField("address", e.target.value)}
+              placeholder="e.g. 12 Nguyen Hue, District 1, HCMC"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700">Source Channel</label>
+            <select value={editForm.source ?? ""}
+              onChange={e => editField("source", e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer">
+              <option value="">— Select —</option>
+              {SOURCE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          {/* BR-05: required before a lead enters active follow-up. */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700">Interested Service</label>
+            <input value={editForm.interestedService ?? ""}
+              placeholder="e.g. Wedding banquet, Conference, Rooms…"
+              onChange={e => editField("interestedService", e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700">Notes</label>
+            <textarea rows={4} value={editForm.notes ?? ""}
+              onChange={e => editField("notes", e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition resize-none" />
+          </div>
+
+          <div className="space-y-1.5 pt-1 border-t border-slate-100">
+            <label className="text-xs font-semibold text-slate-700 pt-3 block">Customer Type</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([["individual", false, User], ["corporate", true, Building]] as const).map(([val, corp, Icon]) => {
+                const selected = !!editForm.isCorporate === corp;
+                return (
+                  <button key={val} type="button"
+                    onClick={() => setEditForm(f => ({ ...f, isCorporate: corp, ...(corp ? {} : { companyName: "" }) }))}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition
+                      ${selected
+                        ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm"
+                        : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
+                    <Icon className={`size-4 ${selected ? "text-blue-600" : "text-slate-400"}`} />
+                    {corp ? "Organization" : "Individual"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {editForm.isCorporate && (
+            <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+              <label className="text-xs font-semibold text-slate-700">Company / Organization <span className="text-rose-500">*</span></label>
+              <input value={editForm.companyName ?? ""}
+                onChange={e => editField("companyName", e.target.value)}
+                placeholder="e.g. TechCorp Inc."
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
+                  ${editErrors.companyName ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
+              {editErrors.companyName && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.companyName}</p>}
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-4 border-t border-slate-100">
+            <Link href="/leads"
+              className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition text-center">
+              Cancel
+            </Link>
+            <button type="submit" disabled={updateMutation.isPending}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-primary rounded-xl hover:bg-primary/90 disabled:opacity-60 transition active:scale-95">
+              {updateMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              Save Changes
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
   const currentStepIdx = PIPELINE.findIndex(p => p.status === lead.status);
   const isLost      = lead.status === "LOST";
   const isConverted = lead.status === "CONVERTED";
-  const canConvert  = !isLost && !isConverted;
+  // Convert is unavailable until the lead is assigned (a Manager must assign it first)
+  // and only for active, non-terminal leads.
+  const canConvert  = !isLost && !isConverted && !isUnassigned;
 
   return (
     <div className="space-y-6">
@@ -495,6 +757,9 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
             <InfoRow icon={Sparkles} label="Source Channel">
               {lead.source ?? <span className="text-slate-400 italic text-xs">—</span>}
             </InfoRow>
+            <InfoRow icon={Sparkles} label="Interested Service">
+              {lead.interestedService ?? <span className="text-slate-400 italic text-xs">—</span>}
+            </InfoRow>
             <InfoRow icon={Calendar} label="Created">
               {lead.createdAt
                 ? new Date(lead.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
@@ -534,7 +799,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
                   <button key={t} type="button" onClick={() => setLogType(t)}
                     className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition
                       ${logType === t
-                        ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                        ? "bg-primary text-white border-primary shadow-sm"
                         : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}>
                     {t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
@@ -545,7 +810,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition resize-none" />
               <div className="flex justify-end">
                 <button type="submit"
-                  className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition active:scale-95">
+                  className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-primary rounded-lg hover:bg-primary/90 transition active:scale-95">
                   <ArrowRight className="size-4" /> Post
                 </button>
               </div>
@@ -632,7 +897,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-700">Phone Number</label>
-                  <input value={editForm.phone ?? ""}
+                  <input value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
                     onChange={e => { setEditForm(f => ({ ...f, phone: e.target.value })); setEditErrors(er => ({ ...er, phone: undefined })); }}
                     className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
                       ${editErrors.phone ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
@@ -661,7 +926,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-700">Status</label>
                   <select value={editForm.status ?? ""}
-                    disabled={isConverted}
+                    disabled={isConverted || !editForm.assignedUserId}
                     onChange={e => setEditForm(f => ({ ...f, status: e.target.value as LeadStatus }))}
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed">
                     {allowedStatusOptions(lead.status).map(s => (
@@ -671,10 +936,28 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
                   <p className="text-[10px] text-slate-400">
                     {isConverted
                       ? "This lead has been converted to a customer — its status is locked."
-                      : "Status only moves forward (New → Contacted → Qualified). “Converted” is set automatically during conversion."}
+                      : !editForm.assignedUserId
+                        ? "This lead must be assigned to a sales rep before its status can change."
+                        : "Status only moves forward (New → Contacted → Qualified). “Converted” is set automatically during conversion."}
                   </p>
                 </div>
               </div>
+
+              {/* Manager only: (re)assign this lead to a sales staff member.
+                  Lets a manager move leads off a staff member who has too many. */}
+              {canAssign && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                    <UserCog className="size-3.5 text-slate-400" /> Assign To
+                  </label>
+                  <select value={editForm.assignedUserId ?? ""}
+                    onChange={e => setEditForm(f => ({ ...f, assignedUserId: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer">
+                    <option value="">Unassigned</option>
+                    {salesUsers.map(u => <option key={u.userId} value={u.userId}>{u.fullName}</option>)}
+                  </select>
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-700">Notes</label>
@@ -723,7 +1006,7 @@ export function LeadDetailScreen({ leadId }: { leadId: string }) {
                 Cancel
               </button>
               <button onClick={handleSave} disabled={updateMutation.isPending}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 transition active:scale-95">
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-primary rounded-xl hover:bg-primary/90 disabled:opacity-60 transition active:scale-95">
                 {updateMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
                 Save Changes
               </button>

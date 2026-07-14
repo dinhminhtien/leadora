@@ -32,10 +32,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/v1/quotations")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('SALES','MANAGER')")
 public class QuotationController {
 
     private final CreateQuotationUseCase createQuotationUseCase;
@@ -74,8 +76,9 @@ public class QuotationController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
-    /** UC-14.3 — Get quotations pending manager approval */
+    /** UC-14.3 — Get quotations pending manager approval. Manager only. */
     @GetMapping("/pending-approvals")
+    @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<List<QuotationResponse>>> getPendingApprovals() {
         List<QuotationResponse> pending = getPendingApprovalsUseCase.execute();
         return ResponseEntity.ok(ApiResponse.success(pending));
@@ -91,8 +94,9 @@ public class QuotationController {
         return ResponseEntity.ok(ApiResponse.success(response, "Quotation submitted successfully"));
     }
 
-    /** UC-14.3 — Process approval decision (approve / reject / request changes) */
+    /** UC-14.3 — Process approval decision (approve / reject / request changes). Manager only. */
     @PostMapping("/{id}/process-approval")
+    @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<QuotationResponse>> processApproval(
             @PathVariable UUID id,
             @Valid @RequestBody ProcessApprovalRequest request) {

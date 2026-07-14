@@ -16,11 +16,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 /** Company-document knowledge base for the chat assistant's RAG (shared across users). */
 @RestController
 @RequestMapping("/api/v1/chat/documents")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('SALES','MANAGER')")
 public class ChatDocumentController {
 
     private final CurrentUserProvider currentUserProvider;
@@ -28,8 +30,9 @@ public class ChatDocumentController {
     private final ListDocumentsUseCase listDocumentsUseCase;
     private final DeleteDocumentUseCase deleteDocumentUseCase;
 
-    /** Upload a document (PDF / DOCX / TXT / MD) and ingest it for RAG. */
+    /** Upload a document (PDF / DOCX / TXT / MD) and ingest it for RAG. Manager only. */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<DocumentResponse>> upload(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestParam(value = "title", required = false) String title,
@@ -46,8 +49,9 @@ public class ChatDocumentController {
         return ResponseEntity.ok(ApiResponse.success(listDocumentsUseCase.execute()));
     }
 
-    /** Delete a document and its embeddings. */
+    /** Delete a document and its embeddings. Manager only. */
     @DeleteMapping("/{documentId}")
+    @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID documentId) {
         deleteDocumentUseCase.execute(documentId);
         return ResponseEntity.ok(ApiResponse.success(null, "Document deleted"));

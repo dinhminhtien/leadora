@@ -20,6 +20,7 @@ public class ResetPasswordUseCase {
     private final PasswordEncoder passwordEncoder;
 
     @Transactional
+    @org.springframework.cache.annotation.CacheEvict(value = "user-roles", allEntries = true)
     public void execute(String token, String newPassword) {
         PasswordResetTokenEntity resetToken = tokenRepository.findByToken(token)
                 .orElseThrow(() -> new IllegalStateException("Invalid token."));

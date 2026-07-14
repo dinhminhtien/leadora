@@ -8,7 +8,10 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "tasks")
+@Table(name = "tasks", indexes = {
+    @Index(name = "idx_tasks_created_at", columnList = "created_at"),
+    @Index(name = "idx_tasks_assigned_user_id", columnList = "assigned_user_id")
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -70,5 +73,8 @@ public class TaskEntity extends BaseEntity {
     @JoinColumn(name = "deal_id")
     private DealEntity deal;
 
+    @Builder.Default
+    @Column(name = "overdue_notified", nullable = false)
+    private Boolean overdueNotified = false;
 
 }

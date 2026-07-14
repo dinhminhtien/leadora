@@ -9,7 +9,10 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
-@Table(name = "deals")
+@Table(name = "deals", indexes = {
+    @Index(name = "idx_deals_created_at", columnList = "created_at"),
+    @Index(name = "idx_deals_assigned_user_id", columnList = "assigned_user_id")
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -30,11 +33,11 @@ public class DealEntity extends BaseEntity {
     @JoinColumn(name = "assigned_user_id")
     private UserEntity assignedUser;
 
-    @Column(name = "deal_name", nullable = false, length = 255)
+    @Column(name = "deal_name", nullable = false, length = 50)
     private String dealName;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "pipeline_stage", nullable = false, length = 50)
+    @Column(name = "pipeline_stage", nullable = false, length = 30)
     private DealPipelineStage pipelineStage;
 
     @Column(name = "expected_revenue", precision = 15, scale = 2)
@@ -44,7 +47,7 @@ public class DealEntity extends BaseEntity {
     private LocalDate expectedCloseDate;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(name = "status", nullable = false, length = 10)
     private DealStatus status;
 
     @Column(name = "notes", columnDefinition = "TEXT")

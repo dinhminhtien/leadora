@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
-import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
@@ -18,9 +17,10 @@ import java.util.UUID;
 /**
  * RAG over company documents (policies, handbooks...) backed by the pgvector store.
  *
- * <p>Documents are chunked, embedded with the configured Ollama embedding model, and stored
- * with a {@code documentId} in each chunk's metadata so a logical document can be deleted as a
- * unit. Company documents are shared knowledge — not user-scoped.
+ * <p>Documents are chunked by {@link SemanticChunker} (meaning-aware, not fixed token size),
+ * embedded with the configured Google Gemini embedding model, and stored with a {@code documentId}
+ * in each chunk's metadata so a logical document can be deleted as a unit. Company documents are
+ * shared knowledge — not user-scoped.
  */
 @Slf4j
 @Service
@@ -35,7 +35,7 @@ public class RagService {
     private static final double SIMILARITY_THRESHOLD = 0.5;
 
     private final VectorStore vectorStore;
-    private final TokenTextSplitter splitter = new TokenTextSplitter();
+    private final SemanticChunker semanticChunker;
 
     /**
      * Parses, chunks, embeds and stores a document. Returns the number of chunks ingested.
@@ -50,14 +50,14 @@ public class RagService {
 
         TikaDocumentReader reader = new TikaDocumentReader(resource);
         List<Document> rawDocs = reader.get();
-        List<Document> chunks = splitter.apply(rawDocs);
 
-        chunks.forEach(chunk -> {
-            Map<String, Object> md = chunk.getMetadata();
-            md.put(META_DOC_ID, documentId.toString());
-            md.put(META_TITLE, title);
-            md.put(META_FILE, fileName);
-        });
+        // Semantic chunking: each chunk is stamped with its parent documentId/title/file so a
+        // document can be retrieved as labelled context and deleted as a unit.
+        Map<String, Object> baseMetadata = Map.of(
+                META_DOC_ID, documentId.toString(),
+                META_TITLE, title,
+                META_FILE, fileName);
+        List<Document> chunks = semanticChunker.chunk(rawDocs, baseMetadata);
 
         if (chunks.isEmpty()) {
             log.warn("Document {} ({}) produced no extractable text", documentId, fileName);
@@ -89,10 +89,10 @@ public class RagService {
             if (hits == null || hits.isEmpty()) {
                 return "";
             }
-            StringBuilder sb = new StringBuilder("== Trích đoạn tài liệu công ty liên quan ==\n");
+            StringBuilder sb = new StringBuilder("== Relevant company document excerpts ==\n");
             for (Document d : hits) {
                 Object title = d.getMetadata().get(META_TITLE);
-                sb.append("[").append(title != null ? title : "Tài liệu").append("]\n");
+                sb.append("[").append(title != null ? title : "Document").append("]\n");
                 sb.append(d.getText()).append("\n---\n");
             }
             return sb.toString();

@@ -33,6 +33,7 @@ public class UpdateUserUseCase {
     private final PasswordEncoder passwordEncoder;
 
     @Transactional
+    @org.springframework.cache.annotation.CacheEvict(value = "user-roles", allEntries = true)
     public UserAccountResponse execute(UUID userId, UpdateUserRequest request) {
         UserEntity user = userRepository.findWithRoleByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
@@ -70,6 +71,13 @@ public class UpdateUserUseCase {
                     .orElseThrow(() -> new ResourceNotFoundException("Role", request.getRoleId()));
         }
         UserStatus newStatus = request.getStatus() != null ? request.getStatus() : user.getStatus();
+
+        // A non-admin cannot be promoted to Admin through this form (existing admins keep their role).
+        boolean promotingToAdmin = ADMIN_ROLE.equalsIgnoreCase(newRole.getRoleName())
+                && !ADMIN_ROLE.equalsIgnoreCase(user.getRole().getRoleName());
+        if (promotingToAdmin) {
+            throw new IllegalStateException("A user cannot be promoted to the Admin role.");
+        }
 
         guardLastActiveAdmin(user, newRole, newStatus);
 

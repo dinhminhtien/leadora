@@ -22,16 +22,16 @@ public class ContactEntity extends BaseEntity {
     @JoinColumn(name = "customer_id", nullable = false)
     private CustomerEntity customer;
 
-    @Column(name = "full_name", nullable = false, length = 255)
+    @Column(name = "full_name", nullable = false, length = 40)
     private String fullName;
 
-    @Column(name = "position", length = 100)
+    @Column(name = "position", length = 20)
     private String position;
 
-    @Column(name = "email", length = 255)
+    @Column(name = "email", length = 40)
     private String email;
 
-    @Column(name = "phone", length = 20)
+    @Column(name = "phone", length = 15)
     private String phone;
 
     @Builder.Default

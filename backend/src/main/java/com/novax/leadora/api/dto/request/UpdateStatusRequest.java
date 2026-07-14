@@ -9,7 +9,7 @@ import java.time.LocalDate;
 @Setter
 public class UpdateStatusRequest {
 
-    @NotBlank(message = "Trạng thái đặt phòng không được để trống")
+    @NotBlank(message = "Booking status is required")
     private String status;
 
     private String reason;

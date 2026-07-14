@@ -56,12 +56,12 @@ public class SendChatMessageUseCase {
 
         // History BEFORE this turn (for the LLM's conversational context).
         List<AiChatMessageEntity> history =
-                messageRepository.findBySession_SessionIdOrderByCreatedAtAsc(sessionId);
+                messageRepository.findSessionMessagesOrdered(sessionId, ChatRole.USER);
 
         // Auto-title the session from the first user message.
         boolean firstTurn = history.isEmpty();
         if (firstTurn && (!StringUtils.hasText(session.getTitle())
-                || "Cuộc trò chuyện mới".equals(session.getTitle()))) {
+                || "New conversation".equals(session.getTitle()))) {
             session.setTitle(truncate(content, TITLE_MAX));
         }
 
@@ -72,7 +72,7 @@ public class SendChatMessageUseCase {
         String lastIntentName = history.stream()
                 .filter(m -> m.getRole() == ChatRole.ASSISTANT && m.getIntentMatched() != null)
                 .reduce((first, second) -> second) // last assistant turn
-                .map(AiChatMessageEntity::getIntentMatched)
+                .map(msg -> msg.getIntentMatched())
                 .orElse(null);
         IntentResult intent = intentClassifier.classify(content, lastIntentName);
         if (intent.blocked()) {
@@ -96,7 +96,9 @@ public class SendChatMessageUseCase {
             }
         } catch (Exception ex) {
             log.error("LLM generation failed for session {}: {}", sessionId, ex.getMessage(), ex);
-            reply = GuardrailMessages.systemError(vi);
+            // Distinguish "out of quota/tokens" from a genuine error so the reply is actionable
+            // (and the dev can tell the two apart without digging through logs).
+            reply = AiErrorClassifier.userMessage(ex, vi);
         }
 
         AiChatMessageEntity assistantMessage =
@@ -108,7 +110,11 @@ public class SendChatMessageUseCase {
     private String buildReferenceBlock(ChatIntent intent, UserEntity user, String content) {
         return switch (intent) {
             case ASSIGNED_DATA -> crmContextService.assignedContext(user);
-            case TEAM_SUMMARY -> crmContextService.teamSummary();
+            // Team-wide summary is a Manager/Admin privilege; a Sales Staff is downgraded to
+            // their own scope so they can never see the whole team's data via this intent.
+            case TEAM_SUMMARY -> crmContextService.canSeeAllData(user)
+                    ? crmContextService.teamSummary()
+                    : crmContextService.assignedContext(user);
             case DOC_QUERY -> ragService.retrieveContext(content);
             case GENERAL_BUSINESS -> {
                 // Light blend: company docs + the user's own data.

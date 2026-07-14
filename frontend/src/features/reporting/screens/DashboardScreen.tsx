@@ -23,10 +23,12 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { useDashboardSummary } from "@/features/reporting/hooks/use_reporting";
 import { useTasks } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import { taskService } from "@/services/follow_up_task_service";
+import { useAuthStore } from "@/stores/auth_store";
+import { apiClient, type ApiResponse } from "@/services/api_client";
 
 export type FollowUpTask = {
   id: string;
@@ -139,7 +141,49 @@ export function DashboardScreen() {
     transitionMutation.mutate({ taskId, status: newStatus });
   };
 
-  const [interactions] = useState<InteractionTimeline[]>(initialInteractions);
+  const { user } = useAuthStore();
+  const userName = user?.name || "User";
+
+  const { data: usersList } = useQuery({
+    queryKey: ["users-summary-list"],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiResponse<{ userId: string; fullName: string; roleName: string }[]>>("/users");
+      return res.data.data;
+    }
+  });
+
+  const secondAgentName = React.useMemo(() => {
+    if (!usersList) return "Sarah Connor";
+    const otherUser = usersList.find(u => u.fullName !== userName);
+    return otherUser ? otherUser.fullName : "Sarah Connor";
+  }, [usersList, userName]);
+
+  const displayInteractions = React.useMemo(() => {
+    return initialInteractions.map(interaction => {
+      let agent = interaction.agentName;
+      if (agent === "John Doe") {
+        agent = userName;
+      } else if (agent === "Sarah Connor") {
+        agent = secondAgentName;
+      }
+      return {
+        ...interaction,
+        agentName: agent
+      };
+    });
+  }, [userName, secondAgentName]);
+
+  const getInitials = (name: string) => {
+    return name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() || "U";
+  };
+
+  const currentDateString = React.useMemo(() => {
+    return new Date().toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric"
+    });
+  }, []);
 
   // ── Display-only derived values (pure UI formatting, no business logic) ─
   const activeLeadsCount = summary?.activeLeadsCount ?? 0;
@@ -191,14 +235,14 @@ export function DashboardScreen() {
               <Sparkles className="size-3" />
               <span>Direct Sales Active</span>
             </div>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">Welcome back, John!</h1>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">Welcome back, {userName}!</h1>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
               Here is the status of your hotel sales pipeline and follow-up activities for today.
             </p>
           </div>
           <div className="flex items-center gap-2.5">
             <span className="text-xs text-zinc-500 dark:text-zinc-400 font-semibold bg-zinc-200/50 dark:bg-zinc-800/60 border border-zinc-300/40 dark:border-zinc-700/35 px-2.5 py-1 rounded-lg">
-              June 12, 2026
+              {currentDateString}
             </span>
           </div>
         </div>
@@ -231,7 +275,7 @@ export function DashboardScreen() {
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Deals Pipeline</p>
                 <h3 className="text-2xl font-bold text-foreground mt-1.5">
-                  ${activeDealsValue.toLocaleString("en-US")}
+                  {activeDealsValue.toLocaleString("vi-VN")} ₫
                 </h3>
                 <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-0.5 mt-1.5">
                   <TrendingUp className="size-3" /> {activeDealsCount} active deals
@@ -303,7 +347,7 @@ export function DashboardScreen() {
                   <div className="flex justify-between items-center text-xs">
                     <span className="font-semibold text-foreground/80">{stage.stage}</span>
                     <span className="text-muted-foreground text-[10px]">
-                      {stage.count} {stage.count === 1 ? "deal" : "deals"} ({totalDealsValue > 0 ? ((stage.value / totalDealsValue) * 100).toFixed(0) : 0}%) • <strong className="text-foreground/90">${stage.value.toLocaleString("en-US")}</strong>
+                      {stage.count} {stage.count === 1 ? "deal" : "deals"} ({totalDealsValue > 0 ? ((stage.value / totalDealsValue) * 100).toFixed(0) : 0}%) • <strong className="text-foreground/90">{stage.value.toLocaleString("vi-VN")} ₫</strong>
                     </span>
                   </div>
                   <div className="w-full bg-muted rounded-lg h-3 overflow-hidden flex">
@@ -321,7 +365,7 @@ export function DashboardScreen() {
               <div className="flex justify-between items-center mb-4">
                 <div>
                   <h4 className="text-xs font-bold text-foreground">
-                    Weighted Revenue Forecast: ${weightedPipelineValue.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                    Weighted Revenue Forecast: {weightedPipelineValue.toLocaleString("vi-VN", { maximumFractionDigits: 0 })} ₫
                   </h4>
                   <p className="text-[10px] text-muted-foreground">Projected win values based on historical deal stages</p>
                 </div>
@@ -458,7 +502,7 @@ export function DashboardScreen() {
           </CardHeader>
           <CardContent className="px-2">
             <div className="relative border-l border-border ml-5 pl-6 space-y-5">
-              {interactions.map((interaction, idx) => (
+              {displayInteractions.map((interaction, idx) => (
                 <div key={interaction.id} className="relative">
                   {/* Timeline icon */}
                   <span className="absolute -left-9.5 top-0.5 flex size-7 items-center justify-center rounded-full bg-background border border-border shadow-xs">
@@ -479,7 +523,7 @@ export function DashboardScreen() {
                     <p className="text-xs text-muted-foreground mt-1">{interaction.description}</p>
                     <div className="flex items-center gap-1.5 mt-2">
                       <span className="size-4 rounded-full bg-primary/20 text-primary border border-primary/25 text-[8px] font-bold flex items-center justify-center">
-                        {interaction.agentName.slice(0, 2).toUpperCase()}
+                        {getInitials(interaction.agentName)}
                       </span>
                       <span className="text-[10px] text-muted-foreground">by {interaction.agentName}</span>
                     </div>
@@ -511,7 +555,7 @@ export function DashboardScreen() {
               <div className="p-3 bg-muted/50 border border-border/40 rounded-xl flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground">Avg Deal Size</p>
-                  <p className="text-base font-bold text-foreground mt-0.5">$18,400</p>
+                  <p className="text-base font-bold text-foreground mt-0.5">18.400 ₫</p>
                 </div>
                 <Badge variant="primary" className="font-semibold">
                   +8% MoM
@@ -533,15 +577,19 @@ export function DashboardScreen() {
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="flex items-center gap-2">
-                      <span className="size-5 rounded-full bg-primary/20 text-primary border border-primary/20 text-[9px] font-bold flex items-center justify-center">JD</span>
-                      <span className="font-semibold text-foreground/90">John Doe</span>
+                      <span className="size-5 rounded-full bg-primary/20 text-primary border border-primary/20 text-[9px] font-bold flex items-center justify-center">
+                        {getInitials(userName)}
+                      </span>
+                      <span className="font-semibold text-foreground/90">{userName}</span>
                     </span>
                     <span className="text-muted-foreground text-[10px]">14 Actions</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="flex items-center gap-2">
-                      <span className="size-5 rounded-full bg-emerald-500/20 text-emerald-500 border border-emerald-500/20 text-[9px] font-bold flex items-center justify-center">SC</span>
-                      <span className="font-semibold text-foreground/90">Sarah Connor</span>
+                      <span className="size-5 rounded-full bg-emerald-500/20 text-emerald-500 border border-emerald-500/20 text-[9px] font-bold flex items-center justify-center">
+                        {getInitials(secondAgentName)}
+                      </span>
+                      <span className="font-semibold text-foreground/90">{secondAgentName}</span>
                     </span>
                     <span className="text-muted-foreground text-[10px]">12 Actions</span>
                   </div>

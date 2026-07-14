@@ -10,7 +10,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "quotations")
+@Table(name = "quotations", indexes = {
+    @Index(name = "idx_quotations_created_at", columnList = "created_at")
+})
 @Getter
 @Setter
 @NoArgsConstructor

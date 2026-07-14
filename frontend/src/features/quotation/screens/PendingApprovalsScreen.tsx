@@ -155,7 +155,7 @@ function ApprovalModal({
               <div className="flex gap-1">
                 <span className="text-slate-400 min-w-[72px]">Rate/Night:</span>
                 <span className="font-semibold text-slate-700">
-                  {quote.pricePerNight ? `$${quote.pricePerNight.toLocaleString('en-US')}` : "—"}
+                  {quote.pricePerNight ? `${quote.pricePerNight.toLocaleString('vi-VN')} ₫` : "—"}
                 </span>
               </div>
               <div className="flex gap-1">
@@ -173,7 +173,7 @@ function ApprovalModal({
             <div className="space-y-1.5 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-500">Subtotal</span>
-                <span className="font-semibold text-slate-700">${(quote.subtotal ?? 0).toLocaleString('en-US')}</span>
+                <span className="font-semibold text-slate-700">{(quote.subtotal ?? 0).toLocaleString('vi-VN')} ₫</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="flex items-center gap-1.5 text-amber-600">
@@ -185,11 +185,11 @@ function ApprovalModal({
                     </span>
                   )}
                 </span>
-                <span className="font-semibold text-amber-600">-${(quote.discountAmount ?? 0).toLocaleString('en-US')}</span>
+                <span className="font-semibold text-amber-600">-{(quote.discountAmount ?? 0).toLocaleString('vi-VN')} ₫</span>
               </div>
               <div className="flex justify-between border-t border-slate-200 pt-2">
                 <span className="font-bold text-slate-700">Total Amount</span>
-                <span className="font-black text-slate-900 text-sm">${quote.amount.toLocaleString('en-US')}</span>
+                <span className="font-black text-slate-900 text-sm">{quote.amount.toLocaleString('vi-VN')} ₫</span>
               </div>
               <div className="flex justify-between text-slate-400 pt-1">
                 <span>Valid Until</span>
@@ -463,7 +463,7 @@ export function PendingApprovalsScreen() {
                       <span className="font-black text-amber-600">{q.discountPercent ?? 0}%</span>
                     </TableCell>
                     <TableCell className="py-3 px-4 text-xs text-right font-black text-slate-800">
-                      ${q.amount.toLocaleString('en-US')}
+                      {q.amount.toLocaleString('vi-VN')} ₫
                     </TableCell>
                     <TableCell className="py-3 px-4 text-xs text-slate-400">{(q as { sentDate?: string }).sentDate || q.expiryDate || "—"}</TableCell>
                     <TableCell className="py-3 px-4 text-center">

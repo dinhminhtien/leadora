@@ -2,11 +2,14 @@ package com.novax.leadora.api.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
+import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskPriority;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -43,6 +46,17 @@ public class TaskResponse {
     private UUID dealId;
     private String dealName;
 
+    // Extended linked-record context — populated by fromDetail() only (the list
+    // mapper stays lean to avoid N+1 on associations the list doesn't render).
+    private DealPipelineStage dealStage;
+    private BigDecimal dealValue;
+    private String dealCustomerName;
+    private String dealOwnerName;
+
+    private LeadStatus leadStatus;
+    private String leadSource;
+    private String leadOwnerName;
+
     private OffsetDateTime startAt;
     private OffsetDateTime endAt;
 
@@ -55,7 +69,37 @@ public class TaskResponse {
     /** Computed property: true if status == OPEN && now > endAt */
     private Boolean isOverdue;
 
+    /** Lean mapping for list responses. */
     public static TaskResponse from(TaskEntity entity) {
+        return baseBuilder(entity).build();
+    }
+
+    /**
+     * Detail mapping — adds the linked record's business context (deal
+     * stage/value/customer/owner, lead status/source/owner) so Task Detail can
+     * render a rich, navigable "Related To" card. Additive: every extra field is
+     * {@code NON_NULL}-omitted when there's no linked record of that type.
+     */
+    public static TaskResponse fromDetail(TaskEntity entity) {
+        final var builder = baseBuilder(entity);
+
+        if (entity.getDeal() != null) {
+            final var deal = entity.getDeal();
+            builder.dealStage(deal.getPipelineStage())
+                    .dealValue(deal.getExpectedRevenue())
+                    .dealCustomerName(deal.getCustomer() != null ? deal.getCustomer().getFullName() : null)
+                    .dealOwnerName(deal.getAssignedUser() != null ? deal.getAssignedUser().getFullName() : null);
+        }
+        if (entity.getLead() != null) {
+            final var lead = entity.getLead();
+            builder.leadStatus(lead.getStatus())
+                    .leadSource(lead.getSource())
+                    .leadOwnerName(lead.getAssignedUser() != null ? lead.getAssignedUser().getFullName() : null);
+        }
+        return builder.build();
+    }
+
+    private static TaskResponseBuilder baseBuilder(TaskEntity entity) {
         final OffsetDateTime now = OffsetDateTime.now();
         final boolean isOverdue = entity.getStatus() == TaskStatus.OPEN
                 && entity.getEndAt() != null
@@ -90,7 +134,6 @@ public class TaskResponse {
                 .primaryContactPhone(entity.getPrimaryContactPhone())
                 .isOverdue(isOverdue)
                 .createdAt(entity.getCreatedAt())
-                .updatedAt(entity.getUpdatedAt())
-                .build();
+                .updatedAt(entity.getUpdatedAt());
     }
 }

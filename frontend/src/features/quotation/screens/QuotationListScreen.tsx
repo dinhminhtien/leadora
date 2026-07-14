@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
-import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Clock, XCircle, RotateCcw, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp } from "lucide-react";
+import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Clock, XCircle, RotateCcw, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ListFilter, Bell } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -12,10 +12,17 @@ import { SendQuotationModal } from "@/features/quotation/components/SendQuotatio
 import { RecordResponseModal } from "@/features/quotation/components/RecordResponseModal";
 import { ConvertToBookingModal } from "@/features/quotation/components/ConvertToBookingModal";
 import { ExpireCloseModal } from "@/features/quotation/components/ExpireCloseModal";
+import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
+import { CreateReminderModal } from "@/features/reminder/components/CreateReminderModal";
 import type { Quotation } from "@/services/quotation_service";
 export type { Quotation } from "@/services/quotation_service";
 import { useQuotations, useExpireOverdue, useSubmitQuotation } from "@/features/quotation/hooks/use_quotations";
 import { useAuthStore } from "@/stores/auth_store";
+
+const ACTIVE_STATUSES: Quotation["status"][] = [
+  "draft", "pending_approval", "approved", "sent", "accepted", "interested", "pending_revision",
+];
+const DONE_STATUSES: Quotation["status"][] = ["converted", "closed", "expired", "rejected"];
 
 type ClosureLog = {
   id: string;
@@ -51,17 +58,30 @@ export function QuotationListScreen() {
   const [closeTarget, setCloseTarget] = useState<Quotation | null>(null);
   const [autoExpireResult, setAutoExpireResult] = useState<number | null>(null);
   const [showClosureLog, setShowClosureLog] = useState(false);
+  const [reminderTarget, setReminderTarget] = useState<Quotation | null>(null);
+  const [activeTab, setActiveTab] = useState<"active" | "done">("active");
+  const [statusFilter, setStatusFilter] = useState<string>("");
 
-  const filteredQuotes = useMemo(
-    () =>
-      quotes.filter(
-        (q) =>
-          q.quoteNo.toLowerCase().includes(search.toLowerCase()) ||
-          q.contactName.toLowerCase().includes(search.toLowerCase()) ||
-          q.dealName.toLowerCase().includes(search.toLowerCase())
-      ),
-    [quotes, search]
-  );
+  const handleTabChange = (tab: "active" | "done") => {
+    setActiveTab(tab);
+    setStatusFilter("");
+  };
+
+  const activeCount = useMemo(() => quotes.filter((q) => ACTIVE_STATUSES.includes(q.status)).length, [quotes]);
+  const doneCount = useMemo(() => quotes.filter((q) => DONE_STATUSES.includes(q.status)).length, [quotes]);
+
+  const filteredQuotes = useMemo(() => {
+    const tabStatuses = activeTab === "active" ? ACTIVE_STATUSES : DONE_STATUSES;
+    return quotes.filter((q) => {
+      const matchesTab = tabStatuses.includes(q.status);
+      const matchesStatus = !statusFilter || q.status === statusFilter;
+      const matchesSearch =
+        q.quoteNo.toLowerCase().includes(search.toLowerCase()) ||
+        q.contactName.toLowerCase().includes(search.toLowerCase()) ||
+        q.dealName.toLowerCase().includes(search.toLowerCase());
+      return matchesTab && matchesStatus && matchesSearch;
+    });
+  }, [quotes, search, activeTab, statusFilter]);
 
   const handleSent = (_quotationId: string) => {
     setLocalStatusMap(prev => ({ ...prev, [_quotationId]: "sent" }));
@@ -215,17 +235,79 @@ export function QuotationListScreen() {
         </div>
       )}
 
-      <Card className="border-slate-100 shadow-sm bg-white">
+      {/* Status tabs */}
+      <div className="flex items-center gap-1 border-b border-slate-200 bg-white rounded-t-xl px-4 pt-3 -mb-6 shadow-sm">
+        <button
+          type="button"
+          onClick={() => handleTabChange("active")}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
+            activeTab === "active"
+              ? "border-primary text-blue-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          In Progress
+          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+            activeTab === "active" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"
+          }`}>
+            {activeCount}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleTabChange("done")}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
+            activeTab === "done"
+              ? "border-slate-600 text-slate-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Completed
+          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+            activeTab === "done" ? "bg-slate-200 text-slate-600" : "bg-slate-100 text-slate-400"
+          }`}>
+            {doneCount}
+          </span>
+        </button>
+      </div>
+
+      <Card className="border-slate-100 shadow-sm bg-white rounded-t-none">
         <CardContent className="py-3 px-4">
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search quote reference #, client name..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
-            />
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative w-full md:w-72">
+              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search quote reference #, client name..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 text-slate-400">
+              <ListFilter className="size-3.5" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="py-1.5 pl-2 pr-6 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700 focus:outline-none focus:border-blue-500 focus:bg-white transition appearance-none"
+              >
+                <option value="">All Status</option>
+                {(activeTab === "active" ? ACTIVE_STATUSES : DONE_STATUSES).map((s) => (
+                  <option key={s} value={s}>
+                    {statusLabel(s)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {(search || statusFilter) && (
+              <button
+                type="button"
+                onClick={() => { setSearch(""); setStatusFilter(""); }}
+                className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -240,19 +322,20 @@ export function QuotationListScreen() {
               <TableHead className="font-semibold text-xs text-slate-500">Total</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Valid Until</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Status</TableHead>
+              <TableHead className="font-semibold text-xs text-slate-500">SLA</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500 text-center">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow hoverable={false}>
-                <TableCell colSpan={7} className="py-8 text-center text-slate-400 text-xs">
+                <TableCell colSpan={8} className="py-8 text-center text-slate-400 text-xs">
                   Loading quotations...
                 </TableCell>
               </TableRow>
             ) : filteredQuotes.length > 0 ? (
               filteredQuotes.map((q) => (
-                <TableRow key={q.id} className="hover:bg-slate-50/70 border-b border-slate-100 transition">
+                <TableRow key={q.id} className={`border-b border-slate-100 transition ${DONE_STATUSES.includes(q.status) ? "opacity-60 hover:opacity-100 bg-slate-50/40 hover:bg-slate-50/80" : "hover:bg-slate-50/70"}`}>
                   <TableCell className="py-3 px-4 text-xs font-bold text-blue-600">
                     <span className="flex items-center gap-1.5">
                       <FileSpreadsheet className="size-3.5 text-slate-400" />
@@ -262,7 +345,7 @@ export function QuotationListScreen() {
                   <TableCell className="py-3 px-4 text-xs font-bold text-slate-700">{q.contactName}</TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-600 font-semibold">{q.dealName}</TableCell>
                   <TableCell className="py-3 px-4 text-xs font-black text-slate-800">
-                    ${q.amount.toLocaleString('en-US')}
+                    {q.amount.toLocaleString('vi-VN')} ₫
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-500 font-semibold">
                     <span className="flex items-center gap-1">
@@ -275,7 +358,11 @@ export function QuotationListScreen() {
                       {statusLabel(q.status)}
                     </Badge>
                   </TableCell>
+                  <TableCell className="py-3 px-4">
+                    <SlaStatusBadge entityId={q.id} entityType="QUOTATION" />
+                  </TableCell>
                   <TableCell className="py-3 px-4 text-center">
+                    <div className="flex flex-col items-center gap-1.5">
                     {q.status === "approved" ? (
                       // UC-14.4: Send to Customer button
                       <Button
@@ -471,13 +558,23 @@ export function QuotationListScreen() {
                     ) : (
                       <span className="text-[10px] text-slate-400 italic">—</span>
                     )}
+                    <button
+                      onClick={() => setReminderTarget(q)}
+                      className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition"
+                      title="Add Reminder"
+                    >
+                      <Bell className="size-2.5" /> Remind
+                    </button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow hoverable={false}>
-                <TableCell colSpan={7} className="py-8 text-center text-slate-400 text-xs">
-                  No price quotes found.
+                <TableCell colSpan={8} className="py-8 text-center text-slate-400 text-xs">
+                  {activeTab === "active"
+                    ? (search || statusFilter ? "No quotations match your filters." : "No active quotations found.")
+                    : (search || statusFilter ? "No quotations match your filters." : "No completed quotations found.")}
                 </TableCell>
               </TableRow>
             )}
@@ -518,6 +615,15 @@ export function QuotationListScreen() {
           quote={closeTarget}
           onClose={() => setCloseTarget(null)}
           onClosed={handleClosed}
+        />
+      )}
+
+      {/* UC-16.1: Create Reminder pre-filled for this quotation */}
+      {reminderTarget && (
+        <CreateReminderModal
+          defaultRelatedEntity="QUOTATION"
+          defaultRelatedId={reminderTarget.id}
+          onClose={() => setReminderTarget(null)}
         />
       )}
 

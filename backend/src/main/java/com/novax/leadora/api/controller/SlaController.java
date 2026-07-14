@@ -4,6 +4,7 @@ import com.novax.leadora.api.dto.request.SlaRuleRequest;
 import com.novax.leadora.api.dto.response.SlaMonitoringResponse;
 import com.novax.leadora.api.dto.response.SlaReportResponse;
 import com.novax.leadora.api.dto.response.SlaRuleResponse;
+import com.novax.leadora.application.usecase.sla.BackfillSlaTrackingUseCase;
 import com.novax.leadora.application.usecase.sla.CreateSlaRuleUseCase;
 import com.novax.leadora.application.usecase.sla.DeleteSlaRuleUseCase;
 import com.novax.leadora.application.usecase.sla.GetSlaMonitoringUseCase;
@@ -39,6 +40,7 @@ public class SlaController {
     private final GetSlaMonitoringUseCase getSlaMonitoringUseCase;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     private final GetSlaReportUseCase getSlaReportUseCase;
+    private final BackfillSlaTrackingUseCase backfillSlaTrackingUseCase;
 
     /** UC-17.3 — Monitor SLA status across all entities */
     @GetMapping("/monitoring")
@@ -98,10 +100,8 @@ public class SlaController {
     @GetMapping("/report")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'RESERVATION_STAFF', 'FRONT_OFFICE')")
     public ResponseEntity<ApiResponse<SlaReportResponse>> getReport(
-            @RequestParam(defaultValue = "#{T(java.time.LocalDate).now().minusDays(30)}")
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}")
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String activityType,
             @RequestParam(required = false) String entityType) {
         return ResponseEntity.ok(ApiResponse.success(

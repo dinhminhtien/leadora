@@ -7,9 +7,13 @@ import com.novax.leadora.common.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.stream.Collectors;
@@ -35,6 +39,36 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.businessError("RESOURCE_NOT_FOUND", ex.getMessage(), null));
     }
 
+    /**
+     * A path variable that fails to bind to its target type — most commonly a
+     * malformed UUID such as {@code /leads/999}. Without this handler such requests
+     * fall through to {@link #handleAllExceptions} and return a misleading HTTP 500.
+     * Treating it as 404 lets the UI render a proper "not found" state instead of
+     * hanging or showing a server-crash banner.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        log.warn("Malformed path/parameter '{}': {}", ex.getName(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.businessError("RESOURCE_NOT_FOUND",
+                        "The requested resource does not exist.", null));
+    }
+
+    /**
+     * Authorization failures raised in the service layer (e.g. a Sales Staff trying
+     * to open a lead that is not theirs). Method-security denials are handled by the
+     * security filter chain, but a manually thrown {@link AccessDeniedException} from
+     * a use case reaches here — map it to 403 so the UI can show "Access Denied".
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.businessError("ACCESS_DENIED",
+                        ex.getMessage() != null ? ex.getMessage()
+                                : "You do not have permission to access this resource.", null));
+    }
+
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException ex) {
         log.warn("Business rule violation [{}]: {}", ex.getErrorCode(), ex.getMessage());
@@ -54,6 +88,33 @@ public class GlobalExceptionHandler {
         log.warn("Business rule violation: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(ApiResponse.businessError("BUSINESS_RULE_VIOLATION", ex.getMessage(), null));
+    }
+
+    /**
+     * A multipart upload larger than {@code spring.servlet.multipart.max-file-size}. The chat
+     * document upload also enforces a 5 MB app-level cap with a friendlier message; this catches
+     * anything that trips the servlet's hard ceiling first so the client gets 413 + a clear reason
+     * instead of a generic 500.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+        log.warn("Upload too large: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(ApiResponse.businessError("UPLOAD_TOO_LARGE",
+                        "The file exceeds the maximum allowed size (5MB).", null));
+    }
+
+    /**
+     * A malformed / unreadable request body (invalid JSON, wrong charset, empty body where one is
+     * required). This is a client mistake, not a server fault — return 400 instead of letting it
+     * fall through to the generic 500 handler.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        log.warn("Malformed request body: {}", ex.getMessage());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.businessError("MALFORMED_REQUEST",
+                        "The request body is invalid (malformed or wrongly encoded JSON).", null));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

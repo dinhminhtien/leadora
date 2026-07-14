@@ -3,17 +3,25 @@ package com.novax.leadora.application.usecase.reporting;
 import com.novax.leadora.api.dto.response.DashboardSummaryResponse;
 import com.novax.leadora.api.dto.response.DashboardSummaryResponse.StageSummary;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
+import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
+import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.*;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
+import com.novax.leadora.application.usecase.deal.DealMapper;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.specification.DealSpecification;
+import com.novax.leadora.infrastructure.persistence.specification.LeadSpecification;
+import com.novax.leadora.infrastructure.persistence.specification.TaskSpecification;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.OffsetDateTime;
 import java.util.*;
 
 /**
@@ -28,57 +36,77 @@ public class GetDashboardSummaryUseCase {
     private final LeadRepository leadRepository;
     private final DealRepository dealRepository;
     private final TaskRepository taskRepository;
+    private final DealMapper dealMapper;
 
     /**
      * Stage display names in pipeline order.
-     * Must match the mapping used in {@link com.novax.leadora.application.usecase.ManageDealUseCase}.
+     * Must match the mapping used in
+     * {@link com.novax.leadora.application.usecase.deal.DealMapper}.
      */
     private static final List<String> PIPELINE_STAGES = List.of(
-            "Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed"
-    );
+            "Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed");
 
+    @Cacheable(
+        value = "dashboard-summary",
+        key = "(#actor.role != null && #actor.role.roleName != null && (#actor.role.roleName.trim().toUpperCase() == 'MANAGER' || #actor.role.roleName.trim().toUpperCase() == 'ADMIN') ? 'all' : #actor.userId)",
+        unless = "#result == null"
+    )
     @Transactional(readOnly = true)
-    public DashboardSummaryResponse execute() {
+    public DashboardSummaryResponse execute(UserEntity actor) {
+        boolean unscoped = canSeeAll(actor);
+        UUID userId = actor.getUserId();
 
         // ── Lead KPIs ─────────────────────────────────────────────────────────
-        long totalLeads = leadRepository.count();
-        long activeLeads = totalLeads
-                - leadRepository.findByStatus(LeadStatus.LOST).size()
-                - leadRepository.findByStatus(LeadStatus.CONVERTED).size();
+        Specification<LeadEntity> totalLeadsSpec = LeadSpecification.filter(null, null, null, null, null, null, unscoped, userId, false);
+        long totalLeads = leadRepository.count(totalLeadsSpec);
+
+        Specification<LeadEntity> lostLeadsSpec = LeadSpecification.filter(null, LeadStatus.LOST, null, null, null, null, unscoped, userId, false);
+        long lostLeads = leadRepository.count(lostLeadsSpec);
+
+        Specification<LeadEntity> convertedLeadsSpec = LeadSpecification.filter(null, LeadStatus.CONVERTED, null, null, null, null, unscoped, userId, false);
+        long convertedLeads = leadRepository.count(convertedLeadsSpec);
+
+        long activeLeads = totalLeads - lostLeads - convertedLeads;
 
         // ── Deal KPIs ─────────────────────────────────────────────────────────
-        List<DealEntity> allDeals = dealRepository.findAll();
+        List<DealEntity> allDeals = dealRepository.findAll(DealSpecification.filter(null, null, unscoped, userId));
 
-        List<DealEntity> activeDeals = dealRepository.findByStatus(DealStatus.OPEN);
+        List<DealEntity> activeDeals = allDeals.stream()
+                .filter(d -> d.getStatus() == DealStatus.OPEN)
+                .toList();
         BigDecimal activeDealsValue = activeDeals.stream()
                 .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         BigDecimal totalDealsValue = allDeals.stream()
                 .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         // Weighted pipeline = Σ(deal.value × stage_probability / 100)
         BigDecimal weightedPipelineValue = allDeals.stream()
                 .map(d -> {
                     BigDecimal value = d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO;
-                    int prob = calculateProbability(d.getPipelineStage(), d.getStatus());
-                    return value.multiply(BigDecimal.valueOf(prob)).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    int prob = dealMapper.calculateProbability(d.getPipelineStage(), d.getStatus());
+                    return value.multiply(BigDecimal.valueOf(prob)).divide(BigDecimal.valueOf(100), 2,
+                            RoundingMode.HALF_UP);
                 })
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         // ── Task KPIs ─────────────────────────────────────────────────────────
-        // Pending = not COMPLETED and not CANCELLED
-        long pendingTasks = taskRepository.findAll().stream()
-                .filter(t -> t.getStatus() != TaskStatus.COMPLETED && t.getStatus() != TaskStatus.CANCELLED)
-                .count();
+        Specification<TaskEntity> pendingTasksSpec = (root, query, cb) -> cb.and(
+                cb.notEqual(root.get("status"), TaskStatus.COMPLETED),
+                cb.notEqual(root.get("status"), TaskStatus.CANCELLED)
+        );
+        if (!unscoped) {
+            pendingTasksSpec = pendingTasksSpec.and(TaskSpecification.assignedTo(userId));
+        }
+        long pendingTasks = taskRepository.count(pendingTasksSpec);
 
-        // Overdue = status OPEN && endAt < now
-        OffsetDateTime now = OffsetDateTime.now();
-        long overdueTasks = taskRepository.findAll().stream()
-                .filter(t -> t.getStatus() != TaskStatus.COMPLETED && t.getStatus() != TaskStatus.CANCELLED)
-                .filter(t -> t.getEndAt() != null && t.getEndAt().isBefore(now))
-                .count();
+        Specification<TaskEntity> overdueTasksSpec = TaskSpecification.isOverdue();
+        if (!unscoped) {
+            overdueTasksSpec = overdueTasksSpec.and(TaskSpecification.assignedTo(userId));
+        }
+        long overdueTasks = taskRepository.count(overdueTasksSpec);
 
         // ── Sales Funnel ──────────────────────────────────────────────────────
         List<StageSummary> funnelStages = new ArrayList<>();
@@ -87,7 +115,7 @@ public class GetDashboardSummaryUseCase {
             BigDecimal value = BigDecimal.ZERO;
 
             for (DealEntity deal : allDeals) {
-                String dealStageName = mapStageToString(deal.getPipelineStage(), deal.getStatus());
+                String dealStageName = dealMapper.mapStageToString(deal.getPipelineStage(), deal.getStatus());
                 if (stageName.equals(dealStageName)) {
                     count++;
                     value = value.add(deal.getExpectedRevenue() != null ? deal.getExpectedRevenue() : BigDecimal.ZERO);
@@ -114,34 +142,11 @@ public class GetDashboardSummaryUseCase {
                 .build();
     }
 
-    // ── Private helpers (mirrored from ManageDealUseCase) ─────────────────────
-
-    private String mapStageToString(DealPipelineStage stage, DealStatus status) {
-        if (stage == null) return "Inquiry";
-        switch (stage) {
-            case PROSPECTING:  return "Inquiry";
-            case QUALIFICATION: return "Site Visit";
-            case PROPOSAL:     return "Proposal";
-            case NEGOTIATION:  return "Negotiation";
-            case CLOSED_WON:
-                return (status == DealStatus.WON) ? "Confirmed" : "Contract";
-            case CLOSED_LOST:  return "Confirmed";
-            default:           return "Inquiry";
+    private boolean canSeeAll(UserEntity actor) {
+        if (actor.getRole() == null || actor.getRole().getRoleName() == null) {
+            return false;
         }
-    }
-
-    private int calculateProbability(DealPipelineStage stage, DealStatus status) {
-        if (status == DealStatus.WON) return 100;
-        if (status == DealStatus.LOST) return 0;
-        if (stage == null) return 50;
-        switch (stage) {
-            case PROSPECTING:  return 10;
-            case QUALIFICATION: return 30;
-            case PROPOSAL:     return 50;
-            case NEGOTIATION:  return 70;
-            case CLOSED_WON:   return 100;
-            case CLOSED_LOST:  return 0;
-            default:           return 50;
-        }
+        String roleName = actor.getRole().getRoleName().trim().toUpperCase();
+        return "MANAGER".equals(roleName) || "ADMIN".equals(roleName) || "OWNER".equals(roleName);
     }
 }

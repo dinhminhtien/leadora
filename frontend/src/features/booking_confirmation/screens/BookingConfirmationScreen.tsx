@@ -12,10 +12,14 @@ import { bookingConfirmationService, type Booking, type RoomAvailability } from 
 import { productService, type ProductService } from "@/services/product_service";
 import { customerProfileService, type CustomerProfile } from "@/services/customer_profile_service";
 import { quotationService, type Quotation } from "@/services/quotation_service";
+import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
+import { toast } from "@/stores/toast_store";
 
 type TabType = "queue" | "checker";
 
 export function BookingConfirmationScreen() {
+  const { highlightedId, setRowRef } = useHighlightRow();
   const [activeTab, setActiveTab] = useState<TabType>("queue");
   const [isNewRequestOpen, setIsNewRequestOpen] = useState(false);
 
@@ -136,26 +140,26 @@ export function BookingConfirmationScreen() {
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to load booking request details.");
+      toast.error("Failed to load booking request details.");
     }
   };
 
   // UC-18.5: Approve booking request via live API call
   const handleApprove = async (id: string) => {
-    if (!confirm("Are you sure you want to approve this booking request?")) return;
+    if (!window.confirm("Are you sure you want to approve this booking request?")) return;
     setActionLoading(true);
     try {
       const res = await bookingConfirmationService.processRequest(id, {
         status: "CONFIRMED"
       });
       if (res.success) {
-        alert("Booking request approved successfully.");
+        toast.success("Booking request approved successfully.");
         setShowDetailModal(false);
         loadBookings();
       }
     } catch (err) {
       const axiosError = err as { response?: { data?: { message?: string } } };
-      alert(axiosError.response?.data?.message || "Failed to approve booking request.");
+      toast.error(axiosError.response?.data?.message || "Failed to approve booking request.");
     } finally {
       setActionLoading(false);
     }
@@ -168,7 +172,7 @@ export function BookingConfirmationScreen() {
 
   const handleRejectSubmit = async () => {
     if (!rejectionReason.trim()) {
-      alert("Please specify a rejection reason.");
+      toast.warning("Please specify a rejection reason.");
       return;
     }
     if (!selectedBooking) return;
@@ -179,7 +183,7 @@ export function BookingConfirmationScreen() {
         rejectionReason: rejectionReason.trim()
       });
       if (res.success) {
-        alert("Booking request rejected.");
+        toast.success("Booking request rejected.");
         setShowRejectModal(false);
         setShowDetailModal(false);
         setRejectionReason("");
@@ -187,7 +191,7 @@ export function BookingConfirmationScreen() {
       }
     } catch (err) {
       const axiosError = err as { response?: { data?: { message?: string } } };
-      alert(axiosError.response?.data?.message || "Failed to reject booking request.");
+      toast.error(axiosError.response?.data?.message || "Failed to reject booking request.");
     } finally {
       setActionLoading(false);
     }
@@ -268,7 +272,7 @@ export function BookingConfirmationScreen() {
       });
 
       if (res.success) {
-        alert(`Booking request submitted successfully! Booking Code: ${res.data.bookingCode}`);
+        toast.success(`Booking request submitted successfully! Booking Code: ${res.data.bookingCode}`);
         setFormCustomerId("");
         setFormQuotationId("");
         setFormCheckIn("");
@@ -308,11 +312,11 @@ export function BookingConfirmationScreen() {
   };
 
   const handleDownload = (bNum: string) => {
-    alert(`Successfully generated PDF Booking Confirmation & Slip for reservation: ${bNum}`);
+    toast.success(`Generated PDF Booking Confirmation & Slip for reservation: ${bNum}`);
   };
 
   return (
-    <div className="space-y-6" style={{ scrollbarGutter: "stable" }}>
+    <div className="space-y-6 min-h-[101vh]" style={{ scrollbarGutter: "stable" }}>
       {/* Header section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -371,7 +375,14 @@ export function BookingConfirmationScreen() {
                   <option value="CONFIRMED">Approved</option>
                   <option value="REJECTED">Rejected</option>
                 </select>
-                <Button variant="outline" size="sm" onClick={loadBookings} isLoading={loadingBookings} className="h-9">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadBookings}
+                  isLoading={loadingBookings}
+                  className="flex items-center justify-center h-9 w-9 p-0 rounded-xl shrink-0 border-border"
+                  title="Refresh bookings"
+                >
                   <RefreshCw className="size-3.5" />
                 </Button>
                 <Button
@@ -399,74 +410,66 @@ export function BookingConfirmationScreen() {
               <Table className="w-full table-fixed min-w-[1100px]">
                 <TableHeader>
                   <TableRow hoverable={false}>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[14%] !text-center whitespace-nowrap">Booking Number</TableHead>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[17%] !text-left whitespace-nowrap">Guest Name</TableHead>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[15%] !text-left whitespace-nowrap">Room Type</TableHead>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Check In</TableHead>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Check Out</TableHead>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[10%] !text-center whitespace-nowrap">Total Amount</TableHead>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Status</TableHead>
-                    <TableHead className="!px-4 !py-3 !font-semibold !text-xs !text-slate-500 w-[11%] !text-center whitespace-nowrap">Actions</TableHead>
+                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[12%] text-left! whitespace-nowrap">Booking Number</TableHead>
+                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[20%] text-left! whitespace-nowrap">Guest Name</TableHead>
+                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[15%] text-left! whitespace-nowrap">Room Type</TableHead>
+                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[10%] text-center! whitespace-nowrap">Check In</TableHead>
+                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[10%] text-center! whitespace-nowrap">Check Out</TableHead>
+                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[15%] text-right! whitespace-nowrap">Total Amount</TableHead>
+                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[10%] text-center! whitespace-nowrap">Status</TableHead>
+                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[8%] text-center! whitespace-nowrap">SLA</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loadingBookings ? (
                     <TableRow hoverable={false}>
-                      <TableCell colSpan={8} className="py-12 text-center text-muted-foreground text-xs">
+                      <TableCell colSpan={9} className="py-12 text-center text-muted-foreground text-xs">
                         <RefreshCw className="size-6 animate-spin mx-auto mb-2 text-primary" />
                         Loading bookings from live server...
                       </TableCell>
                     </TableRow>
                   ) : bookings.length > 0 ? (
                     bookings.map(b => (
-                      <TableRow key={b.bookingId} className="hover:bg-muted/30 border-b border-border transition">
-                        <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-700 dark:!text-zinc-300 !text-center whitespace-nowrap">
-                          <span className="flex items-center justify-center gap-1.5 text-primary">
+                      <TableRow
+                        key={b.bookingId}
+                        ref={setRowRef(b.bookingId)}
+                        onClick={() => handleViewDetails(b.bookingId)}
+                        className={`hover:bg-muted/30 border-b border-border transition cursor-pointer select-none ${
+                          highlightedId === b.bookingId ? "bg-amber-50 ring-2 ring-inset ring-amber-400 dark:bg-amber-500/10" : ""
+                        }`}
+                      >
+                        <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
+                          <span className="flex items-center justify-start gap-1.5 text-primary">
                             <Receipt className="size-3.5 text-muted-foreground/60" />
                             {b.bookingCode}
                           </span>
                         </TableCell>
-                        <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-800 dark:!text-zinc-200 !text-left whitespace-nowrap">{b.customerName}</TableCell>
-                        <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-600 dark:!text-zinc-400 !text-left whitespace-nowrap">
+                        <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-[150px]" title={b.customerName}>{b.customerName}</TableCell>
+                        <TableCell className="py-3.5! px-4! text-xs! text-slate-600! dark:text-zinc-400! text-left! whitespace-nowrap truncate max-w-[160px]" title={b.details && b.details.length > 0 ? b.details[0].productName : "N/A"}>
                           {b.details && b.details.length > 0 ? b.details[0].productName : "N/A"}
                         </TableCell>
-                        <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-500 dark:!text-zinc-400 !text-center whitespace-nowrap">{b.checkInDate}</TableCell>
-                        <TableCell className="!py-3.5 !px-4 !text-xs !text-slate-500 dark:!text-zinc-400 !text-center whitespace-nowrap">{b.checkOutDate}</TableCell>
-                        <TableCell className="!py-3.5 !px-4 !text-xs !font-bold !text-slate-700 dark:!text-zinc-300 !text-center whitespace-nowrap">
-                          ${b.totalAmount.toLocaleString('en-US')}
+                        <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkInDate}</TableCell>
+                        <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkOutDate}</TableCell>
+                        <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-right! whitespace-nowrap">
+                          {b.totalAmount.toLocaleString('vi-VN')} ₫
                         </TableCell>
-                        <TableCell className="!py-3.5 !px-4 !text-center whitespace-nowrap">
+                        <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
                           <div className="flex justify-center">
                             <Badge variant={getBadgeVariant(b.status)} className="font-bold text-[9px] uppercase min-w-[90px] justify-center text-center py-1">
                               {b.status}
                             </Badge>
                           </div>
                         </TableCell>
-                        <TableCell className="!py-3.5 !px-4 !text-center whitespace-nowrap">
-                          <div className="flex justify-center gap-1.5">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleViewDetails(b.bookingId)}
-                              className="px-2.5 py-1 text-[11px] border-border bg-background h-7"
-                            >
-                              Details
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDownload(b.bookingCode)}
-                              className="px-2 py-1 text-[11px] h-7 text-muted-foreground hover:text-foreground"
-                            >
-                              <Download className="size-3.5" />
-                            </Button>
+                        <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
+                          <div className="flex justify-center">
+                            <SlaStatusBadge entityId={b.bookingId} entityType="BOOKING" />
                           </div>
                         </TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow hoverable={false}>
-                      <TableCell colSpan={8} className="py-12 text-center text-muted-foreground text-xs">
+                      <TableCell colSpan={9} className="py-12 text-center text-muted-foreground text-xs">
                         No booking confirmation requests match the filter criteria.
                       </TableCell>
                     </TableRow>
@@ -553,7 +556,7 @@ export function BookingConfirmationScreen() {
                         return (
                           <TableRow key={av.productId}>
                             <TableCell className="font-bold text-xs text-foreground min-w-[150px] whitespace-nowrap">{av.name}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground min-w-[100px] whitespace-nowrap">${av.unitPrice}/{av.unit || "night"}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground min-w-[100px] whitespace-nowrap">{av.unitPrice.toLocaleString('vi-VN')} ₫/{av.unit || "night"}</TableCell>
                             <TableCell className="text-xs font-semibold text-foreground min-w-[150px] whitespace-nowrap">{av.totalBooked} / {capacity} Rooms</TableCell>
                             <TableCell className="text-xs font-bold text-primary min-w-[150px] whitespace-nowrap">{remaining} rooms remaining</TableCell>
                             <TableCell className="min-w-[110px]">
@@ -683,7 +686,7 @@ export function BookingConfirmationScreen() {
                     >
                       <option value="">-- Select Room Type --</option>
                       {roomProducts.map(p => (
-                        <option key={p.productId} value={p.productId}>{p.name} (${p.unitPrice}/night)</option>
+                        <option key={p.productId} value={p.productId}>{p.name} ({p.unitPrice.toLocaleString('vi-VN')} ₫/night)</option>
                       ))}
                     </Select>
                   </div>
@@ -718,7 +721,7 @@ export function BookingConfirmationScreen() {
                   Autocalculated Total (UnitPrice * Qty * Nights):
                 </div>
                 <div className="text-lg font-black text-foreground">
-                  ${computedFormAmount.toLocaleString("en-US")}
+                  {computedFormAmount.toLocaleString("vi-VN")} ₫
                 </div>
               </div>
 
@@ -746,6 +749,7 @@ export function BookingConfirmationScreen() {
                   <Badge variant={getBadgeVariant(selectedBooking.status)} className="uppercase text-[9px] font-bold">
                     {selectedBooking.status}
                   </Badge>
+                  <SlaStatusBadge entityId={selectedBooking.bookingId} entityType="BOOKING" />
                   <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Reservation request</span>
                 </div>
                 <h3 className="text-lg font-bold text-foreground">{selectedBooking.bookingCode}</h3>
@@ -835,8 +839,8 @@ export function BookingConfirmationScreen() {
                           <TableCell className="py-2.5 px-3 text-xs text-primary font-bold min-w-[110px] whitespace-nowrap">{d.roomNumber || "Pending Assignment"}</TableCell>
                           <TableCell className="py-2.5 px-3 text-xs min-w-[50px]">{d.quantity}</TableCell>
                           <TableCell className="py-2.5 px-3 text-xs min-w-[60px]">{d.nights}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs min-w-[80px]">${d.unitPrice}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs font-black text-right min-w-[100px] whitespace-nowrap">${d.lineTotal.toLocaleString("en-US")}</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs min-w-[80px]">{d.unitPrice.toLocaleString('vi-VN')} ₫</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs font-black text-right min-w-[100px] whitespace-nowrap">{d.lineTotal.toLocaleString("vi-VN")} ₫</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -848,12 +852,20 @@ export function BookingConfirmationScreen() {
             {/* Modal Footer */}
             <div className="p-4 border-t border-border bg-muted/40 flex flex-col md:flex-row gap-3 justify-between items-center">
               <div className="text-sm font-semibold text-foreground">
-                Total amount: <span className="text-lg font-black text-primary">${selectedBooking.totalAmount.toLocaleString("en-US")}</span>
+                Total amount: <span className="text-lg font-black text-primary">{selectedBooking.totalAmount.toLocaleString("vi-VN")} ₫</span>
               </div>
 
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => setShowDetailModal(false)}>
                   Close Details
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownload(selectedBooking.bookingCode)}
+                  leftIcon={<Download className="size-3.5" />}
+                >
+                  Download Slip
                 </Button>
                 {selectedBooking.status === "PENDING" && (
                   <>

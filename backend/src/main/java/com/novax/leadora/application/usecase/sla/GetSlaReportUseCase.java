@@ -48,6 +48,8 @@ public class GetSlaReportUseCase {
     @Transactional(readOnly = true)
     public SlaReportResponse execute(LocalDate from, LocalDate to,
                                      String activityType, String entityType) {
+        if (from == null) from = LocalDate.now().minusDays(30);
+        if (to == null) to = LocalDate.now();
 
         OffsetDateTime fromDt = from.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime();
         OffsetDateTime toDt   = to.atTime(23, 59, 59).atOffset(ZoneOffset.UTC);
@@ -63,7 +65,7 @@ public class GetSlaReportUseCase {
 
         // ── Classify each record ─────────────────────────────────────────────────
         int totalTracked  = records.size();
-        int resolvedCount = 0, breachedCount = 0, warningCount = 0, withinSlaCount = 0;
+        int resolvedCount = 0, resolvedOnTimeCount = 0, breachedCount = 0, warningCount = 0, withinSlaCount = 0;
         double totalProcessingHours = 0;
         int resolvedWithTime = 0;
 
@@ -74,22 +76,27 @@ public class GetSlaReportUseCase {
 
             String ds = displayStatus(e, now);
             switch (ds) {
-                case "RESOLVED"   -> resolvedCount++;
+                case "RESOLVED"   -> {
+                    resolvedCount++;
+                    // Compliant only if resolved before the deadline
+                    if (e.getResolvedAt() != null && !e.getResolvedAt().isAfter(e.getDeadlineAt())) {
+                        resolvedOnTimeCount++;
+                    }
+                    if (e.getResolvedAt() != null) {
+                        double hrs = Duration.between(e.getStartedAt(), e.getResolvedAt()).toMinutes() / 60.0;
+                        if (hrs >= 0) { totalProcessingHours += hrs; resolvedWithTime++; }
+                    }
+                }
                 case "BREACHED"   -> breachedCount++;
                 case "WARNING"    -> warningCount++;
                 default           -> withinSlaCount++;
             }
-            if ("RESOLVED".equals(ds)) {
-                double hrs = Duration.between(e.getStartedAt(), e.getUpdatedAt()).toMinutes() / 60.0;
-                if (hrs >= 0) {
-                    totalProcessingHours += hrs;
-                    resolvedWithTime++;
-                }
-            }
         }
 
         double breachRatePct     = totalTracked == 0 ? 0 : round2((double) breachedCount / totalTracked * 100);
-        double complianceRatePct = totalTracked == 0 ? 0 : round2((double) (withinSlaCount + resolvedCount) / totalTracked * 100);
+        // Compliance = records that are still on-time (ACTIVE) + records resolved before breach
+        double complianceRatePct = totalTracked == 0 ? 0
+                : round2((double) (withinSlaCount + warningCount + resolvedOnTimeCount) / totalTracked * 100);
         double resolutionRatePct = (resolvedCount + breachedCount) == 0 ? 0
                 : round2((double) resolvedCount / (resolvedCount + breachedCount) * 100);
         double avgProcessingHours = resolvedWithTime == 0 ? 0 : round2(totalProcessingHours / resolvedWithTime);
@@ -106,7 +113,13 @@ public class GetSlaReportUseCase {
             for (SlaTrackingEntity e : group) {
                 String ds = displayStatus(e, now);
                 switch (ds) {
-                    case "RESOLVED" -> { gResolved++; double h = Duration.between(e.getStartedAt(), e.getUpdatedAt()).toMinutes() / 60.0; if (h >= 0) { gTotalHrs += h; gResolvedCnt++; } }
+                    case "RESOLVED" -> {
+                        gResolved++;
+                        if (e.getResolvedAt() != null) {
+                            double h = Duration.between(e.getStartedAt(), e.getResolvedAt()).toMinutes() / 60.0;
+                            if (h >= 0) { gTotalHrs += h; gResolvedCnt++; }
+                        }
+                    }
                     case "BREACHED" -> gBreached++;
                     case "WARNING"  -> gWarning++;
                     default         -> gWithin++;

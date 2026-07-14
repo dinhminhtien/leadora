@@ -1,5 +1,6 @@
 package com.novax.leadora.api.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import lombok.Builder;
 import lombok.Data;
@@ -17,6 +18,7 @@ public class NotificationResponse {
     private String type;
     private String relatedEntity;
     private UUID relatedId;
+    @JsonProperty("isRead")
     private boolean isRead;
     private OffsetDateTime createdAt;
 

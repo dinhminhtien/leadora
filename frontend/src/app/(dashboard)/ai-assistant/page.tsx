@@ -1,5 +1,5 @@
-import { AiAssistantScreen } from "@/features/ai_assistant/screens/AiAssistantScreen";
+import { LiaLandingScreen } from "@/features/ai_assistant/screens/LiaLandingScreen";
 
 export default function AiAssistantPage() {
-  return <AiAssistantScreen />;
+  return <LiaLandingScreen />;
 }

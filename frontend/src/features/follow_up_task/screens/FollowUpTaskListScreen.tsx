@@ -25,6 +25,7 @@ import {
   MapPin,
   CheckSquare2,
   Building2,
+  ArrowRight,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/Badge";
@@ -33,6 +34,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import {
   useTasks,
+  useTaskDetail,
   useCreateTask,
   useUpdateTask,
   useResignTask,
@@ -50,8 +52,12 @@ import {
 } from "@/services/follow_up_task_service";
 import { toast } from "@/stores/toast_store";
 import { getApiErrorMessage } from "@/lib/api_error";
+import { useRouter } from "next/navigation";
 import { leadService, type Lead } from "@/services/lead_service";
 import { customerProfileService } from "@/services/customer_profile_service";
+import { dealService } from "@/services/deal_service";
+import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 // ── Activity Types (Pipedrive-style) ─────────────────────────────────────────
 
@@ -142,6 +148,131 @@ function linkedEntityType(task: Task): string {
   if (task.customerId) return "Customer";
   if (task.leadId) return "Lead";
   return "General";
+}
+
+function humanizeEnum(raw?: string | null): string {
+  if (!raw) return "—";
+  return raw
+    .toLowerCase()
+    .split(/[_\s]+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/**
+ * Business-context card at the top of Task Detail — tells the user at a glance
+ * which Deal / Customer / Lead this task serves, shows that record's key fields,
+ * and navigates straight to it. Task FKs only cover deal/customer/lead, so those
+ * are the three kinds handled here.
+ */
+function RelatedRecordCard({ task }: { task: Task }) {
+  const router = useRouter();
+
+  const kind: "deal" | "customer" | "lead" | null = task.dealId
+    ? "deal"
+    : task.customerId
+      ? "customer"
+      : task.leadId
+        ? "lead"
+        : null;
+
+  if (!kind) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-400">
+        This task isn’t linked to a deal, customer, or lead.
+      </div>
+    );
+  }
+
+  const money = (v?: number | null) =>
+    v == null ? null : v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+  const config = {
+    deal: {
+      Icon: Briefcase,
+      badgeClass: "bg-emerald-100 text-emerald-700",
+      ringClass: "border-emerald-200 bg-emerald-50/40",
+      name: task.dealName ?? "Deal",
+      typeLabel: "Deal",
+      rows: [
+        ["Stage", humanizeEnum(task.dealStage)],
+        ["Value", money(task.dealValue) ?? "—"],
+        ["Customer", task.dealCustomerName ?? "—"],
+        ["Owner", task.dealOwnerName ?? "—"],
+      ] as const,
+      openLabel: "Open deals board",
+      href: "/deals",
+    },
+    customer: {
+      Icon: Building2,
+      badgeClass: "bg-blue-100 text-blue-700",
+      ringClass: "border-blue-200 bg-blue-50/40",
+      name: task.customerName ?? "Customer",
+      typeLabel: "Customer",
+      rows: [
+        ["Company", task.customerCompanyName ?? "—"],
+        ["Phone", task.customerPhone ?? "—"],
+        ["Email", task.customerEmail ?? "—"],
+      ] as const,
+      openLabel: "Open customer",
+      href: `/customer-profiles/${task.customerId}`,
+    },
+    lead: {
+      Icon: User,
+      badgeClass: "bg-purple-100 text-purple-700",
+      ringClass: "border-purple-200 bg-purple-50/40",
+      name: task.leadName ?? "Lead",
+      typeLabel: "Lead",
+      rows: [
+        ["Company", task.leadCompanyName ?? "—"],
+        ["Status", humanizeEnum(task.leadStatus)],
+        ["Source", humanizeEnum(task.leadSource)],
+        ["Owner", task.leadOwnerName ?? "—"],
+      ] as const,
+      openLabel: "Open lead",
+      href: `/leads/${task.leadId}`,
+    },
+  }[kind];
+
+  const { Icon } = config;
+
+  return (
+    <div className={`rounded-xl border ${config.ringClass} p-4`}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Related to</span>
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${config.badgeClass}`}>
+          <Icon className="size-3" />
+          {config.typeLabel}
+        </span>
+      </div>
+
+      <div className="mt-2 flex items-start gap-3">
+        <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${config.badgeClass}`}>
+          <Icon className="size-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold text-slate-800">{config.name}</p>
+          <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1">
+            {config.rows.map(([label, value]) => (
+              <div key={label} className="flex items-baseline gap-1.5 min-w-0">
+                <span className="text-[10px] uppercase tracking-wide text-slate-400 shrink-0">{label}</span>
+                <span className="truncate text-xs font-medium text-slate-700">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => router.push(config.href)}
+        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-700 transition hover:border-[#185FA5]/40 hover:text-[#185FA5]"
+      >
+        {config.openLabel}
+        <ArrowRight className="size-3.5" />
+      </button>
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -451,13 +582,22 @@ function TaskDetailDrawer({
   onClose,
   users,
   onReassign,
+  initialEditing = false,
 }: {
   task: Task;
   onClose: () => void;
   users: UserOption[];
   onReassign: () => void;
+  initialEditing?: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
+  // The list task carries only dealId/dealName (lean list mapper); the deal
+  // stage/value/customer/owner and lead status/source/owner come only from the
+  // detail endpoint (fromDetail). Fetch it so the Related Record card is
+  // populated instead of showing dashes.
+  const { data: detailResp } = useTaskDetail(task.taskId);
+  const relatedTask = detailResp?.data ?? task;
+
+  const [editing, setEditing] = useState(initialEditing);
   const [form, setForm] = useState<UpdateTaskPayload>({
     title: task.title,
     description: task.description ?? "",
@@ -467,6 +607,7 @@ function TaskDetailDrawer({
     resultNote: task.resultNote ?? "",
     leadId: task.leadId ?? undefined,
     customerId: task.customerId ?? undefined,
+    dealId: task.dealId ?? undefined,
     startAt: task.startAt ?? undefined,
     endAt: task.endAt ?? undefined,
     primaryContactName: task.primaryContactName ?? "",
@@ -479,7 +620,7 @@ function TaskDetailDrawer({
       email: task.leadEmail ?? null,
       phone: task.leadPhone ?? null,
       companyName: task.leadCompanyName ?? null,
-      address: null, isCorporate: false, source: null, status: "NEW",
+      address: null, isCorporate: false, source: null, interestedService: null, status: "NEW",
       notes: null, convertedAt: null, customerId: null,
       assignedUserId: null, assignedUserName: null,
       createdById: null, createdByName: null,
@@ -495,14 +636,23 @@ function TaskDetailDrawer({
       companyName: task.customerCompanyName ?? null,
     } : null
   );
+  const [selectedDeal, setSelectedDeal] = useState<DealResult | null>(
+    !task.leadId && !task.customerId && task.dealId ? {
+      dealId: task.dealId,
+      title: task.dealName ?? "Deal",
+      detail: null,
+    } : null
+  );
 
   function handleSelectLead(lead: Lead | null) {
     setSelectedLead(lead);
     setSelectedCustomer(null);
+    setSelectedDeal(null);
     setForm(f => ({
       ...f,
       leadId: lead?.leadId ?? undefined,
       customerId: undefined,
+      dealId: undefined,
       primaryContactName: lead?.fullName ?? f.primaryContactName,
       primaryContactPhone: lead?.phone ?? f.primaryContactPhone,
     }));
@@ -511,12 +661,26 @@ function TaskDetailDrawer({
   function handleSelectCustomer(customer: CustomerResult | null) {
     setSelectedCustomer(customer);
     setSelectedLead(null);
+    setSelectedDeal(null);
     setForm(f => ({
       ...f,
       customerId: customer?.customerId ?? undefined,
       leadId: undefined,
+      dealId: undefined,
       primaryContactName: customer?.fullName ?? f.primaryContactName,
       primaryContactPhone: customer?.phone ?? f.primaryContactPhone,
+    }));
+  }
+
+  function handleSelectDeal(deal: DealResult | null) {
+    setSelectedDeal(deal);
+    setSelectedLead(null);
+    setSelectedCustomer(null);
+    setForm(f => ({
+      ...f,
+      dealId: deal?.dealId ?? undefined,
+      leadId: undefined,
+      customerId: undefined,
     }));
   }
 
@@ -717,8 +881,10 @@ function TaskDetailDrawer({
               <EntitySearchPicker
                 selectedLead={selectedLead}
                 selectedCustomer={selectedCustomer}
+                selectedDeal={selectedDeal}
                 onSelectLead={handleSelectLead}
                 onSelectCustomer={handleSelectCustomer}
+                onSelectDeal={handleSelectDeal}
               />
 
               {/* Primary Contact */}
@@ -785,6 +951,7 @@ function TaskDetailDrawer({
                     Linked Deal
                   </Badge>
                 )}
+                <SlaStatusBadge entityId={task.taskId} entityType="TASK" />
               </div>
 
               {/* Overdue warning banner */}
@@ -870,15 +1037,64 @@ function TaskDetailDrawer({
                 </div>
               </div>
 
-              {/* Staff & Entity grid */}
+              {/* Business context — which record this task serves + navigation */}
+              <RelatedRecordCard task={relatedTask} />
+
+              {/* Staff grid */}
               <div className="grid grid-cols-2 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
                 <InfoRow icon={<User className="size-4 text-slate-400" />} label="Assigned To" value={task.assignedUserName ?? "—"} />
                 <InfoRow icon={<User className="size-4 text-slate-400" />} label="Created By" value={task.createdByName ?? "—"} />
-                <InfoRow icon={<Briefcase className="size-4 text-slate-400" />} label="Related To" value={linkedEntityLabel(task)} />
-                <InfoRow icon={<Building2 className="size-4 text-slate-400" />} label="Entity Type" value={linkedEntityType(task)} />
               </div>
 
-              {/* Primary Contact */}
+              {/* Lead / Customer contact card */}
+              {(task.leadId || task.customerId) && (() => {
+                const isLead = !!task.leadId;
+                const name    = isLead ? task.leadName        : task.customerName;
+                const phone   = isLead ? task.leadPhone       : task.customerPhone;
+                const email   = isLead ? task.leadEmail       : task.customerEmail;
+                const company = isLead ? task.leadCompanyName : task.customerCompanyName;
+                const hasAny  = name || phone || email || company;
+                if (!hasAny) return null;
+                return (
+                  <div className="rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-1.5">
+                      <Phone className="size-3.5 text-slate-400" />
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Contact Information</p>
+                      <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold ${isLead ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
+                        {isLead ? "Lead" : "Customer"}
+                      </span>
+                    </div>
+                    <div className="px-4 py-3 space-y-2">
+                      {name && (
+                        <div className="flex items-center gap-2">
+                          <User className="size-3.5 text-slate-400 shrink-0" />
+                          <span className="text-sm font-semibold text-slate-800">{name}</span>
+                        </div>
+                      )}
+                      {phone && (
+                        <div className="flex items-center gap-2">
+                          <Phone className="size-3.5 text-slate-400 shrink-0" />
+                          <a href={`tel:${phone}`} className="text-sm text-blue-600 hover:underline">{phone}</a>
+                        </div>
+                      )}
+                      {email && (
+                        <div className="flex items-center gap-2">
+                          <Mail className="size-3.5 text-slate-400 shrink-0" />
+                          <a href={`mailto:${email}`} className="text-sm text-blue-600 hover:underline truncate">{email}</a>
+                        </div>
+                      )}
+                      {company && (
+                        <div className="flex items-center gap-2">
+                          <Building2 className="size-3.5 text-slate-400 shrink-0" />
+                          <span className="text-sm text-slate-600">{company}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Primary Contact (override / manual entry) */}
               {(task.primaryContactName || task.primaryContactPhone) && (
                 <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-100">
                   <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider mb-2">Primary Contact</p>
@@ -942,18 +1158,28 @@ type CustomerResult = {
   companyName?: string | null;
 };
 
+type DealResult = {
+  dealId: string;
+  title: string;
+  detail?: string | null;
+};
+
 function EntitySearchPicker({
   selectedLead,
   selectedCustomer,
+  selectedDeal = null,
   onSelectLead,
   onSelectCustomer,
+  onSelectDeal,
 }: {
   selectedLead: Lead | null;
   selectedCustomer: CustomerResult | null;
+  selectedDeal?: DealResult | null;
   onSelectLead: (lead: Lead | null) => void;
   onSelectCustomer: (customer: CustomerResult | null) => void;
+  onSelectDeal?: (deal: DealResult | null) => void;
 }) {
-  const [tab, setTab] = useState<"lead" | "customer">("lead");
+  const [tab, setTab] = useState<"lead" | "customer" | "deal">("lead");
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -978,6 +1204,13 @@ function EntitySearchPicker({
     staleTime: 30_000,
   });
 
+  const dealSearch = useQuery({
+    queryKey: ["entity-search-deal", debouncedQuery],
+    queryFn: () => dealService.getList({ search: debouncedQuery, size: 8 }),
+    enabled: tab === "deal" && !!onSelectDeal && debouncedQuery.length >= 1,
+    staleTime: 30_000,
+  });
+
   const leadResults: Lead[] = leadSearch.data?.data?.content ?? [];
   const customerResults: CustomerResult[] = (customerSearch.data?.data ?? []).map(c => ({
     customerId: c.id,
@@ -986,12 +1219,23 @@ function EntitySearchPicker({
     phone: c.phone ?? null,
     companyName: c.company ?? null,
   }));
+  const dealResults: DealResult[] = (dealSearch.data?.data ?? []).map((d) => {
+    const rec = d as Record<string, unknown>;
+    const contact = typeof rec.contactName === "string" ? rec.contactName : null;
+    const stage = typeof rec.stage === "string" ? rec.stage : null;
+    return {
+      dealId: String(rec.id),
+      title: typeof rec.title === "string" && rec.title ? rec.title : "Untitled deal",
+      detail: [contact, stage].filter(Boolean).join(" · ") || null,
+    };
+  });
 
   const getEntityDetail = (item: { email?: string | null; phone?: string | null; companyName?: string | null }) => {
     return [item.email, item.phone, item.companyName].filter(Boolean).join(" · ");
   };
 
-  const hasSelection = tab === "lead" ? !!selectedLead : !!selectedCustomer;
+  const hasSelection =
+    tab === "lead" ? !!selectedLead : tab === "customer" ? !!selectedCustomer : !!selectedDeal;
 
   return (
     <div className="border border-slate-200 rounded-xl">
@@ -1017,29 +1261,52 @@ function EntitySearchPicker({
             >
               Customer
             </button>
+            {onSelectDeal && (
+              <button
+                type="button"
+                onClick={() => { setTab("deal"); setQuery(""); setOpen(false); }}
+                className={`px-3 py-1 transition ${tab === "deal" ? "bg-[#185FA5] text-white" : "bg-white text-slate-500 hover:bg-slate-100"}`}
+              >
+                Deal
+              </button>
+            )}
           </div>
         </div>
-        <p className="mt-2 text-[10px] text-slate-500">Search by name, email, phone, or company to link the correct lead or customer for this activity.</p>
+        <p className="mt-2 text-[10px] text-slate-500">Search by name, email, phone, or company to link the correct lead, customer, or deal for this activity.</p>
       </div>
 
       <div className="px-4 py-3 space-y-2">
         {/* Selected chip */}
         {hasSelection && (
           <div className="flex items-center gap-2 px-3 py-2 bg-[#E6F1FB] rounded-lg border border-[#85B7EB]">
-            <User className="size-3.5 text-[#0C447C] shrink-0" />
+            {tab === "deal"
+              ? <Briefcase className="size-3.5 text-[#0C447C] shrink-0" />
+              : <User className="size-3.5 text-[#0C447C] shrink-0" />}
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-[#0C447C] truncate">
-                {tab === "lead" ? selectedLead!.fullName : selectedCustomer!.fullName}
+                {tab === "lead"
+                  ? selectedLead!.fullName
+                  : tab === "customer"
+                    ? selectedCustomer!.fullName
+                    : selectedDeal!.title}
               </p>
               <p className="text-[10px] text-[#185FA5] truncate">
                 {tab === "lead"
                   ? (selectedLead!.email ?? selectedLead!.companyName ?? selectedLead!.status)
-                  : (selectedCustomer!.email ?? selectedCustomer!.companyName ?? "")}
+                  : tab === "customer"
+                    ? (selectedCustomer!.email ?? selectedCustomer!.companyName ?? "")
+                    : (selectedDeal!.detail ?? "Deal")}
               </p>
             </div>
             <button
               type="button"
-              onClick={() => tab === "lead" ? onSelectLead(null) : onSelectCustomer(null)}
+              onClick={() =>
+                tab === "lead"
+                  ? onSelectLead(null)
+                  : tab === "customer"
+                    ? onSelectCustomer(null)
+                    : onSelectDeal?.(null)
+              }
               className="shrink-0 p-0.5 rounded text-[#185FA5] hover:text-[#A32D2D] transition"
               title="Remove"
             >
@@ -1058,7 +1325,7 @@ function EntitySearchPicker({
               onChange={e => { setQuery(e.target.value); setOpen(true); }}
               onFocus={() => setOpen(true)}
               onBlur={() => setTimeout(() => setOpen(false), 180)}
-              placeholder={tab === "lead" ? "Search lead by name, email, company…" : "Search customer by name, email, company…"}
+              placeholder={tab === "lead" ? "Search lead by name, email, company…" : tab === "customer" ? "Search customer by name, email, company…" : "Search deal by title or contact…"}
               className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 transition placeholder:text-slate-400"
             />
 
@@ -1112,6 +1379,30 @@ function EntitySearchPicker({
                         </button>
                       ))
                 )}
+
+                {tab === "deal" && (
+                  dealSearch.isFetching
+                    ? <p className="py-4 text-center text-xs text-slate-400">Searching deals…</p>
+                    : dealResults.length === 0
+                      ? <p className="py-4 text-center text-xs text-slate-400">No deals found for "{debouncedQuery}"</p>
+                      : dealResults.map(d => (
+                        <button
+                          key={d.dealId}
+                          type="button"
+                          onMouseDown={() => { onSelectDeal?.(d); setQuery(""); setOpen(false); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-[#E6F1FB] transition border-b border-slate-50 last:border-0"
+                        >
+                          <div className="size-7 rounded-full bg-[#EAE6FB] flex items-center justify-center shrink-0 text-[10px] font-bold text-[#5B3BC4]">
+                            D
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-slate-800 truncate">{d.title}</p>
+                            <p className="text-[10px] text-slate-400 truncate">{d.detail ?? "Deal"}</p>
+                            <p className="text-[9px] text-slate-500 uppercase tracking-[0.16em] mt-1">Deal</p>
+                          </div>
+                        </button>
+                      ))
+                )}
               </div>
             )}
           </div>
@@ -1145,6 +1436,7 @@ function CreateTaskDrawer({
   });
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerResult | null>(null);
+  const [selectedDeal, setSelectedDeal] = useState<DealResult | null>(null);
   const createMutation = useCreateTask();
 
   function handleSelectLead(lead: Lead | null) {
@@ -1155,12 +1447,13 @@ function CreateTaskDrawer({
         ...f,
         leadId: lead?.leadId ?? undefined,
         customerId: undefined,
+        dealId: undefined,
         primaryContactName: lead?.fullName ?? "",
         primaryContactPhone: lead?.phone ?? "",
         title: lead && titleIsAuto ? `${ACTIVITY_TYPES.find(a => a.type === activityType)?.label ?? "Call"}: ${lead.fullName}` : f.title,
       };
     });
-    if (lead) setSelectedCustomer(null);
+    if (lead) { setSelectedCustomer(null); setSelectedDeal(null); }
   }
 
   function handleSelectCustomer(customer: CustomerResult | null) {
@@ -1171,12 +1464,28 @@ function CreateTaskDrawer({
         ...f,
         customerId: customer?.customerId ?? undefined,
         leadId: undefined,
+        dealId: undefined,
         primaryContactName: customer?.fullName ?? "",
         primaryContactPhone: customer?.phone ?? "",
         title: customer && titleIsAuto ? `${ACTIVITY_TYPES.find(a => a.type === activityType)?.label ?? "Call"}: ${customer.fullName}` : f.title,
       };
     });
-    if (customer) setSelectedLead(null);
+    if (customer) { setSelectedLead(null); setSelectedDeal(null); }
+  }
+
+  function handleSelectDeal(deal: DealResult | null) {
+    setSelectedDeal(deal);
+    setForm(f => {
+      const titleIsAuto = !f.title.trim() || ACTIVITY_TYPES.some(a => f.title === `${a.label}: `);
+      return {
+        ...f,
+        dealId: deal?.dealId ?? undefined,
+        leadId: undefined,
+        customerId: undefined,
+        title: deal && titleIsAuto ? `${ACTIVITY_TYPES.find(a => a.type === activityType)?.label ?? "Call"}: ${deal.title}` : f.title,
+      };
+    });
+    if (deal) { setSelectedLead(null); setSelectedCustomer(null); }
   }
 
   // FIX: update title when switching types — replaces any previously auto-generated title
@@ -1238,19 +1547,19 @@ function CreateTaskDrawer({
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-7 py-5 space-y-5">
 
-          {/* Activity Type Selector */}
-          <div className="space-y-2.5">
+          {/* Activity Type — compact quick-select chips (one tap, no dialog) */}
+          <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Activity Type</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="flex flex-wrap gap-2">
               {ACTIVITY_TYPES.map(({ type, label, Icon, activeClass, idleClass }) => (
                 <button
                   key={type}
                   type="button"
+                  aria-pressed={activityType === type}
                   onClick={() => handleActivityTypeChange(type)}
-                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border text-xs font-bold transition-all ${activityType === type ? activeClass : idleClass
-                    }`}
+                  className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border text-xs font-semibold transition-all duration-150 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#185FA5]/40 ${activityType === type ? `${activeClass} shadow-sm` : idleClass}`}
                 >
-                  <Icon className="size-4" />
+                  <Icon className="size-3.5 shrink-0" />
                   {label}
                 </button>
               ))}
@@ -1425,8 +1734,10 @@ function CreateTaskDrawer({
           <EntitySearchPicker
             selectedLead={selectedLead}
             selectedCustomer={selectedCustomer}
+            selectedDeal={selectedDeal}
             onSelectLead={handleSelectLead}
             onSelectCustomer={handleSelectCustomer}
+            onSelectDeal={handleSelectDeal}
           />
 
           {(selectedLead || selectedCustomer) && (
@@ -1536,6 +1847,7 @@ const ACTIVITY_CHIP: Record<ActivityType, string> = {
 };
 
 export function FollowUpTaskListScreen() {
+  const { highlightedId, setRowRef } = useHighlightRow();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [activeTab, setActiveTab] = useState<TabId>("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -1546,6 +1858,7 @@ export function FollowUpTaskListScreen() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createDueDate, setCreateDueDate] = useState<string | undefined>(undefined);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [openTaskInEdit, setOpenTaskInEdit] = useState(false);
   const [reassignTask, setReassignTask] = useState<Task | null>(null);
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
 
@@ -1643,7 +1956,8 @@ export function FollowUpTaskListScreen() {
 
     return (
       <tr
-        className={`group border-b border-slate-200 dark:border-slate-700 transition-colors cursor-pointer ${done ? "opacity-60" : task.status === "CANCELLED" ? "opacity-40" : ""} ${overdue ? "hover:bg-[#4F1B1C]/40 dark:hover:bg-[#4F1B1C]/40" : "hover:bg-slate-100/60 dark:hover:bg-slate-800/80"}`}
+        ref={setRowRef(task.taskId)}
+        className={`group border-b border-slate-200 dark:border-slate-700 transition-colors cursor-pointer ${done ? "opacity-60" : task.status === "CANCELLED" ? "opacity-40" : ""} ${overdue ? "hover:bg-[#4F1B1C]/40 dark:hover:bg-[#4F1B1C]/40" : "hover:bg-slate-100/60 dark:hover:bg-slate-800/80"} ${highlightedId === task.taskId ? "bg-amber-50! dark:bg-amber-500/10! ring-2 ring-inset ring-amber-400" : ""}`}
         onClick={() => setSelectedTask(task)}
       >
         {/* Done toggle */}
@@ -1756,10 +2070,15 @@ export function FollowUpTaskListScreen() {
           </div>
         </td>
 
+        {/* SLA */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          <SlaStatusBadge entityId={task.taskId} entityType="TASK" />
+        </td>
+
         {/* Row actions — appear on hover */}
         <td className="px-3 py-3 w-[120px]" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
-            <Button variant="secondary" size="sm" onClick={() => setSelectedTask(task)}>Edit</Button>
+            <Button variant="secondary" size="sm" onClick={() => { setSelectedTask(task); setOpenTaskInEdit(true); }}>Edit</Button>
             {task.status !== "CANCELLED" && task.status !== "COMPLETED" && (
               <Button
                 variant="secondary"
@@ -2115,6 +2434,7 @@ export function FollowUpTaskListScreen() {
                     <th className="w-[90px] px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Schedule</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Assigned To</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Priority / Status</th>
+                    <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">SLA</th>
                     <th className="w-[120px] px-3 py-2.5" />
                   </tr>
                 </thead>
@@ -2233,9 +2553,10 @@ export function FollowUpTaskListScreen() {
       {selectedTask && (
         <TaskDetailDrawer
           task={selectedTask}
-          onClose={() => setSelectedTask(null)}
+          onClose={() => { setSelectedTask(null); setOpenTaskInEdit(false); }}
           users={users}
-          onReassign={() => { setReassignTask(selectedTask); setSelectedTask(null); }}
+          onReassign={() => { setReassignTask(selectedTask); setSelectedTask(null); setOpenTaskInEdit(false); }}
+          initialEditing={openTaskInEdit}
         />
       )}
       {reassignTask && <ReassignFollowUpModal task={reassignTask} onClose={() => setReassignTask(null)} users={users} />}

@@ -1,5 +1,9 @@
 server:
   port: ${PORT:8085}
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json,application/xml
+    min-response-size: 2048
 
 spring:
   application:
@@ -15,23 +19,10 @@ spring:
       max-request-size: ${AI_MAX_UPLOAD_SIZE:20MB}
 
   # AI chat assistant (feature/ai_internal): chat + embeddings BOTH via Google Gemini API (no local AI).
-  # Provider is selected with spring.ai.model.chat / spring.ai.model.embedding below, so the
-  # Ollama and Anthropic auto-configs back off cleanly (no Ollama needs to run). Only non-model
-  # integrations we don't use are excluded here (JDBC chat-memory, Elasticsearch, Redis vector stores).
-  autoconfigure:
-    exclude:
-      - org.springframework.ai.model.chat.memory.repository.jdbc.autoconfigure.JdbcChatMemoryRepositoryAutoConfiguration
-      - org.springframework.ai.vectorstore.elasticsearch.autoconfigure.ElasticsearchVectorStoreAutoConfiguration
-      - org.springframework.ai.vectorstore.redis.autoconfigure.RedisVectorStoreAutoConfiguration
-
   docker:
     compose:
       enabled: false
 
-  # Canonical single shared .env is at the repo root (leadora/.env) → read via ../.env
-  # when running from leadora/backend/. The bare .env (backend-local) is an optional
-  # fallback; both are optional so a missing one is skipped. The last match wins, so
-  # the repo-root file (../.env) takes precedence.
   config:
     import:
       - optional:file:.env[.properties]
@@ -44,7 +35,11 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:secret}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:3}
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:5}
+      minimum-idle: 1
+      connection-timeout: 30000
+      idle-timeout: 300000
+      max-lifetime: 1800000
 
   jpa:
     hibernate:
@@ -74,15 +69,15 @@ spring:
             enable: true
             required: true
 
-  # # Redis Configuration for caching and HTTP session management
-  # data:
-  #   redis:
-  #     host: ${REDIS_HOST:localhost}
-  #     port: ${REDIS_PORT:6379}
-  #     password: ${REDIS_PASSWORD:}
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
 
-  # session:
-  #   store-type: redis
+  cache:
+    type: ${SPRING_CACHE_TYPE:simple}
+    redis:
+      time-to-live: 3600000 # 1 hour
+      cache-null-values: false
 
   # Spring Security / JWT configuration:
   # JWT validation is handled by the custom HS256 JwtDecoder bean in WebSecurityConfig.
@@ -93,6 +88,18 @@ spring:
   # Spring AI configuration — Internal Sales Chat Assistant (feature/ai_internal)
   # Runtime: Google Gemini API for BOTH chat and embeddings (no local AI) + pgvector store for RAG.
   ai:
+    # Fail-fast retry. Spring AI's default retries a 429 up to 10 times with exponential backoff
+    # (2s → ×5 → up to 3 min), so on a quota/rate-limit error the chat/embedding call would HANG
+    # for tens of seconds before surfacing the error ("chat is slower than usual"). On the Gemini
+    # free tier (20 chat req/day, 1000 embed req/day) a 429 is usually a hard daily cap, not a blip,
+    # so retrying long is pointless — fail after at most one short retry and let the app show a clear
+    # "out of quota" message immediately. Raise these once billing/paid quota is enabled.
+    retry:
+      max-attempts: ${AI_RETRY_MAX_ATTEMPTS:2}
+      backoff:
+        initial-interval: 800ms
+        multiplier: 2
+        max-interval: 3s
     # Select Gemini as the active provider so Ollama/Anthropic auto-configs back off.
     model:
       chat: google-genai
@@ -115,8 +122,14 @@ spring:
             # so on 3.x the reliable speed lever is the model: set GEMINI_CHAT_MODEL=gemini-2.5-flash.
             thinking-budget: ${GEMINI_THINKING_BUDGET:0}
         embedding:
-          # Match connection configuration for embedding
-          vertex-ai: ${GEMINI_USE_VERTEX:true}
+          # IMPORTANT: the Google GenAI *embedding* connection has NO working `vertex-ai` boolean
+          # (unlike the chat block). Its mode is inferred purely from the properties present:
+          #   - api-key set            → Gemini Developer API (AI Studio)
+          #   - project-id + location  → Vertex AI
+          # So we must NOT put an api-key here in Vertex mode: a blank/null api-key still flips the
+          # embedding client to Developer API and fails with "API key not valid" (the upload/RAG bug).
+          # To run embeddings on the Developer API instead, set GEMINI_USE_VERTEX=false AND add:
+          #     api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY}}
           api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:#{null}}}
           project-id: ${GEMINI_PROJECT_ID:mock-project-id}
           location: ${GEMINI_LOCATION:asia-southeast1}
@@ -141,8 +154,28 @@ logging:
   level:
     org.springframework.security: DEBUG
 
+# RAG ingestion tuning (custom namespace read by SemanticChunker).
+# semantic-chunking embeds EVERY sentence of a document to find topic boundaries — on top of the
+# per-chunk embeddings the vector store already does — so one medium file can fire hundreds of
+# embedding calls and exhaust the Gemini free-tier embedding quota (1000/day) in a single upload.
+# Default OFF: fall back to token splitting, which embeds only the final chunks (O(chunks), not
+# O(sentences)) — 10–30× fewer calls, faster ingest, uploads that actually finish. Turn it back on
+# (AI_SEMANTIC_CHUNKING=true) once you have paid/embedding quota and want the retrieval-quality gain.
+ai:
+  rag:
+    semantic-chunking:
+      # ON by default now that Vertex AI (billed) has real embedding quota — semantic chunking
+      # embeds each sentence to find topic boundaries (better retrieval quality) but costs more
+      # embedding calls. Set AI_SEMANTIC_CHUNKING=false to fall back to cheap token splitting.
+      enabled: ${AI_SEMANTIC_CHUNKING:true}
+
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  bank:
+    account-number: ${APP_BANK_ACCOUNT_NUMBER:123456789}
+    provider: ${APP_BANK_PROVIDER:sepay}
+    api-token: ${APP_BANK_API_TOKEN:dummy-token}
+    api-url: ${APP_BANK_API_URL:https://my.sepay.vn/plus/api/transactions}
 
 # Supabase environment fallbacks (prevents startup crash if environment variables are not set)
 SUPABASE_URL: ${SUPABASE_URL}

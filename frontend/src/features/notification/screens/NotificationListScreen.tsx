@@ -12,18 +12,22 @@ import {
   AlertTriangle,
   CheckCircle2,
   Info,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { useAuthStore } from "@/stores/auth_store";
 import {
   useNotifications,
+  useUnreadNotificationCount,
   useMarkNotificationRead,
   useMarkAllRead,
 } from "@/features/notification/hooks/use_notifications";
 import type { Notification } from "@/services/notification_service";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+
+const PAGE_SIZE = 20;
 
 const TYPE_LABEL: Record<string, string> = {
   LEAD_ASSIGNED: "Lead",
@@ -31,20 +35,28 @@ const TYPE_LABEL: Record<string, string> = {
   QUOTATION_SENT: "Quotation",
   CUSTOMER_RESPONSE: "Response",
   BOOKING_UPDATE: "Booking",
-  PAYMENT_REMINDER: "Payment",
-  SLA_WARNING: "SLA",
+  SLA_WARNING: "SLA Warning",
+  SLA_BREACH: "SLA Breach",
   TASK_OVERDUE: "Task",
+  REMINDER: "Reminder",
+  REMINDER_ESCALATED: "Reminder",
+  REMINDER_OVERDUE: "Reminder",
+  HANDOVER: "Handover",
 };
 
 const TYPE_VARIANT: Record<string, "danger" | "warning" | "success" | "primary" | "default"> = {
-  SLA_WARNING: "danger",
+  SLA_WARNING: "warning",
+  SLA_BREACH: "danger",
   TASK_OVERDUE: "danger",
-  PAYMENT_REMINDER: "warning",
   QUOTATION_APPROVAL: "warning",
   BOOKING_UPDATE: "success",
   CUSTOMER_RESPONSE: "success",
   LEAD_ASSIGNED: "primary",
   QUOTATION_SENT: "primary",
+  REMINDER: "default",
+  REMINDER_ESCALATED: "danger",
+  REMINDER_OVERDUE: "warning",
+  HANDOVER: "default",
 };
 
 const FILTER_OPTIONS = [
@@ -54,25 +66,32 @@ const FILTER_OPTIONS = [
   { value: "QUOTATION_SENT", label: "Quotation Sent" },
   { value: "CUSTOMER_RESPONSE", label: "Customer Response" },
   { value: "BOOKING_UPDATE", label: "Booking Update" },
-  { value: "PAYMENT_REMINDER", label: "Payment" },
   { value: "SLA_WARNING", label: "SLA Warning" },
+  { value: "SLA_BREACH", label: "SLA Breach" },
   { value: "TASK_OVERDUE", label: "Task Overdue" },
+  { value: "REMINDER", label: "Reminder" },
+  { value: "REMINDER_ESCALATED", label: "Reminder Escalated" },
+  { value: "REMINDER_OVERDUE", label: "Reminder Overdue" },
+  { value: "HANDOVER", label: "Handover" },
 ];
 
 function getRelatedRoute(n: Notification): string | null {
   if (!n.relatedEntity || !n.relatedId) return null;
   const entity = n.relatedEntity.toUpperCase();
+  const highlight = `highlight=${encodeURIComponent(n.relatedId)}`;
   if (entity === "LEAD") return ROUTE_PATHS.leadDetail(n.relatedId);
-  if (entity === "QUOTATION") return ROUTE_PATHS.quotations;
-  if (entity === "BOOKING") return ROUTE_PATHS.bookingConfirmation;
-  if (entity === "REMINDER") return ROUTE_PATHS.reminders;
-  if (entity === "TASK") return ROUTE_PATHS.followUpTasks;
-  if (entity === "SLA") return ROUTE_PATHS.sla;
+  if (entity === "QUOTATION") return ROUTE_PATHS.quotationDetail(n.relatedId);
+  if (entity === "BOOKING") return `${ROUTE_PATHS.bookingConfirmation}?${highlight}`;
+  if (entity === "REMINDER") return `${ROUTE_PATHS.reminders}?${highlight}`;
+  if (entity === "TASK") return `${ROUTE_PATHS.followUpTasks}?${highlight}`;
+  if (entity === "SLA") return `${ROUTE_PATHS.sla}?${highlight}`;
+  if (entity === "HANDOVER") return `${ROUTE_PATHS.frontOfficeHandover}?${highlight}`;
   return null;
 }
 
 function TypeIcon({ type }: { type: string }) {
-  if (type === "SLA_WARNING" || type === "TASK_OVERDUE") return <AlertTriangle className="size-3.5 text-red-500" />;
+  if (type === "SLA_WARNING" || type === "SLA_BREACH" || type === "TASK_OVERDUE" || type === "REMINDER_ESCALATED")
+    return <AlertTriangle className="size-3.5 text-red-500" />;
   if (type === "BOOKING_UPDATE" || type === "CUSTOMER_RESPONSE") return <CheckCircle2 className="size-3.5 text-emerald-500" />;
   return <Info className="size-3.5 text-blue-500" />;
 }
@@ -91,21 +110,23 @@ function formatTime(iso: string): string {
 
 export function NotificationListScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
-  const userId = user?.id;
 
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [typeFilter, setTypeFilter] = useState("");
+  const [page, setPage] = useState(0);
 
-  const { data: notifications = [], isLoading, isError } = useNotifications(userId, unreadOnly);
+  const { data: pageData, isLoading, isError } = useNotifications({ unreadOnly, page, size: PAGE_SIZE });
+  const { data: unreadCount = 0 } = useUnreadNotificationCount();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllRead();
+
+  const notifications = pageData?.content ?? [];
+  const totalPages = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalPages : (pageData?.totalPages ?? 1);
+  const totalElements = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalElements : (pageData?.totalElements ?? 0);
 
   const filtered = typeFilter
     ? notifications.filter((n) => n.type === typeFilter)
     : notifications;
-
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   const handleNotificationClick = async (n: Notification) => {
     if (!n.isRead) {
@@ -121,8 +142,7 @@ export function NotificationListScreen() {
   };
 
   const handleMarkAllRead = async () => {
-    if (!userId) return;
-    await markAllRead.mutateAsync(userId);
+    await markAllRead.mutateAsync();
   };
 
   return (
@@ -133,13 +153,13 @@ export function NotificationListScreen() {
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-slate-800">Notification Center</h1>
             {unreadCount > 0 && (
-              <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-blue-500 text-white text-[10px] font-bold">
+              <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-white text-[10px] font-bold">
                 {unreadCount}
               </span>
             )}
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Leads, quotations, bookings, reminders, and SLA alerts
+            Leads, quotations, bookings, reminders, handovers, and SLA alerts
           </p>
         </div>
 
@@ -177,9 +197,9 @@ export function NotificationListScreen() {
 
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <div
-            onClick={() => setUnreadOnly((v) => !v)}
+            onClick={() => { setUnreadOnly((v) => !v); setPage(0); }}
             className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-              unreadOnly ? "bg-blue-500" : "bg-slate-200"
+              unreadOnly ? "bg-primary" : "bg-slate-200"
             }`}
           >
             <span
@@ -242,14 +262,14 @@ export function NotificationListScreen() {
                     onClick={() => handleNotificationClick(n)}
                     className={`border-b border-slate-100 transition ${
                       isClickable ? "cursor-pointer hover:bg-slate-50/80" : "hover:bg-slate-50/50"
-                    } ${!n.isRead ? "bg-blue-50/20" : ""}`}
+                    } ${!n.isRead ? "bg-blue-50/30" : "opacity-70"}`}
                   >
                     {/* Unread dot */}
                     <TableCell className="py-3 px-3 text-center">
                       {!n.isRead ? (
-                        <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
+                        <span className="inline-block w-2 h-2 rounded-full bg-primary" title="Unread" />
                       ) : (
-                        <span className="inline-block w-2 h-2 rounded-full bg-slate-200" />
+                        <CheckCircle2 className="inline-block size-3 text-emerald-400" aria-label="Read" />
                       )}
                     </TableCell>
 
@@ -258,7 +278,7 @@ export function NotificationListScreen() {
                       <div className="flex items-start gap-2">
                         <TypeIcon type={n.type} />
                         <div>
-                          <p className={`text-xs font-bold text-slate-800 ${!n.isRead ? "" : "font-semibold text-slate-600"}`}>
+                          <p className={!n.isRead ? "text-xs font-bold text-slate-800" : "text-xs font-normal text-slate-500"}>
                             {n.title}
                           </p>
                           <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">
@@ -318,6 +338,26 @@ export function NotificationListScreen() {
             )}
           </TableBody>
         </Table>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50/50">
+            <p className="text-xs text-slate-500">
+              Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong>
+              <span className="text-slate-400 ml-2">· {totalElements} results</span>
+            </p>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">
+                <ChevronLeft className="size-3.5" /> Prev
+              </button>
+              <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">
+                Next <ChevronRight className="size-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

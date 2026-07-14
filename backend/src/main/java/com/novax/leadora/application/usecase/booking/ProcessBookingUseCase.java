@@ -3,12 +3,16 @@ package com.novax.leadora.application.usecase.booking;
 import com.novax.leadora.api.dto.request.ProcessBookingRequest;
 import com.novax.leadora.api.dto.response.BookingDetailResponse;
 import com.novax.leadora.api.dto.response.BookingResponse;
+import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
+import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
+import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,12 +22,15 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProcessBookingUseCase {
 
     private final BookingRepository bookingRepository;
     private final BookingDetailRepository bookingDetailRepository;
+    private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
+    private final NotificationRepository notificationRepository;
 
     @Transactional
     public BookingResponse execute(UUID bookingId, ProcessBookingRequest request) {
@@ -51,6 +58,30 @@ public class ProcessBookingUseCase {
         }
 
         BookingEntity saved = bookingRepository.save(booking);
+
+        // UC-17.2: booking confirmation decision made — auto-resolve BOOKING_CONFIRM SLA tracking
+        try {
+            resolveSlaBreachUseCase.executeByEntity("BOOKING", bookingId);
+        } catch (Exception e) {
+            log.warn("SLA auto-resolve failed for booking {}: {}", bookingId, e.getMessage());
+        }
+
+        // UC-15.1: notify the assigned staff of the booking status decision
+        if (saved.getAssignedUser() != null) {
+            try {
+                NotificationEntity notification = NotificationEntity.builder()
+                        .user(saved.getAssignedUser())
+                        .title("Booking " + newStatus.name())
+                        .message("Booking " + saved.getBookingCode() + " is now " + newStatus.name() + ".")
+                        .type("BOOKING_UPDATE")
+                        .relatedEntity("BOOKING")
+                        .relatedId(bookingId)
+                        .build();
+                notificationRepository.save(notification);
+            } catch (Exception e) {
+                log.warn("Booking-update notification failed for booking {}: {}", bookingId, e.getMessage());
+            }
+        }
 
         List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(bookingId);
         List<BookingDetailResponse> detailResponses = details.stream()

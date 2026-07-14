@@ -33,9 +33,19 @@ export type CompanyDocument = {
   fileName?: string;
   contentType?: string;
   chunkCount: number;
+  /** True while the doc is still being parsed/embedded in the background (chunkCount === 0). */
+  processing?: boolean;
   createdAt?: string;
   uploadedById?: string;
   uploadedByName?: string;
+};
+
+/** Progress of the browser→server byte transfer for an upload. */
+export type UploadProgress = {
+  loaded: number;
+  total: number;
+  /** 0–100, rounded. */
+  percent: number;
 };
 
 const SESSIONS_ENDPOINT = "/chat/sessions";
@@ -93,15 +103,29 @@ export const chatAssistantService = {
     return data;
   },
 
-  async uploadDocument(file: File, title?: string) {
+  async uploadDocument(
+    file: File,
+    title?: string,
+    onProgress?: (p: UploadProgress) => void,
+  ) {
     const form = new FormData();
     form.append("file", file);
     if (title) form.append("title", title);
     const { data } = await apiClient.post<ApiResponse<CompanyDocument>>(
       DOCUMENTS_ENDPOINT,
       form,
-      // Let the browser set the multipart boundary instead of the JSON default.
-      { headers: { "Content-Type": undefined } },
+      {
+        // Let the browser set the multipart boundary instead of the JSON default.
+        headers: { "Content-Type": undefined },
+        // Report byte-transfer progress so the UI can render a % bar + ETA.
+        onUploadProgress: (evt) => {
+          if (!onProgress) return;
+          const total = evt.total ?? file.size;
+          const loaded = evt.loaded ?? 0;
+          const percent = total > 0 ? Math.round((loaded / total) * 100) : 0;
+          onProgress({ loaded, total, percent });
+        },
+      },
     );
     return data;
   },

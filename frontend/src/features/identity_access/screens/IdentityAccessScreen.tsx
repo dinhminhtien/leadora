@@ -29,6 +29,24 @@ const STATUS_CONFIG: Record<UserStatus, { label: string; variant: "success" | "d
 
 const STATUS_OPTIONS: UserStatus[] = ["ACTIVE", "INACTIVE", "LOCKED"];
 
+// Display label for the as-built DB role codes (ADMIN/SALES/MANAGER) → Admin/Staff/Manager.
+function roleLabel(roleName?: string | null): string {
+  switch ((roleName ?? "").toUpperCase()) {
+    case "SALES":   return "Staff";
+    case "MANAGER": return "Manager";
+    case "ADMIN":   return "Admin";
+    default:        return roleName ?? "—";
+  }
+}
+
+// Name: letters (any language), spaces and basic name punctuation — no digits/symbols.
+const NAME_ALLOWED = /^[\p{L}\s.'-]+$/u;
+
+// Rows per page + fixed column widths so the table height (and the pagination bar
+// below it) stays constant across pages — mirrors the Leads list.
+const PAGE_SIZE = 10;
+const COL_WIDTHS = ["24%", "28%", "13%", "12%", "13%", "10%"];
+
 function initials(name: string) {
   return (name || "?").split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
 }
@@ -69,10 +87,17 @@ function UserFormDrawer({
   const [email, setEmail] = useState(user?.email ?? "");
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState(user?.phone ?? "");
-  const [roleId, setRoleId] = useState<number | "">(user?.roleId ?? (roles[0]?.roleId ?? ""));
+  const [roleId, setRoleId] = useState<number | "">(user?.roleId ?? "");
   const [status, setStatus] = useState<UserStatus>(user?.status ?? "ACTIVE");
   const [errors, setErrors] = useState<UserFormErrors>({});
   const [serverError, setServerError] = useState("");
+
+  // Admin cannot be assigned here. The only exception is editing an account that is
+  // already an Admin, so its current role can still be displayed/kept.
+  const editingAdmin = mode === "edit" && (user?.roleName ?? "").toUpperCase() === "ADMIN";
+  const assignableRoles = roles.filter(
+    (r) => r.roleName.toUpperCase() !== "ADMIN" || editingAdmin,
+  );
 
   const createMutation = useCreateUser();
   const updateMutation = useUpdateUser(user?.userId ?? "");
@@ -80,9 +105,12 @@ function UserFormDrawer({
 
   const validate = (): UserFormErrors => {
     const e: UserFormErrors = {};
-    if (!fullName.trim()) e.fullName = "Full name is required";
+    const name = fullName.trim();
+    if (!name) e.fullName = "Full name is required";
+    else if (/\d/.test(name)) e.fullName = "Full name cannot contain numbers";
+    else if (!NAME_ALLOWED.test(name)) e.fullName = "Full name cannot contain special characters";
     if (!email.trim()) e.email = "Email is required";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = "Invalid email format";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = "Invalid email format (e.g. name@domain.com)";
     const validatePassword = (pwd: string) => {
       if (pwd.length < 6) return "Password must be at least 6 characters";
       if (!/[A-Z]/.test(pwd)) return "Must contain at least one uppercase letter";
@@ -100,7 +128,11 @@ function UserFormDrawer({
       const pwdError = validatePassword(password);
       if (pwdError) e.password = pwdError;
     }
-    if (phone && !/^\d{8,15}$/.test(phone.replace(/\s/g, ""))) e.phone = "Phone must be 8–15 digits";
+    if (phone) {
+      const digits = phone.replace(/\s/g, "");
+      if (/[^\d]/.test(digits)) e.phone = "Phone number can only contain digits (no letters or symbols)";
+      else if (!/^\d{8,15}$/.test(digits)) e.phone = "Phone must be 8–15 digits";
+    }
     if (roleId === "") e.roleId = "Role is required";
     return e;
   };
@@ -184,7 +216,7 @@ function UserFormDrawer({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-600">Phone</label>
-              <Input placeholder="0901234567" value={phone}
+              <Input placeholder="e.g. 09xxxxxxxx" value={phone}
                 onChange={e => setPhone(e.target.value)} error={errors.phone} className="py-1.5 text-xs" />
             </div>
             <div className="space-y-1">
@@ -192,30 +224,38 @@ function UserFormDrawer({
               <Select value={roleId} onChange={e => setRoleId(e.target.value === "" ? "" : Number(e.target.value))}
                 error={errors.roleId} className="py-1.5 text-xs">
                 <option value="">Select role…</option>
-                {roles.map(r => <option key={r.roleId} value={r.roleId}>{r.roleName}</option>)}
+                {assignableRoles.map(r => <option key={r.roleId} value={r.roleId}>{roleLabel(r.roleName)}</option>)}
               </Select>
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-600">Account Status</label>
-            <div className="grid grid-cols-3 gap-2">
-              {STATUS_OPTIONS.map(s => {
-                const selected = status === s;
-                return (
-                  <button key={s} type="button" onClick={() => setStatus(s)}
-                    className={`px-2 py-2 rounded-xl border text-[11px] font-bold uppercase transition
-                      ${selected ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm" : "border-slate-200 bg-white text-slate-400 hover:border-slate-300"}`}>
-                    {STATUS_CONFIG[s].label}
-                  </button>
-                );
-              })}
+          {/* Status: new accounts always start Active; only an edit may set Inactive/Locked. */}
+          {mode === "create" ? (
+            <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-700">
+              <Check className="size-3.5 shrink-0" />
+              New accounts are created with status <strong>Active</strong>.
             </div>
-          </div>
+          ) : (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600">Account Status</label>
+              <div className="grid grid-cols-3 gap-2">
+                {STATUS_OPTIONS.map(s => {
+                  const selected = status === s;
+                  return (
+                    <button key={s} type="button" onClick={() => setStatus(s)}
+                      className={`px-2 py-2 rounded-xl border text-[11px] font-bold uppercase transition
+                        ${selected ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm" : "border-slate-200 bg-white text-slate-400 hover:border-slate-300"}`}>
+                      {STATUS_CONFIG[s].label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="pt-4 flex gap-3 border-t border-slate-100">
             <Button type="submit" variant="primary" isLoading={isPending}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-xs font-semibold">
+              className="w-full bg-primary hover:bg-primary/90 text-xs font-semibold">
               {mode === "create" ? "Create Account" : "Save Changes"}
             </Button>
             <Button type="button" variant="outline" onClick={onClose}
@@ -246,7 +286,7 @@ function UsersTab({ roles }: { roles: Role[] }) {
     search: search || undefined,
     roleId: roleFilter === "" ? undefined : Number(roleFilter),
     status: statusFilter || undefined,
-    sortBy: "createdAt", sortDir: "desc", page, size: 10,
+    sortBy: "createdAt", sortDir: "desc", page, size: PAGE_SIZE,
   });
 
   const pageData = resp?.data;
@@ -269,7 +309,7 @@ function UsersTab({ roles }: { roles: Role[] }) {
           <select value={roleFilter} onChange={e => { setRoleFilter(e.target.value === "" ? "" : Number(e.target.value)); setPage(0); }}
             className="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:outline-none text-slate-700 cursor-pointer">
             <option value="">All roles</option>
-            {roles.map(r => <option key={r.roleId} value={r.roleId}>{r.roleName}</option>)}
+            {roles.map(r => <option key={r.roleId} value={r.roleId}>{roleLabel(r.roleName)}</option>)}
           </select>
 
           <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(0); }}
@@ -284,7 +324,7 @@ function UsersTab({ roles }: { roles: Role[] }) {
             </span>
             <Button variant="primary" size="sm" onClick={() => setDrawer({ mode: "create" })}
               leftIcon={<UserPlus className="size-3.5" />}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold">
+              className="bg-primary hover:bg-primary/90 text-white text-xs font-semibold">
               Create User
             </Button>
           </div>
@@ -308,7 +348,10 @@ function UsersTab({ roles }: { roles: Role[] }) {
             <p className="text-sm font-medium">No user accounts found</p>
           </div>
         ) : (
-          <Table>
+          <Table className="table-fixed">
+            <colgroup>
+              {COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
+            </colgroup>
             <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
               <TableRow hoverable={false}>
                 <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Staff Member</TableHead>
@@ -325,12 +368,14 @@ function UsersTab({ roles }: { roles: Role[] }) {
                   <TableCell className="py-3 px-4 border-b-0">
                     <div className="flex items-center gap-2.5">
                       <Avatar name={u.fullName} />
-                      <span className="text-xs font-bold text-slate-800">{u.fullName}</span>
+                      <span className="text-xs font-bold text-slate-800 truncate" title={u.fullName}>{u.fullName}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="py-3 px-4 text-xs text-slate-600 border-b-0">{u.email}</TableCell>
+                  <TableCell className="py-3 px-4 text-xs text-slate-600 border-b-0">
+                    <span className="block truncate" title={u.email}>{u.email}</span>
+                  </TableCell>
                   <TableCell className="py-3 px-4 border-b-0">
-                    <Badge variant="primary" size="sm" className="font-bold text-[10px]">{u.roleName ?? "—"}</Badge>
+                    <Badge variant="primary" size="sm" className="font-bold text-[10px]">{roleLabel(u.roleName)}</Badge>
                   </TableCell>
                   <TableCell className="py-3 px-4 border-b-0"><StatusBadge status={u.status} /></TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-400 whitespace-nowrap border-b-0">
@@ -343,20 +388,38 @@ function UsersTab({ roles }: { roles: Role[] }) {
                   </TableCell>
                 </TableRow>
               ))}
+              {/* Filler rows keep the table height — and the pagination bar below — fixed. */}
+              {Array.from({ length: Math.max(0, PAGE_SIZE - users.length) }).map((_, i) => (
+                <TableRow key={`filler-${i}`} hoverable={false} className="border-b border-slate-100">
+                  <TableCell colSpan={COL_WIDTHS.length} className="py-3 px-4 border-b-0" aria-hidden="true">
+                    <span className="invisible flex items-center gap-2.5"><span className="size-7" /><span className="text-xs">.</span></span>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         )}
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50/50">
-            <p className="text-xs text-slate-500">Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong></p>
+            <p className="text-xs text-slate-500">
+              Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong>
+              <span className="text-slate-400 ml-2">· {totalElements} results</span>
+            </p>
             <div className="flex items-center gap-1">
               <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 transition">
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">
                 <ChevronLeft className="size-3.5" /> Prev
               </button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => Math.max(0, Math.min(page - 2, totalPages - 5)) + i).map(p => (
+                <button key={p} onClick={() => setPage(p)}
+                  className={`size-7 text-xs font-semibold rounded-lg border transition
+                    ${p === page ? "bg-primary text-white border-primary shadow-sm" : "border-slate-200 text-slate-500 hover:bg-white"}`}>
+                  {p + 1}
+                </button>
+              ))}
               <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 transition">
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">
                 Next <ChevronRight className="size-3.5" />
               </button>
             </div>
@@ -388,14 +451,49 @@ function RoleCard({ role, allPermissions }: { role: Role; allPermissions: Permis
     return false;
   }, [selected, assignedIds]);
 
-  const toggle = (id: number) => {
+  const byId = useMemo(() => new Map(allPermissions.map(p => [p.permissionId, p])), [allPermissions]);
+
+  // Toggle with dependency cascade:
+  //  • turning a permission OFF also removes everything that depends on it
+  //    (e.g. removing LEAD_VIEW removes LEAD_WRITE).
+  //  • turning a permission ON also adds its prerequisite chain
+  //    (e.g. enabling LEAD_WRITE enables LEAD_VIEW).
+  const toggle = (perm: Permission) => {
     setSaved(false);
     setSelected(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(perm.permissionId)) {
+        const removeWithDependents = (id: number) => {
+          next.delete(id);
+          allPermissions.filter(p => p.dependsOnId === id).forEach(child => removeWithDependents(child.permissionId));
+        };
+        removeWithDependents(perm.permissionId);
+      } else {
+        let cur: Permission | undefined = perm;
+        while (cur) {
+          next.add(cur.permissionId);
+          cur = cur.dependsOnId != null ? byId.get(cur.dependsOnId) : undefined;
+        }
+      }
       return next;
     });
   };
+
+  // Group permissions by module, ordered VIEW → WRITE → APPROVE within each module.
+  const ACTION_ORDER: Record<string, number> = { VIEW: 0, WRITE: 1, APPROVE: 2 };
+  const groups = useMemo(() => {
+    const m = new Map<string, Permission[]>();
+    for (const p of allPermissions) {
+      const key = p.module ?? "OTHER";
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(p);
+    }
+    for (const arr of m.values()) {
+      arr.sort((a, b) => (ACTION_ORDER[a.action ?? ""] ?? 9) - (ACTION_ORDER[b.action ?? ""] ?? 9));
+    }
+    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allPermissions]);
 
   const handleSave = () => {
     setPermissions.mutate(
@@ -420,26 +518,34 @@ function RoleCard({ role, allPermissions }: { role: Role; allPermissions: Permis
           <Button variant="primary" size="sm" onClick={handleSave} disabled={!dirty}
             isLoading={setPermissions.isPending}
             leftIcon={saved ? <Check className="size-3.5" /> : <Save className="size-3.5" />}
-            className={`text-xs font-semibold ${saved ? "bg-emerald-600 hover:bg-emerald-600" : "bg-blue-600 hover:bg-blue-700"} text-white disabled:opacity-40`}>
+            className={`text-xs font-semibold ${saved ? "bg-emerald-600 hover:bg-emerald-600" : "bg-primary hover:bg-primary/90"} text-white disabled:opacity-40`}>
             {saved ? "Saved" : "Save"}
           </Button>
         </div>
-        <div className="px-5 py-4 flex flex-wrap gap-2">
-          {allPermissions.length === 0 && <p className="text-xs text-slate-400">No permissions defined.</p>}
-          {allPermissions.map(p => {
-            const on = selected.has(p.permissionId);
-            return (
-              <button key={p.permissionId} type="button" onClick={() => toggle(p.permissionId)}
-                title={p.description ?? p.permissionCode}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold border transition
-                  ${on
-                    ? "border-blue-500 bg-blue-50 text-blue-700"
-                    : "border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-600"}`}>
-                {on ? <Check className="size-3" /> : <Plus className="size-3" />}
-                {p.permissionCode}
-              </button>
-            );
-          })}
+        <div className="divide-y divide-slate-50">
+          {allPermissions.length === 0 && <p className="px-5 py-4 text-xs text-slate-400">No permissions defined.</p>}
+          {groups.map(([module, perms]) => (
+            <div key={module} className="flex items-center justify-between gap-4 px-5 py-3">
+              <span className="text-xs font-bold text-slate-600 capitalize w-32 shrink-0">{module.toLowerCase()}</span>
+              <div className="flex flex-wrap gap-2 justify-end flex-1">
+                {perms.map(p => {
+                  const on = selected.has(p.permissionId);
+                  const actionLabel = (p.action ?? p.permissionCode).charAt(0) + (p.action ?? "").slice(1).toLowerCase();
+                  return (
+                    <button key={p.permissionId} type="button" onClick={() => toggle(p)}
+                      title={p.label ?? p.description ?? p.permissionCode}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold border transition
+                        ${on
+                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-600"}`}>
+                      {on ? <Check className="size-3" /> : <Plus className="size-3" />}
+                      {actionLabel || p.permissionCode}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>

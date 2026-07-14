@@ -4,6 +4,9 @@ export const ROUTE_PATHS = {
   resetPassword: "/reset-password",
   feedback: "/feedback",
   dashboard: "/dashboard",
+  dashboardStaff: "/dashboard/staff",
+  dashboardManager: "/dashboard/manager",
+  dashboardAdmin: "/dashboard/admin",
   identityAccess: "/identity-access",
   customerFeedback: "/customer-feedback",
   leads: "/leads",
@@ -29,4 +32,5 @@ export const ROUTE_PATHS = {
   frontOfficeHandover: "/front-office-handover",
   reporting: "/reporting",
   aiAssistant: "/ai-assistant",
+  profile: "/profile",
 } as const;

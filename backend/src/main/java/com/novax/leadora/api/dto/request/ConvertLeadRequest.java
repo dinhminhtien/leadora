@@ -33,4 +33,12 @@ public class ConvertLeadRequest {
     private String taxCode;
 
     private String address;
+
+    /**
+     * BR-07: a Sales Manager's approval reason for converting a lead that is not
+     * yet QUALIFIED (e.g. a walk-in with a confirmed booking). Required only for
+     * that override path; ignored for a normal QUALIFIED conversion.
+     */
+    @Size(max = 500)
+    private String reason;
 }

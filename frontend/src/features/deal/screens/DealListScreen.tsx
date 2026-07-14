@@ -26,6 +26,25 @@ import { userService as taskUserService, type UserSummary } from "@/services/fol
 
 const STAGES_ORDER: Deal["stage"][] = ["Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed"];
 
+const getStageBadgeStyles = (stage: Deal["stage"]) => {
+  switch (stage) {
+    case "Inquiry":
+      return "!bg-slate-100 !text-slate-700 border !border-slate-200";
+    case "Site Visit":
+      return "!bg-blue-50 !text-blue-700 border !border-blue-200/50";
+    case "Proposal":
+      return "!bg-amber-50 !text-amber-700 border !border-amber-200/50";
+    case "Negotiation":
+      return "!bg-orange-50 !text-orange-700 border !border-orange-200/50";
+    case "Contract":
+      return "!bg-indigo-50 !text-indigo-700 border !border-indigo-200/50";
+    case "Confirmed":
+      return "!bg-emerald-50 !text-emerald-700 border !border-emerald-200/50";
+    default:
+      return "!bg-slate-100 !text-slate-700 border !border-slate-200";
+  }
+};
+
 export type Deal = {
   id: string;
   title: string;
@@ -50,6 +69,17 @@ export function DealListScreen() {
   const [isNewDealDrawerOpen, setIsNewDealDrawerOpen] = useState(false);
   const [isEditDealDrawerOpen, setIsEditDealDrawerOpen] = useState(false);
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
+
+  // Pagination States
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const isAlreadyClosed = useMemo(() => {
+    if (!editingDeal) return false;
+    const orig = deals.find(d => d.id === editingDeal.id);
+    return orig ? orig.status !== "active" : false;
+  }, [editingDeal, deals]);
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -93,6 +123,7 @@ export function DealListScreen() {
         }
       } catch (err) {
         console.error("Failed to fetch deals from API", err);
+        showError("Could not load deals. Please check your connection and try again.");
       }
     };
     const fetchUsers = async () => {
@@ -190,13 +221,25 @@ export function DealListScreen() {
       const matchesSearch =
         titleLower.includes(searchTerm.toLowerCase()) ||
         contactLower.includes(searchTerm.toLowerCase());
-      
+
       const matchesStage = stageFilter === "all" || deal.stage === stageFilter;
       const matchesStatus = statusFilter === "all" || deal.status === statusFilter;
 
       return matchesSearch && matchesStage && matchesStatus;
     });
   }, [deals, searchTerm, stageFilter, statusFilter]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, stageFilter, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredDeals.length / pageSize));
+
+  const paginatedDeals = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredDeals.slice(startIndex, startIndex + pageSize);
+  }, [filteredDeals, currentPage, pageSize]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -365,7 +408,7 @@ export function DealListScreen() {
     <div className="space-y-6">
       {/* Toast Banners */}
       {errorMessage && (
-        <div className="fixed top-4 right-4 z-[100] bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
+        <div className="fixed top-4 right-4 z-100 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
           <AlertCircle className="size-4 shrink-0" />
           <span className="text-xs font-semibold">{errorMessage}</span>
           <button type="button" onClick={() => setErrorMessage(null)} className="ml-2 hover:text-red-900">
@@ -375,7 +418,7 @@ export function DealListScreen() {
       )}
 
       {successMessage && (
-        <div className="fixed top-4 right-4 z-[100] bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
+        <div className="fixed top-4 right-4 z-100 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top duration-300">
           <CheckCircle2 className="size-4 shrink-0" />
           <span className="text-xs font-semibold">{successMessage}</span>
           <button type="button" onClick={() => setSuccessMessage(null)} className="ml-2 hover:text-emerald-900">
@@ -385,19 +428,23 @@ export function DealListScreen() {
       )}
       {/* Header and Quick stats */}
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Deals register</h1>
-          <p className="text-xs text-slate-400">Manage contract sizes, closing forecast probabilities, and bookings</p>
+        <div className="flex items-center gap-2.5">
+          <span className="p-2 rounded-lg bg-[#E6F1FB] border border-[#85B7EB]/30">
+            <Briefcase className="size-5 text-[#185FA5]" />
+          </span>
+          <div>
+            <h1 className="text-lg font-bold text-slate-800">Deals Register</h1>
+            <p className="text-[11px] text-slate-400">Manage contract sizes, closing forecast probabilities, and bookings.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button
             variant="primary"
             size="sm"
             onClick={() => setIsNewDealDrawerOpen(true)}
-            className="gap-1 bg-blue-600 hover:bg-blue-700 font-semibold text-xs text-white"
+            leftIcon={<Plus className="size-4" />}
           >
-            <Plus className="size-3.5" />
-            <span>New Deal</span>
+            New Deal
           </Button>
         </div>
       </div>
@@ -410,11 +457,11 @@ export function DealListScreen() {
         </div>
         <div className="border-r border-slate-100 last:border-0 px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">Pipeline Value</p>
-          <p className="text-lg font-bold text-slate-800 mt-1">${stats.activeValue.toLocaleString('en-US')}</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">{stats.activeValue.toLocaleString('vi-VN')} ₫</p>
         </div>
         <div className="border-r border-slate-100 last:border-0 px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">Won Revenue</p>
-          <p className="text-lg font-bold text-slate-800 mt-1">${stats.wonValue.toLocaleString('en-US')}</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">{stats.wonValue.toLocaleString('vi-VN')} ₫</p>
         </div>
         <div className="px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">Win Ratio (Closed)</p>
@@ -434,15 +481,15 @@ export function DealListScreen() {
                 placeholder="Search deal name, guest..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
               />
             </div>
-            
+
             {/* Stage Selector */}
-            <div className="w-full md:w-44 flex items-center gap-1.5">
+            <div className="w-full md:w-40 flex items-center gap-1.5">
               <span className="text-[10px] text-slate-400 font-bold shrink-0">Stage:</span>
               <Select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="w-full py-1.5">
-                <option value="all">All Stages</option>
+                <option value="all">All</option>
                 <option value="Inquiry">Inquiry</option>
                 <option value="Site Visit">Site Visit</option>
                 <option value="Proposal">Proposal</option>
@@ -453,19 +500,19 @@ export function DealListScreen() {
             </div>
 
             {/* Status Selector */}
-            <div className="w-full md:w-44 flex items-center gap-1.5">
+            <div className="w-full md:w-40 flex items-center gap-1.5">
               <span className="text-[10px] text-slate-400 font-bold shrink-0">Status:</span>
               <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full py-1.5">
-                <option value="all">All (Active & Closed)</option>
-                <option value="active">Active Only</option>
-                <option value="won">Won Only</option>
-                <option value="lost">Lost Only</option>
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="won">Won</option>
+                <option value="lost">Lost</option>
               </Select>
             </div>
 
             {/* Active Count indicator */}
             <div className="md:ml-auto text-xs text-slate-400">
-              Showing <strong className="text-slate-700">{filteredDeals.length}</strong> of {deals.length} entries
+              Filtered <strong className="text-slate-700">{filteredDeals.length}</strong> of {deals.length} entries
             </div>
           </div>
         </CardContent>
@@ -488,13 +535,13 @@ export function DealListScreen() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredDeals.length > 0 ? (
-              filteredDeals.map(deal => (
+            {paginatedDeals.length > 0 ? (
+              paginatedDeals.map(deal => (
                 <TableRow key={deal.id} className="hover:bg-slate-50/70 border-b border-slate-100 transition">
                   <TableCell className="py-3 px-4 font-bold text-slate-800 text-xs">
                     <button
                       onClick={() => handleOpenEditDrawer(deal)}
-                      className="hover:underline text-blue-600 font-bold text-left transition"
+                      className="hover:underline text-[#185FA5] hover:text-[#0C447C] font-bold text-left transition"
                     >
                       {deal.title}
                     </button>
@@ -504,18 +551,17 @@ export function DealListScreen() {
                     <div className="text-[10px] text-slate-400 mt-0.5">{deal.email}</div>
                   </TableCell>
                   <TableCell className="py-3 px-4">
-                    <Badge variant="info" className="font-bold text-[10px]">
+                    <Badge variant="default" className={`font-bold text-[10px] ${getStageBadgeStyles(deal.stage)}`}>
                       {deal.stage}
                     </Badge>
                   </TableCell>
                   <TableCell className="py-3 px-4 text-center">
-                    <div className="inline-flex items-center gap-1 text-xs text-slate-700 font-bold">
-                      <Percent className="size-3 text-slate-400" />
+                    <div className="inline-flex items-center justify-center gap-1 text-xs text-slate-700 font-bold w-full">
                       {deal.probability}%
                     </div>
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs font-bold text-slate-800">
-                    ${deal.value.toLocaleString('en-US')}
+                    {deal.value.toLocaleString('vi-VN')} ₫
                   </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-500 font-medium">
                     <div className="flex items-center gap-1">
@@ -532,8 +578,8 @@ export function DealListScreen() {
                         deal.status === "won"
                           ? "success"
                           : deal.status === "active"
-                          ? "primary"
-                          : "danger"
+                            ? "primary"
+                            : "danger"
                       }
                       size="sm"
                       className="font-bold text-[10px] uppercase"
@@ -554,7 +600,7 @@ export function DealListScreen() {
                           {deal.stage !== "Confirmed" && (
                             <button
                               onClick={() => handleAdvanceStageQuick(deal)}
-                              className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-[10px] font-bold hover:bg-blue-100 transition"
+                              className="px-2 py-1 bg-[#E6F1FB] text-[#0C447C] rounded text-[10px] font-bold hover:bg-[#D4E8F9] border border-[#85B7EB]/30 transition"
                               title={`Advance to ${getNextStage(deal.stage)}`}
                             >
                               Next Stage
@@ -591,6 +637,55 @@ export function DealListScreen() {
         </Table>
       </div>
 
+      {/* Pagination Controls */}
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white px-6 py-4 rounded-xl border border-slate-100 shadow-sm text-xs">
+        <div className="text-slate-500 font-medium">
+          Showing <strong className="text-slate-700">{filteredDeals.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}</strong> to{" "}
+          <strong className="text-slate-700">
+            {Math.min(currentPage * pageSize, filteredDeals.length)}
+          </strong>{" "}
+          of <strong className="text-slate-700">{filteredDeals.length}</strong> entries
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            className="border-slate-200 text-slate-600 font-bold px-3 py-1.5 h-8 disabled:opacity-50"
+          >
+            Previous
+          </Button>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }).map((_, idx) => {
+              const p = idx + 1;
+              const isCurrent = p === currentPage;
+              return (
+                <button
+                  key={p}
+                  onClick={() => setCurrentPage(p)}
+                  className={`size-8 rounded-lg font-bold transition flex items-center justify-center ${isCurrent
+                    ? "bg-[#185FA5] text-white shadow-xs"
+                    : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                >
+                  {p}
+                </button>
+              );
+            })}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+            disabled={currentPage === totalPages}
+            className="border-slate-200 text-slate-600 font-bold px-3 py-1.5 h-8 disabled:opacity-50"
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+
       {/* Slide-over Drawer for adding Deal */}
       {isNewDealDrawerOpen && (
         <>
@@ -602,10 +697,10 @@ export function DealListScreen() {
           {/* Drawer Element */}
           <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl border-l border-slate-200 z-50 flex flex-col animate-in slide-in-from-right duration-300">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
               <div>
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                  <Briefcase className="size-4.5 text-blue-600" />
+                  <Briefcase className="size-4.5 text-[#185FA5]" />
                   Add New Sales Deal
                 </h3>
                 <p className="text-[10px] text-slate-400 mt-0.5">Move qualified leads to deal workflow to forecast booking sales</p>
@@ -627,7 +722,7 @@ export function DealListScreen() {
                   placeholder="e.g. Wedding Catering Block, Corporate Conference..."
                   value={newDeal.title}
                   onChange={e => setNewDeal({ ...newDeal, title: e.target.value })}
-                  className="py-1.5 text-xs"
+                  className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                 />
               </div>
 
@@ -638,7 +733,7 @@ export function DealListScreen() {
                   placeholder="e.g. Alice Jenkins"
                   value={newDeal.contactName}
                   onChange={e => setNewDeal({ ...newDeal, contactName: e.target.value })}
-                  className="py-1.5 text-xs"
+                  className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                 />
               </div>
 
@@ -650,7 +745,7 @@ export function DealListScreen() {
                     placeholder="contact@gmail.com"
                     value={newDeal.email}
                     onChange={e => setNewDeal({ ...newDeal, email: e.target.value })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
                 <div className="space-y-1">
@@ -659,20 +754,20 @@ export function DealListScreen() {
                     placeholder="+1 555-0100"
                     value={newDeal.phone}
                     onChange={e => setNewDeal({ ...newDeal, phone: e.target.value })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">Deal Value ($)</label>
+                  <label className="text-xs font-semibold text-slate-600">Deal Value (VND)</label>
                   <Input
                     type="number"
                     placeholder="e.g. 15000"
                     value={newDeal.value}
                     onChange={e => setNewDeal({ ...newDeal, value: e.target.value })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
                 <div className="space-y-1">
@@ -680,7 +775,7 @@ export function DealListScreen() {
                   <Select
                     value={newDeal.stage}
                     onChange={e => setNewDeal({ ...newDeal, stage: e.target.value as Deal["stage"] })}
-                    className="py-1.5"
+                    className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   >
                     <option value="Inquiry">Inquiry</option>
                     <option value="Site Visit">Site Visit</option>
@@ -702,7 +797,7 @@ export function DealListScreen() {
                     placeholder="50"
                     value={newDeal.probability}
                     onChange={e => setNewDeal({ ...newDeal, probability: e.target.value })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
                 <div className="space-y-1">
@@ -711,7 +806,7 @@ export function DealListScreen() {
                     type="date"
                     value={newDeal.expectedClose}
                     onChange={e => setNewDeal({ ...newDeal, expectedClose: e.target.value })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
               </div>
@@ -721,7 +816,7 @@ export function DealListScreen() {
                 <Select
                   value={newDeal.owner}
                   onChange={e => setNewDeal({ ...newDeal, owner: e.target.value })}
-                  className="py-1.5"
+                  className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                 >
                   <option value="">Select Deal Owner...</option>
                   {users.map(u => (
@@ -738,7 +833,7 @@ export function DealListScreen() {
                   placeholder="Describe deal requirements, guest details, etc..."
                   value={newDeal.notes}
                   onChange={e => setNewDeal({ ...newDeal, notes: e.target.value })}
-                  className="w-full min-h-[80px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-blue-500"
+                  className="w-full min-h-[80px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
                 />
               </div>
 
@@ -746,15 +841,15 @@ export function DealListScreen() {
                 <Button
                   type="submit"
                   variant="primary"
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-xs font-semibold"
+                  className="w-full text-xs py-2"
                 >
                   Create active Deal
                 </Button>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   onClick={() => setIsNewDealDrawerOpen(false)}
-                  className="w-full border-slate-200 text-xs text-slate-600"
+                  className="w-full text-xs py-2"
                 >
                   Cancel
                 </Button>
@@ -778,10 +873,10 @@ export function DealListScreen() {
           {/* Drawer Element */}
           <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl border-l border-slate-200 z-50 flex flex-col animate-in slide-in-from-right duration-300">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
               <div>
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                  <Briefcase className="size-4.5 text-blue-600" />
+                  <Briefcase className="size-4.5 text-[#185FA5]" />
                   Deal Details & Edit
                 </h3>
                 <p className="text-[10px] text-slate-400 mt-0.5">View and update sales deal size, forecast close date, and pipeline stage</p>
@@ -799,7 +894,7 @@ export function DealListScreen() {
 
             {/* Form */}
             <form onSubmit={handleUpdateDeal} className="flex-1 overflow-y-auto p-6 space-y-4">
-              {editingDeal.status !== "active" && (
+              {isAlreadyClosed && (
                 <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-2 mb-4 animate-in fade-in duration-255">
                   <AlertCircle className="size-4 shrink-0 text-amber-600" />
                   <span>This deal is closed and cannot be modified.</span>
@@ -813,20 +908,19 @@ export function DealListScreen() {
                   {STAGES_ORDER.map((stg, idx) => {
                     const isCurrent = editingDeal.stage === stg;
                     const isPast = STAGES_ORDER.indexOf(editingDeal.stage) > idx;
-                    const isDisabled = editingDeal.status !== "active";
+                    const isDisabled = isAlreadyClosed;
                     return (
                       <button
                         key={stg}
                         type="button"
                         onClick={() => !isDisabled && handleStageClick(stg)}
                         disabled={isDisabled}
-                        className={`flex-1 text-center py-1.5 px-0.5 rounded text-[9px] font-bold transition-all duration-200 border ${
-                          isCurrent
-                            ? "bg-blue-600 border-blue-600 text-white shadow-xs"
-                            : isPast
+                        className={`flex-1 text-center py-1.5 px-0.5 rounded text-[9px] font-bold transition-all duration-200 border ${isCurrent
+                          ? "bg-[#185FA5] border-[#185FA5] text-white shadow-xs"
+                          : isPast
                             ? "bg-emerald-50 border-emerald-100 text-emerald-700 hover:bg-emerald-100"
                             : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                        } ${isDisabled ? "cursor-not-allowed opacity-80" : ""}`}
+                          } ${isDisabled ? "cursor-not-allowed opacity-80" : ""}`}
                       >
                         {stg}
                       </button>
@@ -839,11 +933,11 @@ export function DealListScreen() {
                 <label className="text-xs font-semibold text-slate-600">Deal Title *</label>
                 <Input
                   required
-                  disabled={editingDeal.status !== "active"}
+                  disabled={isAlreadyClosed}
                   placeholder="e.g. Wedding Catering Block, Corporate Conference..."
                   value={editingDeal.title || ""}
                   onChange={e => setEditingDeal({ ...editingDeal, title: e.target.value })}
-                  className="py-1.5 text-xs"
+                  className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                 />
               </div>
 
@@ -851,11 +945,11 @@ export function DealListScreen() {
                 <label className="text-xs font-semibold text-slate-600">Primary Contact Person *</label>
                 <Input
                   required
-                  disabled={editingDeal.status !== "active"}
+                  disabled={isAlreadyClosed}
                   placeholder="e.g. Alice Jenkins"
                   value={editingDeal.contactName || ""}
                   onChange={e => setEditingDeal({ ...editingDeal, contactName: e.target.value })}
-                  className="py-1.5 text-xs"
+                  className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                 />
               </div>
 
@@ -864,44 +958,44 @@ export function DealListScreen() {
                   <label className="text-xs font-semibold text-slate-600">Email Address</label>
                   <Input
                     type="email"
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     placeholder="contact@gmail.com"
                     value={editingDeal.email || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, email: e.target.value })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Phone Number</label>
                   <Input
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     placeholder="+1 555-0100"
                     value={editingDeal.phone || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, phone: e.target.value })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">Deal Value ($)</label>
+                  <label className="text-xs font-semibold text-slate-600">Deal Value (VND)</label>
                   <Input
                     type="number"
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     placeholder="e.g. 15000"
                     value={editingDeal.value || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, value: Number(e.target.value) })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Sales Stage</label>
                   <Select
                     value={editingDeal.stage || "Inquiry"}
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     onChange={e => setEditingDeal({ ...editingDeal, stage: e.target.value as Deal["stage"] })}
-                    className="py-1.5"
+                    className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   >
                     <option value="Inquiry">Inquiry</option>
                     <option value="Site Visit">Site Visit</option>
@@ -920,21 +1014,21 @@ export function DealListScreen() {
                     type="number"
                     min="0"
                     max="100"
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     placeholder="50"
                     value={editingDeal.probability || 0}
                     onChange={e => setEditingDeal({ ...editingDeal, probability: Number(e.target.value) })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Est. Close Date</label>
                   <Input
                     type="date"
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     value={editingDeal.expectedClose || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, expectedClose: e.target.value })}
-                    className="py-1.5 text-xs"
+                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   />
                 </div>
               </div>
@@ -944,9 +1038,18 @@ export function DealListScreen() {
                   <label className="text-xs font-semibold text-slate-600">Status</label>
                   <Select
                     value={editingDeal.status || "active"}
-                    disabled={editingDeal.status !== "active"}
-                    onChange={e => setEditingDeal({ ...editingDeal, status: e.target.value as Deal["status"] })}
-                    className="py-1.5"
+                    disabled={isAlreadyClosed}
+                    onChange={e => {
+                      const newStatus = e.target.value as Deal["status"];
+                      let newStage = editingDeal.stage;
+                      if (newStatus === "won") {
+                        newStage = "Confirmed";
+                      } else if (newStatus === "active" && editingDeal.stage === "Confirmed") {
+                        newStage = "Contract";
+                      }
+                      setEditingDeal({ ...editingDeal, status: newStatus, stage: newStage });
+                    }}
+                    className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   >
                     <option value="active">Active</option>
                     <option value="won">Won</option>
@@ -957,9 +1060,9 @@ export function DealListScreen() {
                   <label className="text-xs font-semibold text-slate-600">Owner</label>
                   <Select
                     value={editingDeal.owner || ""}
-                    disabled={editingDeal.status !== "active"}
+                    disabled={isAlreadyClosed}
                     onChange={e => setEditingDeal({ ...editingDeal, owner: e.target.value })}
-                    className="py-1.5"
+                    className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   >
                     <option value="">Select Deal Owner...</option>
                     {users.map(u => (
@@ -976,30 +1079,30 @@ export function DealListScreen() {
                 <textarea
                   placeholder="Describe deal requirements, guest details, notes, etc..."
                   value={editingDeal.notes || ""}
-                  disabled={editingDeal.status !== "active"}
+                  disabled={isAlreadyClosed}
                   onChange={e => setEditingDeal({ ...editingDeal, notes: e.target.value })}
-                  className="w-full min-h-[100px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                  className="w-full min-h-[100px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white disabled:bg-slate-50 disabled:text-slate-400 transition"
                 />
               </div>
 
               <div className="pt-4 flex gap-3 border-t border-slate-100">
-                {editingDeal.status === "active" ? (
+                {!isAlreadyClosed ? (
                   <>
                     <Button
                       type="submit"
                       variant="primary"
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-xs font-semibold"
+                      className="w-full text-xs py-2"
                     >
                       Save Changes
                     </Button>
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="ghost"
                       onClick={() => {
                         setIsEditDealDrawerOpen(false);
                         setEditingDeal(null);
                       }}
-                      className="w-full border-slate-200 text-xs text-slate-600"
+                      className="w-full text-xs py-2"
                     >
                       Cancel
                     </Button>
@@ -1012,7 +1115,7 @@ export function DealListScreen() {
                       setIsEditDealDrawerOpen(false);
                       setEditingDeal(null);
                     }}
-                    className="w-full bg-slate-600 hover:bg-slate-700 text-xs font-semibold"
+                    className="w-full text-xs py-2 bg-slate-600 hover:bg-slate-700"
                   >
                     Close Details
                   </Button>

@@ -19,10 +19,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 public class UserController {
 
     private final UserRepository userRepository;
@@ -65,16 +67,18 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success(getUserDetailUseCase.execute(userId)));
     }
 
-    /** UC-6.2 — Create User Account. */
+    /** UC-6.2 — Create User Account. Admin only. */
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<UserAccountResponse>> createUser(@Valid @RequestBody CreateUserRequest request) {
         UserAccountResponse user = createUserUseCase.execute(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(user, "User account has been created successfully."));
     }
 
-    /** UC-6.3 — Update User Account. */
+    /** UC-6.3 — Update User Account. Admin only. */
     @PutMapping("/{userId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<UserAccountResponse>> updateUser(
             @PathVariable UUID userId,
             @Valid @RequestBody UpdateUserRequest request
