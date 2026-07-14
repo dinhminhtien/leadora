@@ -23,5 +23,5 @@ class ForgotPasswordController extends AutoDisposeAsyncNotifier<void> {
 
 final forgotPasswordControllerProvider =
     AutoDisposeAsyncNotifierProvider<ForgotPasswordController, void>(
-  ForgotPasswordController.new,
-);
+      ForgotPasswordController.new,
+    );

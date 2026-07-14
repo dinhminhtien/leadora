@@ -39,4 +39,5 @@ class ReminderListController extends AutoDisposeAsyncNotifier<List<Reminder>> {
 
 final reminderListControllerProvider =
     AutoDisposeAsyncNotifierProvider<ReminderListController, List<Reminder>>(
-        ReminderListController.new);
+      ReminderListController.new,
+    );

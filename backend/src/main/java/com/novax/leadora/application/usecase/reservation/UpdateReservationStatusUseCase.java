@@ -6,12 +6,17 @@ import com.novax.leadora.common.exception.BusinessRuleException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
+import com.novax.leadora.infrastructure.persistence.entity.SalesFeedbackEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.InventoryStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ReviewStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
+import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepository;
+import com.novax.leadora.infrastructure.integration.email.EmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +32,11 @@ public class UpdateReservationStatusUseCase {
 
     private final BookingRepository bookingRepository;
     private final BookingDetailRepository bookingDetailRepository;
+    private final SalesFeedbackRepository salesFeedbackRepository;
+    private final EmailService emailService;
+
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
 
     @Transactional
     public ReservationResponse execute(UUID id, UpdateStatusRequest request) {
@@ -38,7 +48,7 @@ public class UpdateReservationStatusUseCase {
         try {
             newStatus = BookingStatus.valueOf(request.getStatus().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new BusinessRuleException("Trạng thái không hợp lệ: " + request.getStatus());
+            throw new BusinessRuleException("Invalid status: " + request.getStatus());
         }
 
         LocalDate oldCheckIn = booking.getCheckInDate();
@@ -50,7 +60,7 @@ public class UpdateReservationStatusUseCase {
         // Check if dates changed, validate room availability
         if (!newCheckIn.equals(oldCheckIn) || !newCheckOut.equals(oldCheckOut)) {
             if (!newCheckOut.isAfter(newCheckIn)) {
-                throw new BusinessRuleException("Ngày trả phòng phải sau ngày nhận phòng");
+                throw new BusinessRuleException("Check-out date must be after the check-in date");
             }
 
             List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(id);
@@ -78,6 +88,38 @@ public class UpdateReservationStatusUseCase {
             for (BookingDetailEntity detail : details) {
                 detail.setInventoryStatus(InventoryStatus.RELEASED);
                 bookingDetailRepository.save(detail);
+            }
+            // Trigger feedback invitation if customer has email and hasn't been invited yet
+            if (booking.getCustomer() != null && org.springframework.util.StringUtils.hasText(booking.getCustomer().getEmail())) {
+                boolean alreadyInvited = !salesFeedbackRepository.findByBooking_BookingId(id).isEmpty();
+                if (!alreadyInvited) {
+                    byte[] tokenBytes = new byte[32];
+                    new java.security.SecureRandom().nextBytes(tokenBytes);
+                    String token = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
+
+                    SalesFeedbackEntity feedback = SalesFeedbackEntity.builder()
+                            .customer(booking.getCustomer())
+                            .booking(booking)
+                            .salesStaff(booking.getAssignedUser())
+                            .reviewStatus(ReviewStatus.PENDING)
+                            .feedbackToken(token)
+                            .tokenExpiresAt(OffsetDateTime.now().plusDays(30))
+                            .build();
+
+                    salesFeedbackRepository.save(feedback);
+
+                    String feedbackLink = frontendUrl + "/feedback/public/" + token;
+                    try {
+                        emailService.sendFeedbackInvitationEmail(
+                                booking.getCustomer().getEmail(),
+                                booking.getCustomer().getFullName(),
+                                feedbackLink
+                        );
+                        log.info("Feedback invitation successfully generated and sent for booking: {}. Link: {}", id, feedbackLink);
+                    } catch (Exception e) {
+                        log.error("Failed to send feedback invitation email for booking: {}. Link was: {}", id, feedbackLink, e);
+                    }
+                }
             }
         } else if (newStatus == BookingStatus.CANCELLED || newStatus == BookingStatus.REJECTED) {
             for (BookingDetailEntity detail : details) {

@@ -12,31 +12,32 @@ enum LeadStatus {
   final String wire;
 
   static LeadStatus fromWire(String? raw) => LeadStatus.values.firstWhere(
-        (s) => s.wire == raw,
-        orElse: () => LeadStatus.neww,
-      );
+    (s) => s.wire == raw,
+    orElse: () => LeadStatus.neww,
+  );
 
   StatusTone get tone => switch (this) {
-        LeadStatus.neww => StatusTone.info,
-        LeadStatus.contacted => StatusTone.brand,
-        LeadStatus.qualified => StatusTone.warning,
-        LeadStatus.converted => StatusTone.success,
-        LeadStatus.lost => StatusTone.danger,
-      };
+    LeadStatus.neww => StatusTone.info,
+    LeadStatus.contacted => StatusTone.brand,
+    LeadStatus.qualified => StatusTone.warning,
+    LeadStatus.converted => StatusTone.success,
+    LeadStatus.lost => StatusTone.danger,
+  };
 
   /// Terminal states cannot change (CONVERTED only via the conversion flow).
-  bool get isTerminal => this == LeadStatus.converted || this == LeadStatus.lost;
+  bool get isTerminal =>
+      this == LeadStatus.converted || this == LeadStatus.lost;
 
   /// Valid next statuses from [this], mirroring the backend transition rules:
   /// leads advance one stage at a time (NEW → CONTACTED → QUALIFIED) and any
   /// active lead can be marked LOST. CONVERTED is reachable only via conversion.
   List<LeadStatus> get allowedTransitions => switch (this) {
-        LeadStatus.neww => const [LeadStatus.contacted, LeadStatus.lost],
-        LeadStatus.contacted => const [LeadStatus.qualified, LeadStatus.lost],
-        LeadStatus.qualified => const [LeadStatus.lost],
-        LeadStatus.converted => const [],
-        LeadStatus.lost => const [],
-      };
+    LeadStatus.neww => const [LeadStatus.contacted, LeadStatus.lost],
+    LeadStatus.contacted => const [LeadStatus.qualified, LeadStatus.lost],
+    LeadStatus.qualified => const [LeadStatus.lost],
+    LeadStatus.converted => const [],
+    LeadStatus.lost => const [],
+  };
 }
 
 /// Dart mirror of backend `LeadResponse`.
@@ -51,6 +52,7 @@ class Lead {
     this.address,
     this.isCorporate = false,
     this.source,
+    this.interestedService,
     this.notes,
     this.convertedAt,
     this.customerId,
@@ -70,6 +72,7 @@ class Lead {
   final String? address;
   final bool isCorporate;
   final String? source;
+  final String? interestedService;
   final String? notes;
   final DateTime? convertedAt;
   final String? customerId;
@@ -94,6 +97,7 @@ class Lead {
       address: json['address'] as String?,
       isCorporate: json['isCorporate'] as bool? ?? false,
       source: json['source'] as String?,
+      interestedService: json['interestedService'] as String?,
       notes: json['notes'] as String?,
       convertedAt: parse(json['convertedAt']),
       customerId: json['customerId'] as String?,
@@ -189,8 +193,9 @@ class LeadFilters {
       search: search == _sentinel ? this.search : search as String?,
       status: status == _sentinel ? this.status : status as LeadStatus?,
       source: source == _sentinel ? this.source : source as String?,
-      isCorporate:
-          isCorporate == _sentinel ? this.isCorporate : isCorporate as bool?,
+      isCorporate: isCorporate == _sentinel
+          ? this.isCorporate
+          : isCorporate as bool?,
       dateFrom: dateFrom == _sentinel ? this.dateFrom : dateFrom as DateTime?,
       dateTo: dateTo == _sentinel ? this.dateTo : dateTo as DateTime?,
       sort: sort ?? this.sort,
@@ -209,8 +214,15 @@ class LeadFilters {
       DateTime(d.year, d.month, d.day).toUtc().toIso8601String();
 
   /// End of [d]'s local calendar day (23:59:59.999) as a UTC ISO-8601 instant.
-  static String utcEndOfLocalDay(DateTime d) =>
-      DateTime(d.year, d.month, d.day, 23, 59, 59, 999).toUtc().toIso8601String();
+  static String utcEndOfLocalDay(DateTime d) => DateTime(
+    d.year,
+    d.month,
+    d.day,
+    23,
+    59,
+    59,
+    999,
+  ).toUtc().toIso8601String();
 
   /// Query params for `GET /leads`. Defaults are omitted; the backend fills
   /// them in (sortBy=createdAt desc, scope=assigned).
@@ -241,6 +253,7 @@ class CreateLeadPayload {
     this.address,
     this.isCorporate,
     this.source,
+    this.interestedService,
     this.notes,
   });
 
@@ -251,6 +264,7 @@ class CreateLeadPayload {
   final String? address;
   final bool? isCorporate;
   final String? source;
+  final String? interestedService;
   final String? notes;
 
   Map<String, dynamic> toJson() {
@@ -265,7 +279,52 @@ class CreateLeadPayload {
     put('address', address);
     put('isCorporate', isCorporate);
     put('source', source);
+    put('interestedService', interestedService);
     put('notes', notes);
+    return map;
+  }
+}
+
+/// Payload for UC-8.5 Convert Lead to Customer — POST /leads/{id}/convert.
+/// Customer details are inherited from the lead; [reason] carries a Sales
+/// Manager's approval when converting a lead that is not yet QUALIFIED (BR-07).
+class ConvertLeadPayload {
+  const ConvertLeadPayload({
+    required this.customerType,
+    required this.fullName,
+    this.email,
+    this.phone,
+    this.companyName,
+    this.taxCode,
+    this.address,
+    this.reason,
+  });
+
+  /// 'INDIVIDUAL' or 'CORPORATE' — mirrors the backend `CustomerType` enum.
+  final String customerType;
+  final String fullName;
+  final String? email;
+  final String? phone;
+  final String? companyName;
+  final String? taxCode;
+  final String? address;
+  final String? reason;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'customerType': customerType,
+      'fullName': fullName,
+    };
+    void put(String k, String? v) {
+      if (v != null && v.trim().isNotEmpty) map[k] = v.trim();
+    }
+
+    put('email', email);
+    put('phone', phone);
+    put('companyName', companyName);
+    put('taxCode', taxCode);
+    put('address', address);
+    put('reason', reason);
     return map;
   }
 }

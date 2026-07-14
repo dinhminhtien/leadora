@@ -1,17 +1,4 @@
 services:
-  elasticsearch:
-    image: 'elasticsearch:7.17.10'
-    environment:
-      - 'ELASTIC_PASSWORD=secret'
-      - 'discovery.type=single-node'
-      - 'xpack.security.enabled=false'
-    ports:
-      - '9200'
-      - '9300'
-  ollama:
-    image: 'ollama/ollama:latest'
-    ports:
-      - '11434'
   pgvector:
     image: 'pgvector/pgvector:pg16'
     environment:
@@ -21,7 +8,7 @@ services:
     labels:
       - "org.springframework.boot.service-connection=postgres"
     ports:
-      - '5432'
+      - '5432:5432'
   redis:
     image: 'redis/redis-stack:latest'
     labels:

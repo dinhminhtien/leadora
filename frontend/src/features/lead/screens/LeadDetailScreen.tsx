@@ -116,14 +116,21 @@ function ConvertModal({
 }) {
   const convertMutation = useConvertLead(lead.leadId);
   const [done, setDone] = useState(false);
+  const [reason, setReason] = useState("");
 
   const isQualified = lead.status === "QUALIFIED";
   const isCorporate = lead.isCorporate;
   const customerType: CustomerType = isCorporate ? "CORPORATE" : "INDIVIDUAL";
 
+  // BR-07: a non-qualified lead can still be converted, but only by a Sales
+  // Manager/Admin who documents an approval reason. Sales staff never see this.
+  const role = getUserRole(useAuthStore(s => s.user));
+  const canOverride = role === "MANAGER" || role === "ADMIN";
+  const canConfirm = isQualified || (canOverride && reason.trim().length > 0);
+
   // Confirmation only — every detail already lives on the lead (captured at create/edit time).
   const handleConfirm = () => {
-    if (!isQualified) return;
+    if (!canConfirm) return;
     convertMutation.mutate(
       {
         customerType,
@@ -133,6 +140,7 @@ function ConvertModal({
         companyName: lead.companyName ?? "",
         taxCode:     "",
         address:     lead.address ?? "",
+        reason:      isQualified ? undefined : reason.trim(),
       },
       {
         onSuccess: () => setDone(true),
@@ -198,6 +206,23 @@ function ConvertModal({
               <p className="text-xs text-emerald-700 font-medium">
                 This lead is qualified — you can convert it into a customer right now.
               </p>
+            </div>
+          ) : canOverride ? (
+            <div className="mb-5">
+              <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <ShieldAlert className="size-4 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-amber-700">Manager override</p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    This lead is <strong>{lead.status}</strong>, not yet Qualified. As a manager you may approve
+                    an exception — record the reason below to enable conversion.
+                  </p>
+                </div>
+              </div>
+              <label className="block mt-3 text-xs font-semibold text-slate-700">Approval reason <span className="text-rose-500">*</span></label>
+              <textarea rows={2} value={reason} onChange={e => setReason(e.target.value)}
+                placeholder="e.g. Walk-in guest with a confirmed booking — converting ahead of qualification."
+                className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100 transition resize-none" />
             </div>
           ) : (
             <div className="flex items-start gap-3 px-4 py-3 mb-5 bg-amber-50 border border-amber-200 rounded-xl">
@@ -270,12 +295,12 @@ function ConvertModal({
             Cancel
           </button>
           <button type="button" onClick={handleConfirm}
-            disabled={convertMutation.isPending || !isQualified}
+            disabled={convertMutation.isPending || !canConfirm}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition active:scale-95">
             {convertMutation.isPending
               ? <Loader2 className="size-4 animate-spin" />
               : <BadgeCheck className="size-4" />}
-            {convertMutation.isPending ? "Processing…" : "Confirm Conversion"}
+            {convertMutation.isPending ? "Processing…" : isQualified ? "Confirm Conversion" : "Approve & Convert"}
           </button>
         </div>
       </div>
@@ -327,7 +352,7 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
     setEditForm({
       fullName: lead.fullName, email: lead.email ?? "", phone: lead.phone ?? "",
       companyName: lead.companyName ?? "", address: lead.address ?? "", isCorporate: lead.isCorporate,
-      source: lead.source ?? "", notes: lead.notes ?? "",
+      source: lead.source ?? "", interestedService: lead.interestedService ?? "", notes: lead.notes ?? "",
       status: lead.status,
       assignedUserId: lead.assignedUserId ?? "",
     });
@@ -367,7 +392,7 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
             representative. Contact your Sales Manager if you believe this is a mistake.
           </p>
           <Link href="/leads"
-            className="mt-6 inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition">
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-primary rounded-xl hover:bg-primary/90 transition">
             <ChevronLeft className="size-4" /> Back to Leads
           </Link>
         </div>
@@ -383,7 +408,7 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
           This lead doesn’t exist or may have been removed.
         </p>
         <Link href="/leads"
-          className="mt-6 inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition">
+          className="mt-6 inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-primary rounded-xl hover:bg-primary/90 transition">
           <ChevronLeft className="size-4" /> Back to Leads
         </Link>
       </div>
@@ -533,6 +558,15 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
             </select>
           </div>
 
+          {/* BR-05: required before a lead enters active follow-up. */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700">Interested Service</label>
+            <input value={editForm.interestedService ?? ""}
+              placeholder="e.g. Wedding banquet, Conference, Rooms…"
+              onChange={e => editField("interestedService", e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
+          </div>
+
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-700">Notes</label>
             <textarea rows={4} value={editForm.notes ?? ""}
@@ -578,7 +612,7 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
               Cancel
             </Link>
             <button type="submit" disabled={updateMutation.isPending}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 transition active:scale-95">
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-primary rounded-xl hover:bg-primary/90 disabled:opacity-60 transition active:scale-95">
               {updateMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
               Save Changes
             </button>
@@ -723,6 +757,9 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
             <InfoRow icon={Sparkles} label="Source Channel">
               {lead.source ?? <span className="text-slate-400 italic text-xs">—</span>}
             </InfoRow>
+            <InfoRow icon={Sparkles} label="Interested Service">
+              {lead.interestedService ?? <span className="text-slate-400 italic text-xs">—</span>}
+            </InfoRow>
             <InfoRow icon={Calendar} label="Created">
               {lead.createdAt
                 ? new Date(lead.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
@@ -762,7 +799,7 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
                   <button key={t} type="button" onClick={() => setLogType(t)}
                     className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition
                       ${logType === t
-                        ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                        ? "bg-primary text-white border-primary shadow-sm"
                         : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}>
                     {t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
@@ -773,7 +810,7 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition resize-none" />
               <div className="flex justify-end">
                 <button type="submit"
-                  className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition active:scale-95">
+                  className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-primary rounded-lg hover:bg-primary/90 transition active:scale-95">
                   <ArrowRight className="size-4" /> Post
                 </button>
               </div>
@@ -969,7 +1006,7 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
                 Cancel
               </button>
               <button onClick={handleSave} disabled={updateMutation.isPending}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 transition active:scale-95">
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-primary rounded-xl hover:bg-primary/90 disabled:opacity-60 transition active:scale-95">
                 {updateMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
                 Save Changes
               </button>

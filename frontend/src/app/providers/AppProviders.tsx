@@ -10,6 +10,19 @@ type AppProvidersProps = {
 
 export function AppProviders({ children }: AppProvidersProps) {
   const { theme } = useUiStore();
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/v1/health", {
+      cache: "no-store",
+      signal: controller.signal,
+    }).catch(() => {
+      // Silently catch errors/abortions as this is a fire-and-forget wake-up call
+    });
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;

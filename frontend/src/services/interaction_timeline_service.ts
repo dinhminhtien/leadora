@@ -1,4 +1,4 @@
-import { apiClient, type ApiResponse } from "@/services/api_client";
+import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_client";
 import type { ListQuery } from "@/shared/types/api";
 
 export type InteractionTimelineEntry = {
@@ -17,6 +17,8 @@ export type InteractionTimelineEntry = {
 export type InteractionTimelineQuery = ListQuery & {
   type?: string;
   agentId?: string;
+  linkedType?: "lead" | "customer" | "deal";
+  linkedId?: string;
 };
 
 export type CreateInteractionTimelinePayload = {
@@ -49,10 +51,9 @@ const ENDPOINT = "/interaction-timeline";
 
 export const interactionTimelineService = {
   async getList(params?: InteractionTimelineQuery) {
-    const response = await apiClient.get<ApiResponse<InteractionTimelineEntry[]>>(
-      ENDPOINT,
-      { params },
-    );
+    const response = await apiClient.get<
+      ApiResponse<PageResponse<InteractionTimelineEntry>>
+    >(ENDPOINT, { params });
     return response.data;
   },
 

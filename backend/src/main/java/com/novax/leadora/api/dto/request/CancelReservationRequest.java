@@ -8,6 +8,6 @@ import lombok.Setter;
 @Setter
 public class CancelReservationRequest {
 
-    @NotBlank(message = "Lý do hủy đặt phòng không được để trống")
+    @NotBlank(message = "Cancellation reason is required")
     private String reason;
 }

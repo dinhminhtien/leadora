@@ -216,8 +216,8 @@ export function FloatingAssistant() {
           style={fullscreen ? undefined : { left: panelLeft, top: panelTop, width: PANEL_W, height: panelH }}
           className={
             fullscreen
-              ? "fixed inset-3 z-[62] flex flex-col overflow-hidden rounded-2xl border border-teal-100 bg-white shadow-2xl shadow-teal-900/15 animate-in fade-in zoom-in-95 duration-200"
-              : "fixed z-[60] flex flex-col overflow-hidden rounded-3xl border border-teal-100 bg-white shadow-2xl shadow-teal-900/15 animate-in fade-in zoom-in-95 duration-200"
+              ? "fixed inset-3 z-62 flex flex-col overflow-hidden rounded-2xl border border-primary/20 bg-white shadow-2xl shadow-black/10 animate-in fade-in zoom-in-95 duration-200"
+              : "fixed z-60 flex flex-col overflow-hidden rounded-3xl border border-primary/20 bg-white shadow-2xl shadow-black/10 animate-in fade-in zoom-in-95 duration-200"
           }
         >
           <AssistantPanel
@@ -238,13 +238,13 @@ export function FloatingAssistant() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         style={{ left: launcher.x, top: launcher.y, width: LAUNCHER_SIZE, height: LAUNCHER_SIZE }}
-        className="fixed z-[61] flex touch-none select-none items-center justify-center rounded-full bg-gradient-to-br from-teal-300 to-teal-500 shadow-xl shadow-teal-900/25 ring-4 ring-white transition-transform duration-150 hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing"
+        className="fixed z-61 flex touch-none select-none items-center justify-center rounded-full bg-linear-to-br from-primary to-primary shadow-xl shadow-black/20 ring-4 ring-white transition-transform duration-150 hover:scale-105 active:scale-95 cursor-grab active:cursor-grabbing"
         title={isOpen ? "Minimize Lia" : "Open Lia assistant"}
         aria-label="Lia assistant"
       >
         <LiaMascot variant="head" size={48} />
         {!isOpen && (
-          <span className="absolute -right-0.5 -top-0.5 size-3.5 rounded-full border-2 border-white bg-pink-400" />
+          <span className="absolute -right-0.5 -top-0.5 size-3.5 rounded-full border-2 border-white bg-primary" />
         )}
       </button>
       )}
@@ -431,13 +431,13 @@ function AssistantPanel({
   return (
     <>
       {/* Header */}
-      <div className="flex items-center gap-2.5 bg-gradient-to-r from-teal-400 to-teal-500 px-3.5 py-2.5 text-white">
+      <div className="flex items-center gap-2.5 bg-linear-to-r from-primary to-primary px-3.5 py-2.5 text-white">
         <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white/20">
           <LiaMascot variant="head" size={30} animated={false} />
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold leading-tight">Lia</p>
-          <p className="truncate text-[10px] text-teal-50/90">
+          <p className="truncate text-[10px] text-white/90">
             Your lead care &amp; follow-up assistant
           </p>
         </div>
@@ -501,7 +501,7 @@ function AssistantPanel({
           onFileChange={handleUpload}
         />
       ) : (
-        <div ref={feedRef} className="flex-1 overflow-y-auto bg-slate-50/60 custom-scrollbar">
+        <div ref={feedRef} className="flex-1 overflow-y-auto bg-muted/60 custom-scrollbar">
           {showEmpty ? (
             <div className={`h-full p-3 ${isFullscreen ? "mx-auto w-full max-w-3xl" : ""}`}>
               <EmptyState userName={userName} onPick={handleSend} />
@@ -518,7 +518,7 @@ function AssistantPanel({
               ))}
               {pendingUserText && <RawBubble role="USER" text={pendingUserText} />}
               {sendMessage.isPending && (
-                <div className="flex items-center gap-2 pl-1 text-[11px] text-teal-600">
+                <div className="flex items-center gap-2 pl-1 text-[11px] text-primary">
                   <Loader2 className="size-3.5 animate-spin" /> Lia is typing…
                 </div>
               )}
@@ -529,9 +529,9 @@ function AssistantPanel({
 
       {/* Input (chat view only) */}
       {view === "chat" && (
-        <div className="border-t border-slate-100 bg-white p-2.5">
+        <div className="border-t border-border bg-white p-2.5">
          <div className={isFullscreen ? "mx-auto w-full max-w-3xl" : ""}>
-          <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 focus-within:border-teal-400 focus-within:bg-white transition">
+          <div className="flex items-end gap-2 rounded-2xl border border-border bg-muted px-2.5 py-1.5 focus-within:border-primary focus-within:bg-white transition">
             <textarea
               rows={1}
               placeholder="Ask Lia about leads, deals, tasks, revenue…"
@@ -544,18 +544,18 @@ function AssistantPanel({
                 }
               }}
               disabled={sendMessage.isPending}
-              className="max-h-24 flex-1 resize-none bg-transparent py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none disabled:opacity-60"
+              className="max-h-24 flex-1 resize-none bg-transparent py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
             />
             <button
               onClick={() => handleSend()}
               disabled={sendMessage.isPending || !inputVal.trim()}
-              className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-teal-500 text-white transition hover:bg-teal-600 disabled:opacity-40"
+              className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-white transition hover:bg-primary/90 disabled:opacity-40"
               title="Send"
             >
               <Send className="size-4" />
             </button>
           </div>
-          <p className="mt-1 text-center text-[9px] text-slate-400">
+          <p className="mt-1 text-center text-[9px] text-muted-foreground">
             Lia is read-only — it never changes any data.
           </p>
          </div>
@@ -597,7 +597,7 @@ function ConfirmDialog({
   // Full-widget overlay + centered card. z-index sits above the panel (z-60/62) and launcher (z-61).
   return (
     <div
-      className="absolute inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-4 animate-in fade-in duration-150"
+      className="absolute inset-0 z-70 flex items-center justify-center bg-black/40 p-4 animate-in fade-in duration-150"
       onClick={onCancel}
       role="dialog"
       aria-modal="true"
@@ -607,25 +607,25 @@ function ConfirmDialog({
         className="w-full max-w-[280px] rounded-2xl bg-white p-4 shadow-2xl animate-in zoom-in-95 duration-150"
       >
         <div className="mb-2 flex items-start gap-2.5">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-500">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-danger/10 text-danger">
             <Trash2 className="size-4" />
           </div>
           <div className="min-w-0">
-            <p className="text-[13px] font-bold text-slate-800">{title}</p>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">{message}</p>
+            <p className="text-[13px] font-bold text-foreground">{title}</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{message}</p>
           </div>
         </div>
         <div className="mt-3 flex justify-end gap-2">
           <button
             onClick={onCancel}
-            className="rounded-lg px-3 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-100"
+            className="rounded-lg px-3 py-1.5 text-[11px] font-semibold text-muted-foreground transition hover:bg-muted"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
             autoFocus
-            className="rounded-lg bg-rose-500 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-rose-600"
+            className="rounded-lg bg-danger px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-danger/90"
           >
             {confirmLabel}
           </button>
@@ -673,10 +673,10 @@ function EmptyState({
   return (
     <div className="flex h-full flex-col items-center justify-center px-3 text-center">
       <LiaMascot variant="full" size={104} />
-      <p className="mt-2 text-xs font-bold text-slate-700">
+      <p className="mt-2 text-xs font-bold text-foreground">
         Hi {userName?.split(" ").slice(-1)[0] || "there"}! I'm Lia 💚
       </p>
-      <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
         Ask me about your leads/deals/tasks, team-wide figures, or company documents.
       </p>
       <div className="mt-3 grid w-full gap-1.5">
@@ -684,7 +684,7 @@ function EmptyState({
           <button
             key={s}
             onClick={() => onPick(s)}
-            className="rounded-xl border border-slate-100 bg-white px-2.5 py-2 text-left text-[11px] font-medium text-slate-600 shadow-sm transition hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700"
+            className="rounded-xl border border-border bg-white px-2.5 py-2 text-left text-[11px] font-medium text-muted-foreground shadow-sm transition hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
           >
             {s}
           </button>
@@ -710,10 +710,10 @@ function HistoryView({
   onDelete: (id: string, title?: string) => void;
 }) {
   return (
-    <div className="flex-1 space-y-1 overflow-y-auto bg-slate-50/60 p-2 custom-scrollbar">
-      {loading && <p className="p-2 text-[11px] text-slate-400">Loading…</p>}
+    <div className="flex-1 space-y-1 overflow-y-auto bg-muted/60 p-2 custom-scrollbar">
+      {loading && <p className="p-2 text-[11px] text-muted-foreground">Loading…</p>}
       {!loading && sessions.length === 0 && (
-        <p className="p-2 text-[11px] text-slate-400">No conversations yet.</p>
+        <p className="p-2 text-[11px] text-muted-foreground">No conversations yet.</p>
       )}
       {sessions.map((s) => (
         <div
@@ -721,8 +721,8 @@ function HistoryView({
           onClick={() => onSelect(s.sessionId)}
           className={`group flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 text-[11px] transition ${
             s.sessionId === selectedId
-              ? "bg-teal-50 text-teal-700"
-              : "bg-white text-slate-600 hover:bg-slate-100"
+              ? "bg-primary/10 text-primary"
+              : "bg-white text-muted-foreground hover:bg-muted"
           }`}
         >
           <span className="flex min-w-0 items-center gap-2">
@@ -735,7 +735,7 @@ function HistoryView({
                 e.stopPropagation();
                 onRename(s.sessionId, s.title);
               }}
-              className="text-slate-400 transition hover:text-teal-600"
+              className="text-muted-foreground transition hover:text-primary"
               title="Rename"
             >
               <Pencil className="size-3.5" />
@@ -745,7 +745,7 @@ function HistoryView({
                 e.stopPropagation();
                 onDelete(s.sessionId, s.title);
               }}
-              className="text-slate-400 transition hover:text-rose-500"
+              className="text-muted-foreground transition hover:text-danger"
               title="Delete"
             >
               <Trash2 className="size-3.5" />
@@ -788,7 +788,7 @@ function DocsView({
   const eta = upload ? formatEta(upload.eta) : "";
   const speed = upload ? formatSpeed(upload.speed) : "";
   return (
-    <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50/60 p-3 custom-scrollbar">
+    <div className="flex-1 space-y-2 overflow-y-auto bg-muted/60 p-3 custom-scrollbar">
       <input
         ref={fileInputRef}
         type="file"
@@ -799,37 +799,37 @@ function DocsView({
       <button
         onClick={onUploadClick}
         disabled={uploading}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-teal-300 bg-teal-50/50 py-2.5 text-[11px] font-semibold text-teal-700 transition hover:bg-teal-50 disabled:opacity-60"
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/10 py-2.5 text-[11px] font-semibold text-primary transition hover:bg-primary/10 disabled:opacity-60"
       >
         {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
         Upload a document (PDF, DOCX, TXT, MD)
       </button>
-      <p className="text-center text-[9px] text-slate-400">Max 5MB per file.</p>
+      <p className="text-center text-[9px] text-muted-foreground">Max 5MB per file.</p>
 
       {/* Rich upload progress: file name + size, % bar that fills at the real transfer speed,
           transferred/total, live speed and ETA. At 100% the byte upload is done and the server
           is embedding the file (async), so we switch the label to "Processing…". */}
       {upload && (
-        <div className="rounded-xl border border-teal-100 bg-white px-2.5 py-2">
-          <div className="mb-1 flex items-center gap-2 text-[10px] font-medium text-slate-600">
-            <FileText className="size-3.5 shrink-0 text-teal-500" />
+        <div className="rounded-xl border border-primary/20 bg-white px-2.5 py-2">
+          <div className="mb-1 flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
+            <FileText className="size-3.5 shrink-0 text-primary" />
             <span className="min-w-0 flex-1 truncate" title={upload.name}>
               {upload.name}
             </span>
-            <span className="shrink-0 text-slate-400">{formatBytes(upload.size)}</span>
+            <span className="shrink-0 text-muted-foreground">{formatBytes(upload.size)}</span>
           </div>
-          <div className="mb-1 flex items-center justify-between text-[10px] font-medium text-slate-500">
+          <div className="mb-1 flex items-center justify-between text-[10px] font-medium text-muted-foreground">
             <span>{transferring ? "Uploading…" : "Processing on server…"}</span>
-            <span className="tabular-nums text-teal-600">{upload.pct}%</span>
+            <span className="tabular-nums text-primary">{upload.pct}%</span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-teal-500 transition-[width] duration-150"
+              className="h-full rounded-full bg-primary transition-[width] duration-150"
               style={{ width: `${upload.pct}%` }}
             />
           </div>
           {transferring ? (
-            <p className="mt-1 flex justify-between text-[9px] text-slate-400">
+            <p className="mt-1 flex justify-between text-[9px] text-muted-foreground">
               <span>
                 {formatBytes(upload.loaded)} / {formatBytes(upload.size)}
                 {speed && ` · ${speed}`}
@@ -837,7 +837,7 @@ function DocsView({
               {eta && <span>{eta} left</span>}
             </p>
           ) : (
-            <p className="mt-1 text-[9px] text-slate-400">
+            <p className="mt-1 text-[9px] text-muted-foreground">
               Uploaded — parsing &amp; indexing on the server…
             </p>
           )}
@@ -845,18 +845,18 @@ function DocsView({
       )}
 
       {uploadErrorMsg && (
-        <p className="rounded-lg bg-rose-50 px-2 py-1.5 text-[10px] text-rose-600">{uploadErrorMsg}</p>
+        <p className="rounded-lg bg-danger/10 px-2 py-1.5 text-[10px] text-danger">{uploadErrorMsg}</p>
       )}
 
       {documents.length === 0 && (
-        <p className="pt-2 text-center text-[10px] text-slate-400">No documents yet.</p>
+        <p className="pt-2 text-center text-[10px] text-muted-foreground">No documents yet.</p>
       )}
       {documents.map((doc) => {
         const processing = doc.processing || doc.chunkCount === 0;
         return (
           <div
             key={doc.documentId}
-            className="flex items-center justify-between rounded-xl border border-slate-100 bg-white px-2.5 py-2 text-[10px] text-slate-600"
+            className="flex items-center justify-between rounded-xl border border-border bg-white px-2.5 py-2 text-[10px] text-muted-foreground"
           >
             <span className="flex min-w-0 items-center gap-1.5" title={doc.title}>
               <span className="truncate">{doc.title}</span>
@@ -865,13 +865,13 @@ function DocsView({
                   <Loader2 className="size-3 animate-spin" /> Processing…
                 </span>
               ) : (
-                <span className="shrink-0 text-slate-300">({doc.chunkCount} chunks)</span>
+                <span className="shrink-0 text-muted-foreground">({doc.chunkCount} chunks)</span>
               )}
             </span>
             <button
               onClick={() => onDelete(doc.documentId, doc.title, doc.chunkCount)}
               disabled={deleting || processing}
-              className="ml-1 shrink-0 text-slate-400 transition hover:text-rose-500 disabled:opacity-40"
+              className="ml-1 shrink-0 text-muted-foreground transition hover:text-danger disabled:opacity-40"
               title={processing ? "Processing — cannot delete yet" : "Delete document"}
             >
               <Trash2 className="size-3.5" />
@@ -890,22 +890,22 @@ const MD_COMPONENTS: Components = {
   ul: (props) => <ul className="mb-1.5 list-disc space-y-0.5 pl-4 last:mb-0" {...props} />,
   ol: (props) => <ol className="mb-1.5 list-decimal space-y-0.5 pl-4 last:mb-0" {...props} />,
   li: (props) => <li className="leading-relaxed" {...props} />,
-  strong: (props) => <strong className="font-semibold text-slate-900" {...props} />,
-  a: (props) => <a className="text-teal-600 underline" target="_blank" rel="noreferrer" {...props} />,
-  code: (props) => <code className="rounded bg-slate-200/70 px-1 py-0.5 font-mono text-[10px]" {...props} />,
+  strong: (props) => <strong className="font-semibold text-foreground" {...props} />,
+  a: (props) => <a className="text-primary underline" target="_blank" rel="noreferrer" {...props} />,
+  code: (props) => <code className="rounded bg-border/70 px-1 py-0.5 font-mono text-[10px]" {...props} />,
   table: (props) => (
     <div className="my-1.5 overflow-x-auto">
       <table className="w-full border-collapse text-[10px]" {...props} />
     </div>
   ),
-  thead: (props) => <thead className="bg-slate-100" {...props} />,
-  th: (props) => <th className="border border-slate-200 px-1.5 py-1 text-left font-semibold" {...props} />,
-  td: (props) => <td className="border border-slate-200 px-1.5 py-1 align-top" {...props} />,
+  thead: (props) => <thead className="bg-muted" {...props} />,
+  th: (props) => <th className="border border-border px-1.5 py-1 text-left font-semibold" {...props} />,
+  td: (props) => <td className="border border-border px-1.5 py-1 align-top" {...props} />,
 };
 
 function ChatMarkdown({ text }: { text: string }) {
   return (
-    <div className="break-words">
+    <div className="wrap-break-word">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
         {text}
       </ReactMarkdown>
@@ -975,11 +975,11 @@ function Shell({
     <div className={`flex max-w-[88%] gap-2 ${isUser ? "ml-auto flex-row-reverse" : ""}`}>
       <div
         className={`flex size-7 shrink-0 items-center justify-center rounded-full ${
-          isUser ? "bg-slate-200 text-slate-600" : blocked ? "bg-amber-400 text-white" : "bg-teal-500 text-white"
+          isUser ? "bg-border text-muted-foreground" : blocked ? "bg-amber-400 text-white" : "bg-primary text-white"
         }`}
       >
         {isUser ? (
-          <span className="text-[10px] font-bold">Bạn</span>
+          <span className="text-[10px] font-bold">You</span>
         ) : blocked ? (
           <ShieldAlert className="size-3.5" />
         ) : (
@@ -989,10 +989,10 @@ function Shell({
       <div
         className={`rounded-2xl px-3 py-2 text-xs leading-relaxed ${
           isUser
-            ? "bg-teal-500 font-medium text-white"
+            ? "bg-primary font-medium text-white"
             : blocked
               ? "border border-amber-200 bg-amber-50 text-amber-800"
-              : "border border-slate-100 bg-white text-slate-700 shadow-sm"
+              : "border border-border bg-white text-foreground shadow-sm"
         }`}
       >
         {children}

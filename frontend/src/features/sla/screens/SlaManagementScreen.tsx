@@ -79,7 +79,7 @@ const ENTITY_CHECKS: Record<string, EntityCheck> = {
   },
 };
 
-// BR-02: chỉ ADMIN và MANAGER được cấu hình rules
+// BR-02: only ADMIN and MANAGER can configure rules
 const CONFIGURE_ROLES = ["ADMIN", "MANAGER"];
 
 // ─── Shared constants ────────────────────────────────────────────────────────

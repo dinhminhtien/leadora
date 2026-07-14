@@ -53,7 +53,7 @@ const getStageStyles = (stage: Deal["stage"]) => {
       return {
         border: "border-t-4 border-t-blue-500/80",
         badge: "!bg-blue-50 !text-blue-700 border !border-blue-200/50",
-        dot: "bg-blue-500"
+        dot: "bg-primary"
       };
     case "Proposal":
       return {
@@ -152,6 +152,7 @@ export function SalesPipelineScreen() {
       }
     } catch (err) {
       console.error("Failed to fetch deals", err);
+      showError("Could not load the pipeline. Please check your connection and try again.");
     } finally {
       if (shouldShowSpinner) {
         setLoading(false);
@@ -511,11 +512,11 @@ export function SalesPipelineScreen() {
         </div>
         <div className="text-center md:text-left md:border-r border-slate-100 last:border-0 px-4">
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Total Pipeline Value</span>
-          <span className="text-lg font-bold text-slate-800 block mt-1">${pipelineStats.totalValue.toLocaleString('en-US')}</span>
+          <span className="text-lg font-bold text-slate-800 block mt-1">{pipelineStats.totalValue.toLocaleString('vi-VN')} ₫</span>
         </div>
         <div className="text-center md:text-left px-4">
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Weighted Revenue Forecast</span>
-          <span className="text-lg font-bold text-[#185FA5] block mt-1">${pipelineStats.weightedValue.toLocaleString('en-US')}</span>
+          <span className="text-lg font-bold text-[#185FA5] block mt-1">{pipelineStats.weightedValue.toLocaleString('vi-VN')} ₫</span>
         </div>
       </div>
 
@@ -563,7 +564,7 @@ export function SalesPipelineScreen() {
                   </Badge>
                 </div>
                 <div className="text-[10px] font-bold text-slate-400 mt-1 pl-3.5">
-                  ${stageTotalVal.toLocaleString('en-US')}
+                  {stageTotalVal.toLocaleString('vi-VN')} ₫
                 </div>
               </div>
 
@@ -601,7 +602,7 @@ export function SalesPipelineScreen() {
                             )}
                           </div>
                           <div className="text-xs font-black text-slate-800 mt-1">
-                            ${deal.value.toLocaleString('en-US')}
+                            {deal.value.toLocaleString('vi-VN')} ₫
                           </div>
                         </div>
 
@@ -801,7 +802,7 @@ export function SalesPipelineScreen() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">Deal Value ($)</label>
+                  <label className="text-xs font-semibold text-slate-600">Deal Value (VND)</label>
                   <Input
                     type="number"
                     disabled={isAlreadyClosed}

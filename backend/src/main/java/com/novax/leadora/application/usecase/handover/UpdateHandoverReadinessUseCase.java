@@ -50,7 +50,7 @@ public class UpdateHandoverReadinessUseCase {
 
         // PRE-3: only handovers already sent to Front Office can be updated.
         if (handover.getStatus() == HandoverStatus.DRAFT) {
-            throw new IllegalStateException("Handover chưa được gửi tới Lễ tân nên không thể cập nhật.");
+            throw new IllegalStateException("The handover has not been sent to the Front Office yet, so it can't be updated.");
         }
 
         ReadinessStatus newReadiness = parseReadiness(request.getReadinessStatus());
@@ -58,7 +58,7 @@ public class UpdateHandoverReadinessUseCase {
         // E7.2 — clarification note is required when asking for clarification.
         String note = request.getClarificationNote();
         if (newReadiness == ReadinessStatus.NEED_CLARIFICATION && !StringUtils.hasText(note)) {
-            throw new IllegalStateException("Vui lòng nhập nội dung cần làm rõ.");
+            throw new IllegalStateException("Please enter the clarification details.");
         }
 
         handover.setReadinessStatus(newReadiness);
@@ -97,12 +97,12 @@ public class UpdateHandoverReadinessUseCase {
         }
         BookingEntity booking = handover.getBooking();
         String bookingCode = booking != null ? booking.getBookingCode() : "";
-        String by = actor != null && actor.getFullName() != null ? actor.getFullName() : "Lễ tân";
+        String by = actor != null && actor.getFullName() != null ? actor.getFullName() : "Front Office";
 
         NotificationEntity notification = NotificationEntity.builder()
                 .user(recipient)
-                .title("Bàn giao cần làm rõ")
-                .message(by + " yêu cầu làm rõ bàn giao " + bookingCode + ": " + handover.getClarificationNote())
+                .title("Handover Clarification Requested")
+                .message(by + " requested clarification for handover " + bookingCode + ": " + handover.getClarificationNote())
                 .type("HANDOVER")
                 .relatedEntity("HANDOVER")
                 .relatedId(handover.getHandoverId())
@@ -117,11 +117,11 @@ public class UpdateHandoverReadinessUseCase {
         try {
             parsed = ReadinessStatus.valueOf(value.trim().toUpperCase());
         } catch (IllegalArgumentException | NullPointerException e) {
-            throw new IllegalStateException("Trạng thái sẵn sàng không hợp lệ: " + value);
+            throw new IllegalStateException("Invalid readiness status: " + value);
         }
         // E7.3 — FO cannot set the initial PENDING_REVIEW (or any non-FO value).
         if (!FO_SETTABLE.contains(parsed)) {
-            throw new IllegalStateException("Trạng thái sẵn sàng không hợp lệ: " + value);
+            throw new IllegalStateException("Invalid readiness status: " + value);
         }
         return parsed;
     }

@@ -34,6 +34,11 @@ public class CreateLeadRequest {
     @Size(max = 100)
     private String source;
 
+    /** BR-05: hotel service/product the lead is interested in. Required (server-side)
+     *  before the lead can enter active follow-up; optional at creation. */
+    @Size(max = 100)
+    private String interestedService;
+
     private String notes;
 
     private UUID assignedUserId;

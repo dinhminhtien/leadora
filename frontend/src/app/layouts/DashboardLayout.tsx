@@ -46,6 +46,7 @@ import {
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { useUiStore } from "@/stores/ui_store";
 import { useAuthStore } from "@/stores/auth_store";
+import { toast } from "@/stores/toast_store";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -266,10 +267,22 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     router.push(ROUTE_PATHS.login || "/login");
   };
 
-  // Quick Action Handler (Mock)
+  // Quick Add: jump to the relevant module where the record can be created,
+  // rather than popping a placeholder dialog.
   const handleQuickAction = (type: string) => {
-    alert(`Quick Add ${type} is supported in this MVP!`);
     setIsQuickAddOpen(false);
+    const routes: Record<string, string> = {
+      Lead: "/leads",
+      Deal: "/deals",
+      Task: "/follow-up-tasks",
+      "Guest Profile": "/customer-profiles",
+    };
+    const target = routes[type];
+    if (target) {
+      router.push(target);
+    } else {
+      toast.info(`${type} is not available yet.`);
+    }
   };
 
   return (

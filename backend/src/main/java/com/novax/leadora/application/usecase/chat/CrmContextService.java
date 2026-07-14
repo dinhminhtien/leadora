@@ -76,27 +76,27 @@ public class CrmContextService {
 
         StringBuilder sb = new StringBuilder();
         sb.append(all
-                ? "== Dữ liệu CRM toàn bộ (quyền quản lý) ==\n"
-                : "== Dữ liệu CRM được giao cho " + user.getFullName() + " ==\n");
+                ? "== Full CRM data (manager access) ==\n"
+                : "== CRM data assigned to " + user.getFullName() + " ==\n");
 
         // Leads — counts by status + an actual listing so the assistant can enumerate them.
         Map<Object, Long> leadByStatus = leads.stream()
                 .collect(Collectors.groupingBy(l -> l.getStatus(), Collectors.counting()));
-        sb.append("Leads: tổng ").append(leads.size())
+        sb.append("Leads: total ").append(leads.size())
                 .append(" ").append(leadByStatus).append("\n");
         if (!leads.isEmpty()) {
-            sb.append("Danh sách lead (mới nhất trước, tối đa ").append(MAX_LEADS).append("):\n");
+            sb.append("Lead list (newest first, up to ").append(MAX_LEADS).append("):\n");
             leads.stream()
                     .sorted(Comparator.comparing((LeadEntity l) -> l.getCreatedAt(),
                             Comparator.nullsFirst(Comparator.naturalOrder())).reversed())
                     .limit(MAX_LEADS)
                     .forEach(l -> sb.append("  - \"").append(l.getFullName())
                             .append("\" | ").append(l.getStatus())
-                            .append(" | công ty: ").append(nullToDash(l.getCompanyName()))
+                            .append(" | company: ").append(nullToDash(l.getCompanyName()))
                             .append(" | email: ").append(nullToDash(l.getEmail()))
-                            .append(" | nguồn: ").append(nullToDash(l.getSource()))
+                            .append(" | source: ").append(nullToDash(l.getSource()))
                             .append(assigneeSuffix(l))
-                            .append(" | tạo lúc: ").append(l.getCreatedAt())
+                            .append(" | created: ").append(l.getCreatedAt())
                             .append("\n"));
         }
 
@@ -110,31 +110,31 @@ public class CrmContextService {
                 .filter(d -> d.getStatus() == DealStatus.WON && d.getExpectedRevenue() != null)
                 .map(d -> d.getExpectedRevenue())
                 .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
-        sb.append("Deals: tổng ").append(deals.size())
-                .append(", đang mở ").append(openDeals)
-                .append(", giá trị kỳ vọng (OPEN) ").append(openValue)
-                .append(", giá trị đã thắng (WON) ").append(wonValue).append("\n");
+        sb.append("Deals: total ").append(deals.size())
+                .append(", open ").append(openDeals)
+                .append(", expected value (OPEN) ").append(openValue)
+                .append(", won value (WON) ").append(wonValue).append("\n");
         if (!deals.isEmpty()) {
-            sb.append("Chi tiết deal (tối đa ").append(MAX_DEALS).append("):\n");
+            sb.append("Deal details (up to ").append(MAX_DEALS).append("):\n");
             deals.stream().limit(MAX_DEALS).forEach(d -> sb.append("  - \"").append(d.getDealName())
                     .append("\" | ").append(d.getPipelineStage())
                     .append(" | ").append(d.getStatus())
-                    .append(" | giá trị ").append(d.getExpectedRevenue())
-                    .append(" | dự kiến chốt ").append(d.getExpectedCloseDate()).append("\n"));
+                    .append(" | value ").append(d.getExpectedRevenue())
+                    .append(" | expected close ").append(d.getExpectedCloseDate()).append("\n"));
         }
 
         // Tasks (overdue derived: status == OPEN && endAt < now())
         OffsetDateTime now = OffsetDateTime.now();
         long openTasks = tasks.stream().filter(t -> t.getStatus() == TaskStatus.OPEN).count();
         List<TaskEntity> overdue = tasks.stream().filter(t -> isOverdue(t, now)).toList();
-        sb.append("Tasks: tổng ").append(tasks.size())
-                .append(", đang mở/đang làm ").append(openTasks)
-                .append(", quá hạn ").append(overdue.size()).append("\n");
+        sb.append("Tasks: total ").append(tasks.size())
+                .append(", open/in progress ").append(openTasks)
+                .append(", overdue ").append(overdue.size()).append("\n");
         if (!overdue.isEmpty()) {
-            sb.append("Công việc quá hạn (tối đa ").append(MAX_TASKS).append("):\n");
+            sb.append("Overdue tasks (up to ").append(MAX_TASKS).append("):\n");
             overdue.stream().limit(MAX_TASKS).forEach(t -> sb.append("  - \"").append(t.getTitle())
-                    .append("\" | hạn ").append(t.getEndAt())
-                    .append(" | ưu tiên ").append(t.getPriority())
+                    .append("\" | due ").append(t.getEndAt())
+                    .append(" | priority ").append(t.getPriority())
                     .append(" | ").append(t.getStatus()).append("\n"));
         }
 
@@ -160,24 +160,24 @@ public class CrmContextService {
                 .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         StringBuilder sb = new StringBuilder();
-        sb.append("== Tổng hợp toàn đội bán hàng ==\n");
-        sb.append("Deals: tổng ").append(deals.size())
-                .append(" (mở ").append(openDeals)
-                .append(", thắng ").append(wonDeals)
+        sb.append("== Whole sales team summary ==\n");
+        sb.append("Deals: total ").append(deals.size())
+                .append(" (open ").append(openDeals)
+                .append(", won ").append(wonDeals)
                 .append(", thua ").append(lostDeals).append(")")
-                .append(", giá trị WON ").append(wonValue)
-                .append(", giá trị pipeline (OPEN) ").append(openValue).append("\n");
-        sb.append("Leads: tổng ").append(leads.size()).append("\n");
+                .append(", WON value ").append(wonValue)
+                .append(", pipeline value (OPEN) ").append(openValue).append("\n");
+        sb.append("Leads: total ").append(leads.size()).append("\n");
         OffsetDateTime nowTeam = OffsetDateTime.now();
-        sb.append("Tasks: tổng ").append(tasks.size())
-                .append(", quá hạn ").append(tasks.stream().filter(t -> isOverdue(t, nowTeam)).count())
+        sb.append("Tasks: total ").append(tasks.size())
+                .append(", overdue ").append(tasks.stream().filter(t -> isOverdue(t, nowTeam)).count())
                 .append("\n");
 
         // Per-rep breakdown (group by assigned user)
         Map<String, List<DealEntity>> dealsByRep = deals.stream()
                 .filter(d -> d.getAssignedUser() != null)
                 .collect(Collectors.groupingBy(d -> repLabel(d.getAssignedUser())));
-        sb.append("Theo nhân viên (tối đa ").append(MAX_REPS).append("):\n");
+        sb.append("By staff member (up to ").append(MAX_REPS).append("):\n");
         dealsByRep.entrySet().stream().limit(MAX_REPS).forEach(e -> {
             List<DealEntity> rep = e.getValue();
             long open = rep.stream().filter(d -> d.getStatus() == DealStatus.OPEN).count();
@@ -187,9 +187,9 @@ public class CrmContextService {
                     .map(d -> d.getExpectedRevenue())
                     .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
             sb.append("  - ").append(e.getKey())
-                    .append(": deals mở ").append(open)
-                    .append(", thắng ").append(won)
-                    .append(", giá trị WON ").append(value).append("\n");
+                    .append(": open deals ").append(open)
+                    .append(", won ").append(won)
+                    .append(", WON value ").append(value).append("\n");
         });
 
         return sb.toString();
@@ -205,7 +205,7 @@ public class CrmContextService {
 
     private String assigneeSuffix(LeadEntity lead) {
         UserEntity assignee = lead.getAssignedUser();
-        return assignee != null ? " | phụ trách: " + repLabel(assignee) : " | phụ trách: (chưa giao)";
+        return assignee != null ? " | assigned to: " + repLabel(assignee) : " | assigned to: (unassigned)";
     }
 
     private boolean isOverdue(TaskEntity t, OffsetDateTime now) {

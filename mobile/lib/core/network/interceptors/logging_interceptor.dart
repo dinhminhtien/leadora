@@ -8,15 +8,15 @@ import 'package:logger/logger.dart';
 /// breadcrumbs). Disabled in release unless explicitly enabled by the flavor.
 class LoggingInterceptor extends Interceptor {
   LoggingInterceptor({required bool enabled})
-      : _enabled = enabled,
-        _logger = Logger(
-          printer: PrettyPrinter(
-            methodCount: 0,
-            errorMethodCount: 4,
-            colors: true,
-            printEmojis: false,
-          ),
-        );
+    : _enabled = enabled,
+      _logger = Logger(
+        printer: PrettyPrinter(
+          methodCount: 0,
+          errorMethodCount: 4,
+          colors: true,
+          printEmojis: false,
+        ),
+      );
 
   final bool _enabled;
   final Logger _logger;
@@ -61,16 +61,17 @@ class LoggingInterceptor extends Interceptor {
   }
 
   Map<String, Object?> _redactHeaders(Map<String, Object?> headers) {
-    return headers.map((k, v) =>
-        MapEntry(k, _sensitiveHeaders.contains(k.toLowerCase()) ? '***' : v));
+    return headers.map(
+      (k, v) =>
+          MapEntry(k, _sensitiveHeaders.contains(k.toLowerCase()) ? '***' : v),
+    );
   }
 
   Object? _redactBody(Object? body) {
     if (body is Map) {
-      return body.map((k, v) => MapEntry(
-            k,
-            _sensitiveBodyKeys.contains('$k') ? '***' : v,
-          ));
+      return body.map(
+        (k, v) => MapEntry(k, _sensitiveBodyKeys.contains('$k') ? '***' : v),
+      );
     }
     return body;
   }

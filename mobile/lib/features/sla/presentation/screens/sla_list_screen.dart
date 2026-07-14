@@ -5,16 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/routes.dart';
+import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
+import '../../../../shared/widgets/app_filter_chip.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/highlight_glow.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared/widgets/status_chip.dart';
-import '../../../lead/data/lead_repository.dart';
-import '../../../quotation/data/quotation_models.dart';
-import '../../../quotation/data/quotation_repository.dart';
-import '../../../task/data/task_repository.dart';
 import '../../data/sla_models.dart';
 import '../providers/sla_providers.dart';
 
@@ -31,52 +29,6 @@ String? _relatedRoute(SlaTrackingEntry e) {
       return Routes.taskDetailPath(e.entityId);
     case 'QUOTATION':
       return Routes.quotationDetailPath(e.entityId);
-    default:
-      return null;
-  }
-}
-
-/// Quotation statuses with nothing left to action — mirrors the web
-/// `QUOTATION_DONE_STATUSES` check in `SlaManagementScreen.tsx`.
-const _quotationDoneStatuses = {
-  QuotationStatus.converted,
-  QuotationStatus.closed,
-  QuotationStatus.expired,
-  QuotationStatus.rejected,
-};
-
-/// Confirms the record an SLA entry points at is still there (and, for
-/// quotations, still actionable) before navigating — SLA tracking rows can
-/// outlive the entity they reference (deleted, or already resolved
-/// elsewhere). Returns `null` when it's safe to navigate, otherwise a
-/// user-facing message to show instead.
-Future<String?> _checkBeforeNavigate(WidgetRef ref, SlaTrackingEntry entry) async {
-  switch (entry.entityType.toUpperCase()) {
-    case 'LEAD':
-      try {
-        await ref.read(leadRepositoryProvider).getLead(entry.entityId);
-        return null;
-      } catch (_) {
-        return 'This lead no longer exists.';
-      }
-    case 'TASK':
-      try {
-        await ref.read(taskRepositoryProvider).getTask(entry.entityId);
-        return null;
-      } catch (_) {
-        return 'This task no longer exists.';
-      }
-    case 'QUOTATION':
-      try {
-        final quotation = await ref.read(quotationRepositoryProvider).getQuotation(entry.entityId);
-        if (_quotationDoneStatuses.contains(quotation.status)) {
-          return 'This quotation has already been processed '
-              '(status: ${quotation.status.wire.replaceAll('_', ' ')}).';
-        }
-        return null;
-      } catch (_) {
-        return 'This quotation no longer exists.';
-      }
     default:
       return null;
   }
@@ -128,37 +80,27 @@ class _SlaListScreenState extends ConsumerState<SlaListScreen> {
       appBar: AppBar(title: const Text('SLA monitoring')),
       body: Column(
         children: [
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: ChoiceChip(
-                    label: const Text('All'),
-                    selected: _filter == null,
-                    onSelected: (_) => setState(() => _filter = null),
-                  ),
+          AppFilterChipBar(
+            children: [
+              AppFilterChip(
+                label: 'All',
+                selected: _filter == null,
+                onTap: () => setState(() => _filter = null),
+              ),
+              for (final s in SlaDisplayStatus.values)
+                AppFilterChip(
+                  label: Formatters.humanizeEnum(s.wire),
+                  selected: _filter == s,
+                  onTap: () => setState(() => _filter = s),
                 ),
-                for (final s in SlaDisplayStatus.values)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: ChoiceChip(
-                      label: Text(Formatters.humanizeEnum(s.wire)),
-                      selected: _filter == s,
-                      onSelected: (_) => setState(() => _filter = s),
-                    ),
-                  ),
-              ],
-            ),
+            ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xs),
           Expanded(
             child: AsyncValueView<List<SlaTrackingEntry>>(
               value: async,
-              onRetry: () => ref.invalidate(slaMonitoringProvider(_filter?.wire)),
+              onRetry: () =>
+                  ref.invalidate(slaMonitoringProvider(_filter?.wire)),
               isEmpty: (items) => items.isEmpty,
               empty: const EmptyState(
                 icon: Icons.verified_outlined,
@@ -166,15 +108,24 @@ class _SlaListScreenState extends ConsumerState<SlaListScreen> {
                 message: 'No SLA trackers match this filter.',
               ),
               data: (items) => RefreshIndicator(
-                onRefresh: () async => ref.invalidate(slaMonitoringProvider(_filter?.wire)),
+                onRefresh: () async =>
+                    ref.invalidate(slaMonitoringProvider(_filter?.wire)),
                 child: ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.xs,
+                    AppSpacing.lg,
+                    AppSpacing.xxxl,
+                  ),
                   itemCount: items.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final entry = items[index];
-                    final highlighted = _highlightId != null && entry.trackingId == _highlightId;
+                    final highlighted =
+                        _highlightId != null &&
+                        entry.trackingId == _highlightId;
                     return Builder(
                       builder: (itemContext) {
                         if (highlighted && _scrolledIds.add(entry.trackingId)) {
@@ -203,73 +154,33 @@ class _SlaListScreenState extends ConsumerState<SlaListScreen> {
   }
 }
 
-class _SlaCard extends ConsumerStatefulWidget {
+class _SlaCard extends StatelessWidget {
   const _SlaCard({required this.entry, this.highlighted = false});
 
   final SlaTrackingEntry entry;
   final bool highlighted;
 
   @override
-  ConsumerState<_SlaCard> createState() => _SlaCardState();
-}
-
-class _SlaCardState extends ConsumerState<_SlaCard> {
-  bool _checking = false;
-
-  Future<void> _handleTap(String route) async {
-    setState(() => _checking = true);
-    final blockedMessage = await _checkBeforeNavigate(ref, widget.entry);
-    if (!mounted) return;
-    setState(() => _checking = false);
-
-    if (blockedMessage != null) {
-      showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text("Can't open this record"),
-          content: Text(blockedMessage),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
-          ],
-        ),
-      );
-      return;
-    }
-
-    if (context.mounted) context.push(route);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final entry = widget.entry;
     final theme = Theme.of(context);
     final route = _relatedRoute(entry);
     final hours = entry.hoursRemaining;
     final hoursLabel = entry.isResolved
         ? 'Resolved'
         : hours < 0
-            ? '${-hours}h overdue'
-            : '${hours}h left';
+        ? '${-hours}h overdue'
+        : '${hours}h left';
 
     return HighlightGlow(
-      highlighted: widget.highlighted,
+      highlighted: highlighted,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: route == null || _checking ? null : () => _handleTap(route),
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        onTap: route == null ? null : () => context.push(route),
         child: SectionCard(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Row(
             children: [
-              _checking
-                  ? SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: theme.colorScheme.primary,
-                      ),
-                    )
-                  : Icon(entry.icon, size: 22, color: theme.colorScheme.primary),
+              Icon(entry.icon, size: 22, color: theme.colorScheme.primary),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -277,15 +188,18 @@ class _SlaCardState extends ConsumerState<_SlaCard> {
                   children: [
                     Text(
                       '${Formatters.humanizeEnum(entry.activityType)} · ${Formatters.humanizeEnum(entry.entityType)}',
-                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Deadline ${Formatters.dateTime(entry.deadlineAt)}',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -302,7 +216,9 @@ class _SlaCardState extends ConsumerState<_SlaCard> {
                   const SizedBox(height: 6),
                   Text(
                     hoursLabel,
-                    style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
                   ),
                 ],
               ),

@@ -47,6 +47,9 @@ public class LoginUseCase {
                         .name(user.getFullName())
                         .roles(List.of(user.getRole() != null ? user.getRole().getRoleName() : "STAFF"))
                         .permissions(effectivePermissionsService.forUser(user))
+                        // Keep parity with AuthController#buildUserInfo — omitting this
+                        // made the avatar appear only after a later /auth/profile fetch.
+                        .avatarUrl(user.getAvatarUrl())
                         .build())
                 .build();
     }

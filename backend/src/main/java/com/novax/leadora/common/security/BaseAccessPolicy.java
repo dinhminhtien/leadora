@@ -61,6 +61,16 @@ public abstract class BaseAccessPolicy<T> {
     }
 
     /**
+     * Enforces that the caller has full (unscoped) access — Manager/Admin only.
+     * Used for privileged actions such as reassigning ownership (BR-18).
+     */
+    public void assertFullAccess(UserEntity user) {
+        if (!FULL_ACCESS_ROLES.contains(roleName(user))) {
+            throw new AccessDeniedException("Only a manager can perform this action.");
+        }
+    }
+
+    /**
      * Abstract method that must be implemented by subclasses to check entity ownership.
      */
     protected abstract boolean owns(UserEntity user, T entity);

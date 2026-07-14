@@ -51,4 +51,36 @@ public final class OpHandoverSpecification {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
     }
+
+    /**
+     * Handovers visible to Sales / Reservation: everything, optionally filtered by
+     * status, arrival date, and search keyword.
+     */
+    public static Specification<OpHandoverEntity> forOperations(String search, HandoverStatus status,
+                                                                 LocalDate arrivalDate) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+
+            if (StringUtils.hasText(search) || arrivalDate != null) {
+                Join<?, ?> booking = root.join("booking", JoinType.LEFT);
+                if (arrivalDate != null) {
+                    predicates.add(cb.equal(booking.get("checkInDate"), arrivalDate));
+                }
+                if (StringUtils.hasText(search)) {
+                    Join<?, ?> customer = booking.join("customer", JoinType.LEFT);
+                    String like = "%" + search.trim().toLowerCase() + "%";
+                    predicates.add(cb.or(
+                            cb.like(cb.lower(booking.get("bookingCode")), like),
+                            cb.like(cb.lower(customer.get("fullName")), like)
+                    ));
+                }
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
 }

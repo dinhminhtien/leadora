@@ -16,13 +16,20 @@ class NotificationRepository {
   /// The backend returns a Spring `Page<NotificationResponse>` (an object with
   /// a `content` array), not a bare JSON array — [size] is large enough that a
   /// single page covers the list since this screen has no "load more" yet.
-  Future<List<AppNotification>> getNotifications({bool unreadOnly = false, int size = 50}) {
+  Future<List<AppNotification>> getNotifications({
+    bool unreadOnly = false,
+    int size = 50,
+  }) {
     return _client.get<List<AppNotification>>(
       ApiPaths.notifications,
       query: {'unreadOnly': unreadOnly, 'size': size},
       decode: (data) {
-        final list = data is Map && data['content'] is List ? data['content'] as List : data as List;
-        return list.map((e) => AppNotification.fromJson(e as Map<String, dynamic>)).toList();
+        final list = data is Map && data['content'] is List
+            ? data['content'] as List
+            : data as List;
+        return list
+            .map((e) => AppNotification.fromJson(e as Map<String, dynamic>))
+            .toList();
       },
     );
   }
@@ -41,7 +48,9 @@ class NotificationRepository {
     return _client.patch<int>(
       ApiPaths.notificationsMarkAllRead,
       decode: (data) {
-        if (data is Map && data['updated'] is int) return data['updated'] as int;
+        if (data is Map && data['updated'] is int) {
+          return data['updated'] as int;
+        }
         if (data is Map && data.values.isNotEmpty && data.values.first is int) {
           return data.values.first as int;
         }

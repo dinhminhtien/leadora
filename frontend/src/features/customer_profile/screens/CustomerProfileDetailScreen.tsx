@@ -23,7 +23,7 @@ import {
   Briefcase,
   BookOpen,
   FileText,
-  DollarSign,
+  Banknote,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -58,7 +58,7 @@ function initials(name: string) {
 }
 
 function isOverdue(task: Task) {
-  return task.status === "OPEN" && !!task.endAt && new Date(task.endAt) < new Date();
+  return task.status === "OPEN" && task.endAt ? new Date(task.endAt) < new Date() : false;
 }
 
 function fmtDate(iso: string) {
@@ -101,7 +101,15 @@ function EditCustomerDrawer({
 
   function handleSubmit(e: React.FormEvent | React.MouseEvent) {
     e.preventDefault();
-    if (!form.fullName?.trim()) return;
+    if (!form.fullName?.trim()) {
+      toast.error("Full name is required.");
+      return;
+    }
+    // BR-09: a corporate customer profile must name its company.
+    if (form.customerType === "CORPORATE" && !form.companyName?.trim()) {
+      toast.error("Company name is required for a corporate customer.");
+      return;
+    }
     updateMutation.mutate(
       {
         ...form,
@@ -166,7 +174,7 @@ function EditCustomerDrawer({
 
           {isCorporate && (
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Company Name</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Company Name *</label>
               <Input value={form.companyName ?? ""} onChange={e => set("companyName", e.target.value)} />
             </div>
           )}
@@ -381,7 +389,7 @@ export function CustomerProfileDetailScreen({ customerId }: { customerId: string
       {/* Profile Header Card */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         {/* Top gradient strip */}
-        <div className={`h-2 ${isCorporate ? "bg-gradient-to-r from-purple-400 to-purple-600" : "bg-gradient-to-r from-blue-400 to-blue-600"}`} />
+        <div className={`h-2 ${isCorporate ? "bg-linear-to-r from-purple-400 to-purple-600" : "bg-linear-to-r from-blue-400 to-blue-600"}`} />
         <div className="px-6 py-5">
           <div className="flex items-start gap-5">
             {/* Avatar */}
@@ -774,9 +782,9 @@ function HistoryTimeline({
                         </div>
                         {h.amount != null && (
                           <div className="flex items-center gap-1 shrink-0">
-                            <DollarSign className="size-3 text-slate-400" />
+                            <Banknote className="size-3 text-slate-400 mr-0.5" />
                             <span className="text-sm font-bold text-slate-700">
-                              {h.amount.toLocaleString()}
+                              {h.amount.toLocaleString("vi-VN")} ₫
                             </span>
                           </div>
                         )}

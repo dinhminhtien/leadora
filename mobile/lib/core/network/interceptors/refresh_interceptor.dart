@@ -22,9 +22,9 @@ class RefreshInterceptor extends QueuedInterceptor {
     required Dio dio,
     required TokenRefresher refresher,
     required Future<void> Function() onSessionExpired,
-  })  : _dio = dio,
-        _refresher = refresher,
-        _onSessionExpired = onSessionExpired;
+  }) : _dio = dio,
+       _refresher = refresher,
+       _onSessionExpired = onSessionExpired;
 
   final Dio _dio;
   final TokenRefresher _refresher;

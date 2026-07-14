@@ -19,23 +19,10 @@ spring:
       max-request-size: ${AI_MAX_UPLOAD_SIZE:20MB}
 
   # AI chat assistant (feature/ai_internal): chat + embeddings BOTH via Google Gemini API (no local AI).
-  # Provider is selected with spring.ai.model.chat / spring.ai.model.embedding below, so the
-  # Ollama and Anthropic auto-configs back off cleanly (no Ollama needs to run). Only non-model
-  # integrations we don't use are excluded here (JDBC chat-memory, Elasticsearch, Redis vector stores).
-  autoconfigure:
-    exclude:
-      - org.springframework.ai.model.chat.memory.repository.jdbc.autoconfigure.JdbcChatMemoryRepositoryAutoConfiguration
-      - org.springframework.ai.vectorstore.elasticsearch.autoconfigure.ElasticsearchVectorStoreAutoConfiguration
-      - org.springframework.ai.vectorstore.redis.autoconfigure.RedisVectorStoreAutoConfiguration
-
   docker:
     compose:
       enabled: false
 
-  # Canonical single shared .env is at the repo root (leadora/.env) → read via ../.env
-  # when running from leadora/backend/. The bare .env (backend-local) is an optional
-  # fallback; both are optional so a missing one is skipped. The last match wins, so
-  # the repo-root file (../.env) takes precedence.
   config:
     import:
       - optional:file:.env[.properties]
@@ -103,10 +90,10 @@ spring:
   ai:
     # Fail-fast retry. Spring AI's default retries a 429 up to 10 times with exponential backoff
     # (2s → ×5 → up to 3 min), so on a quota/rate-limit error the chat/embedding call would HANG
-    # for tens of seconds before surfacing the error ("chat chậm hơn bình thường"). On the Gemini
+    # for tens of seconds before surfacing the error ("chat is slower than usual"). On the Gemini
     # free tier (20 chat req/day, 1000 embed req/day) a 429 is usually a hard daily cap, not a blip,
     # so retrying long is pointless — fail after at most one short retry and let the app show a clear
-    # "hết quota" message immediately. Raise these once billing/paid quota is enabled.
+    # "out of quota" message immediately. Raise these once billing/paid quota is enabled.
     retry:
       max-attempts: ${AI_RETRY_MAX_ATTEMPTS:2}
       backoff:
@@ -184,6 +171,11 @@ ai:
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  bank:
+    account-number: ${APP_BANK_ACCOUNT_NUMBER:123456789}
+    provider: ${APP_BANK_PROVIDER:sepay}
+    api-token: ${APP_BANK_API_TOKEN:dummy-token}
+    api-url: ${APP_BANK_API_URL:https://my.sepay.vn/plus/api/transactions}
 
 # Supabase environment fallbacks (prevents startup crash if environment variables are not set)
 SUPABASE_URL: ${SUPABASE_URL}

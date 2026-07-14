@@ -23,6 +23,8 @@ final dashboardRepositoryProvider = Provider<DashboardRepository>((ref) {
   return DashboardRepository(ref.watch(apiClientProvider));
 });
 
-final dashboardSummaryProvider = FutureProvider.autoDispose<DashboardSummary>((ref) {
+final dashboardSummaryProvider = FutureProvider.autoDispose<DashboardSummary>((
+  ref,
+) {
   return ref.watch(dashboardRepositoryProvider).getSummary();
 });

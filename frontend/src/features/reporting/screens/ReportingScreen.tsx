@@ -115,9 +115,9 @@ function DiscountReportTab() {
         q.contactName,
         q.roomType ?? "N/A",
         `${q.discountPercent ?? 0}%`,
-        `$${(q.subtotal ?? 0).toFixed(2)}`,
-        `$${(q.discountAmount ?? 0).toFixed(2)}`,
-        `$${q.amount.toFixed(2)}`,
+        `${(q.subtotal ?? 0).toFixed(0)} ₫`,
+        `${(q.discountAmount ?? 0).toFixed(0)} ₫`,
+        `${q.amount.toFixed(0)} ₫`,
         q.status,
         sentDate,
       ];
@@ -303,13 +303,13 @@ function DiscountReportTab() {
                         <span className="font-black text-amber-600">{q.discountPercent ?? 0}%</span>
                       </TableCell>
                       <TableCell className="py-3 px-4 text-xs text-right text-slate-600">
-                        ${(q.subtotal ?? 0).toLocaleString('en-US')}
+                        {(q.subtotal ?? 0).toLocaleString('vi-VN')} ₫
                       </TableCell>
                       <TableCell className="py-3 px-4 text-xs text-right text-red-500 font-semibold">
-                        -${(q.discountAmount ?? 0).toLocaleString('en-US')}
+                        -{(q.discountAmount ?? 0).toLocaleString('vi-VN')} ₫
                       </TableCell>
                       <TableCell className="py-3 px-4 text-xs text-right font-black text-slate-800">
-                        ${q.amount.toLocaleString('en-US')}
+                        {q.amount.toLocaleString('vi-VN')} ₫
                       </TableCell>
                       <TableCell className="py-3 px-4">
                         <Badge variant={statusBadge(q.status)} size="sm" className="font-bold text-[9px] uppercase">
@@ -380,7 +380,7 @@ export function ReportingScreen() {
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${activeTab === tab.key
-                ? "border-blue-600 text-blue-700"
+                ? "border-primary text-blue-700"
                 : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
               }`}
           >
