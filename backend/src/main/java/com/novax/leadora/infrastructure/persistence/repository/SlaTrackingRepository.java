@@ -18,7 +18,6 @@ public interface SlaTrackingRepository extends JpaRepository<SlaTrackingEntity, 
     List<SlaTrackingEntity> findByStatusAndDeadlineAtBefore(SlaStatus status, OffsetDateTime before);
     List<SlaTrackingEntity> findByStatusIn(List<SlaStatus> statuses);
     List<SlaTrackingEntity> findByStatusInAndEntityType(List<SlaStatus> statuses, String entityType);
-    List<SlaTrackingEntity> findByEntityType(String entityType);
 
     List<SlaTrackingEntity> findByStatusAndWarningAtBeforeAndWarningNotifiedFalse(SlaStatus status, OffsetDateTime before);
 

@@ -51,7 +51,4 @@ public class SlaTrackingEntity extends BaseEntity {
     @Column(name = "warning_notified", nullable = false)
     @Builder.Default
     private boolean warningNotified = false;
-
-    @Column(name = "resolved_at")
-    private OffsetDateTime resolvedAt;
 }

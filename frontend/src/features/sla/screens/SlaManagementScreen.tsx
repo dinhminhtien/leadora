@@ -109,39 +109,21 @@ function MonitorTab() {
     if (!resolveTarget) return;
     const { trackingId, entityId, isTask } = resolveTarget;
     setResolvingId(trackingId);
-
-    const getStatus = (err: unknown) =>
-      (err as { response?: { status?: number } })?.response?.status;
-
     try {
       if (isTask && entityId) {
         try {
           await resolveTaskMutation.mutateAsync(entityId);
-          // Task resolved successfully — SLA tracking auto-resolved by backend
-        } catch (taskErr: unknown) {
-          const taskStatus = getStatus(taskErr);
-          // 404 = task deleted; 409 = task already resolved — both are "done", fall through to SLA tracking
-          if (taskStatus !== 404 && taskStatus !== 409) throw taskErr;
-          try {
+        } catch (e: unknown) {
+          const status = (e as { response?: { status?: number } })?.response?.status;
+          if (status === 404) {
             await resolveMutation.mutateAsync(trackingId);
-          } catch (slaErr: unknown) {
-            // 409 from SLA tracking = already resolved — treat as success
-            if (getStatus(slaErr) !== 409) throw slaErr;
-          }
+          } else throw e;
         }
         showToast("Task marked as completed. SLA tracking and reminders resolved.");
       } else {
-        try {
-          await resolveMutation.mutateAsync(trackingId);
-        } catch (e: unknown) {
-          // 409 = SLA tracking already resolved — treat as success
-          if (getStatus(e) !== 409) throw e;
-        }
+        await resolveMutation.mutateAsync(trackingId);
         showToast("SLA breach marked as resolved.");
       }
-      // Always invalidate after a successful resolve, even when 409s were treated as success
-      // (onSuccess from mutations only fires when they don't throw)
-      await queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] });
       setResolveTarget(null);
       setResolveError(null);
     } catch (e: unknown) {
@@ -228,11 +210,11 @@ function MonitorTab() {
               record={r}
               onNavigate={(path) => router.push(path)}
               onResolve={
-                r.displayStatus === "BREACHED"
-                  ? r.entityType === "TASK"
-                    ? () => setResolveTarget({ trackingId: r.trackingId, entityId: r.entityId, isTask: true })
-                    : () => setResolveTarget({ trackingId: r.trackingId, isTask: false })
-                  : undefined
+                r.entityType === "TASK"
+                  ? () => setResolveTarget({ trackingId: r.trackingId, entityId: r.entityId, isTask: true })
+                  : r.displayStatus === "BREACHED"
+                    ? () => setResolveTarget({ trackingId: r.trackingId, isTask: false })
+                    : undefined
               }
               resolveLabel={r.entityType === "TASK" ? "Resolve Task" : "Resolve"}
               isResolving={resolvingId === r.trackingId}
