@@ -19,6 +19,19 @@ export function getUserRole(user?: { roles?: string[] } | null): AppRole {
   return "SALES";
 }
 
+/**
+ * Whether the user acts on every record or only their own.
+ *
+ * Mirrors `BaseAccessPolicy.FULL_ACCESS_ROLES` on the backend (MANAGER, ADMIN).
+ * Everyone else is scoped to what they own, so a control that reaches into
+ * someone else's record — assigning work, reassigning it, re-pointing it at a
+ * different customer — must be hidden from them rather than left to 403.
+ */
+export function hasFullAccess(user?: { roles?: string[] } | null): boolean {
+  const role = getUserRole(user);
+  return role === "MANAGER" || role === "ADMIN";
+}
+
 /** The home dashboard URL for each role. Front Office lands directly on its arrival-handover desk. */
 export const DASHBOARD_PATHS: Record<AppRole, string> = {
   SALES: "/dashboard/staff",

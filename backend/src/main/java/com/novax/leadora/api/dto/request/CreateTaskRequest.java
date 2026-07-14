@@ -13,6 +13,7 @@ import java.util.UUID;
 @Setter
 public class CreateTaskRequest {
 
+    /** Just the subject of the work. It no longer encodes the activity type. */
     @NotBlank(message = "Task title is required")
     @Size(max = 255)
     private String title;
@@ -24,6 +25,16 @@ public class CreateTaskRequest {
 
     @NotNull(message = "Priority is required")
     private String priority;
+
+    /**
+     * CALL / EMAIL / MEETING / SITE_VISIT / FOLLOW_UP / TASK.
+     *
+     * <p>Required: a new task must say what kind of work it is, rather than leaving
+     * it to be guessed from the title. An unrecognised value is coerced to TASK
+     * rather than rejected (see {@code ActivityType.fromWire}).
+     */
+    @NotBlank(message = "Activity type is required")
+    private String activityType;
 
     private String resultNote;
     private UUID leadId;

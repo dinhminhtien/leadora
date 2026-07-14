@@ -15,6 +15,7 @@ import '../../../../shared/widgets/status_chip.dart';
 import '../../../user/data/user_models.dart';
 import '../../../user/data/user_repository.dart';
 import '../../data/task_models.dart';
+import '../providers/task_permissions.dart';
 import '../providers/task_providers.dart';
 import 'task_calendar_view.dart';
 
@@ -278,27 +279,33 @@ class _TaskFilterSheetState extends ConsumerState<_TaskFilterSheet> {
                   ),
               ],
             ),
-            const SizedBox(height: 16),
-            Text('Assignee', style: theme.textTheme.labelLarge),
-            const SizedBox(height: 8),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.person_outline_rounded),
-              title: Text(
-                _draft.assignedUserName ?? 'Anyone',
-                style: theme.textTheme.bodyLarge,
+            // Staff are hard-scoped to their own tasks server-side
+            // (`listScopeOwnerId`), which means the assignee param is ignored for
+            // them — offering the filter would just be a control that does
+            // nothing.
+            if (ref.watch(taskPermissionsProvider).canFilterByAssignee) ...[
+              const SizedBox(height: 16),
+              Text('Assignee', style: theme.textTheme.labelLarge),
+              const SizedBox(height: 8),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.person_outline_rounded),
+                title: Text(
+                  _draft.assignedUserName ?? 'Anyone',
+                  style: theme.textTheme.bodyLarge,
+                ),
+                trailing: _draft.assignedUserId != null
+                    ? IconButton(
+                        tooltip: 'Clear assignee',
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        onPressed: () => setState(
+                          () => _draft = _draft.withAssignee(null, null),
+                        ),
+                      )
+                    : const Icon(Icons.chevron_right_rounded),
+                onTap: _pickAssignee,
               ),
-              trailing: _draft.assignedUserId != null
-                  ? IconButton(
-                      tooltip: 'Clear assignee',
-                      icon: const Icon(Icons.close_rounded, size: 20),
-                      onPressed: () => setState(
-                        () => _draft = _draft.withAssignee(null, null),
-                      ),
-                    )
-                  : const Icon(Icons.chevron_right_rounded),
-              onTap: _pickAssignee,
-            ),
+            ],
             const SizedBox(height: 12),
             Row(
               children: [
@@ -437,10 +444,12 @@ class TaskCard extends StatelessWidget {
     final done = task.status == TaskStatus.completed;
     final cancelled = task.status == TaskStatus.cancelled;
     final type = task.activityType;
-    // Strip the "Call: " prefix — the activity chip already shows the type.
-    final displayTitle = task.title.startsWith(type.titlePrefix)
-        ? task.title.substring(type.titlePrefix.length)
-        : task.title;
+    // The title is shown exactly as stored. We no longer strip a "Call: " prefix,
+    // because that was the same title-parsing the activity type used to rely on —
+    // and a task legitimately titled "Call: …" would have lost its first word.
+    // Tasks created before the activity-type migration still carry the old prefix
+    // in their title; that is their real title, and it fades out as they're edited.
+    final displayTitle = task.title;
 
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadii.lg),

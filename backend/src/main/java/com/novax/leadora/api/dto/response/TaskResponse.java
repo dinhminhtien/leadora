@@ -2,6 +2,7 @@ package com.novax.leadora.api.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskPriority;
@@ -21,6 +22,13 @@ public class TaskResponse {
     private UUID taskId;
     private String title;
     private String description;
+
+    /**
+     * Never null, even for a row written before the activity-type backfill — the
+     * clients must never have to guess, and must never see a missing field.
+     */
+    private ActivityType activityType;
+
     private TaskPriority priority;
     private TaskStatus status;
     private String resultNote;
@@ -109,6 +117,9 @@ public class TaskResponse {
                 .taskId(entity.getTaskId())
                 .title(entity.getTitle())
                 .description(entity.getDescription())
+                // Legacy rows (written before the backfill) can still hold NULL; the
+                // API answers TASK for them rather than omitting the field.
+                .activityType(ActivityType.orDefault(entity.getActivityType()))
                 .priority(entity.getPriority())
                 .status(entity.getStatus())
                 .resultNote(entity.getResultNote())

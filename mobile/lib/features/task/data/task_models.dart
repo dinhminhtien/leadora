@@ -3,33 +3,34 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/status_chip.dart';
 
-/// Pipedrive-style activity categories, detected from the title prefix
-/// ("Call: …"). Mirrors the web `ACTIVITY_TYPES` / `detectActivityType` — the
-/// backend has no dedicated column; the convention lives in the title.
+/// What kind of work a task is — mirrors backend `ActivityType`.
+///
+/// This used to be *guessed by parsing the title* ("Call: …"), which made the
+/// title load-bearing. It is a real column now (`tasks.activity_type`) and the
+/// title is just a title. Nothing here reads the title.
 enum TaskActivityType {
-  call('Call', Icons.call_rounded, AppColors.success),
-  email('Email', Icons.mail_rounded, AppColors.brandSeed),
-  meeting('Meeting', Icons.groups_rounded, AppColors.accentPurple),
-  siteVisit('Site Visit', Icons.place_rounded, AppColors.accentOrange),
-  followUp('Follow-up', Icons.autorenew_rounded, AppColors.accentTeal),
-  task('Task', Icons.check_box_outlined, AppColors.neutral);
+  call('CALL', 'Call', Icons.call_rounded, AppColors.success),
+  email('EMAIL', 'Email', Icons.mail_rounded, AppColors.brandSeed),
+  meeting('MEETING', 'Meeting', Icons.groups_rounded, AppColors.accentPurple),
+  siteVisit('SITE_VISIT', 'Site Visit', Icons.place_rounded, AppColors.accentOrange),
+  followUp('FOLLOW_UP', 'Follow-up', Icons.autorenew_rounded, AppColors.accentTeal),
+  task('TASK', 'Task', Icons.check_box_outlined, AppColors.neutral);
 
-  const TaskActivityType(this.label, this.icon, this.color);
+  const TaskActivityType(this.wire, this.label, this.icon, this.color);
 
+  final String wire;
   final String label;
   final IconData icon;
   final Color color;
 
-  /// The auto-title prefix inserted when this type is picked ("Call: ").
-  String get titlePrefix => '$label: ';
+  /// The value shown for a task that has none — a row written before the
+  /// activity-type backfill, or a build of the backend that predates the field.
+  static const TaskActivityType fallback = TaskActivityType.task;
 
-  static TaskActivityType detect(String title) {
-    final lower = title.toLowerCase();
-    return TaskActivityType.values.firstWhere(
-      (t) => lower.startsWith('${t.label.toLowerCase()}:'),
-      orElse: () => TaskActivityType.task,
-    );
-  }
+  /// Never throws: an unknown or missing value reads as [fallback], so a legacy
+  /// task still renders with an icon and a colour instead of blowing up.
+  static TaskActivityType fromWire(String? raw) => TaskActivityType.values
+      .firstWhere((t) => t.wire == raw, orElse: () => fallback);
 }
 
 /// Backend `CreateTaskRequest` caps the title at 255 chars.
@@ -84,6 +85,7 @@ class Task {
     required this.title,
     required this.status,
     required this.priority,
+    this.activityType = TaskActivityType.fallback,
     this.description,
     this.resultNote,
     this.assignedUserId,
@@ -122,6 +124,7 @@ class Task {
   final String title;
   final TaskStatus status;
   final TaskPriority priority;
+  final TaskActivityType activityType;
   final String? description;
   final String? resultNote;
   final String? assignedUserId;
@@ -175,9 +178,6 @@ class Task {
   /// Primary date for calendar grouping — start wins, then due (web parity).
   DateTime? get anchorDate => startAt ?? endAt;
 
-  /// Activity category detected from the title prefix (web parity).
-  TaskActivityType get activityType => TaskActivityType.detect(title);
-
   /// Copy with a different lifecycle status — used by the list's optimistic
   /// quick-complete toggle (overdue clears, matching the backend's rule that
   /// only OPEN tasks can be overdue).
@@ -186,6 +186,7 @@ class Task {
     title: title,
     status: newStatus,
     priority: priority,
+    activityType: activityType,
     description: description,
     resultNote: resultNote,
     assignedUserId: assignedUserId,
@@ -228,6 +229,9 @@ class Task {
       title: json['title'] as String? ?? 'Untitled task',
       status: TaskStatus.fromWire(json['status'] as String?),
       priority: TaskPriority.fromWire(json['priority'] as String?),
+      // Absent on a task the backfill hasn't reached (and on any backend build
+      // that predates the column) — reads as Task, never null.
+      activityType: TaskActivityType.fromWire(json['activityType'] as String?),
       description: json['description'] as String?,
       resultNote: json['resultNote'] as String?,
       assignedUserId: json['assignedUserId'] as String?,
@@ -271,6 +275,7 @@ class CreateTaskPayload {
     required this.title,
     required this.assignedUserId,
     required this.priority,
+    required this.activityType,
     this.description,
     this.resultNote,
     this.leadId,
@@ -285,6 +290,7 @@ class CreateTaskPayload {
   final String title;
   final String assignedUserId;
   final TaskPriority priority;
+  final TaskActivityType activityType;
   final String? description;
   final String? resultNote;
   final String? leadId;
@@ -299,6 +305,8 @@ class CreateTaskPayload {
     'title': title.trim(),
     'assignedUserId': assignedUserId,
     'priority': priority.wire,
+    // Required by the backend: a new task must say what kind of work it is.
+    'activityType': activityType.wire,
     ..._optionalTaskFields(
       description: description,
       resultNote: resultNote,
@@ -323,6 +331,7 @@ class UpdateTaskPayload {
     this.assignedUserId,
     this.priority,
     this.status,
+    this.activityType,
     this.resultNote,
     this.leadId,
     this.customerId,
@@ -338,6 +347,7 @@ class UpdateTaskPayload {
   final String? assignedUserId;
   final TaskPriority? priority;
   final TaskStatus? status;
+  final TaskActivityType? activityType;
   final String? resultNote;
   final String? leadId;
   final String? customerId;
@@ -352,6 +362,7 @@ class UpdateTaskPayload {
     if (assignedUserId != null) 'assignedUserId': assignedUserId,
     if (priority != null) 'priority': priority!.wire,
     if (status != null) 'status': status!.wire,
+    if (activityType != null) 'activityType': activityType!.wire,
     ..._optionalTaskFields(
       description: description,
       resultNote: resultNote,

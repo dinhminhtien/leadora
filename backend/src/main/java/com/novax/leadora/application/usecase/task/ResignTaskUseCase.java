@@ -5,6 +5,7 @@ import com.novax.leadora.api.dto.response.TaskResponse;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskPriority;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
@@ -42,6 +43,7 @@ public class ResignTaskUseCase {
     private final TaskRepository taskRepository;
     private final UserRepository userRepository;
     private final TaskAccessPolicy accessPolicy;
+    private final TaskNotifier taskNotifier;
 
     @Transactional
     public TaskResponse execute(UUID originalTaskId, ResignTaskRequest request) {
@@ -55,7 +57,8 @@ public class ResignTaskUseCase {
         UserEntity currentUser = accessPolicy.currentUser();
         accessPolicy.assertCanView(currentUser, originalTask);
 
-        UserEntity assignedUser = originalTask.getAssignedUser();
+        UserEntity previousAssignee = originalTask.getAssignedUser();
+        UserEntity assignedUser = previousAssignee;
         if (request.getAssignedUserId() != null) {
             UUID currentAssigneeId = assignedUser != null ? assignedUser.getUserId() : null;
             if (!request.getAssignedUserId().equals(currentAssigneeId)) {
@@ -83,10 +86,14 @@ public class ResignTaskUseCase {
         TaskEntity resignedTask = TaskEntity.builder()
                 .title(request.getTitle() != null ? request.getTitle() : originalTask.getTitle())
                 .description(request.getDescription() != null ? request.getDescription() : originalTask.getDescription())
+                // Same kind of work, new owner. orDefault() keeps a pre-backfill parent
+                // from producing a child with no type at all.
+                .activityType(ActivityType.orDefault(originalTask.getActivityType()))
                 .priority(priority)
                 .status(TaskStatus.OPEN)
                 .resultNote(resultNote)
                 .assignedUser(assignedUser)
+                .createdBy(currentUser)
                 .lead(originalTask.getLead())
                 .customer(originalTask.getCustomer())
                 .deal(originalTask.getDeal())
@@ -99,7 +106,13 @@ public class ResignTaskUseCase {
         // [6] Save the new task
         TaskEntity saved = taskRepository.save(resignedTask);
 
-        log.info("Task resigned: original taskId={}, new taskId={}, assignedTo={}", 
+        // [7] Tell both sides of the hand-over. The incoming assignee is pointed at
+        // the new task; the outgoing one at the original, which is the record they
+        // still have in their list.
+        taskNotifier.assigned(saved, assignedUser, currentUser);
+        taskNotifier.reassignedAway(originalTask, previousAssignee, assignedUser, currentUser);
+
+        log.info("Task resigned: original taskId={}, new taskId={}, assignedTo={}",
                 originalTaskId, saved.getTaskId(), assignedUser.getFullName());
 
         return TaskResponse.from(saved);
