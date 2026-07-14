@@ -434,7 +434,7 @@ function useToast() {
   }, []);
 
   const ToastContainer = React.useCallback(() => (
-    <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed top-4 right-4 z-100 flex flex-col gap-2 pointer-events-none">
       {toasts.map((t) => (
         <div key={t.id} className={`flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg border text-xs font-semibold pointer-events-auto transition-all
           ${t.type === "success"
@@ -460,7 +460,7 @@ function InfoDialog({ title, message, onClose }: { title: string; message: strin
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm mx-4 p-6 space-y-4">
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 flex items-center justify-center size-10 rounded-full bg-amber-50">
+          <div className="shrink-0 flex items-center justify-center size-10 rounded-full bg-amber-50">
             <AlertTriangle className="size-5 text-amber-500" />
           </div>
           <div className="space-y-1">
@@ -502,7 +502,7 @@ function ConfirmDialog({
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm mx-4 p-6 space-y-4">
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 flex items-center justify-center size-10 rounded-full bg-red-50">
+          <div className="shrink-0 flex items-center justify-center size-10 rounded-full bg-red-50">
             <Trash2 className="size-5 text-red-500" />
           </div>
           <div className="space-y-1">
@@ -550,7 +550,7 @@ function ResolveDialog({
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm mx-4 p-6 space-y-4">
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 flex items-center justify-center size-10 rounded-full bg-emerald-50">
+          <div className="shrink-0 flex items-center justify-center size-10 rounded-full bg-emerald-50">
             <CheckCircle className="size-5 text-emerald-500" />
           </div>
           <div className="space-y-1">

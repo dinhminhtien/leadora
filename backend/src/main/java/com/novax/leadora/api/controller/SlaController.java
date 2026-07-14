@@ -4,7 +4,6 @@ import com.novax.leadora.api.dto.request.SlaRuleRequest;
 import com.novax.leadora.api.dto.response.SlaMonitoringResponse;
 import com.novax.leadora.api.dto.response.SlaReportResponse;
 import com.novax.leadora.api.dto.response.SlaRuleResponse;
-import com.novax.leadora.application.usecase.sla.BackfillSlaTrackingUseCase;
 import com.novax.leadora.application.usecase.sla.CreateSlaRuleUseCase;
 import com.novax.leadora.application.usecase.sla.DeleteSlaRuleUseCase;
 import com.novax.leadora.application.usecase.sla.GetSlaMonitoringUseCase;
@@ -40,7 +39,6 @@ public class SlaController {
     private final GetSlaMonitoringUseCase getSlaMonitoringUseCase;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     private final GetSlaReportUseCase getSlaReportUseCase;
-    private final BackfillSlaTrackingUseCase backfillSlaTrackingUseCase;
 
     /** UC-17.3 — Monitor SLA status across all entities */
     @GetMapping("/monitoring")
@@ -88,7 +86,10 @@ public class SlaController {
         return ResponseEntity.ok(ApiResponse.success(null, "SLA rule deleted"));
     }
 
-    /** UC-17.4 — Resolve a breached SLA tracking record (E4: authenticated users only) */
+    /**
+     * UC-17.4 — Resolve a breached SLA tracking record (E4: authenticated users
+     * only)
+     */
     @PatchMapping("/tracking/{trackingId}/resolve")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Void>> resolve(@PathVariable UUID trackingId) {
@@ -96,7 +97,10 @@ public class SlaController {
         return ResponseEntity.ok(ApiResponse.success(null, "SLA breach resolved"));
     }
 
-    /** UC-17.6 — View SLA performance report (Admin, Manager, Reservation Staff, Front Office) */
+    /**
+     * UC-17.6 — View SLA performance report (Admin, Manager, Reservation Staff,
+     * Front Office)
+     */
     @GetMapping("/report")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'RESERVATION_STAFF', 'FRONT_OFFICE')")
     public ResponseEntity<ApiResponse<SlaReportResponse>> getReport(

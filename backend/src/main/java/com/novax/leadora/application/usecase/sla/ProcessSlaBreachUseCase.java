@@ -1,7 +1,6 @@
 package com.novax.leadora.application.usecase.sla;
 
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
-import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.SlaTrackingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.SlaStatus;
@@ -110,7 +109,7 @@ public class ProcessSlaBreachUseCase {
                 case "TASK" -> taskRepository.findById(tracking.getEntityId())
                         .map(t -> t.getAssignedUser()).orElse(null);
                 case "QUOTATION" -> quotationRepository.findById(tracking.getEntityId())
-                                        .map(QuotationEntity::getCreatedBy).orElse(null);
+                                        .map(q -> q.getCreatedBy()).orElse(null);
                 case "PAYMENT"   -> paymentRepository.findById(tracking.getEntityId())
                                         .map(p -> p.getBooking() != null ? p.getBooking().getAssignedUser() : null)
                                         .orElse(null);
