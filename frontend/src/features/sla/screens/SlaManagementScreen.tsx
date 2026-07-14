@@ -26,7 +26,6 @@ import type { SlaRule, SlaRulePayload, SlaActivityType, SlaTracking, SlaDisplayS
 import { quotationService, type QuotationStatus } from "@/services/quotation_service";
 import { leadService } from "@/services/lead_service";
 import { taskService } from "@/services/follow_up_task_service";
-import { bookingConfirmationService } from "@/services/booking_confirmation_service";
 import { operationalHandoverService } from "@/services/operational_handover_service";
 import { depositPaymentService } from "@/services/deposit_payment_service";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
@@ -65,10 +64,6 @@ const ENTITY_CHECKS: Record<string, EntityCheck> = {
     getById: (id) => taskService.getById(id),
     notFoundMessage: "This task no longer exists.",
   },
-  BOOKING: {
-    getById: (id) => bookingConfirmationService.getById(id),
-    notFoundMessage: "This booking no longer exists.",
-  },
   HANDOVER: {
     getById: (id) => operationalHandoverService.getById(id),
     notFoundMessage: "This handover record no longer exists.",
@@ -88,7 +83,6 @@ const ACTIVITY_LABELS: Record<string, string> = {
   LEAD_RESPONSE:              "Lead Response",
   QUOTATION_SENT:             "Quotation Dispatch",
   FOLLOW_UP_TASK:             "Follow-up Task",
-  BOOKING_CONFIRM:            "Booking Confirmation",
   PAYMENT_DEPOSIT:            "Payment Deposit",
   HANDOVER_SUBMISSION:        "Handover Submission",
   QUOTATION_APPROVAL:         "Quotation Approval",
@@ -98,7 +92,6 @@ const ACTIVITY_LABELS: Record<string, string> = {
 const ENTITY_TYPE_LABELS: Record<string, string> = {
   LEAD:      "Lead",
   QUOTATION: "Quotation",
-  BOOKING:   "Booking",
   TASK:      "Task",
   PAYMENT:   "Payment",
   HANDOVER:  "Handover",
@@ -126,7 +119,6 @@ function getEntityRoute(entityType: string, entityId: string): string | null {
     // /quotations/[id]/revise) — route to the list (with highlight), not
     // ROUTE_PATHS.quotationDetail, which 404s since that page was never built.
     case "QUOTATION": return `${ROUTE_PATHS.quotations}?${highlight}`;
-    case "BOOKING":   return `${ROUTE_PATHS.bookingConfirmation}?${highlight}`;
     case "TASK":      return `${ROUTE_PATHS.followUpTasks}?${highlight}`;
     case "PAYMENT":   return ROUTE_PATHS.depositPayment;
     case "HANDOVER":  return `${ROUTE_PATHS.operationalHandover}?${highlight}`;
@@ -587,7 +579,7 @@ function ResolveDialog({
 // ─── Configure tab ────────────────────────────────────────────────────────────
 
 const ACTIVITY_OPTIONS: SlaActivityType[] = [
-  "LEAD_RESPONSE", "QUOTATION_SENT", "FOLLOW_UP_TASK", "BOOKING_CONFIRM",
+  "LEAD_RESPONSE", "QUOTATION_SENT", "FOLLOW_UP_TASK",
   "PAYMENT_DEPOSIT", "HANDOVER_SUBMISSION", "QUOTATION_APPROVAL", "CUSTOMER_FEEDBACK_RESPONSE",
 ];
 

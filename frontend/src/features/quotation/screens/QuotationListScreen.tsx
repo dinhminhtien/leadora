@@ -2,7 +2,8 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
-import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Clock, XCircle, RotateCcw, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ListFilter, Bell } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ListFilter, Bell } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -14,6 +15,7 @@ import { ConvertToBookingModal } from "@/features/quotation/components/ConvertTo
 import { ExpireCloseModal } from "@/features/quotation/components/ExpireCloseModal";
 import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
 import { CreateReminderModal } from "@/features/reminder/components/CreateReminderModal";
+import { QuotationActionMenu, type QuotationMenuAction } from "@/features/quotation/components/QuotationActionMenu";
 import type { Quotation } from "@/services/quotation_service";
 export type { Quotation } from "@/services/quotation_service";
 import { useQuotations, useExpireOverdue, useSubmitQuotation } from "@/features/quotation/hooks/use_quotations";
@@ -40,6 +42,7 @@ type ClosureLog = {
 export function QuotationListScreen() {
   const { data: serverQuotes = [], isLoading } = useQuotations();
   const { user } = useAuthStore();
+  const router = useRouter();
   const { highlightedId, setRowRef } = useHighlightRow();
   const expireOverdue = useExpireOverdue();
   const submitQuotation = useSubmitQuotation();
@@ -63,6 +66,7 @@ export function QuotationListScreen() {
   const [reminderTarget, setReminderTarget] = useState<Quotation | null>(null);
   const [activeTab, setActiveTab] = useState<"active" | "done">("active");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
 
   const handleTabChange = (tab: "active" | "done") => {
     setActiveTab(tab);
@@ -193,6 +197,43 @@ export function QuotationListScreen() {
     if (status === "converted") return "Converted";
     if (status === "closed") return "Closed";
     return status;
+  };
+
+  // One clear primary action per row (the single next step) plus an overflow
+  // menu for everything else (Revise / Close / Remind) — the Status column
+  // already shows the badge, so the actions cell no longer repeats it as text.
+  const getPrimaryAction = (q: Quotation): QuotationMenuAction | null => {
+    switch (q.status) {
+      case "approved":
+        return { key: "send", label: "Send to Customer", Icon: Send, onClick: () => setSendTarget(q), tone: "primary" };
+      case "sent":
+        return { key: "respond", label: "Record Response", Icon: MessageSquare, onClick: () => setResponseTarget(q), tone: "primary" };
+      case "accepted":
+        return { key: "convert", label: "Convert to Booking", Icon: Building2, onClick: () => setConvertTarget(q), tone: "primary" };
+      case "rejected":
+      case "pending_revision":
+        return { key: "revise", label: "Revise", Icon: GitBranch, onClick: () => router.push(ROUTE_PATHS.quotationRevise(q.id)), tone: "primary" };
+      case "draft":
+        return { key: "submit", label: "Submit", Icon: CheckCircle2, onClick: () => handleSubmitDraft(q), tone: "primary" };
+      case "interested":
+        return { key: "update-response", label: "Update Response", Icon: Sparkles, onClick: () => setResponseTarget(q), tone: "primary" };
+      default:
+        return null;
+    }
+  };
+
+  const getMenuActions = (q: Quotation): QuotationMenuAction[] => {
+    const actions: QuotationMenuAction[] = [];
+    // Revise is already the primary action for rejected/pending_revision — only
+    // list it here for statuses where it's a secondary option.
+    if (["sent", "draft", "interested"].includes(q.status)) {
+      actions.push({ key: "revise", label: "Revise", Icon: GitBranch, onClick: () => router.push(ROUTE_PATHS.quotationRevise(q.id)) });
+    }
+    if (!["converted", "expired", "closed"].includes(q.status)) {
+      actions.push({ key: "close", label: "Close", Icon: Archive, onClick: () => setCloseTarget(q), tone: "danger" });
+    }
+    actions.push({ key: "remind", label: "Add Reminder", Icon: Bell, onClick: () => setReminderTarget(q) });
+    return actions;
   };
 
   return (
@@ -371,210 +412,29 @@ export function QuotationListScreen() {
                   <TableCell className="py-3 px-4">
                     <SlaStatusBadge entityId={q.id} entityType="QUOTATION" />
                   </TableCell>
-                  <TableCell className="py-3 px-4 text-center">
-                    <div className="flex flex-col items-center gap-1.5">
-                    {q.status === "approved" ? (
-                      // UC-14.4: Send to Customer button
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => setSendTarget(q)}
-                        leftIcon={<Send className="size-3" />}
-                        className="px-2.5 py-1 text-[10px] font-bold"
-                      >
-                        Send to Customer
-                      </Button>
-                    ) : q.status === "sent" ? (
-                      <div className="flex justify-center items-center gap-1.5 flex-wrap">
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => setResponseTarget(q)}
-                          leftIcon={<MessageSquare className="size-3" />}
-                          className="px-2.5 py-1 text-[10px] font-bold"
-                        >
-                          Record Response
-                        </Button>
-                        <Link href={ROUTE_PATHS.quotationRevise(q.id)}>
+                  <TableCell className="py-3 px-4">
+                    <div className="flex justify-center items-center gap-1.5">
+                      {(() => {
+                        const primary = getPrimaryAction(q);
+                        return primary ? (
                           <Button
-                            variant="outline"
+                            variant={primary.tone === "danger" ? "danger" : "primary"}
                             size="sm"
-                            leftIcon={<GitBranch className="size-3" />}
-                            className="px-2.5 py-1 text-[10px] border-slate-200 text-slate-600 hover:bg-slate-50"
+                            isLoading={primary.key === "submit" && submittingId === q.id}
+                            onClick={primary.onClick}
+                            leftIcon={<primary.Icon className="size-3" />}
+                            className="px-2.5 py-1 text-[10px] font-bold whitespace-nowrap"
                           >
-                            Revise
+                            {primary.label}
                           </Button>
-                        </Link>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCloseTarget(q)}
-                          title="Close quotation"
-                          className="px-1.5 py-1 text-[10px] border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
-                        >
-                          <Archive className="size-3" />
-                        </Button>
-                      </div>
-                    ) : q.status === "accepted" ? (
-                      // UC-14.7: Convert to Booking
-                      <Button
-                        variant="success"
-                        size="sm"
-                        onClick={() => setConvertTarget(q)}
-                        leftIcon={<Building2 className="size-3" />}
-                        className="px-2.5 py-1 text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
-                      >
-                        Convert to Booking
-                      </Button>
-                    ) : q.status === "converted" ? (
-                      <span className="text-[10px] text-emerald-600 font-bold flex items-center justify-center gap-1">
-                        <CheckCircle2 className="size-3.5" /> Converted
-                      </span>
-                    ) : q.status === "rejected" ? (
-                      <div className="flex flex-col items-center gap-1.5">
-                        <span className="text-[10px] text-red-500 font-bold flex items-center justify-center gap-1">
-                          <XCircle className="size-3.5" /> Rejected
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <Link href={ROUTE_PATHS.quotationRevise(q.id)}>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              leftIcon={<GitBranch className="size-3" />}
-                              className="px-2 py-0.5 text-[9px] border-slate-200 text-slate-500 hover:bg-slate-50"
-                            >
-                              Revise
-                            </Button>
-                          </Link>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setCloseTarget(q)}
-                            title="Close quotation"
-                            className="px-1.5 py-0.5 text-[9px] border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
-                          >
-                            <Archive className="size-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    ) : q.status === "pending_approval" ? (
-                      <div className="flex justify-center items-center gap-1.5">
-                        <span className="text-[10px] text-amber-600 font-bold flex items-center gap-1">
-                          <Clock className="size-3.5" /> Awaiting Manager
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCloseTarget(q)}
-                          title="Close quotation"
-                          className="px-1.5 py-1 text-[10px] border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
-                        >
-                          <Archive className="size-3" />
-                        </Button>
-                      </div>
-                    ) : q.status === "pending_revision" ? (
-                      <div className="flex justify-center items-center gap-1.5">
-                        <Link href={ROUTE_PATHS.quotationRevise(q.id)}>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            leftIcon={<RotateCcw className="size-3" />}
-                            className="px-2.5 py-1 text-[10px] border-blue-200 text-blue-600 hover:bg-blue-50"
-                          >
-                            Revise
-                          </Button>
-                        </Link>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCloseTarget(q)}
-                          title="Close quotation"
-                          className="px-1.5 py-1 text-[10px] border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
-                        >
-                          <Archive className="size-3" />
-                        </Button>
-                      </div>
-                    ) : q.status === "draft" ? (
-                      <div className="flex justify-center items-center gap-1.5 flex-wrap">
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => handleSubmitDraft(q)}
-                          isLoading={submittingId === q.id}
-                          leftIcon={<CheckCircle2 className="size-3" />}
-                          className="px-2.5 py-1 text-[10px] font-bold"
-                        >
-                          Submit
-                        </Button>
-                        <Link href={ROUTE_PATHS.quotationRevise(q.id)}>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            leftIcon={<GitBranch className="size-3" />}
-                            className="px-2.5 py-1 text-[10px] border-slate-200 text-slate-600 hover:bg-slate-50"
-                          >
-                            Revise
-                          </Button>
-                        </Link>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCloseTarget(q)}
-                          title="Close quotation"
-                          className="px-1.5 py-1 text-[10px] border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
-                        >
-                          <Archive className="size-3" />
-                        </Button>
-                      </div>
-                    ) : q.status === "interested" ? (
-                      <div className="flex justify-center items-center gap-1.5 flex-wrap">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setResponseTarget(q)}
-                          leftIcon={<Sparkles className="size-3" />}
-                          className="px-2.5 py-1 text-[10px] border-blue-200 text-blue-600 hover:bg-blue-50 font-bold"
-                        >
-                          Update Response
-                        </Button>
-                        <Link href={ROUTE_PATHS.quotationRevise(q.id)}>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            leftIcon={<GitBranch className="size-3" />}
-                            className="px-2.5 py-1 text-[10px] border-slate-200 text-slate-600 hover:bg-slate-50"
-                          >
-                            Revise
-                          </Button>
-                        </Link>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCloseTarget(q)}
-                          title="Close quotation"
-                          className="px-1.5 py-1 text-[10px] border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-500 hover:bg-red-50"
-                        >
-                          <Archive className="size-3" />
-                        </Button>
-                      </div>
-                    ) : q.status === "expired" ? (
-                      <span className="text-[10px] text-red-400 font-semibold flex items-center justify-center gap-1">
-                        <TimerOff className="size-3.5" /> Expired
-                      </span>
-                    ) : q.status === "closed" ? (
-                      <span className="text-[10px] text-slate-400 font-semibold flex items-center justify-center gap-1">
-                        <Archive className="size-3.5" /> Closed
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-slate-400 italic">—</span>
-                    )}
-                    <button
-                      onClick={() => setReminderTarget(q)}
-                      className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition"
-                      title="Add Reminder"
-                    >
-                      <Bell className="size-2.5" /> Remind
-                    </button>
+                        ) : null;
+                      })()}
+                      <QuotationActionMenu
+                        actions={getMenuActions(q)}
+                        isOpen={openActionMenuId === q.id}
+                        onToggle={() => setOpenActionMenuId((cur) => (cur === q.id ? null : q.id))}
+                        onClose={() => setOpenActionMenuId(null)}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>

@@ -113,5 +113,9 @@ export function canAccessPath(
   // SALES / MANAGER — permission driven.
   const required = requiredPermissionFor(pathname);
   if (required === "HANDOVER_VIEW") return true; // Allowed by default for handover pages
+  // Quotation approval is Manager-only on the backend (@PreAuthorize hasRole('MANAGER'))
+  // — enforce that here too, so a stray QUOTATION_APPROVE grant to a non-manager role
+  // can't surface a nav link / route whose API calls would just 403 anyway.
+  if (required === "QUOTATION_APPROVE" && role !== "MANAGER") return false;
   return required != null && permissions.includes(required);
 }
