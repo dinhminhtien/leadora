@@ -4,10 +4,12 @@ import com.novax.leadora.api.dto.request.CreateQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
@@ -30,6 +32,7 @@ public class CreateQuotationUseCase {
     private final QuotationDetailRepository quotationDetailRepository;
     private final DealRepository dealRepository;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
+    private final CurrentUserProvider currentUserProvider;
 
     @Transactional
     public QuotationResponse execute(CreateQuotationRequest request) {
@@ -65,10 +68,19 @@ public class CreateQuotationUseCase {
         // 4. Always save as DRAFT — status is resolved on explicit Submit (UC-14.1)
         QuotationStatus status = QuotationStatus.DRAFT;
 
+        // The creator owns the quotation (drives SALES owner-scoping). Non-fatal if unresolved.
+        UserEntity creator = null;
+        try {
+            creator = currentUserProvider.resolve(null);
+        } catch (Exception e) {
+            log.warn("Could not resolve creator for new quotation: {}", e.getMessage());
+        }
+
         // 5. Save quotation
         QuotationEntity quotation = QuotationEntity.builder()
                 .deal(deal)
                 .customer(customer)
+                .createdBy(creator)
                 .version(1)
                 .status(status)
                 .roomType(request.getRoomType())
