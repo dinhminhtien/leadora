@@ -684,7 +684,8 @@ function RuleForm({
 
 function ConfigureTab() {
   const { user } = useAuthStore();
-  const hasAccess = user?.roles?.some((r) => CONFIGURE_ROLES.includes(r)) ?? false;
+  // BR-02: everyone may view SLA rules; only Admin/Sales Manager may create, edit, or delete them.
+  const canEdit = user?.roles?.some((r) => CONFIGURE_ROLES.includes(r)) ?? false;
 
   const { data: rules = [], isLoading } = useSlaRules();
   const createRule = useCreateSlaRule();
@@ -699,19 +700,6 @@ function ConfigureTab() {
   const [editError, setEditError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  // E4: Unauthorized Access (BR-02)
-  if (!hasAccess) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <ShieldOff className="size-10 text-red-400" />
-        <h2 className="text-sm font-bold text-slate-700">Access Denied</h2>
-        <p className="text-xs text-slate-400 text-center max-w-xs">
-          Only Admin or Sales Manager can configure SLA rules.
-        </p>
-      </div>
-    );
-  }
 
   const handleCreate = async () => {
     const err = validate(newForm);
@@ -776,7 +764,7 @@ function ConfigureTab() {
         <p className="text-xs text-slate-400">
           {rules.length} rules configured — <span className="font-semibold text-slate-600">{activeCount} active</span>
         </p>
-        {!isCreating && (
+        {canEdit && !isCreating && (
           <Button onClick={() => { setIsCreating(true); setNewForm(EMPTY_FORM); setNewError(null); setEditingId(null); }}
             variant="primary" size="sm" className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-xs font-semibold text-white">
             <Plus className="size-3.5" /> New Rule
@@ -784,7 +772,7 @@ function ConfigureTab() {
         )}
       </div>
 
-      {isCreating && (
+      {canEdit && isCreating && (
         <RuleForm value={newForm} onChange={setNewForm} onSave={handleCreate}
           onCancel={() => { setIsCreating(false); setNewError(null); }}
           isSaving={createRule.isPending} error={newError} />
@@ -801,7 +789,7 @@ function ConfigureTab() {
         <div className="space-y-3">
           {rules.map((rule) => (
             <Card key={rule.id} className={`border-slate-100 shadow-xs bg-white ${!rule.active ? "opacity-60" : ""}`}>
-              {editingId === rule.id ? (
+              {canEdit && editingId === rule.id ? (
                 <CardContent className="p-4">
                   <RuleForm value={editForm} onChange={setEditForm} onSave={() => handleUpdate(rule.id)}
                     onCancel={() => setEditingId(null)} isSaving={updateRule.isPending} error={editError} />
@@ -824,14 +812,16 @@ function ConfigureTab() {
                       <span className="flex items-center gap-1"><ShieldAlert className="size-3 text-red-400" />Escalation: <span className="text-slate-700 ml-0.5">{rule.escalationThreshold}h after</span></span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button onClick={() => startEdit(rule)} variant="outline" size="sm" className="gap-1.5 text-xs border-slate-200 text-slate-600 font-semibold">
-                      <Pencil className="size-3" /> Edit
-                    </Button>
-                    <Button onClick={() => setDeleteTarget({ id: rule.id, name: rule.name })} variant="outline" size="sm" className="gap-1.5 text-xs border-red-200 text-red-500 hover:bg-red-50 font-semibold">
-                      <Trash2 className="size-3" /> Delete
-                    </Button>
-                  </div>
+                  {canEdit && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button onClick={() => startEdit(rule)} variant="outline" size="sm" className="gap-1.5 text-xs border-slate-200 text-slate-600 font-semibold">
+                        <Pencil className="size-3" /> Edit
+                      </Button>
+                      <Button onClick={() => setDeleteTarget({ id: rule.id, name: rule.name })} variant="outline" size="sm" className="gap-1.5 text-xs border-red-200 text-red-500 hover:bg-red-50 font-semibold">
+                        <Trash2 className="size-3" /> Delete
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               )}
             </Card>
@@ -1086,8 +1076,7 @@ type Tab = "monitor" | "configure" | "report";
 
 export function SlaManagementScreen() {
   const { user } = useAuthStore();
-  const canConfigure = user?.roles?.some((r) => CONFIGURE_ROLES.includes(r)) ?? false;
-  const canReport    = user?.roles?.some((r) => REPORT_ROLES.includes(r))    ?? false;
+  const canReport = user?.roles?.some((r) => REPORT_ROLES.includes(r)) ?? false;
   const [activeTab, setActiveTab] = useState<Tab>("monitor");
 
   return (
@@ -1105,7 +1094,7 @@ export function SlaManagementScreen() {
         {([
           { key: "monitor"   as Tab, label: "Monitor Status",  icon: Activity,   show: true },
           { key: "report"    as Tab, label: "Performance",     icon: BarChart2,  show: canReport },
-          { key: "configure" as Tab, label: "Configure Rules", icon: Gauge,      show: canConfigure },
+          { key: "configure" as Tab, label: "SLA Rules",       icon: Gauge,      show: true },
         ]).filter((t) => t.show).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
