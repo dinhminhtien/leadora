@@ -18,18 +18,77 @@ void main() {
     });
   });
 
+  group('TaskActivityType', () {
+    test('fromWire maps every backend value', () {
+      expect(TaskActivityType.fromWire('CALL'), TaskActivityType.call);
+      expect(TaskActivityType.fromWire('EMAIL'), TaskActivityType.email);
+      expect(TaskActivityType.fromWire('MEETING'), TaskActivityType.meeting);
+      expect(TaskActivityType.fromWire('SITE_VISIT'), TaskActivityType.siteVisit);
+      expect(TaskActivityType.fromWire('FOLLOW_UP'), TaskActivityType.followUp);
+      expect(TaskActivityType.fromWire('TASK'), TaskActivityType.task);
+    });
+
+    test('a task written before the migration still renders — no null, no throw', () {
+      // The whole point of the fallback: `activity_type` is NULL on rows the
+      // backfill hasn't reached, and on any backend build predating the column.
+      expect(TaskActivityType.fromWire(null), TaskActivityType.task);
+      expect(TaskActivityType.fromWire(''), TaskActivityType.task);
+      expect(TaskActivityType.fromWire('SOMETHING_NEW'), TaskActivityType.task);
+    });
+
+    test('the type comes from the field, NOT the title', () {
+      // A legacy task whose title still reads "Call: …" but which the backend
+      // classified as MEETING must show MEETING. Nothing parses the title now.
+      final task = Task.fromJson({
+        'taskId': 't1',
+        'title': 'Call: Hotel ABC',
+        'status': 'OPEN',
+        'priority': 'MEDIUM',
+        'activityType': 'MEETING',
+      });
+      expect(task.activityType, TaskActivityType.meeting);
+      expect(task.title, 'Call: Hotel ABC'); // title left exactly as stored
+    });
+
+    test('a title that looks like a prefix no longer changes the type', () {
+      final task = Task.fromJson({
+        'taskId': 't2',
+        'title': 'Email: draft the contract', // would once have parsed as EMAIL
+        'status': 'OPEN',
+        'priority': 'MEDIUM',
+        // ...but the server says otherwise, and the server is the only source.
+        'activityType': 'TASK',
+      });
+      expect(task.activityType, TaskActivityType.task);
+    });
+
+    test('withStatus carries the activity type across', () {
+      final task = Task.fromJson({
+        'taskId': 't3',
+        'title': 'Ring the venue',
+        'status': 'OPEN',
+        'priority': 'HIGH',
+        'activityType': 'CALL',
+      });
+      expect(task.withStatus(TaskStatus.completed).activityType,
+          TaskActivityType.call);
+    });
+  });
+
   group('CreateTaskPayload', () {
     test('sends required fields and drops blank optionals', () {
       final json = const CreateTaskPayload(
         title: '  Follow up  ',
         assignedUserId: 'user-1',
         priority: TaskPriority.high,
+        activityType: TaskActivityType.meeting,
         description: '   ',
       ).toJson();
 
       expect(json['title'], 'Follow up'); // trimmed
       expect(json['assignedUserId'], 'user-1');
       expect(json['priority'], 'HIGH'); // wire value, not ordinal
+      expect(json['activityType'], 'MEETING'); // required — never inferred
       expect(json.containsKey('description'), isFalse); // blank dropped
       expect(json.containsKey('startAt'), isFalse);
     });
@@ -39,6 +98,7 @@ void main() {
         title: 'x',
         assignedUserId: 'u',
         priority: TaskPriority.low,
+        activityType: TaskActivityType.call,
         endAt: DateTime.utc(2026, 7, 9, 3, 0, 0),
         customerId: 'cust-1',
       ).toJson();

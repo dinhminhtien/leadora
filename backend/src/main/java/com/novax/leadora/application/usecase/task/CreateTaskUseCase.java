@@ -11,6 +11,7 @@ import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskPriority;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
@@ -35,9 +36,20 @@ public class CreateTaskUseCase {
     private final CustomerRepository customerRepository;
     private final DealRepository dealRepository;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
+    private final TaskAccessPolicy accessPolicy;
+    private final TaskNotifier taskNotifier;
 
     @Transactional
     public TaskResponse execute(CreateTaskRequest request) {
+        UserEntity currentUser = accessPolicy.currentUser();
+
+        // BR-18: a Sales Staff may only raise tasks for themselves. Handing work
+        // to somebody else is a Manager/Admin action — the same rule update and
+        // resign already enforce when the assignee moves.
+        if (!request.getAssignedUserId().equals(currentUser.getUserId())) {
+            accessPolicy.assertFullAccess(currentUser);
+        }
+
         UserEntity assignedUser = userRepository.findById(request.getAssignedUserId())
                 .orElseThrow(() -> new ResourceNotFoundException("User", request.getAssignedUserId()));
 
@@ -74,10 +86,14 @@ public class CreateTaskUseCase {
         TaskEntity task = TaskEntity.builder()
                 .title(request.getTitle())
                 .description(request.getDescription())
+                // The client picks this; it is no longer inferred from the title.
+                // An unknown value lands on TASK rather than failing the request.
+                .activityType(ActivityType.fromWire(request.getActivityType()))
                 .priority(priority)
                 .status(TaskStatus.OPEN)
                 .resultNote(request.getResultNote())
                 .assignedUser(assignedUser)
+                .createdBy(currentUser)
                 .lead(lead)
                 .customer(customer)
                 .deal(deal)
@@ -95,6 +111,8 @@ public class CreateTaskUseCase {
         } catch (Exception e) {
             log.warn("SLA tracking failed for task {}: {}", saved.getTaskId(), e.getMessage());
         }
+
+        taskNotifier.assigned(saved, assignedUser, currentUser);
 
         return TaskResponse.from(saved);
     }
