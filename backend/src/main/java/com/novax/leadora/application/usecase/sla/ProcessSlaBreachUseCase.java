@@ -1,6 +1,7 @@
 package com.novax.leadora.application.usecase.sla;
 
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
+import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.SlaTrackingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.SlaStatus;

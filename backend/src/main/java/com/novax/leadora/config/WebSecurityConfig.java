@@ -18,6 +18,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.novax.leadora.common.security.TokenBlacklistService;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +49,9 @@ public class WebSecurityConfig {
 
     @Autowired @Lazy
     private UserRepository userRepository;
+
+    @Autowired @Lazy
+    private TokenBlacklistService tokenBlacklistService;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
