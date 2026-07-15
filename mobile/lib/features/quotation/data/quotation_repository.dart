@@ -13,8 +13,10 @@ class QuotationRepository {
   final ApiClient _client;
 
   /// View Quotation Status (list) — all quotations visible to this caller.
-  /// The backend endpoint is unfiltered/unpaged (`GET /quotations` →
-  /// `findAll()`), so this returns everything in one call.
+  /// The backend endpoint is unpaged and already owner-scoped server-side
+  /// (`GetQuotationListUseCase` / `QuotationAccessPolicy`): a SALES caller
+  /// only gets quotations they created, while MANAGER/ADMIN get every
+  /// quotation — this returns whatever that resolves to in one call.
   Future<List<Quotation>> getQuotations() {
     return _client.get<List<Quotation>>(
       ApiPaths.quotations,
@@ -25,6 +27,11 @@ class QuotationRepository {
   }
 
   /// UC-14.5 / View Quotation Status — full quotation detail.
+  ///
+  /// A SALES caller opening a quotation they didn't create gets a 403
+  /// (`QuotationAccessPolicy.assertCanView`), surfaced by [ApiClient] as a
+  /// [ForbiddenException] — the screen's `AsyncValueView` renders that like
+  /// any other load error rather than crashing.
   Future<Quotation> getQuotation(String quotationId) {
     return _client.get<Quotation>(
       ApiPaths.quotationById(quotationId),
