@@ -27,6 +27,9 @@ export function QueryProvider({ children }: QueryProviderProps) {
     const handleInvalidate = () => {
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
       queryClient.invalidateQueries({ queryKey: ["deals-for-report"] });
+      // Any write anywhere (this tab or another) may have triggered a notification for
+      // the current user — refresh the bell badge/list instead of waiting for the 30s poll.
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
     };
 
     // 1. Listen for cross-tab messages

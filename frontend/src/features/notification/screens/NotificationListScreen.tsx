@@ -14,6 +14,7 @@ import {
   Info,
   ChevronLeft,
   ChevronRight,
+  Users,
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
@@ -26,6 +27,8 @@ import {
 } from "@/features/notification/hooks/use_notifications";
 import type { Notification } from "@/services/notification_service";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { useAuthStore } from "@/stores/auth_store";
+import { hasFullAccess } from "@/shared/auth/access";
 
 const PAGE_SIZE = 20;
 
@@ -80,7 +83,10 @@ function getRelatedRoute(n: Notification): string | null {
   const entity = n.relatedEntity.toUpperCase();
   const highlight = `highlight=${encodeURIComponent(n.relatedId)}`;
   if (entity === "LEAD") return ROUTE_PATHS.leadDetail(n.relatedId);
-  if (entity === "QUOTATION") return ROUTE_PATHS.quotationDetail(n.relatedId);
+  // No standalone quotation detail page exists (only /quotations,
+  // /quotations/[id]/revise) — route to the list (with highlight), not
+  // ROUTE_PATHS.quotationDetail, which 404s since that page was never built.
+  if (entity === "QUOTATION") return `${ROUTE_PATHS.quotations}?${highlight}`;
   if (entity === "BOOKING") return `${ROUTE_PATHS.bookingConfirmation}?${highlight}`;
   if (entity === "REMINDER") return `${ROUTE_PATHS.reminders}?${highlight}`;
   if (entity === "TASK") return `${ROUTE_PATHS.followUpTasks}?${highlight}`;
@@ -110,12 +116,17 @@ function formatTime(iso: string): string {
 
 export function NotificationListScreen() {
   const router = useRouter();
+  const { user } = useAuthStore();
+  const canViewAll = hasFullAccess(user);
 
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [typeFilter, setTypeFilter] = useState("");
   const [page, setPage] = useState(0);
+  // Manager/Admin only — org-wide "who did what" activity feed instead of just their own.
+  const [viewAllUsers, setViewAllUsers] = useState(false);
+  const allUsers = canViewAll && viewAllUsers;
 
-  const { data: pageData, isLoading, isError } = useNotifications({ unreadOnly, page, size: PAGE_SIZE });
+  const { data: pageData, isLoading, isError } = useNotifications({ unreadOnly, allUsers, page, size: PAGE_SIZE });
   const { data: unreadCount = 0 } = useUnreadNotificationCount();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllRead();
@@ -128,16 +139,24 @@ export function NotificationListScreen() {
     ? notifications.filter((n) => n.type === typeFilter)
     : notifications;
 
-  const handleNotificationClick = async (n: Notification) => {
-    if (!n.isRead) {
-      await markRead.mutateAsync({ id: n.id, read: true });
-    }
+  // Team Activity rows belong to someone else — viewing them must not flip their
+  // read state (the backend rejects this anyway; keep the client from even trying).
+  const isOwnNotification = (n: Notification) => !n.recipientId || n.recipientId === user?.id;
+
+  // Navigation must not depend on the mark-read call succeeding — it's a
+  // best-effort side effect, not a gate (a failed/rejected mutation must never
+  // block getting to the related record).
+  const handleNotificationClick = (n: Notification) => {
     const route = getRelatedRoute(n);
     if (route) router.push(route);
+    if (!n.isRead && isOwnNotification(n)) {
+      markRead.mutate({ id: n.id, read: true });
+    }
   };
 
   const handleToggleRead = async (e: React.MouseEvent, n: Notification) => {
     e.stopPropagation();
+    if (!isOwnNotification(n)) return;
     await markRead.mutateAsync({ id: n.id, read: !n.isRead });
   };
 
@@ -210,6 +229,26 @@ export function NotificationListScreen() {
           </div>
           <span className="text-xs text-slate-600 font-semibold">Unread only</span>
         </label>
+
+        {canViewAll && (
+          <label className="flex items-center gap-2 cursor-pointer select-none ml-auto">
+            <div
+              onClick={() => { setViewAllUsers((v) => !v); setPage(0); }}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                viewAllUsers ? "bg-primary" : "bg-slate-200"
+              }`}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+                  viewAllUsers ? "translate-x-4" : "translate-x-1"
+                }`}
+              />
+            </div>
+            <span className="text-xs text-slate-600 font-semibold flex items-center gap-1">
+              <Users className="size-3.5" /> Team activity
+            </span>
+          </label>
+        )}
       </div>
 
       {/* Table */}
@@ -219,6 +258,7 @@ export function NotificationListScreen() {
             <TableRow hoverable={false}>
               <TableHead className="font-semibold text-xs text-slate-500 w-8" />
               <TableHead className="font-semibold text-xs text-slate-500">Notification</TableHead>
+              {allUsers && <TableHead className="font-semibold text-xs text-slate-500">Recipient</TableHead>}
               <TableHead className="font-semibold text-xs text-slate-500">Type</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Time</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500 text-center">Actions</TableHead>
@@ -227,20 +267,20 @@ export function NotificationListScreen() {
           <TableBody>
             {isLoading ? (
               <TableRow hoverable={false}>
-                <TableCell colSpan={5} className="py-12 text-center text-xs text-slate-400">
+                <TableCell colSpan={allUsers ? 6 : 5} className="py-12 text-center text-xs text-slate-400">
                   Loading notifications…
                 </TableCell>
               </TableRow>
             ) : isError ? (
               <TableRow hoverable={false}>
-                <TableCell colSpan={5} className="py-12 text-center text-xs text-red-500">
+                <TableCell colSpan={allUsers ? 6 : 5} className="py-12 text-center text-xs text-red-500">
                   Failed to load notifications. Please refresh.
                 </TableCell>
               </TableRow>
             ) : filtered.length === 0 ? (
               /* E3 — no notifications */
               <TableRow hoverable={false}>
-                <TableCell colSpan={5} className="py-14 text-center text-xs text-slate-400">
+                <TableCell colSpan={allUsers ? 6 : 5} className="py-14 text-center text-xs text-slate-400">
                   <div className="flex flex-col items-center gap-2">
                     <BellOff className="size-8 text-slate-300" />
                     <span className="font-bold text-slate-600 text-sm">No notifications available</span>
@@ -288,6 +328,13 @@ export function NotificationListScreen() {
                       </div>
                     </TableCell>
 
+                    {/* Recipient — Manager/Admin team activity view only */}
+                    {allUsers && (
+                      <TableCell className="py-3 px-4 text-xs font-semibold text-slate-600 whitespace-nowrap">
+                        {n.recipientName ?? "—"}
+                      </TableCell>
+                    )}
+
                     {/* Type badge */}
                     <TableCell className="py-3 px-4">
                       <Badge
@@ -317,19 +364,21 @@ export function NotificationListScreen() {
                             <ExternalLink className="size-3 mr-1 inline" /> Go to
                           </Button>
                         )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => handleToggleRead(e, n)}
-                          disabled={markRead.isPending}
-                          className="px-2 py-1 text-[10px] border-slate-200 font-bold hover:bg-slate-50 text-slate-500"
-                        >
-                          {n.isRead ? (
-                            <><Bell className="size-3 mr-1 inline" /> Unread</>
-                          ) : (
-                            <><MailOpen className="size-3 mr-1 inline" /> Read</>
-                          )}
-                        </Button>
+                        {isOwnNotification(n) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => handleToggleRead(e, n)}
+                            disabled={markRead.isPending}
+                            className="px-2 py-1 text-[10px] border-slate-200 font-bold hover:bg-slate-50 text-slate-500"
+                          >
+                            {n.isRead ? (
+                              <><Bell className="size-3 mr-1 inline" /> Unread</>
+                            ) : (
+                              <><MailOpen className="size-3 mr-1 inline" /> Read</>
+                            )}
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

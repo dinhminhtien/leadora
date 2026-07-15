@@ -11,6 +11,8 @@ class AppNotification {
     this.relatedEntity,
     this.relatedId,
     this.createdAt,
+    this.recipientId,
+    this.recipientName,
   });
 
   final String id;
@@ -22,6 +24,11 @@ class AppNotification {
   final String? relatedId;
   final DateTime? createdAt;
 
+  /// Who this notification was sent to — only populated in the Manager/Admin
+  /// aggregate feed (`GET /notifications?allUsers=true`); null elsewhere.
+  final String? recipientId;
+  final String? recipientName;
+
   AppNotification copyWith({bool? isRead}) => AppNotification(
     id: id,
     title: title,
@@ -31,6 +38,8 @@ class AppNotification {
     relatedEntity: relatedEntity,
     relatedId: relatedId,
     createdAt: createdAt,
+    recipientId: recipientId,
+    recipientName: recipientName,
   );
 
   /// Icon derived from the backend `type` / `relatedEntity` for a richer list.
@@ -57,6 +66,8 @@ class AppNotification {
       createdAt: json['createdAt'] is String
           ? DateTime.tryParse(json['createdAt'] as String)
           : null,
+      recipientId: json['recipientId'] as String?,
+      recipientName: json['recipientName'] as String?,
     );
   }
 }
