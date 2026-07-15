@@ -128,8 +128,9 @@ export function CreateReminderModal({ onClose, defaultRelatedEntity, defaultRela
         // createdByUserId is resolved server-side from the JWT token
       });
       onClose();
-    } catch {
-      setError("Failed to create reminder. Please try again.");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setError(msg ?? "Failed to create reminder. Please try again.");
     }
   };
 

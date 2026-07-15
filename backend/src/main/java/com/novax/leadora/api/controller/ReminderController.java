@@ -47,7 +47,7 @@ public class ReminderController {
 
     /** UC-16.1: Create a manual reminder (Sales Staff / Manager / Admin) */
     @PostMapping
-    @PreAuthorize("hasAnyRole('SALES_STAFF', 'MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<ReminderResponse>> create(
             @Valid @RequestBody CreateReminderRequest request) {
         ReminderResponse response = createReminderUseCase.execute(request);
