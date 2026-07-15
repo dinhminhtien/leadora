@@ -116,13 +116,17 @@ const navigationGroups: NavGroup[] = [
 function notificationRoute(n: Notification): string | null {
   if (!n.relatedEntity || !n.relatedId) return null;
   const entity = n.relatedEntity.toUpperCase();
+  const highlight = `highlight=${encodeURIComponent(n.relatedId)}`;
   if (entity === "LEAD") return ROUTE_PATHS.leadDetail(n.relatedId);
-  if (entity === "QUOTATION") return ROUTE_PATHS.quotationDetail(n.relatedId);
-  if (entity === "BOOKING") return ROUTE_PATHS.bookingConfirmation;
-  if (entity === "REMINDER") return ROUTE_PATHS.reminders;
-  if (entity === "TASK") return ROUTE_PATHS.followUpTasks;
-  if (entity === "SLA") return ROUTE_PATHS.sla;
-  if (entity === "HANDOVER") return ROUTE_PATHS.frontOfficeHandover;
+  // No standalone quotation detail page exists (only /quotations,
+  // /quotations/[id]/revise) — route to the list (with highlight), not
+  // ROUTE_PATHS.quotationDetail, which 404s since that page was never built.
+  if (entity === "QUOTATION") return `${ROUTE_PATHS.quotations}?${highlight}`;
+  if (entity === "BOOKING") return `${ROUTE_PATHS.bookingConfirmation}?${highlight}`;
+  if (entity === "REMINDER") return `${ROUTE_PATHS.reminders}?${highlight}`;
+  if (entity === "TASK") return `${ROUTE_PATHS.followUpTasks}?${highlight}`;
+  if (entity === "SLA") return `${ROUTE_PATHS.sla}?${highlight}`;
+  if (entity === "HANDOVER") return `${ROUTE_PATHS.frontOfficeHandover}?${highlight}`;
   return null;
 }
 
@@ -159,15 +163,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   // Clicking a notification always marks it read. It only navigates (and closes the
   // dropdown) when there's somewhere to go — otherwise the dropdown stays open so the
-  // item's read/unread styling visibly updates in place.
-  const handleNotificationPreviewClick = async (n: Notification) => {
-    if (!n.isRead) {
-      await markNotificationRead.mutateAsync({ id: n.id, read: true });
-    }
+  // item's read/unread styling visibly updates in place. Navigation must not depend on
+  // the mark-read call succeeding — it's a best-effort side effect, not a gate.
+  const handleNotificationPreviewClick = (n: Notification) => {
     const route = notificationRoute(n);
     if (route) {
       setIsNotifDropdownOpen(false);
       router.push(route);
+    }
+    if (!n.isRead) {
+      markNotificationRead.mutate({ id: n.id, read: true });
     }
   };
 

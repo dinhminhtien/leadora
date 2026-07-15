@@ -8,10 +8,10 @@ import { notificationService, type NotificationListParams } from "@/services/not
 const POLL_INTERVAL_MS = 30_000;
 
 export function useNotifications(params: NotificationListParams = {}, poll = false) {
-  const { unreadOnly = false, page = 0, size = 20 } = params;
+  const { unreadOnly = false, allUsers = false, page = 0, size = 20 } = params;
   return useQuery({
-    queryKey: ["notifications", unreadOnly, page, size],
-    queryFn: () => notificationService.getList({ unreadOnly, page, size }),
+    queryKey: ["notifications", unreadOnly, allUsers, page, size],
+    queryFn: () => notificationService.getList({ unreadOnly, allUsers, page, size }),
     select: (res) => res.data,
     refetchInterval: poll ? POLL_INTERVAL_MS : undefined,
   });

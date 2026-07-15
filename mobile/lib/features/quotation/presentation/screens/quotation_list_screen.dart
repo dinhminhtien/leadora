@@ -26,8 +26,9 @@ const _skeletonQuotation = Quotation(
 );
 
 /// View Quotation Status on Mobile — browsable entry point onto
-/// [QuotationDetailScreen]. The backend list endpoint is unfiltered, so the
-/// status chips below filter client-side over the already-fetched list.
+/// [QuotationDetailScreen]. The backend already owner-scopes the list
+/// (SALES sees only quotations they created; MANAGER/ADMIN see all) — the
+/// status chips below just filter client-side over whatever that returns.
 class QuotationListScreen extends ConsumerStatefulWidget {
   const QuotationListScreen({super.key});
 

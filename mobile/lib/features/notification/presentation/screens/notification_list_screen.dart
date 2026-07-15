@@ -9,6 +9,7 @@ import '../../../../shared/widgets/app_filter_chip.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/list_skeleton.dart';
+import '../../../auth/presentation/providers/auth_controller.dart';
 import '../../data/notification_models.dart';
 import '../notification_grouping.dart';
 import '../providers/notification_providers.dart';
@@ -50,19 +51,20 @@ String? _relatedRoute(AppNotification n) {
 
 /// Tapping a notification opens its related record (if this app has a screen
 /// for it) and marks it read — mirrors the web `handleNotificationClick`.
-/// Deliberately one-directional (never re-marks an already-read notification
-/// unread on tap; `toggleRead` only flips when the notification is unread).
-Future<void> _openNotification(
+/// Navigation must not wait on the mark-read call succeeding — it's a
+/// best-effort side effect, not a gate — so it fires (`controller.toggleRead`,
+/// which itself no-ops for Team Activity rows that aren't the caller's own)
+/// without being awaited. Deliberately one-directional (never re-marks an
+/// already-read notification unread on tap).
+void _openNotification(
   BuildContext context,
   NotificationListController controller,
   AppNotification n,
-) async {
-  if (!n.isRead) {
-    await controller.toggleRead(n);
-  }
+) {
   final route = _relatedRoute(n);
-  if (route != null && context.mounted) {
-    context.push(route);
+  if (route != null) context.push(route);
+  if (!n.isRead) {
+    controller.toggleRead(n);
   }
 }
 
@@ -100,11 +102,22 @@ class _NotificationListScreenState
     final unreadCount = all.where((n) => !n.isRead).length;
     final visible = _applyFilter(all, _filter);
 
+    // Manager/Admin only — org-wide "who did what" activity feed instead of
+    // just their own (mirrors the web Team Activity toggle).
+    final canViewAll = ref.watch(currentUserProvider)?.hasFullAccess ?? false;
+    final viewAllUsers = ref.watch(notificationViewAllProvider);
+    // "Mark all read" is always self-scoped server-side even in the Team
+    // Activity feed, so its visibility/count must come from the caller's own
+    // unread count, not from whatever's currently loaded (which may be the
+    // whole team's).
+    final ownUnreadCount =
+        ref.watch(unreadNotificationCountProvider).valueOrNull ?? 0;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
-          if (unreadCount > 0)
+          if (ownUnreadCount > 0)
             TextButton(
               onPressed: controller.markAllRead,
               child: const Text('Mark all read'),
@@ -133,6 +146,28 @@ class _NotificationListScreenState
               ),
             ],
           ),
+          if (canViewAll)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.xs,
+                AppSpacing.lg,
+                0,
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.groups_outlined, size: 16),
+                  const SizedBox(width: 6),
+                  const Expanded(child: Text('Team activity')),
+                  Switch(
+                    value: viewAllUsers,
+                    onChanged: (v) =>
+                        ref.read(notificationViewAllProvider.notifier).state =
+                            v,
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: AppSpacing.xs),
           Expanded(
             child: AsyncValueView<List<AppNotification>>(
@@ -172,6 +207,7 @@ class _NotificationListScreenState
                         NotificationGroupItem(:final notification) =>
                           _NotificationTile(
                             notification: notification,
+                            showRecipient: viewAllUsers,
                             onTap: () => _openNotification(
                               context,
                               controller,
@@ -193,10 +229,18 @@ class _NotificationListScreenState
 
 class _NotificationTile extends StatelessWidget {
   /// [onTap] is null only for the loading skeleton, which must not be tappable.
-  const _NotificationTile({required this.notification, this.onTap});
+  const _NotificationTile({
+    required this.notification,
+    this.onTap,
+    this.showRecipient = false,
+  });
 
   final AppNotification notification;
   final VoidCallback? onTap;
+
+  /// Team Activity feed only — shows who the notification was sent to, since
+  /// the list is no longer implicitly "mine".
+  final bool showRecipient;
 
   @override
   Widget build(BuildContext context) {
@@ -231,6 +275,31 @@ class _NotificationTile extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
+          if (showRecipient && notification.recipientName != null) ...[
+            const SizedBox(height: 2),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.person_outline_rounded,
+                  size: 12,
+                  color: theme.colorScheme.outline,
+                ),
+                const SizedBox(width: 3),
+                Flexible(
+                  child: Text(
+                    notification.recipientName!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 2),
           Text(
             Formatters.relative(notification.createdAt),
