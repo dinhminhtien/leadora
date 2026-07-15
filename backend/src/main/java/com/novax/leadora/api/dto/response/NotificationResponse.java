@@ -21,8 +21,13 @@ public class NotificationResponse {
     @JsonProperty("isRead")
     private boolean isRead;
     private OffsetDateTime createdAt;
+    // Who the notification was sent to — only meaningful in the Manager/Admin
+    // aggregate feed (GET /notifications?allUsers=true); harmless elsewhere.
+    private UUID recipientId;
+    private String recipientName;
 
     public static NotificationResponse from(NotificationEntity entity) {
+        var recipient = entity.getUser();
         return NotificationResponse.builder()
                 .id(entity.getNotificationId())
                 .title(entity.getTitle())
@@ -32,6 +37,8 @@ public class NotificationResponse {
                 .relatedId(entity.getRelatedId())
                 .isRead(Boolean.TRUE.equals(entity.getIsRead()))
                 .createdAt(entity.getCreatedAt())
+                .recipientId(recipient != null ? recipient.getUserId() : null)
+                .recipientName(recipient != null ? recipient.getFullName() : null)
                 .build();
     }
 }

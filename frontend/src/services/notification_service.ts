@@ -24,10 +24,15 @@ export type Notification = {
   relatedId?: string;
   isRead: boolean;
   createdAt: string;
+  // Populated only in the Manager/Admin aggregate feed (allUsers=true).
+  recipientId?: string;
+  recipientName?: string;
 };
 
 export type NotificationListParams = {
   unreadOnly?: boolean;
+  /** Manager/Admin only — org-wide feed across every user. Ignored for other roles server-side. */
+  allUsers?: boolean;
   page?: number;
   size?: number;
 };
@@ -36,9 +41,9 @@ const ENDPOINT = "/notifications";
 
 export const notificationService = {
   async getList(params: NotificationListParams = {}): Promise<ApiResponse<PageResponse<Notification>>> {
-    const { unreadOnly = false, page = 0, size = 20 } = params;
+    const { unreadOnly = false, allUsers = false, page = 0, size = 20 } = params;
     const response = await apiClient.get<ApiResponse<PageResponse<Notification>>>(ENDPOINT, {
-      params: { unreadOnly, page, size },
+      params: { unreadOnly, allUsers, page, size },
     });
     return response.data;
   },

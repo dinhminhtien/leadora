@@ -16,13 +16,26 @@ public class GetNotificationsUseCase {
 
     private final NotificationRepository notificationRepository;
 
-    /** UC-15.1 — paginated notification list, newest first */
+    /**
+     * UC-15.1 — paginated notification list, newest first.
+     *
+     * @param userId whose notifications to list, or {@code null} for the Manager/Admin
+     *               aggregate feed across every user (see {@code NotificationController}
+     *               for the role check that gates {@code null}).
+     */
     @Transactional(readOnly = true)
     public Page<NotificationResponse> execute(UUID userId, Boolean unreadOnly, Pageable pageable) {
-        Page<com.novax.leadora.infrastructure.persistence.entity.NotificationEntity> entities =
-                Boolean.TRUE.equals(unreadOnly)
-                        ? notificationRepository.findByUser_UserIdAndIsReadFalseOrderByCreatedAtDesc(userId, pageable)
-                        : notificationRepository.findByUser_UserIdOrderByCreatedAtDesc(userId, pageable);
+        boolean unread = Boolean.TRUE.equals(unreadOnly);
+        Page<com.novax.leadora.infrastructure.persistence.entity.NotificationEntity> entities;
+        if (userId == null) {
+            entities = unread
+                    ? notificationRepository.findByIsReadFalseOrderByCreatedAtDesc(pageable)
+                    : notificationRepository.findAllByOrderByCreatedAtDesc(pageable);
+        } else {
+            entities = unread
+                    ? notificationRepository.findByUser_UserIdAndIsReadFalseOrderByCreatedAtDesc(userId, pageable)
+                    : notificationRepository.findByUser_UserIdOrderByCreatedAtDesc(userId, pageable);
+        }
         return entities.map(NotificationResponse::from);
     }
 }

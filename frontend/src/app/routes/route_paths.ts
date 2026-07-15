@@ -19,6 +19,8 @@ export const ROUTE_PATHS = {
   interactionTimeline: "/interaction-timeline",
   quotations: "/quotations",
   quotationCreate: "/quotations/create",
+  // No page exists at /quotations/[id] — using this 404s. Route to `quotations`
+  // (with a highlight param) or `quotationRevise` instead.
   quotationDetail: (id: string) => `/quotations/${id}`,
   quotationRevise: (id: string) => `/quotations/${id}/revise`,
   pendingApprovals: "/quotations/pending-approvals",

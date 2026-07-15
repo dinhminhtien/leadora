@@ -17,5 +17,9 @@ public interface NotificationRepository extends JpaRepository<NotificationEntity
     Page<NotificationEntity> findByUser_UserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
     Page<NotificationEntity> findByUser_UserIdAndIsReadFalseOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 
+    // Manager/Admin aggregate feed — every user's notifications, newest first.
+    Page<NotificationEntity> findAllByOrderByCreatedAtDesc(Pageable pageable);
+    Page<NotificationEntity> findByIsReadFalseOrderByCreatedAtDesc(Pageable pageable);
+
     long countByUser_UserIdAndIsReadFalse(UUID userId);
 }
