@@ -16,13 +16,18 @@ class NotificationRepository {
   /// The backend returns a Spring `Page<NotificationResponse>` (an object with
   /// a `content` array), not a bare JSON array — [size] is large enough that a
   /// single page covers the list since this screen has no "load more" yet.
+  ///
+  /// [allUsers] requests the org-wide "Team activity" feed instead of just the
+  /// caller's own notifications; the backend silently ignores it for anyone
+  /// but Manager/Admin, so it's safe to pass through unconditionally.
   Future<List<AppNotification>> getNotifications({
     bool unreadOnly = false,
+    bool allUsers = false,
     int size = 50,
   }) {
     return _client.get<List<AppNotification>>(
       ApiPaths.notifications,
-      query: {'unreadOnly': unreadOnly, 'size': size},
+      query: {'unreadOnly': unreadOnly, 'allUsers': allUsers, 'size': size},
       decode: (data) {
         final list = data is Map && data['content'] is List
             ? data['content'] as List

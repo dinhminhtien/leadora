@@ -12,8 +12,11 @@ class SlaRepository {
   final ApiClient _client;
 
   /// UC-17.3 — View SLA on Mobile. [entityType] / [displayStatus] mirror the
-  /// backend's own filter params (LEAD/QUOTATION/BOOKING/TASK and
+  /// backend's own filter params (LEAD/QUOTATION/TASK/PAYMENT/HANDOVER and
   /// WITHIN_SLA/WARNING/BREACHED); both are optional server-side filters.
+  /// The result set itself is also owner-scoped server-side
+  /// (`GetSlaMonitoringUseCase`): SALES only sees SLA activity on leads,
+  /// quotations, and tasks they own; MANAGER/ADMIN see everything.
   Future<List<SlaTrackingEntry>> getMonitoring({
     String? entityType,
     String? displayStatus,
