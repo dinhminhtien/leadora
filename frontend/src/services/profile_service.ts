@@ -22,7 +22,6 @@ export type UpdateProfilePayload = {
 export type ChangePasswordPayload = {
   currentPassword: string;
   newPassword: string;
-  confirmPassword: string;
 };
 
 const ENDPOINT = "/profile";

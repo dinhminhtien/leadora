@@ -89,7 +89,6 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
             ChangePasswordPayload(
               currentPassword: _current.text,
               newPassword: _next.text,
-              confirmPassword: _confirm.text,
             ),
           );
       messenger.showSnackBar(

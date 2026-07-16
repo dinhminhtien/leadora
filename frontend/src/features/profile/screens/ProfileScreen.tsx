@@ -208,7 +208,6 @@ export function ProfileScreen() {
       await changePasswordMutation.mutateAsync({
         currentPassword: data.currentPassword,
         newPassword: data.newPassword,
-        confirmPassword: data.confirmPassword,
       });
       toast.success("Password changed successfully.");
       resetPassword();
