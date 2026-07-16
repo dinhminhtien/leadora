@@ -5,9 +5,8 @@ import com.novax.leadora.api.dto.response.DealResponse;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
-import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerStatus;
-import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
+import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
@@ -29,24 +28,12 @@ public class CreateDealUseCase {
 
     @Transactional
     public DealResponse execute(DealRequest request) {
-        // Find or create customer
-        CustomerEntity customer = null;
-        if (request.getEmail() != null && !request.getEmail().trim().isEmpty()) {
-            customer = customerRepository.findFirstByEmail(request.getEmail().trim()).orElse(null);
+        if (request.getCustomerId() == null) {
+            throw new IllegalArgumentException(
+                    "A Customer ID is required to create a Deal. Convert a Lead first.");
         }
-        if (customer == null) {
-            customer = customerRepository.findFirstByFullName(request.getContactName().trim()).orElse(null);
-        }
-        if (customer == null) {
-            customer = CustomerEntity.builder()
-                    .fullName(request.getContactName())
-                    .email(request.getEmail())
-                    .phone(request.getPhone())
-                    .customerType(CustomerType.INDIVIDUAL)
-                    .status(CustomerStatus.ACTIVE)
-                    .build();
-            customer = customerRepository.save(customer);
-        }
+        CustomerEntity customer = customerRepository.findById(request.getCustomerId())
+                .orElseThrow(() -> new ResourceNotFoundException("Customer", request.getCustomerId()));
 
         // Find assigned user if owner specified
         UserEntity owner = null;

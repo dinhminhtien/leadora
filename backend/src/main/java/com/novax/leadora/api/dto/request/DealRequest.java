@@ -4,12 +4,15 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class DealRequest {
+
+    private UUID customerId;
 
     @NotBlank(message = "Deal name is required")
     private String title;

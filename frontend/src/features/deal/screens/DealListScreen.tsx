@@ -23,6 +23,7 @@ import { Select } from "@/components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { dealService } from "@/services/deal_service";
 import { userService as taskUserService, type UserSummary } from "@/services/follow_up_task_service";
+import { customerProfileService, type CustomerSearchItem } from "@/services/customer_profile_service";
 
 const STAGES_ORDER: Deal["stage"][] = ["Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed"];
 
@@ -99,6 +100,7 @@ export function DealListScreen() {
 
   // Form State for new deal
   const [newDeal, setNewDeal] = useState({
+    customerId: "",
     title: "",
     contactName: "",
     email: "",
@@ -110,6 +112,37 @@ export function DealListScreen() {
     expectedClose: "",
     notes: ""
   });
+
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerSearchItem | null>(null);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [customerResults, setCustomerResults] = useState<CustomerSearchItem[]>([]);
+  const [isSearchingCustomers, setIsSearchingCustomers] = useState(false);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      setIsSearchingCustomers(true);
+      try {
+        const response = await customerProfileService.getList({
+          search: customerSearchQuery.trim() || undefined,
+          size: 8
+        });
+        if (response && response.success && response.data) {
+          setCustomerResults(response.data);
+        }
+      } catch (err) {
+        console.error("Failed to search customers", err);
+      } finally {
+        setIsSearchingCustomers(false);
+      }
+    };
+
+    const delayDebounceFn = setTimeout(() => {
+      fetchCustomers();
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [customerSearchQuery]);
 
   const [users, setUsers] = useState<UserSummary[]>([]);
 
@@ -300,12 +333,17 @@ export function DealListScreen() {
   // Form Submit
   const handleCreateDeal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDeal.title || !newDeal.contactName) {
-      showError("Please enter both Deal title and Primary Contact name.");
+    if (!newDeal.title) {
+      showError("Please enter a Deal title.");
+      return;
+    }
+    if (!newDeal.customerId) {
+      showError("Please select an existing customer. Deal funnel requires a customer mapping.");
       return;
     }
 
     const payload = {
+      customerId: newDeal.customerId,
       title: newDeal.title,
       contactName: newDeal.contactName,
       email: newDeal.email || "",
@@ -325,6 +363,7 @@ export function DealListScreen() {
         setIsNewDealDrawerOpen(false);
         // Reset Form
         setNewDeal({
+          customerId: "",
           title: "",
           contactName: "",
           email: "",
@@ -336,6 +375,8 @@ export function DealListScreen() {
           expectedClose: "",
           notes: ""
         });
+        setSelectedCustomer(null);
+        setCustomerSearchQuery("");
         showSuccess("Deal created successfully!");
       } else {
         showError(response?.message || "Failed to create deal");
@@ -726,14 +767,94 @@ export function DealListScreen() {
                 />
               </div>
 
+              <div className="space-y-1 relative">
+                <label className="text-xs font-semibold text-slate-600">Select Customer *</label>
+                {selectedCustomer ? (
+                  <div className="flex items-center justify-between p-2 border border-[#85B7EB] bg-[#E6F1FB] rounded-md text-xs">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-[#0C447C] truncate">{selectedCustomer.name}</div>
+                      <div className="text-[10px] text-[#185FA5] truncate">
+                        {[selectedCustomer.email, selectedCustomer.phone, selectedCustomer.company].filter(Boolean).join(" · ") || "No contact details"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomer(null);
+                        setNewDeal(prev => ({
+                          ...prev,
+                          customerId: "",
+                          contactName: "",
+                          email: "",
+                          phone: ""
+                        }));
+                      }}
+                      className="text-slate-400 hover:text-slate-600 p-1 shrink-0 ml-2"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Search customer by name or email..."
+                        value={customerSearchQuery}
+                        onChange={e => {
+                          setCustomerSearchQuery(e.target.value);
+                          setShowCustomerDropdown(true);
+                        }}
+                        onFocus={() => setShowCustomerDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                        className="w-full p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
+                      />
+                    </div>
+                    {showCustomerDropdown && (
+                      <div className="absolute left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                        {isSearchingCustomers ? (
+                          <div className="p-2.5 text-xs text-slate-400 text-center">Searching...</div>
+                        ) : customerResults.length === 0 ? (
+                          <div className="p-2.5 text-xs text-slate-400 text-center">No customers found</div>
+                        ) : (
+                          customerResults.map(c => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onMouseDown={() => {
+                                setSelectedCustomer(c);
+                                setNewDeal(prev => ({
+                                  ...prev,
+                                  customerId: c.id,
+                                  contactName: c.name || "",
+                                  email: c.email || "",
+                                  phone: c.phone || ""
+                                }));
+                                setCustomerSearchQuery("");
+                                setShowCustomerDropdown(false);
+                              }}
+                              className="w-full text-left p-2.5 text-xs hover:bg-[#E6F1FB] border-b border-slate-50 last:border-0 transition"
+                            >
+                              <div className="font-semibold text-slate-800">{c.name}</div>
+                              <div className="text-[10px] text-slate-400">
+                                {[c.email, c.phone, c.company].filter(Boolean).join(" · ")}
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-600">Primary Contact Person *</label>
+                <label className="text-xs font-semibold text-slate-600">Primary Contact Person</label>
                 <Input
-                  required
-                  placeholder="e.g. Alice Jenkins"
+                  disabled
+                  placeholder="Will be auto-filled from selected customer"
                   value={newDeal.contactName}
-                  onChange={e => setNewDeal({ ...newDeal, contactName: e.target.value })}
-                  className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
+                  className="py-1.5 text-xs bg-slate-50 border-slate-200 text-slate-500"
                 />
               </div>
 
@@ -741,20 +862,19 @@ export function DealListScreen() {
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Email Address</label>
                   <Input
-                    type="email"
-                    placeholder="contact@gmail.com"
+                    disabled
+                    placeholder="Will be auto-filled"
                     value={newDeal.email}
-                    onChange={e => setNewDeal({ ...newDeal, email: e.target.value })}
-                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
+                    className="py-1.5 text-xs bg-slate-50 border-slate-200 text-slate-500"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Phone Number</label>
                   <Input
-                    placeholder="+1 555-0100"
+                    disabled
+                    placeholder="Will be auto-filled"
                     value={newDeal.phone}
-                    onChange={e => setNewDeal({ ...newDeal, phone: e.target.value })}
-                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
+                    className="py-1.5 text-xs bg-slate-50 border-slate-200 text-slate-500"
                   />
                 </div>
               </div>
