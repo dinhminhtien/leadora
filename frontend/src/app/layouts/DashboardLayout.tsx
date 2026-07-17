@@ -532,9 +532,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                           <button
                             key={n.id}
                             onClick={() => handleNotificationPreviewClick(n)}
-                            className={`flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left border-b border-zinc-50 dark:border-zinc-900 last:border-0 hover:bg-muted transition ${
-                              !n.isRead ? "bg-blue-50/50 dark:bg-blue-950/10" : ""
-                            }`}
+                            className={`flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left border-b border-zinc-50 dark:border-zinc-900 last:border-0 hover:bg-muted transition ${!n.isRead ? "bg-blue-50/50 dark:bg-blue-950/10" : ""
+                              }`}
                           >
                             <span className={`mt-1 size-1.5 rounded-full shrink-0 ${!n.isRead ? "bg-blue-500" : "bg-zinc-300 dark:bg-zinc-700"}`} />
                             <div className="min-w-0 flex-1">

@@ -9,6 +9,7 @@ import { useUsers } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import { useAuthStore } from "@/stores/auth_store";
 import { apiClient } from "@/services/api_client";
 import type { ReminderPriority } from "@/services/reminder_service";
+import { Portal } from "@/components/ui/Portal";
 
 type RecordOption = { id: string; label: string };
 type EntityTypeOption = { label: string; value: string };
@@ -135,7 +136,8 @@ export function CreateReminderModal({ onClose, defaultRelatedEntity, defaultRela
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-md mx-4">
         {/* Header */}
@@ -303,5 +305,6 @@ export function CreateReminderModal({ onClose, defaultRelatedEntity, defaultRela
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

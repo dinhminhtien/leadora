@@ -22,8 +22,10 @@ import { Badge } from "@/components/ui/Badge";
 import type { Quotation } from "@/services/quotation_service";
 import { useSendQuotation } from "@/features/quotation/hooks/use_quotations";
 import { useAuthStore } from "@/stores/auth_store";
+import { Portal } from "@/components/ui/Portal";
 
 type SendMethod = "email" | "whatsapp" | "pdf";
+
 
 const METHOD_CONFIG: Record<SendMethod, { label: string; icon: React.ReactNode; desc: string }> = {
   email: {
@@ -278,7 +280,8 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
   // ── Success state ──
   if (sendSuccess) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <Portal>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
         <div className="relative z-10 w-full max-w-sm bg-white rounded-xl shadow-2xl p-8 text-center">
           <CheckCircle2 className="size-14 text-emerald-500 mx-auto mb-4" />
@@ -292,11 +295,13 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
           </p>
         </div>
       </div>
+      </Portal>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl">
 
@@ -505,5 +510,6 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

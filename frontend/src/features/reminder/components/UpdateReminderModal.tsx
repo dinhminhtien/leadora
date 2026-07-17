@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { useUpdateReminder, useEscalateReminder } from "@/features/reminder/hooks/use_reminders";
 import { useAuthStore } from "@/stores/auth_store";
 import type { Reminder, ReminderPriority, UpdateReminderPayload } from "@/services/reminder_service";
+import { Portal } from "@/components/ui/Portal";
 
 const inputCls =
   "w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-400 focus:bg-white transition";
@@ -108,7 +109,8 @@ export function UpdateReminderModal({ reminder, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-md mx-4">
         {/* Header */}
@@ -270,5 +272,6 @@ export function UpdateReminderModal({ reminder, onClose }: Props) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
