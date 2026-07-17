@@ -31,6 +31,8 @@ public class DealResponse {
     private DealPipelineStage stageCode;
 
     private String owner;
+    private String ownerEmail;
+    private UUID ownerId;
     private String status;
     private LocalDate expectedClose;
     private LocalDate createdAt;
