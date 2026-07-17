@@ -276,10 +276,12 @@ function AssistantPanel({
   const renameSession = useRenameChatSession();
   const deleteSession = useDeleteChatSession();
 
-  const documentsQuery = useCompanyDocuments();
+  // Knowledge-base management (list/upload/delete) is Manager-only, both in the UI and
+  // on the backend endpoint — non-managers must not even fire the documents query.
+  const canManageDocs = role === "MANAGER";
+  const documentsQuery = useCompanyDocuments(canManageDocs);
   const uploadDocument = useUploadDocument();
   const deleteDocument = useDeleteDocument();
-  const canManageDocs = role === "MANAGER";
 
   const [inputVal, setInputVal] = useState("");
   const [pendingUserText, setPendingUserText] = useState<string | null>(null);
