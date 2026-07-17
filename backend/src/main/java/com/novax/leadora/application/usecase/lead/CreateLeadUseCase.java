@@ -4,6 +4,7 @@ import com.novax.leadora.api.dto.request.CreateLeadRequest;
 import com.novax.leadora.api.dto.response.LeadResponse;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.common.exception.DuplicateLeadException;
+import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
@@ -42,7 +43,10 @@ public class CreateLeadUseCase {
 
         UserEntity assignedUser = null;
         if (request.getAssignedUserId() != null) {
-            assignedUser = userRepository.findById(request.getAssignedUserId()).orElse(null);
+            // Same contract as UpdateLeadUseCase: an unknown assignee is a 404, not a
+            // silent fall-back to an unassigned draft.
+            assignedUser = userRepository.findById(request.getAssignedUserId())
+                    .orElseThrow(() -> new ResourceNotFoundException("User", request.getAssignedUserId()));
         }
 
         // The creator owns the lead (drives SALES_STAFF owner-scoping). Non-fatal if unresolved.

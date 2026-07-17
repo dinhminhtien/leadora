@@ -835,7 +835,9 @@ function ConfigureTab() {
 
 // ─── Report tab ───────────────────────────────────────────────────────────────
 
-const REPORT_ROLES = ["ADMIN", "MANAGER", "RESERVATION_STAFF", "FRONT_OFFICE"];
+// UC-23.3: the SLA compliance report is Manager/Admin only — must mirror the
+// backend guard on GET /sla/report, or excluded roles would see the tab and 403.
+const REPORT_ROLES = ["ADMIN", "MANAGER"];
 
 function toIsoDate(d: Date): string {
   return d.toISOString().split("T")[0];
