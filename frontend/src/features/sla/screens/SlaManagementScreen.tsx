@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useAuthStore } from "@/stores/auth_store";
+import { Portal } from "@/components/ui/Portal";
 import {
   useSlaRules,
   useCreateSlaRule,
@@ -456,25 +457,27 @@ function useToast() {
 
 function InfoDialog({ title, message, onClose }: { title: string; message: string; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm mx-4 p-6 space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="shrink-0 flex items-center justify-center size-10 rounded-full bg-amber-50">
-            <AlertTriangle className="size-5 text-amber-500" />
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+        <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm mx-4 p-6 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 flex items-center justify-center size-10 rounded-full bg-amber-50">
+              <AlertTriangle className="size-5 text-amber-500" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">{message}</p>
+            </div>
           </div>
-          <div className="space-y-1">
-            <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">{message}</p>
+          <div className="flex items-center justify-end pt-1">
+            <Button onClick={onClose} size="sm" className="text-xs font-semibold">
+              OK
+            </Button>
           </div>
-        </div>
-        <div className="flex items-center justify-end pt-1">
-          <Button onClick={onClose} size="sm" className="text-xs font-semibold">
-            OK
-          </Button>
         </div>
       </div>
-    </div>
+    </Portal>
   );
 }
 
@@ -498,33 +501,35 @@ function ConfirmDialog({
   isLoading?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm mx-4 p-6 space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="shrink-0 flex items-center justify-center size-10 rounded-full bg-red-50">
-            <Trash2 className="size-5 text-red-500" />
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+        <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm mx-4 p-6 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 flex items-center justify-center size-10 rounded-full bg-red-50">
+              <Trash2 className="size-5 text-red-500" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">{message}</p>
+            </div>
           </div>
-          <div className="space-y-1">
-            <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">{message}</p>
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-semibold">
+              <AlertTriangle className="size-3.5 shrink-0" /> {error}
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <Button onClick={onCancel} variant="outline" size="sm" className="text-xs border-slate-200 text-slate-600 font-semibold">
+              Cancel
+            </Button>
+            <Button onClick={onConfirm} isLoading={isLoading} size="sm" className="text-xs bg-red-600 hover:bg-red-700 text-white font-semibold gap-1.5">
+              <Trash2 className="size-3" /> {confirmLabel}
+            </Button>
           </div>
-        </div>
-        {error && (
-          <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-semibold">
-            <AlertTriangle className="size-3.5 shrink-0" /> {error}
-          </div>
-        )}
-        <div className="flex items-center justify-end gap-2 pt-1">
-          <Button onClick={onCancel} variant="outline" size="sm" className="text-xs border-slate-200 text-slate-600 font-semibold">
-            Cancel
-          </Button>
-          <Button onClick={onConfirm} isLoading={isLoading} size="sm" className="text-xs bg-red-600 hover:bg-red-700 text-white font-semibold gap-1.5">
-            <Trash2 className="size-3" /> {confirmLabel}
-          </Button>
         </div>
       </div>
-    </div>
+    </Portal>
   );
 }
 
@@ -546,33 +551,35 @@ function ResolveDialog({
   isLoading?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm mx-4 p-6 space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="shrink-0 flex items-center justify-center size-10 rounded-full bg-emerald-50">
-            <CheckCircle className="size-5 text-emerald-500" />
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+        <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm mx-4 p-6 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 flex items-center justify-center size-10 rounded-full bg-emerald-50">
+              <CheckCircle className="size-5 text-emerald-500" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">{message}</p>
+            </div>
           </div>
-          <div className="space-y-1">
-            <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">{message}</p>
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-semibold">
+              <AlertTriangle className="size-3.5 shrink-0" /> {error}
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <Button onClick={onCancel} variant="outline" size="sm" className="text-xs border-slate-200 text-slate-600 font-semibold">
+              Cancel
+            </Button>
+            <Button onClick={onConfirm} isLoading={isLoading} size="sm" className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5">
+              <CheckCircle className="size-3" /> Confirm
+            </Button>
           </div>
-        </div>
-        {error && (
-          <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-semibold">
-            <AlertTriangle className="size-3.5 shrink-0" /> {error}
-          </div>
-        )}
-        <div className="flex items-center justify-end gap-2 pt-1">
-          <Button onClick={onCancel} variant="outline" size="sm" className="text-xs border-slate-200 text-slate-600 font-semibold">
-            Cancel
-          </Button>
-          <Button onClick={onConfirm} isLoading={isLoading} size="sm" className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5">
-            <CheckCircle className="size-3" /> Confirm
-          </Button>
         </div>
       </div>
-    </div>
+    </Portal>
   );
 }
 
@@ -835,7 +842,9 @@ function ConfigureTab() {
 
 // ─── Report tab ───────────────────────────────────────────────────────────────
 
-const REPORT_ROLES = ["ADMIN", "MANAGER", "RESERVATION_STAFF", "FRONT_OFFICE"];
+// UC-23.3: the SLA compliance report is Manager/Admin only — must mirror the
+// backend guard on GET /sla/report, or excluded roles would see the tab and 403.
+const REPORT_ROLES = ["ADMIN", "MANAGER"];
 
 function toIsoDate(d: Date): string {
   return d.toISOString().split("T")[0];

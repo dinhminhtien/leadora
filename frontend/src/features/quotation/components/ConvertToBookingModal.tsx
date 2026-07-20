@@ -21,6 +21,8 @@ import { Button } from "@/components/ui/Button";
 import type { Quotation } from "@/services/quotation_service";
 import { useConvertToBooking } from "@/features/quotation/hooks/use_quotations";
 import { useAuthStore } from "@/stores/auth_store";
+import { Portal } from "@/components/ui/Portal";
+
 
 interface ConvertToBookingModalProps {
   quote: Quotation;
@@ -164,7 +166,8 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative z-10 w-full max-w-lg mx-4 bg-white rounded-2xl shadow-xl border border-slate-100 max-h-[90vh] overflow-y-auto">
@@ -412,5 +415,6 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
         )}
       </div>
     </div>
+    </Portal>
   );
 }

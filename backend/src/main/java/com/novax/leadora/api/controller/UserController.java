@@ -46,8 +46,9 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success(users));
     }
 
-    /** UC-6.1 — View User Accounts (paged management list). */
+    /** UC-6.1 — View User Accounts (paged management list). Admin only (BR-03). */
     @GetMapping("/accounts")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Page<UserAccountResponse>>> getUserAccounts(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Integer roleId,
@@ -61,8 +62,9 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success(users));
     }
 
-    /** UC-6.1 — View one user account. */
+    /** UC-6.1 — View one user account. Admin only (BR-03). */
     @GetMapping("/{userId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<UserAccountResponse>> getUserAccount(@PathVariable UUID userId) {
         return ResponseEntity.ok(ApiResponse.success(getUserDetailUseCase.execute(userId)));
     }

@@ -1,6 +1,7 @@
 package com.novax.leadora.api.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
 import lombok.Setter;
 import java.util.UUID;
@@ -21,5 +22,6 @@ public class UpdateHandoverRequest {
 
     /** HandoverStatus: DRAFT | SUBMITTED. */
     @NotBlank(message = "Handover status is required")
+    @Pattern(regexp = "^(DRAFT|SUBMITTED)$", message = "Status must be DRAFT or SUBMITTED")
     private String status;
 }

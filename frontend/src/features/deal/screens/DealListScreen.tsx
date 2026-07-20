@@ -23,6 +23,8 @@ import { Select } from "@/components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { dealService } from "@/services/deal_service";
 import { userService as taskUserService, type UserSummary } from "@/services/follow_up_task_service";
+import { customerProfileService, type CustomerSearchItem } from "@/services/customer_profile_service";
+import { Portal } from "@/components/ui/Portal";
 
 const STAGES_ORDER: Deal["stage"][] = ["Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed"];
 
@@ -55,10 +57,118 @@ export type Deal = {
   probability: number;
   stage: "Inquiry" | "Site Visit" | "Proposal" | "Negotiation" | "Contract" | "Confirmed";
   owner: string;
+  ownerEmail?: string;
   status: "active" | "won" | "lost";
   expectedClose: string;
   createdAt?: string;
   notes?: string;
+};
+
+interface UserSelectProps {
+  users: UserSummary[];
+  value: string;
+  onChange: (email: string, fullName: string) => void;
+  disabled?: boolean;
+}
+
+const UserSelect: React.FC<UserSelectProps> = ({ users, value, onChange, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedUser = users.find(u => u.email === value);
+
+  const filteredUsers = users.filter(u =>
+    u.fullName.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="relative w-full" ref={dropdownRef}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full min-h-10.5 px-3 py-1.5 flex items-center justify-between text-left rounded-xl border border-border bg-input text-sm text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.025)] disabled:cursor-not-allowed disabled:opacity-50 dark:shadow-none transition"
+      >
+        {selectedUser ? (
+          <div className="flex flex-col">
+            <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 leading-tight">
+              {selectedUser.fullName}
+            </span>
+            <span className="text-[10px] text-slate-500 mt-0.5 leading-none">
+              {selectedUser.email} ({selectedUser.roleName || "Staff"})
+            </span>
+          </div>
+        ) : (
+          <span className="text-slate-400 text-xs">Select Deal Owner...</span>
+        )}
+        <svg
+          className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 z-100 mt-1.5 w-full rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl p-2 flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-100">
+          <input
+            type="text"
+            placeholder="Search owner by name or email..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full px-3 py-1.5 text-xs border border-slate-100 dark:border-slate-800 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/10 bg-slate-50 dark:bg-slate-950 text-foreground"
+            onClick={e => e.stopPropagation()}
+            autoFocus
+          />
+          <div className="overflow-y-auto max-h-45 flex flex-col gap-1 pr-1">
+            {filteredUsers.length > 0 ? (
+              filteredUsers.map(u => (
+                <button
+                  key={u.userId}
+                  type="button"
+                  onClick={() => {
+                    onChange(u.email, u.fullName);
+                    setIsOpen(false);
+                    setSearch("");
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between transition hover:bg-slate-50 dark:hover:bg-slate-800/50 ${u.email === value ? "bg-primary/5 border-l-2 border-primary pl-2.5" : ""
+                    }`}
+                >
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs text-slate-800 dark:text-slate-200">
+                      {u.fullName}
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">
+                      {u.email}
+                    </span>
+                  </div>
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                    {u.roleName || "Staff"}
+                  </span>
+                </button>
+              ))
+            ) : (
+              <span className="text-center text-xs text-slate-400 py-3">No owners found</span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export function DealListScreen() {
@@ -99,6 +209,7 @@ export function DealListScreen() {
 
   // Form State for new deal
   const [newDeal, setNewDeal] = useState({
+    customerId: "",
     title: "",
     contactName: "",
     email: "",
@@ -110,6 +221,37 @@ export function DealListScreen() {
     expectedClose: "",
     notes: ""
   });
+
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerSearchItem | null>(null);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [customerResults, setCustomerResults] = useState<CustomerSearchItem[]>([]);
+  const [isSearchingCustomers, setIsSearchingCustomers] = useState(false);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      setIsSearchingCustomers(true);
+      try {
+        const response = await customerProfileService.getList({
+          search: customerSearchQuery.trim() || undefined,
+          size: 8
+        });
+        if (response && response.success && response.data) {
+          setCustomerResults(response.data);
+        }
+      } catch (err) {
+        console.error("Failed to search customers", err);
+      } finally {
+        setIsSearchingCustomers(false);
+      }
+    };
+
+    const delayDebounceFn = setTimeout(() => {
+      fetchCustomers();
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [customerSearchQuery]);
 
   const [users, setUsers] = useState<UserSummary[]>([]);
 
@@ -192,7 +334,7 @@ export function DealListScreen() {
       stage: nextStg,
       status: updatedStatus,
       expectedClose: deal.expectedClose,
-      owner: deal.owner,
+      owner: deal.ownerEmail || deal.owner,
       notes: deal.notes || ""
     };
 
@@ -274,7 +416,7 @@ export function DealListScreen() {
       stage: updatedStage,
       status: newStatus,
       expectedClose: dealToUpdate.expectedClose,
-      owner: dealToUpdate.owner,
+      owner: dealToUpdate.ownerEmail || dealToUpdate.owner,
       notes: dealToUpdate.notes || ""
     };
 
@@ -300,12 +442,17 @@ export function DealListScreen() {
   // Form Submit
   const handleCreateDeal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDeal.title || !newDeal.contactName) {
-      showError("Please enter both Deal title and Primary Contact name.");
+    if (!newDeal.title) {
+      showError("Please enter a Deal title.");
+      return;
+    }
+    if (!newDeal.customerId) {
+      showError("Please select an existing customer. Deal funnel requires a customer mapping.");
       return;
     }
 
     const payload = {
+      customerId: newDeal.customerId,
       title: newDeal.title,
       contactName: newDeal.contactName,
       email: newDeal.email || "",
@@ -325,6 +472,7 @@ export function DealListScreen() {
         setIsNewDealDrawerOpen(false);
         // Reset Form
         setNewDeal({
+          customerId: "",
           title: "",
           contactName: "",
           email: "",
@@ -336,6 +484,8 @@ export function DealListScreen() {
           expectedClose: "",
           notes: ""
         });
+        setSelectedCustomer(null);
+        setCustomerSearchQuery("");
         showSuccess("Deal created successfully!");
       } else {
         showError(response?.message || "Failed to create deal");
@@ -378,7 +528,7 @@ export function DealListScreen() {
       stage: editingDeal.stage,
       expectedClose: editingDeal.expectedClose,
       status: editingDeal.status,
-      owner: editingDeal.owner,
+      owner: editingDeal.ownerEmail || editingDeal.owner,
       notes: editingDeal.notes || ""
     };
 
@@ -688,7 +838,7 @@ export function DealListScreen() {
 
       {/* Slide-over Drawer for adding Deal */}
       {isNewDealDrawerOpen && (
-        <>
+        <Portal>
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40 transition-opacity"
@@ -726,14 +876,94 @@ export function DealListScreen() {
                 />
               </div>
 
+              <div className="space-y-1 relative">
+                <label className="text-xs font-semibold text-slate-600">Select Customer *</label>
+                {selectedCustomer ? (
+                  <div className="flex items-center justify-between p-2 border border-[#85B7EB] bg-[#E6F1FB] rounded-md text-xs">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-[#0C447C] truncate">{selectedCustomer.name}</div>
+                      <div className="text-[10px] text-[#185FA5] truncate">
+                        {[selectedCustomer.email, selectedCustomer.phone, selectedCustomer.company].filter(Boolean).join(" · ") || "No contact details"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomer(null);
+                        setNewDeal(prev => ({
+                          ...prev,
+                          customerId: "",
+                          contactName: "",
+                          email: "",
+                          phone: ""
+                        }));
+                      }}
+                      className="text-slate-400 hover:text-slate-600 p-1 shrink-0 ml-2"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Search customer by name or email..."
+                        value={customerSearchQuery}
+                        onChange={e => {
+                          setCustomerSearchQuery(e.target.value);
+                          setShowCustomerDropdown(true);
+                        }}
+                        onFocus={() => setShowCustomerDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                        className="w-full p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
+                      />
+                    </div>
+                    {showCustomerDropdown && (
+                      <div className="absolute left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                        {isSearchingCustomers ? (
+                          <div className="p-2.5 text-xs text-slate-400 text-center">Searching...</div>
+                        ) : customerResults.length === 0 ? (
+                          <div className="p-2.5 text-xs text-slate-400 text-center">No customers found</div>
+                        ) : (
+                          customerResults.map(c => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onMouseDown={() => {
+                                setSelectedCustomer(c);
+                                setNewDeal(prev => ({
+                                  ...prev,
+                                  customerId: c.id,
+                                  contactName: c.name || "",
+                                  email: c.email || "",
+                                  phone: c.phone || ""
+                                }));
+                                setCustomerSearchQuery("");
+                                setShowCustomerDropdown(false);
+                              }}
+                              className="w-full text-left p-2.5 text-xs hover:bg-[#E6F1FB] border-b border-slate-50 last:border-0 transition"
+                            >
+                              <div className="font-semibold text-slate-800">{c.name}</div>
+                              <div className="text-[10px] text-slate-400">
+                                {[c.email, c.phone, c.company].filter(Boolean).join(" · ")}
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-600">Primary Contact Person *</label>
+                <label className="text-xs font-semibold text-slate-600">Primary Contact Person</label>
                 <Input
-                  required
-                  placeholder="e.g. Alice Jenkins"
+                  disabled
+                  placeholder="Will be auto-filled from selected customer"
                   value={newDeal.contactName}
-                  onChange={e => setNewDeal({ ...newDeal, contactName: e.target.value })}
-                  className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
+                  className="py-1.5 text-xs bg-slate-50 border-slate-200 text-slate-500"
                 />
               </div>
 
@@ -741,20 +971,19 @@ export function DealListScreen() {
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Email Address</label>
                   <Input
-                    type="email"
-                    placeholder="contact@gmail.com"
+                    disabled
+                    placeholder="Will be auto-filled"
                     value={newDeal.email}
-                    onChange={e => setNewDeal({ ...newDeal, email: e.target.value })}
-                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
+                    className="py-1.5 text-xs bg-slate-50 border-slate-200 text-slate-500"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Phone Number</label>
                   <Input
-                    placeholder="+1 555-0100"
+                    disabled
+                    placeholder="Will be auto-filled"
                     value={newDeal.phone}
-                    onChange={e => setNewDeal({ ...newDeal, phone: e.target.value })}
-                    className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
+                    className="py-1.5 text-xs bg-slate-50 border-slate-200 text-slate-500"
                   />
                 </div>
               </div>
@@ -813,18 +1042,11 @@ export function DealListScreen() {
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-600">Deal Owner (Assignee)</label>
-                <Select
+                <UserSelect
+                  users={users}
                   value={newDeal.owner}
-                  onChange={e => setNewDeal({ ...newDeal, owner: e.target.value })}
-                  className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
-                >
-                  <option value="">Select Deal Owner...</option>
-                  {users.map(u => (
-                    <option key={u.userId} value={u.fullName}>
-                      {u.fullName} ({u.roleName || "Staff"})
-                    </option>
-                  ))}
-                </Select>
+                  onChange={(email) => setNewDeal({ ...newDeal, owner: email })}
+                />
               </div>
 
               <div className="space-y-1">
@@ -833,7 +1055,7 @@ export function DealListScreen() {
                   placeholder="Describe deal requirements, guest details, etc..."
                   value={newDeal.notes}
                   onChange={e => setNewDeal({ ...newDeal, notes: e.target.value })}
-                  className="w-full min-h-[80px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
+                  className="w-full min-h-20 p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
                 />
               </div>
 
@@ -856,12 +1078,12 @@ export function DealListScreen() {
               </div>
             </form>
           </div>
-        </>
+        </Portal>
       )}
 
       {/* Slide-over Drawer for editing/viewing Deal Detail */}
       {isEditDealDrawerOpen && editingDeal && (
-        <>
+        <Portal>
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40 transition-opacity"
@@ -1058,19 +1280,16 @@ export function DealListScreen() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Owner</label>
-                  <Select
-                    value={editingDeal.owner || ""}
+                  <UserSelect
+                    users={users}
+                    value={editingDeal.ownerEmail || ""}
                     disabled={isAlreadyClosed}
-                    onChange={e => setEditingDeal({ ...editingDeal, owner: e.target.value })}
-                    className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
-                  >
-                    <option value="">Select Deal Owner...</option>
-                    {users.map(u => (
-                      <option key={u.userId} value={u.fullName}>
-                        {u.fullName} ({u.roleName || "Staff"})
-                      </option>
-                    ))}
-                  </Select>
+                    onChange={(email, fullName) => setEditingDeal({
+                      ...editingDeal,
+                      ownerEmail: email,
+                      owner: fullName
+                    })}
+                  />
                 </div>
               </div>
 
@@ -1081,7 +1300,7 @@ export function DealListScreen() {
                   value={editingDeal.notes || ""}
                   disabled={isAlreadyClosed}
                   onChange={e => setEditingDeal({ ...editingDeal, notes: e.target.value })}
-                  className="w-full min-h-[100px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white disabled:bg-slate-50 disabled:text-slate-400 transition"
+                  className="w-full min-h-25 p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white disabled:bg-slate-50 disabled:text-slate-400 transition"
                 />
               </div>
 
@@ -1123,7 +1342,7 @@ export function DealListScreen() {
               </div>
             </form>
           </div>
-        </>
+        </Portal>
       )}
     </div>
   );

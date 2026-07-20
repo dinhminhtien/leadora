@@ -82,10 +82,13 @@ public class UpdateLeadUseCase {
         // status guard below runs).
         if (request.getAssignedUserId() != null) {
             UUID previousAssigneeId = lead.getAssignedUser() != null ? lead.getAssignedUser().getUserId() : null;
-            UserEntity assignedUser = userRepository.findById(request.getAssignedUserId()).orElse(null);
+            // An unknown assignee must fail loudly (404) — falling back to null would
+            // silently UNASSIGN the lead (and orphan its running SLA tracking).
+            UserEntity assignedUser = userRepository.findById(request.getAssignedUserId())
+                    .orElseThrow(() -> new ResourceNotFoundException("User", request.getAssignedUserId()));
             lead.setAssignedUser(assignedUser);
 
-            if (assignedUser != null && !assignedUser.getUserId().equals(previousAssigneeId)) {
+            if (!assignedUser.getUserId().equals(previousAssigneeId)) {
                 // UC-15.1: notify the newly (re)assigned sales rep
                 notifyLeadAssigned(lead, assignedUser);
 

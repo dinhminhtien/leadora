@@ -37,6 +37,14 @@ export type UpdateUserPayload = {
   avatarUrl?: string;
 };
 
+/** Lightweight row from the flat GET /users endpoint (assignee dropdowns — any role). */
+export type UserSummary = {
+  userId: string;
+  fullName: string;
+  email: string;
+  roleName: string | null;
+};
+
 export type UserListParams = {
   search?: string;
   roleId?: number;
@@ -78,9 +86,16 @@ const ROLES = "/roles";
 const PERMISSIONS = "/permissions";
 
 export const userService = {
-  // UC-6.1 — paged management list
+  // UC-6.1 — paged management list (Admin only — non-admin callers get 403;
+  // use getSummaries() for assignee dropdowns instead)
   async getList(params?: UserListParams): Promise<ApiResponse<PageResponse<UserAccount>>> {
     const { data } = await apiClient.get<ApiResponse<PageResponse<UserAccount>>>(`${USERS}/accounts`, { params });
+    return data;
+  },
+
+  // Flat, non-paged summary list for assignee dropdowns — open to all authenticated roles.
+  async getSummaries(): Promise<ApiResponse<UserSummary[]>> {
+    const { data } = await apiClient.get<ApiResponse<UserSummary[]>>(USERS);
     return data;
   },
 

@@ -304,7 +304,8 @@ export function CustomerProfileListScreen() {
   const { data: statsData } = useCustomerStats();
   const { data: usersData } = useQuery({
     queryKey: ["users-list-summary"],
-    queryFn: () => userService.getList({ size: 100, status: "ACTIVE" }),
+    // Flat /users endpoint — /users/accounts is Admin-only and would 403 for Sales/Manager.
+    queryFn: () => userService.getSummaries(),
   });
 
   const customers = data?.data?.content ?? [];
@@ -320,7 +321,7 @@ export function CustomerProfileListScreen() {
     if (typeof p === "number") return 0;
     return p.totalElements ?? 0;
   })();
-  const users = usersData?.data?.content ?? [];
+  const users = usersData?.data ?? [];
 
   const stats = {
     total: statsData?.data?.total ?? totalElements,

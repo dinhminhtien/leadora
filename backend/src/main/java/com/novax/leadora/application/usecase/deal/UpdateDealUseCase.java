@@ -89,7 +89,7 @@ public class UpdateDealUseCase {
         }
 
         if (request.getOwner() != null && !request.getOwner().trim().isEmpty()) {
-            UserEntity owner = userRepository.findFirstByFullNameIgnoreCase(request.getOwner().trim()).orElse(null);
+            UserEntity owner = resolveOwner(request.getOwner());
             if (owner != null) {
                 deal.setAssignedUser(owner);
             }
@@ -121,5 +121,28 @@ public class UpdateDealUseCase {
 
         DealEntity updatedDeal = dealRepository.save(deal);
         return dealMapper.mapToResponse(updatedDeal);
+    }
+
+    private UserEntity resolveOwner(String ownerInput) {
+        if (ownerInput == null || ownerInput.trim().isEmpty()) {
+            return null;
+        }
+        String input = ownerInput.trim();
+
+        // 1. Try parsing as UUID
+        try {
+            java.util.UUID userId = java.util.UUID.fromString(input);
+            return userRepository.findById(userId).orElse(null);
+        } catch (IllegalArgumentException e) {
+            // Not a UUID, ignore and proceed
+        }
+
+        // 2. Try lookup by email
+        if (input.contains("@")) {
+            return userRepository.findByEmail(input).orElse(null);
+        }
+
+        // 3. Fallback to lookup by full name
+        return userRepository.findFirstByFullNameIgnoreCase(input).orElse(null);
     }
 }

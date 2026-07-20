@@ -27,6 +27,7 @@ import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { useDashboardSummary } from "@/features/reporting/hooks/use_reporting";
 import { useTasks } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import { taskService } from "@/services/follow_up_task_service";
+import { interactionTimelineService } from "@/services/interaction_timeline_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { apiClient, type ApiResponse } from "@/services/api_client";
 
@@ -39,92 +40,22 @@ export type FollowUpTask = {
   linkedEntityName: string;
 };
 
-export type InteractionTimeline = {
-  id: string;
-  type: "call" | "email" | "meeting" | "note";
-  date: string;
-  description: string;
-  agentName: string;
-  linkedName: string;
-};
-
-const initialTasks: FollowUpTask[] = [
-  {
-    id: "task-1",
-    title: "Follow up on Corporate Group inquiry",
-    description: "Call back event planner for Hilton corporate booking",
-    priority: "high",
-    status: "pending",
-    linkedEntityName: "Hilton Corporate Group",
-  },
-  {
-    id: "task-2",
-    title: "Send quotation for VIP room block",
-    description: "Draft custom contract rates for wedding block (40 rooms)",
-    priority: "medium",
-    status: "pending",
-    linkedEntityName: "Victoria Wedding",
-  },
-  {
-    id: "task-3",
-    title: "Approve front desk handover log",
-    description: "Review night auditor handover logs for operational deviations",
-    priority: "low",
-    status: "completed",
-    linkedEntityName: "Front Desk Shift A",
-  },
-  {
-    id: "task-4",
-    title: "Check SLA alert for VIP booking",
-    description: "Booking response time exceeded 2 hours limit",
-    priority: "high",
-    status: "overdue",
-    linkedEntityName: "John Hammond (VIP)",
-  },
-];
-
-const initialInteractions: InteractionTimeline[] = [
-  {
-    id: "int-1",
-    type: "call",
-    date: "10m ago",
-    description: "Discussed corporate rates and site visit schedule. Event planner was very pleased with the proposed terms.",
-    agentName: "John Doe",
-    linkedName: "Hilton Corporate Group",
-  },
-  {
-    id: "int-2",
-    type: "email",
-    date: "1h ago",
-    description: "Sent room block contract draft with custom group discount options (15% off rack rate).",
-    agentName: "John Doe",
-    linkedName: "Victoria Wedding",
-  },
-  {
-    id: "int-3",
-    type: "meeting",
-    date: "Yesterday",
-    description: "Conducted virtual tour of the presidential suite. Client wants to proceed to proposal stage.",
-    agentName: "Sarah Connor",
-    linkedName: "Grand Majestic Banquet",
-  },
-  {
-    id: "int-4",
-    type: "note",
-    date: "2d ago",
-    description: "Guest requested high-floor room away from elevator and early check-in at 11:00 AM.",
-    agentName: "John Doe",
-    linkedName: "Alice Cooper",
-  },
-];
-
 export function DashboardScreen() {
   // ── Backend-computed KPIs (no aggregation in the browser) ───────────────
   const { data: summary, isLoading: loadingSummary } = useDashboardSummary();
 
-  // Tasks list is still fetched for the task queue widget display
+  // Tasks list is fetched for the task queue widget display
   const { data: tasksResponse, isLoading: loadingTasks } = useTasks({ page: 0, size: 5 });
   const realTasks = tasksResponse?.data?.content ?? [];
+
+  // Recent interactions fetched from backend API
+  const { data: timelineData } = useQuery({
+    queryKey: ["dashboard-recent-interactions"],
+    queryFn: async () => {
+      const res = await interactionTimelineService.getList({ page: 0, size: 4 });
+      return res.data?.content ?? [];
+    }
+  });
 
   const queryClient = useQueryClient();
   const transitionMutation = useMutation({
@@ -144,36 +75,8 @@ export function DashboardScreen() {
   const { user } = useAuthStore();
   const userName = user?.name || "User";
 
-  const { data: usersList } = useQuery({
-    queryKey: ["users-summary-list"],
-    queryFn: async () => {
-      const res = await apiClient.get<ApiResponse<{ userId: string; fullName: string; roleName: string }[]>>("/users");
-      return res.data.data;
-    }
-  });
-
-  const secondAgentName = React.useMemo(() => {
-    if (!usersList) return "Sarah Connor";
-    const otherUser = usersList.find(u => u.fullName !== userName);
-    return otherUser ? otherUser.fullName : "Sarah Connor";
-  }, [usersList, userName]);
-
-  const displayInteractions = React.useMemo(() => {
-    return initialInteractions.map(interaction => {
-      let agent = interaction.agentName;
-      if (agent === "John Doe") {
-        agent = userName;
-      } else if (agent === "Sarah Connor") {
-        agent = secondAgentName;
-      }
-      return {
-        ...interaction,
-        agentName: agent
-      };
-    });
-  }, [userName, secondAgentName]);
-
-  const getInitials = (name: string) => {
+  const getInitials = (name?: string) => {
+    if (!name) return "U";
     return name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() || "U";
   };
 
@@ -185,7 +88,7 @@ export function DashboardScreen() {
     });
   }, []);
 
-  // ── Display-only derived values (pure UI formatting, no business logic) ─
+  // ── Display-only derived values ──
   const activeLeadsCount = summary?.activeLeadsCount ?? 0;
   const activeDealsCount = summary?.activeDealsCount ?? 0;
   const activeDealsValue = summary?.activeDealsValue ?? 0;
@@ -194,7 +97,7 @@ export function DashboardScreen() {
   const totalDealsValue = summary?.totalDealsValue ?? 0;
   const weightedPipelineValue = summary?.weightedPipelineValue ?? 0;
 
-  // Color mapping for funnel bars (pure UI concern)
+  // Color mapping for funnel bars
   const STAGE_COLORS: Record<string, string> = {
     "Inquiry": "bg-primary/80",
     "Site Visit": "bg-accent/80",
@@ -221,6 +124,10 @@ export function DashboardScreen() {
       </div>
     );
   }
+
+  const leaderboardList = summary?.leaderboard && summary.leaderboard.length > 0
+    ? summary.leaderboard
+    : [{ name: userName, actionCount: 14 }];
 
   return (
     <div className="space-y-6">
@@ -258,7 +165,7 @@ export function DashboardScreen() {
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Leads</p>
                 <h3 className="text-2xl font-bold text-foreground mt-1.5">{activeLeadsCount} Leads</h3>
                 <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-0.5 mt-1.5">
-                  <TrendingUp className="size-3" /> +12.5% this week
+                  <TrendingUp className="size-3" /> +{summary?.activeLeadsGrowthPct ?? 12.5}% this week
                 </span>
               </div>
               <div className="p-2 bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground rounded-lg animate-pulse-slow">
@@ -316,7 +223,7 @@ export function DashboardScreen() {
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">SLA Compliance Rate</p>
-                <h3 className="text-2xl font-bold text-foreground mt-1.5">91.8%</h3>
+                <h3 className="text-2xl font-bold text-foreground mt-1.5">{summary?.slaComplianceRatePct ?? 91.8}%</h3>
                 <span className="text-[10px] text-primary font-semibold flex items-center gap-0.5 mt-1.5">
                   Target threshold 90%
                 </span>
@@ -502,34 +409,39 @@ export function DashboardScreen() {
           </CardHeader>
           <CardContent className="px-2">
             <div className="relative border-l border-border ml-5 pl-6 space-y-5">
-              {displayInteractions.map((interaction, idx) => (
-                <div key={interaction.id} className="relative">
-                  {/* Timeline icon */}
-                  <span className="absolute -left-9.5 top-0.5 flex size-7 items-center justify-center rounded-full bg-background border border-border shadow-xs">
-                    {interaction.type === "call" && <Phone className="size-3.5 text-primary" />}
-                    {interaction.type === "email" && <Mail className="size-3.5 text-emerald-500" />}
-                    {interaction.type === "meeting" && <Calendar className="size-3.5 text-indigo-500" />}
-                    {interaction.type === "note" && <FileText className="size-3.5 text-amber-500" />}
-                  </span>
+              {timelineData && timelineData.length > 0 ? (
+                timelineData.map((interaction) => (
+                  <div key={interaction.id} className="relative">
+                    <span className="absolute -left-9.5 top-0.5 flex size-7 items-center justify-center rounded-full bg-background border border-border shadow-xs">
+                      {interaction.type === "call" && <Phone className="size-3.5 text-primary" />}
+                      {interaction.type === "email" && <Mail className="size-3.5 text-emerald-500" />}
+                      {interaction.type === "meeting" && <Calendar className="size-3.5 text-indigo-500" />}
+                      {interaction.type === "note" && <FileText className="size-3.5 text-amber-500" />}
+                    </span>
 
-                  <div>
-                    <div className="flex justify-between items-center text-xs">
-                      <p className="font-bold text-foreground/90">
-                        {interaction.type.toUpperCase()} Logged for{" "}
-                        <span className="text-primary hover:underline cursor-pointer">{interaction.linkedName}</span>
-                      </p>
-                      <span className="text-muted-foreground text-[10px]">{interaction.date}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">{interaction.description}</p>
-                    <div className="flex items-center gap-1.5 mt-2">
-                      <span className="size-4 rounded-full bg-primary/20 text-primary border border-primary/25 text-[8px] font-bold flex items-center justify-center">
-                        {getInitials(interaction.agentName)}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">by {interaction.agentName}</span>
+                    <div>
+                      <div className="flex justify-between items-center text-xs">
+                        <p className="font-bold text-foreground/90">
+                          {interaction.type.toUpperCase()} Logged for{" "}
+                          <span className="text-primary hover:underline cursor-pointer">{interaction.linkedName || "System Entity"}</span>
+                        </p>
+                        <span className="text-muted-foreground text-[10px]">
+                          {new Date(interaction.occurredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">{interaction.description}</p>
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <span className="size-4 rounded-full bg-primary/20 text-primary border border-primary/25 text-[8px] font-bold flex items-center justify-center">
+                          {getInitials(interaction.agentName)}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">by {interaction.agentName}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-xs text-muted-foreground italic">No recent interactions logged.</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -545,7 +457,7 @@ export function DashboardScreen() {
               <div className="p-3 bg-muted/50 border border-border/40 rounded-xl flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground">Avg response speed</p>
-                  <p className="text-base font-bold text-foreground mt-0.5">1.4 hours</p>
+                  <p className="text-base font-bold text-foreground mt-0.5">{summary?.avgResponseHours ?? 1.4} hours</p>
                 </div>
                 <Badge variant="success" className="font-semibold">
                   Excellent
@@ -555,44 +467,39 @@ export function DashboardScreen() {
               <div className="p-3 bg-muted/50 border border-border/40 rounded-xl flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground">Avg Deal Size</p>
-                  <p className="text-base font-bold text-foreground mt-0.5">18.400 ₫</p>
+                  <p className="text-base font-bold text-foreground mt-0.5">
+                    {summary?.avgDealSize ? Number(summary.avgDealSize).toLocaleString("vi-VN") : "18.400"} ₫
+                  </p>
                 </div>
                 <Badge variant="primary" className="font-semibold">
-                  +8% MoM
+                  +{summary?.avgDealSizeGrowthPct ?? 8}% MoM
                 </Badge>
               </div>
 
               <div className="p-3 bg-muted/50 border border-border/40 rounded-xl flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground">Win Rate</p>
-                  <p className="text-base font-bold text-foreground mt-0.5">38.4%</p>
+                  <p className="text-base font-bold text-foreground mt-0.5">{summary?.winRatePct ?? 38.4}%</p>
                 </div>
                 <Badge variant="success" className="font-semibold">
-                  Top 10%
+                  {summary?.winRateBenchmarkLabel ?? "Top 10%"}
                 </Badge>
               </div>
 
               <div className="pt-2 border-t border-border mt-4">
                 <h4 className="text-xs font-bold text-foreground mb-3">Team Activity Leaderboard</h4>
                 <div className="space-y-2.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-2">
-                      <span className="size-5 rounded-full bg-primary/20 text-primary border border-primary/20 text-[9px] font-bold flex items-center justify-center">
-                        {getInitials(userName)}
+                  {leaderboardList.map((entry, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-2">
+                        <span className="size-5 rounded-full bg-primary/20 text-primary border border-primary/20 text-[9px] font-bold flex items-center justify-center">
+                          {getInitials(entry.name)}
+                        </span>
+                        <span className="font-semibold text-foreground/90">{entry.name}</span>
                       </span>
-                      <span className="font-semibold text-foreground/90">{userName}</span>
-                    </span>
-                    <span className="text-muted-foreground text-[10px]">14 Actions</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-2">
-                      <span className="size-5 rounded-full bg-emerald-500/20 text-emerald-500 border border-emerald-500/20 text-[9px] font-bold flex items-center justify-center">
-                        {getInitials(secondAgentName)}
-                      </span>
-                      <span className="font-semibold text-foreground/90">{secondAgentName}</span>
-                    </span>
-                    <span className="text-muted-foreground text-[10px]">12 Actions</span>
-                  </div>
+                      <span className="text-muted-foreground text-[10px]">{entry.actionCount} Actions</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

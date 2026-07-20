@@ -4,6 +4,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.UserStatus;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -26,7 +27,10 @@ public class CreateUserRequest {
     @Size(min = 8, max = 100, message = "Password must be at least 8 characters")
     private String password;
 
-    @Size(max = 20)
+    @Pattern(
+            regexp = "^(0[35789])\\d{8}$",
+            message = "Phone number must be a valid Vietnamese 10-digit number (e.g. 0912345678)"
+    )
     private String phone;
 
     @NotNull(message = "Role is required")

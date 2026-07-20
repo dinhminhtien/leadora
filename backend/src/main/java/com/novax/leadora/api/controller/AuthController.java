@@ -34,7 +34,7 @@ public class AuthController {
     private final EffectivePermissionsService effectivePermissionsService;
 
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<LoginResponse>> login(@RequestBody LoginRequest request) {
+    public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(ApiResponse.success(loginUseCase.execute(request), "Logged in successfully."));
     }
 

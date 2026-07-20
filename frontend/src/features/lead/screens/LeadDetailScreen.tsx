@@ -6,16 +6,18 @@ import {
   FileText, Clock, MessageSquare, Sparkles, CheckCircle2,
   Circle, Edit3, X, Loader2, Save, AlertCircle, UserPlus,
   ArrowRight, ShieldCheck, ShieldAlert, Lock,
-  BadgeCheck, Building, ServerCrash, UserCog,
+  BadgeCheck, Building, ServerCrash, UserCog, Briefcase,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLeadDetail, useUpdateLead, useConvertLead } from "@/features/lead/hooks/use_leads";
 import { useUsers } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
+import { dealService } from "@/services/deal_service";
 import type { UserSummary } from "@/services/follow_up_task_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
 import type { Lead, LeadStatus, UpdateLeadPayload, CustomerType } from "@/services/lead_service";
+import { Input } from "@/components/ui/Input";
 
 // ── Status pipeline config ────────────────────────────────────────────────────
 
@@ -107,6 +109,245 @@ function LogIcon({ type }: { type: string }) {
   );
 }
 
+// ── Quick Create Deal Form & Success Action Panel ─────────────────────────────
+
+interface QuickCreateDealFormProps {
+  customerId: string;
+  lead: Lead;
+  onCancel: () => void;
+  onSuccess: () => void;
+}
+
+function QuickCreateDealForm({ customerId, lead, onCancel, onSuccess }: QuickCreateDealFormProps) {
+  const [title, setTitle] = useState(`${lead.fullName} - Deal`);
+  const [value, setValue] = useState("");
+  const [stage, setStage] = useState<"Inquiry" | "Site Visit" | "Proposal" | "Negotiation" | "Contract" | "Confirmed">("Inquiry");
+  const [expectedClose, setExpectedClose] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().split("T")[0];
+  });
+  const [notes, setNotes] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      setErrorMsg("Deal Title is required");
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMsg("");
+
+    const payload = {
+      customerId,
+      title: title.trim(),
+      contactName: lead.fullName,
+      email: lead.email ?? "",
+      phone: lead.phone ?? "",
+      stage,
+      value: Number(value) || 0,
+      expectedClose,
+      status: "active",
+      notes: notes.trim(),
+    };
+
+    try {
+      const res = await dealService.create(payload);
+      if (res && res.success) {
+        onSuccess();
+      } else {
+        setErrorMsg(res?.message || "Failed to create deal");
+      }
+    } catch (err: any) {
+      console.error("Failed to quick-create deal", err);
+      setErrorMsg(err.response?.data?.message || err.message || "An error occurred");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4 text-left">
+      <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-1.5">
+        <Briefcase className="size-4 text-[#185FA5]" /> Create Deal
+      </h3>
+
+      {errorMsg && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-600">
+          <AlertCircle className="size-4 shrink-0" />
+          {errorMsg}
+        </div>
+      )}
+
+      <div className="space-y-1">
+        <label className="text-xs font-semibold text-slate-600">Customer</label>
+        <input
+          type="text"
+          disabled
+          value={lead.fullName}
+          className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-500 cursor-not-allowed"
+        />
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-xs font-semibold text-slate-600">Deal Title *</label>
+        <input
+          required
+          type="text"
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="e.g. Wedding catering banquet"
+          className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]/20"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-600">Value (VND)</label>
+          <input
+            type="number"
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            placeholder="e.g. 15000"
+            className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]/20"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-600">Stage</label>
+          <select
+            value={stage}
+            onChange={e => setStage(e.target.value as any)}
+            className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]/20 cursor-pointer"
+          >
+            <option value="Inquiry">Inquiry</option>
+            <option value="Site Visit">Site Visit</option>
+            <option value="Proposal">Proposal</option>
+            <option value="Negotiation">Negotiation</option>
+            <option value="Contract">Contract</option>
+            <option value="Confirmed">Confirmed</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-xs font-semibold text-slate-600">Expected Close Date</label>
+        <input
+          type="date"
+          value={expectedClose}
+          onChange={e => setExpectedClose(e.target.value)}
+          className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]/20"
+        />
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-xs font-semibold text-slate-600">Notes</label>
+        <textarea
+          rows={2}
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]/20 resize-none"
+        />
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isSubmitting}
+          className="flex-1 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-white bg-[#185FA5] rounded-lg hover:bg-[#0C447C] transition disabled:opacity-60"
+        >
+          {isSubmitting ? (
+            <Loader2 className="size-3 animate-spin" />
+          ) : (
+            <CheckCircle2 className="size-3" />
+          )}
+          Create
+        </button>
+      </div>
+    </form>
+  );
+}
+
+interface QuickActionPanelProps {
+  lead: Lead;
+  customerId: string;
+  onClose: () => void;
+}
+
+function QuickActionPanel({ lead, customerId, onClose }: QuickActionPanelProps) {
+  const [mode, setMode] = useState<"actions" | "create_deal" | "deal_success">("actions");
+
+  if (mode === "deal_success") {
+    return (
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm text-center p-10 animate-in zoom-in-95 duration-300">
+        <div className="mx-auto mb-6 flex items-center justify-center size-20 rounded-full bg-emerald-100">
+          <BadgeCheck className="size-10 text-emerald-500" />
+        </div>
+        <h2 className="text-xl font-extrabold text-slate-800 mb-2">Deal Created Successfully!</h2>
+        <p className="text-sm text-slate-500 mb-8">
+          The new deal opportunity is now tracked in your pipeline.
+        </p>
+        <button
+          onClick={onClose}
+          className="w-full py-3 text-sm font-bold text-white bg-[#185FA5] rounded-xl hover:bg-[#0C447C] transition active:scale-95 shadow-sm"
+        >
+          Done
+        </button>
+      </div>
+    );
+  }
+
+  if (mode === "create_deal") {
+    return (
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in zoom-in-95 duration-300">
+        <QuickCreateDealForm
+          customerId={customerId}
+          lead={lead}
+          onCancel={() => setMode("actions")}
+          onSuccess={() => setMode("deal_success")}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm text-center p-10 animate-in zoom-in-95 duration-300">
+      <div className="mx-auto mb-6 flex items-center justify-center size-20 rounded-full bg-emerald-100">
+        <BadgeCheck className="size-10 text-emerald-500" />
+      </div>
+      <h2 className="text-xl font-extrabold text-slate-800 mb-2">Conversion successful!</h2>
+      <p className="text-sm text-slate-500 mb-2">
+        <strong className="text-slate-700">{lead.fullName}</strong> has been created as an official customer profile.
+      </p>
+      <p className="text-xs text-slate-400 mb-8">The original lead record is retained for historical lookup.</p>
+      
+      <div className="flex flex-col gap-3">
+        <button
+          onClick={() => setMode("create_deal")}
+          className="w-full py-3 text-sm font-bold text-[#185FA5] bg-[#E6F1FB] border border-[#85B7EB] rounded-xl hover:bg-[#D0E6F9] transition active:scale-95 flex items-center justify-center gap-2"
+        >
+          <Briefcase className="size-4" /> Create Deal Opportunity
+        </button>
+        <button
+          onClick={onClose}
+          className="w-full py-3 text-sm font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition active:scale-95"
+        >
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Convert Modal ─────────────────────────────────────────────────────────────
 
 function ConvertModal({
@@ -151,22 +392,14 @@ function ConvertModal({
 
   // ── Success state ──────────────────────────────────────────────────────────
   if (done) {
+    const conversionResult = convertMutation.data?.data; // { customerId, lead }
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm text-center p-10 animate-in zoom-in-95 duration-300">
-          <div className="mx-auto mb-6 flex items-center justify-center size-20 rounded-full bg-emerald-100">
-            <BadgeCheck className="size-10 text-emerald-500" />
-          </div>
-          <h2 className="text-xl font-extrabold text-slate-800 mb-2">Conversion successful!</h2>
-          <p className="text-sm text-slate-500 mb-2">
-            <strong className="text-slate-700">{lead.fullName}</strong> has been created as an official customer profile.
-          </p>
-          <p className="text-xs text-slate-400 mb-8">The original lead record is retained for historical lookup.</p>
-          <button onClick={onClose}
-            className="w-full py-3 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition active:scale-95">
-            Done
-          </button>
-        </div>
+        <QuickActionPanel
+          lead={lead}
+          customerId={conversionResult?.customerId ?? ""}
+          onClose={onClose}
+        />
       </div>
     );
   }
@@ -532,11 +765,9 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-700">Phone Number</label>
-              <input value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
+              <Input phoneOnly value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
                 onChange={e => editField("phone", e.target.value)}
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                  ${editErrors.phone ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-              {editErrors.phone && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.phone}</p>}
+                error={editErrors.phone} className="py-1.5 text-xs" />
             </div>
           </div>
 
@@ -897,11 +1128,9 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-700">Phone Number</label>
-                  <input value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
+                  <Input phoneOnly value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
                     onChange={e => { setEditForm(f => ({ ...f, phone: e.target.value })); setEditErrors(er => ({ ...er, phone: undefined })); }}
-                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                      ${editErrors.phone ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-                  {editErrors.phone && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.phone}</p>}
+                    error={editErrors.phone} className="py-1.5 text-xs" />
                 </div>
               </div>
 

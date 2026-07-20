@@ -13,6 +13,7 @@ public class DashboardSummaryResponse {
     // ── Lead KPIs ─────────────────────────────────────────────────────────────
     private long activeLeadsCount;
     private long totalLeadsCount;
+    private double activeLeadsGrowthPct; // WoW growth
 
     // ── Deal KPIs ─────────────────────────────────────────────────────────────
     private long activeDealsCount;
@@ -24,8 +25,19 @@ public class DashboardSummaryResponse {
     private long pendingTasksCount;
     private long overdueTasksCount;
 
+    // ── SLA & Performance KPIs ────────────────────────────────────────────────
+    private double slaComplianceRatePct;
+    private double avgResponseHours;
+    private BigDecimal avgDealSize;
+    private double avgDealSizeGrowthPct; // MoM growth
+    private double winRatePct;
+    private String winRateBenchmarkLabel;
+
     // ── Sales Funnel ──────────────────────────────────────────────────────────
     private List<StageSummary> funnelStages;
+
+    // ── Leaderboard ───────────────────────────────────────────────────────────
+    private List<LeaderboardEntry> leaderboard;
 
     @Data
     @NoArgsConstructor
@@ -35,5 +47,14 @@ public class DashboardSummaryResponse {
         private String stage;
         private long count;
         private BigDecimal value;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class LeaderboardEntry {
+        private String name;
+        private long actionCount;
     }
 }

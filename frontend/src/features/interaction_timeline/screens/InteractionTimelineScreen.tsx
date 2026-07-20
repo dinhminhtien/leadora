@@ -439,7 +439,7 @@ export function InteractionTimelineScreen() {
               {interactions.map((item) => (
                 <div key={item.id} className="relative group animate-in fade-in duration-200">
                   {/* Timeline icon */}
-                  <span className={`absolute left-[-45px] top-0.5 flex size-8 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm transition group-hover:scale-105 ${item.type === "call" ? "group-hover:border-green-500 group-hover:bg-green-50/50" :
+                  <span className={`absolute -left-11.25 top-0.5 flex size-8 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm transition group-hover:scale-105 ${item.type === "call" ? "group-hover:border-green-500 group-hover:bg-green-50/50" :
                     item.type === "email" ? "group-hover:border-blue-500 group-hover:bg-blue-50/50" :
                       item.type === "meeting" ? "group-hover:border-purple-500 group-hover:bg-purple-50/50" :
                         "group-hover:border-amber-500 group-hover:bg-amber-50/50"
@@ -570,6 +570,7 @@ export function InteractionTimelineScreen() {
                     <input
                       type="datetime-local"
                       required
+                      max={new Date().toISOString().slice(0, 16)}
                       value={formOccurredAt}
                       onChange={e => setFormOccurredAt(e.target.value)}
                       className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
@@ -847,6 +848,7 @@ export function InteractionTimelineScreen() {
                       <input
                         type="datetime-local"
                         required
+                        max={new Date().toISOString().slice(0, 16)}
                         value={editOccurredAt}
                         onChange={e => setEditOccurredAt(e.target.value)}
                         className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
@@ -971,7 +973,7 @@ export function InteractionTimelineScreen() {
                       {auditLogs.map((log) => (
                         <div key={log.auditId} className="relative group text-xs">
                           {/* Timeline dot */}
-                          <span className={`absolute left-[-31px] top-1 flex size-4 items-center justify-center rounded-full border bg-white ${log.action === "CREATED" ? "border-green-500" : "border-[#185FA5]"
+                          <span className={`absolute -left-7.75 top-1 flex size-4 items-center justify-center rounded-full border bg-white ${log.action === "CREATED" ? "border-green-500" : "border-[#185FA5]"
                             }`}>
                             <span className={`size-1.5 rounded-full ${log.action === "CREATED" ? "bg-green-500" : "bg-[#185FA5]"
                               }`} />

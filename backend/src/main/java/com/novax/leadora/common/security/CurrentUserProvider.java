@@ -24,8 +24,9 @@ import java.util.UUID;
  * Resolution order:
  * <ol>
  * <li>JWT subject (UUID) from Spring Security context</li>
- * <li>Email claim from the same verified JWT</li>
- * <li>X-User-Id request header</li>
+ * <li>Email claim from the same verified JWT — if the JWT resolves to no account,
+ * the request is rejected (no fall-through to spoofable fallbacks)</li>
+ * <li>X-User-Id request header — <b>only in the "dev" Spring profile</b></li>
  * <li>AI_CHAT_DEV_USER_ID env — <b>only in the "dev" Spring profile</b></li>
  * </ol>
  *
@@ -71,26 +72,37 @@ public class CurrentUserProvider {
                                 "You do not have access to this system. Please contact your administrator.",
                                 HttpStatus.FORBIDDEN));
             }
+
+            // A verified JWT that maps to no account must stop HERE. Falling through to the
+            // client-supplied X-User-Id header would let any token holder impersonate an
+            // arbitrary user simply by omitting the email claim.
+            throw new BusinessException(
+                    "ACCOUNT_NOT_PROVISIONED",
+                    "You do not have access to this system. Please contact your administrator.",
+                    HttpStatus.FORBIDDEN);
         }
 
-        // 2. Fall back to X-User-Id request header
-        if (StringUtils.hasText(headerUserId)) {
-            UserEntity user = tryLoad(headerUserId);
-            if (user != null) {
-                return requireActiveUser(user);
-            }
-        }
-
-        // 3. Dev-only fallback: AI_CHAT_DEV_USER_ID env variable.
-        // Intentionally disabled in production to prevent unauthorized access.
+        // Dev-only fallbacks (no JWT on the request — never reachable on protected routes in
+        // production, where the security filter chain already requires a Bearer token):
         boolean isDevProfile = Arrays.stream(activeProfiles.split(","))
                 .map(s -> s.trim())
                 .anyMatch("dev"::equalsIgnoreCase);
 
-        if (isDevProfile && StringUtils.hasText(devUserId)) {
-            UserEntity user = tryLoad(devUserId);
-            if (user != null) {
-                return requireActiveUser(user);
+        if (isDevProfile) {
+            // 2. X-User-Id request header (local tooling / manual API testing).
+            if (StringUtils.hasText(headerUserId)) {
+                UserEntity user = tryLoad(headerUserId);
+                if (user != null) {
+                    return requireActiveUser(user);
+                }
+            }
+
+            // 3. AI_CHAT_DEV_USER_ID env variable.
+            if (StringUtils.hasText(devUserId)) {
+                UserEntity user = tryLoad(devUserId);
+                if (user != null) {
+                    return requireActiveUser(user);
+                }
             }
         }
 

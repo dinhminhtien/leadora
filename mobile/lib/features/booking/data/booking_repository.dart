@@ -12,7 +12,6 @@ import 'booking_models.dart';
 /// `POST /bookings` (submit request) and `PUT /bookings/{id}/process` are not
 /// wrapped yet — the submit DTO carries a room-line array that has no mobile
 /// composer screen, and process is a reservation-desk action.
-/// TODO(booking): wrap submit + process once the request/availability screens land.
 class BookingRepository {
   BookingRepository(this._client);
 

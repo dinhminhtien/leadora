@@ -230,6 +230,7 @@ export function CreateQuotationScreen() {
                   <Input
                     {...register("checkInDate")}
                     type="date"
+                    min={new Date().toISOString().split("T")[0]}
                     error={errors.checkInDate?.message}
                   />
                 </div>
@@ -238,6 +239,7 @@ export function CreateQuotationScreen() {
                   <Input
                     {...register("checkOutDate")}
                     type="date"
+                    min={checkInDate || new Date().toISOString().split("T")[0]}
                     error={errors.checkOutDate?.message}
                   />
                 </div>
@@ -324,6 +326,7 @@ export function CreateQuotationScreen() {
                   <Input
                     {...register("validUntil")}
                     type="date"
+                    min={new Date().toISOString().split("T")[0]}
                     error={errors.validUntil?.message}
                   />
                 </div>
