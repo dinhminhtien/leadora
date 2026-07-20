@@ -208,6 +208,7 @@ export function UpdateReminderModal({ reminder, onClose }: Props) {
                 <input
                   type="datetime-local"
                   value={form.remindAt}
+                  min={new Date().toISOString().slice(0, 16)}
                   onChange={e => set("remindAt", e.target.value)}
                   disabled={!canEdit}
                   className={inputCls + (!canEdit ? " opacity-50 cursor-not-allowed" : "")}

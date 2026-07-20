@@ -430,9 +430,10 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
                   {method === "whatsapp" && <span className="text-red-400 ml-0.5">*</span>}
                 </label>
                 <Input
+                  phoneOnly
                   value={recipientPhone}
                   onChange={(e) => { setRecipientPhone(e.target.value); setE3Error(""); }}
-                  placeholder="+1 555-0100"
+                  placeholder="e.g. 09xxxxxxxx"
                 />
               </div>
             </div>

@@ -197,6 +197,7 @@ export function CreateReminderModal({ onClose, defaultRelatedEntity, defaultRela
               <input
                 type="datetime-local"
                 value={form.remindAt}
+                min={new Date().toISOString().slice(0, 16)}
                 onChange={(e) => set("remindAt", e.target.value)}
                 className={inputCls}
               />

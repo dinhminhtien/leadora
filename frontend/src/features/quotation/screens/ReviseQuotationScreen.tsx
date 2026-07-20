@@ -330,7 +330,7 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
                       <TableCell className="py-2 text-xs text-slate-500 capitalize">{v.status.replace("_", " ")}</TableCell>
                       <TableCell className="py-2 text-xs font-semibold text-slate-700">{v.amount.toLocaleString("vi-VN")} ₫</TableCell>
                       <TableCell className="py-2 text-xs text-slate-500">{Number(v.discountPercent ?? 0)}%</TableCell>
-                      <TableCell className="py-2 text-xs text-slate-500 max-w-[200px] truncate">{v.changeReason ?? "—"}</TableCell>
+                      <TableCell className="py-2 text-xs text-slate-500 max-w-50 truncate">{v.changeReason ?? "—"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -391,11 +391,11 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
                 </div>
                 <div>
                   <FieldLabel required>Check-In Date</FieldLabel>
-                  <Input {...register("checkInDate")} type="date" error={errors.checkInDate?.message} />
+                  <Input {...register("checkInDate")} type="date" min={new Date().toISOString().split("T")[0]} error={errors.checkInDate?.message} />
                 </div>
                 <div>
                   <FieldLabel required>Check-Out Date</FieldLabel>
-                  <Input {...register("checkOutDate")} type="date" error={errors.checkOutDate?.message} />
+                  <Input {...register("checkOutDate")} type="date" min={checkInDate || new Date().toISOString().split("T")[0]} error={errors.checkOutDate?.message} />
                 </div>
                 <div>
                   <FieldLabel required>Number of Rooms</FieldLabel>
@@ -469,7 +469,7 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
                 </div>
                 <div>
                   <FieldLabel required>Quote Valid Until</FieldLabel>
-                  <Input {...register("validUntil")} type="date" error={errors.validUntil?.message} />
+                  <Input {...register("validUntil")} type="date" min={new Date().toISOString().split("T")[0]} error={errors.validUntil?.message} />
                 </div>
                 <div className="sm:col-span-2">
                   <FieldLabel>Notes / Special Requests</FieldLabel>

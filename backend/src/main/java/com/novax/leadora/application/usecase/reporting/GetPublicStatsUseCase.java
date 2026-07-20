@@ -44,10 +44,10 @@ public class GetPublicStatsUseCase {
         int compliantCount = 0;
         for (SlaTrackingEntity e : slaRecords) {
             if (e.getStatus() == SlaStatus.RESOLVED) {
-                if (e.getResolvedAt() != null && !e.getResolvedAt().isAfter(e.getDeadlineAt())) {
+                if (e.getResolvedAt() != null && e.getDeadlineAt() != null && !e.getResolvedAt().isAfter(e.getDeadlineAt())) {
                     compliantCount++;
                 }
-            } else if (e.getStatus() == SlaStatus.ACTIVE && !now.isAfter(e.getDeadlineAt())) {
+            } else if (e.getStatus() == SlaStatus.ACTIVE && e.getDeadlineAt() != null && !now.isAfter(e.getDeadlineAt())) {
                 compliantCount++;
             }
         }

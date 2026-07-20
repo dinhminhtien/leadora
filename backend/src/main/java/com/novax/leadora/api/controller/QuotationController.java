@@ -118,7 +118,7 @@ public class QuotationController {
     @PostMapping("/{id}/send")
     public ResponseEntity<ApiResponse<QuotationResponse>> sendQuotation(
             @PathVariable UUID id,
-            @RequestBody SendQuotationRequest request) {
+            @Valid @RequestBody SendQuotationRequest request) {
         QuotationResponse response = sendQuotationUseCase.execute(id, request);
         return ResponseEntity.ok(ApiResponse.success(response, "Quotation sent successfully"));
     }

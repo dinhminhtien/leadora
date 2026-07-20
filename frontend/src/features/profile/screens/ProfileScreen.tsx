@@ -320,7 +320,7 @@ export function ProfileScreen() {
         <div className="lg:col-span-1 flex flex-col gap-6">
           <Card className="overflow-hidden shadow-md border border-zinc-200 dark:border-zinc-850">
             {/* Gradient Header */}
-            <div className="h-28 bg-gradient-to-r from-primary/90 via-primary to-primary-dark/80 relative" />
+            <div className="h-28 bg-linear-to-r from-primary/90 via-primary to-primary-dark/80 relative" />
             
             <CardContent className="px-5 pb-6">
               {/* Avatar Area */}
@@ -440,6 +440,7 @@ export function ProfileScreen() {
                     </label>
                     <Input
                       {...registerProfile("phone")}
+                      phoneOnly
                       placeholder="e.g. 0912345678"
                       icon={<Phone className="size-3.5 text-zinc-400" />}
                       error={profileErrors.phone?.message}

@@ -1,5 +1,6 @@
 package com.novax.leadora.api.dto.request;
 
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -29,10 +30,13 @@ public class ReviseQuotationRequest {
     @DecimalMin(value = "0.01", message = "Price must be greater than 0")
     private BigDecimal pricePerNight;
 
+    @DecimalMin(value = "0", message = "Discount cannot be negative")
+    @DecimalMax(value = "100", message = "Discount cannot exceed 100%")
     private BigDecimal discountPercent;
 
     private String paymentPolicy;
 
+    @NotNull(message = "Valid until date is required")
     private LocalDate validUntil;
 
     private String notes;

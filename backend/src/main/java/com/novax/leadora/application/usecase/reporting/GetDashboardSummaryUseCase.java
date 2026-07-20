@@ -141,14 +141,14 @@ public class GetDashboardSummaryUseCase {
         for (SlaTrackingEntity e : slaRecords) {
             if (e.getStatus() == SlaStatus.RESOLVED) {
                 resolvedCount++;
-                if (e.getResolvedAt() != null && !e.getResolvedAt().isAfter(e.getDeadlineAt())) {
+                if (e.getResolvedAt() != null && e.getDeadlineAt() != null && !e.getResolvedAt().isAfter(e.getDeadlineAt())) {
                     compliantCount++;
                 }
                 if (e.getResolvedAt() != null && e.getStartedAt() != null) {
                     double hrs = Duration.between(e.getStartedAt(), e.getResolvedAt()).toMinutes() / 60.0;
                     if (hrs >= 0) totalHrs += hrs;
                 }
-            } else if (e.getStatus() == SlaStatus.ACTIVE && !now.isAfter(e.getDeadlineAt())) {
+            } else if (e.getStatus() == SlaStatus.ACTIVE && e.getDeadlineAt() != null && !now.isAfter(e.getDeadlineAt())) {
                 compliantCount++;
             }
         }

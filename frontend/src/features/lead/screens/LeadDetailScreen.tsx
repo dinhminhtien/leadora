@@ -17,6 +17,7 @@ import type { UserSummary } from "@/services/follow_up_task_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
 import type { Lead, LeadStatus, UpdateLeadPayload, CustomerType } from "@/services/lead_service";
+import { Input } from "@/components/ui/Input";
 
 // ── Status pipeline config ────────────────────────────────────────────────────
 
@@ -764,11 +765,9 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-700">Phone Number</label>
-              <input value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
+              <Input phoneOnly value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
                 onChange={e => editField("phone", e.target.value)}
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                  ${editErrors.phone ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-              {editErrors.phone && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.phone}</p>}
+                error={editErrors.phone} className="py-1.5 text-xs" />
             </div>
           </div>
 
@@ -1129,11 +1128,9 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-700">Phone Number</label>
-                  <input value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
+                  <Input phoneOnly value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
                     onChange={e => { setEditForm(f => ({ ...f, phone: e.target.value })); setEditErrors(er => ({ ...er, phone: undefined })); }}
-                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                      ${editErrors.phone ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-                  {editErrors.phone && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.phone}</p>}
+                    error={editErrors.phone} className="py-1.5 text-xs" />
                 </div>
               </div>
 

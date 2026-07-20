@@ -521,7 +521,7 @@ export function SalesPipelineScreen() {
       </div>
 
       {/* Kanban Board Grid */}
-      <div className="flex lg:grid lg:grid-cols-6 gap-2 lg:gap-3 overflow-x-auto lg:overflow-x-hidden pb-4 custom-scrollbar select-none min-h-[480px]">
+      <div className="flex lg:grid lg:grid-cols-6 gap-2 lg:gap-3 overflow-x-auto lg:overflow-x-hidden pb-4 custom-scrollbar select-none min-h-120">
         {stages.map(stage => {
           const stageDeals = dealsByStage[stage] || [];
           const stageTotalVal = stageDeals.reduce((sum, d) => sum + d.value, 0);
@@ -547,7 +547,7 @@ export function SalesPipelineScreen() {
                   handleMoveToStage(dealId, stage);
                 }
               }}
-              className={`flex-1 min-w-[200px] lg:min-w-0 lg:max-w-none rounded-xl p-2.5 lg:p-2 flex flex-col gap-2.5 lg:gap-2 border transition-all duration-200 ${draggedOverStage === stage
+              className={`flex-1 min-w-50 lg:min-w-0 lg:max-w-none rounded-xl p-2.5 lg:p-2 flex flex-col gap-2.5 lg:gap-2 border transition-all duration-200 ${draggedOverStage === stage
                   ? "bg-[#E6F1FB]/30 border-[#185FA5]/50 border-dashed"
                   : "bg-slate-100/60 border-slate-200/50"
                 } ${styles.border}`}
@@ -569,7 +569,7 @@ export function SalesPipelineScreen() {
               </div>
 
               {/* Deal Cards Container */}
-              <div className="flex-1 space-y-3 overflow-y-auto max-h-[440px] pr-1 custom-scrollbar">
+              <div className="flex-1 space-y-3 overflow-y-auto max-h-110 pr-1 custom-scrollbar">
                 {stageDeals.length > 0 ? (
                   stageDeals.map(deal => (
                     <Card
@@ -791,8 +791,9 @@ export function SalesPipelineScreen() {
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Phone Number</label>
                   <Input
+                    phoneOnly
                     disabled={isAlreadyClosed}
-                    placeholder="+1 555-0100"
+                    placeholder="e.g. 09xxxxxxxx"
                     value={editingDeal.phone || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, phone: e.target.value })}
                     className="py-1.5 text-xs focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
@@ -848,6 +849,7 @@ export function SalesPipelineScreen() {
                   <label className="text-xs font-semibold text-slate-600">Est. Close Date</label>
                   <Input
                     type="date"
+                    min={new Date().toISOString().split("T")[0]}
                     disabled={isAlreadyClosed}
                     value={editingDeal.expectedClose || ""}
                     onChange={e => setEditingDeal({ ...editingDeal, expectedClose: e.target.value })}
@@ -904,7 +906,7 @@ export function SalesPipelineScreen() {
                   value={editingDeal.notes || ""}
                   disabled={isAlreadyClosed}
                   onChange={e => setEditingDeal({ ...editingDeal, notes: e.target.value })}
-                  className="w-full min-h-[100px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white disabled:bg-slate-50 disabled:text-slate-400 transition"
+                  className="w-full min-h-25 p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white disabled:bg-slate-50 disabled:text-slate-400 transition"
                 />
               </div>
 
