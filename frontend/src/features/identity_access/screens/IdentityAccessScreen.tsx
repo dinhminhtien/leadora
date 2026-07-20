@@ -216,7 +216,7 @@ function UserFormDrawer({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-600">Phone</label>
-              <Input placeholder="e.g. 09xxxxxxxx" value={phone}
+              <Input phoneOnly placeholder="e.g. 09xxxxxxxx" value={phone}
                 onChange={e => setPhone(e.target.value)} error={errors.phone} className="py-1.5 text-xs" />
             </div>
             <div className="space-y-1">
@@ -299,7 +299,7 @@ function UsersTab({ roles }: { roles: Role[] }) {
       {/* Toolbar */}
       <Card className="border-slate-100 shadow-sm bg-white p-0">
         <CardContent className="flex flex-wrap items-center gap-2.5 px-4 py-3">
-          <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <div className="relative flex-1 min-w-45 max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400 pointer-events-none" />
             <input type="text" placeholder="Search name or email…" value={searchInput}
               onChange={e => setSearchInput(e.target.value)}

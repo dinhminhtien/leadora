@@ -9,16 +9,16 @@ import { LandingFooter } from "../components/LandingFooter";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
-import { 
-  Sparkles, 
-  Handshake, 
-  ChartNoAxesCombined, 
-  CalendarCheck, 
-  Gauge, 
-  FileText, 
-  Star, 
-  TrendingUp, 
-  CheckCircle2, 
+import {
+  Sparkles,
+  Handshake,
+  ChartNoAxesCombined,
+  CalendarCheck,
+  Gauge,
+  FileText,
+  Star,
+  TrendingUp,
+  CheckCircle2,
   ArrowRight,
   Smartphone,
   Clock,
@@ -30,11 +30,21 @@ import {
   Users,
   Building2
 } from "lucide-react";
+import { publicStatsService, type PublicStats } from "@/services/reporting_service";
 
 export function LandingPage() {
   const { isAuthenticated, isLoading } = useAuthStore();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"sales" | "ops" | "ai">("sales");
+  const [stats, setStats] = useState<PublicStats | null>(null);
+
+  useEffect(() => {
+    publicStatsService.getPublicStats()
+      .then(res => {
+        if (res.data) setStats(res.data);
+      })
+      .catch(err => console.error("Failed to fetch public stats:", err));
+  }, []);
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
@@ -131,7 +141,7 @@ export function LandingPage() {
           <div className="mt-16 relative max-w-5xl mx-auto group">
             {/* Ambient Backlight */}
             <div className="absolute inset-0 bg-linear-to-r from-primary to-indigo-500 rounded-2xl opacity-10 blur-3xl group-hover:opacity-15 transition duration-500 pointer-events-none" />
-            
+
             {/* macOS Browser Window Frame */}
             <div className="relative rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 p-2 shadow-2xl transition-all duration-300 group-hover:border-primary/20">
               {/* Top Titlebar */}
@@ -146,13 +156,13 @@ export function LandingPage() {
                 </div>
                 <div className="size-3 opacity-0" />
               </div>
-              
+
               {/* Image Frame */}
               <div className="overflow-hidden rounded-lg border border-zinc-200/50 dark:border-zinc-900">
-                <img 
-                  src="/image.jpg" 
-                  alt="Leadora Dashboard View" 
-                  className="w-full h-auto object-cover opacity-95 group-hover:scale-[1.005] transition duration-500" 
+                <img
+                  src="/image.jpg"
+                  alt="Leadora Dashboard View"
+                  className="w-full h-auto object-cover opacity-95 group-hover:scale-[1.005] transition duration-500"
                 />
               </div>
             </div>
@@ -258,16 +268,15 @@ export function LandingPage() {
               <p className="text-sm text-muted-foreground leading-relaxed font-medium">
                 Leadora monitors every incoming guest quotation and operational task. When timers tick down to critical thresholds, cards color-code automatically and notify supervisors.
               </p>
-              
+
               {/* Tab Selector */}
               <div className="flex flex-col gap-2.5 pt-4">
-                <button 
+                <button
                   onClick={() => setActiveTab("sales")}
-                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
-                    activeTab === "sales" 
-                      ? "border-primary/25 bg-primary/5 text-foreground" 
+                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${activeTab === "sales"
+                      ? "border-primary/25 bg-primary/5 text-foreground"
                       : "border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900 text-muted-foreground"
-                  }`}
+                    }`}
                 >
                   <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
                     <ChartNoAxesCombined className="size-4" />
@@ -278,13 +287,12 @@ export function LandingPage() {
                   </div>
                 </button>
 
-                <button 
+                <button
                   onClick={() => setActiveTab("ops")}
-                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
-                    activeTab === "ops" 
-                      ? "border-[#1D9E75]/25 bg-[#1D9E75]/5 text-foreground" 
+                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${activeTab === "ops"
+                      ? "border-[#1D9E75]/25 bg-[#1D9E75]/5 text-foreground"
                       : "border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-900 text-muted-foreground"
-                  }`}
+                    }`}
                 >
                   <div className="size-8 rounded-lg bg-[#1D9E75]/10 flex items-center justify-center text-[#1D9E75] shrink-0">
                     <Clock className="size-4" />
@@ -382,9 +390,11 @@ export function LandingPage() {
                   <TrendingUp className="size-5" />
                 </div>
               </div>
-              <p className="text-4xl font-black text-zinc-900 dark:text-white">148.250 ₫</p>
+              <p className="text-4xl font-black text-zinc-900 dark:text-white">
+                {stats ? `${Number(stats.pipelineValueLogged).toLocaleString("vi-VN")} ₫` : "148.250 ₫"}
+              </p>
               <p className="text-xs font-bold text-emerald-500 mt-1 flex items-center justify-center gap-1">
-                +12.4% average weekly sales volume
+                {stats ? `+${stats.weeklySalesGrowthPct}%` : "+12.4%"} average weekly sales volume
               </p>
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Pipeline Value Logged</p>
             </div>
@@ -396,7 +406,9 @@ export function LandingPage() {
                   <CheckCircle2 className="size-5" />
                 </div>
               </div>
-              <p className="text-4xl font-black text-zinc-900 dark:text-white">99.8%</p>
+              <p className="text-4xl font-black text-zinc-900 dark:text-white">
+                {stats ? `${stats.corporateSlaRatingPct}%` : "99.8%"}
+              </p>
               <p className="text-xs font-bold text-emerald-500 mt-1 flex items-center justify-center gap-1">
                 Response Target Compliance
               </p>
@@ -410,7 +422,9 @@ export function LandingPage() {
                   <Star className="size-5" />
                 </div>
               </div>
-              <p className="text-4xl font-black text-zinc-900 dark:text-white">+24.5%</p>
+              <p className="text-4xl font-black text-zinc-900 dark:text-white">
+                {stats ? `+${stats.directChannelConversionPct}%` : "+24.5%"}
+              </p>
               <p className="text-xs font-bold text-emerald-500 mt-1 flex items-center justify-center gap-1">
                 Average Booking Increase
               </p>
@@ -514,7 +528,7 @@ export function LandingPage() {
               <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed font-medium">
                 Join high-performing hospitality teams using Leadora to track pipelines, protect client response SLAs, and secure room revenue.
               </p>
-              
+
               <div className="pt-4 flex flex-wrap justify-center gap-4">
                 <Link href={ROUTE_PATHS.login}>
                   <Button variant="primary" size="md" className="rounded-xl shadow-lg border border-primary/25" rightIcon={<ArrowUpRight className="size-4" />}>

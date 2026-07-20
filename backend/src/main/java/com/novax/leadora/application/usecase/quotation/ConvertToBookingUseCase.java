@@ -55,14 +55,14 @@ public class ConvertToBookingUseCase {
         String bookingCode = "BK-" + checkInDate.getYear() + "-"
                 + quotationId.toString().substring(0, 8).toUpperCase();
 
-        // POST-2: Create confirmed booking record
+        // POST-2: Create pending booking record
         BookingEntity booking = BookingEntity.builder()
                 .quotation(quotation)
                 .customer(quotation.getCustomer())
                 .bookingCode(bookingCode)
                 .checkInDate(checkInDate)
                 .checkOutDate(checkOutDate)
-                .status(BookingStatus.CONFIRMED)
+                .status(BookingStatus.PENDING)
                 .specialRequests(request.getSpecialRequests())
                 .totalAmount(quotation.getTotalAmount())
                 .build();

@@ -5,9 +5,8 @@ import com.novax.leadora.api.dto.response.DealResponse;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
-import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerStatus;
-import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
+import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
@@ -29,30 +28,15 @@ public class CreateDealUseCase {
 
     @Transactional
     public DealResponse execute(DealRequest request) {
-        // Find or create customer
-        CustomerEntity customer = null;
-        if (request.getEmail() != null && !request.getEmail().trim().isEmpty()) {
-            customer = customerRepository.findFirstByEmail(request.getEmail().trim()).orElse(null);
+        if (request.getCustomerId() == null) {
+            throw new IllegalArgumentException(
+                    "A Customer ID is required to create a Deal. Convert a Lead first.");
         }
-        if (customer == null) {
-            customer = customerRepository.findFirstByFullName(request.getContactName().trim()).orElse(null);
-        }
-        if (customer == null) {
-            customer = CustomerEntity.builder()
-                    .fullName(request.getContactName())
-                    .email(request.getEmail())
-                    .phone(request.getPhone())
-                    .customerType(CustomerType.INDIVIDUAL)
-                    .status(CustomerStatus.ACTIVE)
-                    .build();
-            customer = customerRepository.save(customer);
-        }
+        CustomerEntity customer = customerRepository.findById(request.getCustomerId())
+                .orElseThrow(() -> new ResourceNotFoundException("Customer", request.getCustomerId()));
 
         // Find assigned user if owner specified
-        UserEntity owner = null;
-        if (request.getOwner() != null && !request.getOwner().trim().isEmpty()) {
-            owner = userRepository.findFirstByFullNameIgnoreCase(request.getOwner().trim()).orElse(null);
-        }
+        UserEntity owner = resolveOwner(request.getOwner());
         if (owner == null) {
             // Fallback to first user in system if exists, or leave null
             List<UserEntity> users = userRepository.findAll();
@@ -84,5 +68,28 @@ public class CreateDealUseCase {
 
         DealEntity savedDeal = dealRepository.save(deal);
         return dealMapper.mapToResponse(savedDeal);
+    }
+
+    private UserEntity resolveOwner(String ownerInput) {
+        if (ownerInput == null || ownerInput.trim().isEmpty()) {
+            return null;
+        }
+        String input = ownerInput.trim();
+
+        // 1. Try parsing as UUID
+        try {
+            java.util.UUID userId = java.util.UUID.fromString(input);
+            return userRepository.findById(userId).orElse(null);
+        } catch (IllegalArgumentException e) {
+            // Not a UUID, ignore and proceed
+        }
+
+        // 2. Try lookup by email
+        if (input.contains("@")) {
+            return userRepository.findByEmail(input).orElse(null);
+        }
+
+        // 3. Fallback to lookup by full name
+        return userRepository.findFirstByFullNameIgnoreCase(input).orElse(null);
     }
 }

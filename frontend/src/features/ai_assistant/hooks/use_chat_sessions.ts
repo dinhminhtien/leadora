@@ -102,10 +102,13 @@ export function useDeleteChatSession() {
 }
 
 // ── RAG company documents ───────────────────────────────────────────────────
-export function useCompanyDocuments() {
+export function useCompanyDocuments(enabled: boolean = true) {
   return useQuery({
     queryKey: DOCUMENTS_KEY,
     queryFn: () => chatAssistantService.getDocuments(),
+    // The documents endpoint is Manager-only; other roles must not fire the request
+    // at all (it would 403 and keep retrying), so callers gate it by role.
+    enabled,
     // Ingestion is async on the backend: a freshly uploaded doc starts at chunkCount 0
     // ("processing"). Poll every 4s while any doc is still processing so the row flips to
     // "ready" (or disappears on failure) without the user having to reopen the panel.

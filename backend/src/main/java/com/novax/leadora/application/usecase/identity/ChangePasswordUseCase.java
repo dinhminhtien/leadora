@@ -37,13 +37,6 @@ public class ChangePasswordUseCase {
                     HttpStatus.UNPROCESSABLE_ENTITY);
         }
 
-        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
-            throw new BusinessException(
-                    "PASSWORD_MISMATCH",
-                    "New password and confirm password do not match.",
-                    HttpStatus.UNPROCESSABLE_ENTITY);
-        }
-
         if (passwordEncoder.matches(request.getNewPassword(), user.getPasswordHash())) {
             throw new BusinessException(
                     "SAME_PASSWORD",

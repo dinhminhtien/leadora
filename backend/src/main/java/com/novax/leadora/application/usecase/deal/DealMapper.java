@@ -7,6 +7,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 @Component
 public class DealMapper {
@@ -16,6 +17,8 @@ public class DealMapper {
         String email = deal.getCustomer() != null ? deal.getCustomer().getEmail() : "";
         String phone = deal.getCustomer() != null ? deal.getCustomer().getPhone() : "";
         String ownerName = deal.getAssignedUser() != null ? deal.getAssignedUser().getFullName() : "Unassigned";
+        String ownerEmail = deal.getAssignedUser() != null ? deal.getAssignedUser().getEmail() : null;
+        UUID ownerId = deal.getAssignedUser() != null ? deal.getAssignedUser().getUserId() : null;
 
         return DealResponse.builder()
                 .id(deal.getDealId())
@@ -28,6 +31,8 @@ public class DealMapper {
                 .stage(mapStageToString(deal.getPipelineStage(), deal.getStatus()))
                 .stageCode(deal.getPipelineStage())
                 .owner(ownerName)
+                .ownerEmail(ownerEmail)
+                .ownerId(ownerId)
                 .status(mapStatusToString(deal.getStatus()))
                 .expectedClose(deal.getExpectedCloseDate())
                 .createdAt(deal.getCreatedAt() != null ? deal.getCreatedAt().toLocalDate() : LocalDate.now())

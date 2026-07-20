@@ -872,6 +872,7 @@ function TaskDetailDrawer({
                   <div className="grid grid-cols-2 gap-2">
                     <Input
                       type="date"
+                      min={toDateStr(new Date())}
                       value={extractLocalDate(form.startAt)}
                       onChange={e => {
                         const date = e.target.value;
@@ -898,6 +899,7 @@ function TaskDetailDrawer({
                   <div className="grid grid-cols-2 gap-2">
                     <Input
                       type="date"
+                      min={extractLocalDate(form.startAt) || toDateStr(new Date())}
                       value={extractLocalDate(form.endAt) || extractLocalDate(form.startAt)}
                       onChange={e => {
                         const date = e.target.value;
@@ -1683,6 +1685,7 @@ function CreateTaskDrawer({
                 <Input
                   required
                   type="date"
+                  min={toDateStr(new Date())}
                   value={extractLocalDate(form.startAt)}
                   onChange={e => {
                     const date = e.target.value;
@@ -1715,6 +1718,7 @@ function CreateTaskDrawer({
                 <label className="text-[10px] text-slate-500 font-medium">End Date</label>
                 <Input
                   type="date"
+                  min={extractLocalDate(form.startAt) || toDateStr(new Date())}
                   value={extractLocalDate(form.endAt) || extractLocalDate(form.startAt)}
                   onChange={e => {
                     const date = e.target.value;
@@ -2043,7 +2047,7 @@ export function FollowUpTaskListScreen() {
             title={done ? "Task completed" : "Mark complete"}
             className="block focus:outline-none"
           >
-            <CheckCircle2 className={`size-[18px] transition ${done ? "text-[#3B6D11] fill-[#EAF3DE]" :
+            <CheckCircle2 className={`size-4.5 transition ${done ? "text-[#3B6D11] fill-[#EAF3DE]" :
                 overdue ? "text-[#E24B4A] hover:text-[#A32D2D]" :
                   "text-slate-200 hover:text-[#185FA5]"
               }`} />
@@ -2058,7 +2062,7 @@ export function FollowUpTaskListScreen() {
         </td>
 
         {/* Subject + description */}
-        <td className="px-3 py-3 min-w-[180px] max-w-xs">
+        <td className="px-3 py-3 min-w-45 max-w-xs">
           <p className={`text-xs font-bold truncate leading-snug ${done ? "line-through text-slate-400" : overdue ? "text-[#A32D2D]" : "text-slate-800"
             }`}>
             {task.title}
@@ -2069,7 +2073,7 @@ export function FollowUpTaskListScreen() {
         </td>
 
         {/* Contact person — Lead or Customer name (key column) */}
-        <td className="px-3 py-3 min-w-[120px] max-w-[160px]">
+        <td className="px-3 py-3 min-w-30 max-w-40">
           {contactName ? (
             <div className="flex items-center gap-1.5">
               <div className="size-5 rounded-full bg-[#FAEEDA] flex items-center justify-center text-[9px] font-bold text-[#854F0B] shrink-0">
@@ -2083,7 +2087,7 @@ export function FollowUpTaskListScreen() {
         </td>
 
         {/* Deal / Entity link */}
-        <td className="px-3 py-3 w-[140px] max-w-[140px]">
+        <td className="px-3 py-3 w-35 max-w-35">
           {entityName !== "—" ? (
             <div className="flex items-start gap-1.5 w-full overflow-hidden">
               <Briefcase className="size-3 text-slate-400 shrink-0 mt-0.5" />
@@ -2102,7 +2106,7 @@ export function FollowUpTaskListScreen() {
         </td>
 
         {/* Schedule — start at / end at */}
-        <td className="w-[110px] px-3 py-3 whitespace-nowrap">
+        <td className="w-27.5 px-3 py-3 whitespace-nowrap">
           <p className={`text-xs font-semibold ${overdue ? "text-[#A32D2D]" : "text-slate-600 dark:text-slate-300"}`}>
             {formatDate(task.startAt)}
           </p>
@@ -2123,7 +2127,7 @@ export function FollowUpTaskListScreen() {
               <div className="size-5 rounded-full bg-[#E6F1FB] flex items-center justify-center text-[9px] font-bold text-[#0C447C] shrink-0">
                 {task.assignedUserName.charAt(0).toUpperCase()}
               </div>
-              <span className="text-[10px] text-slate-600 font-medium max-w-[90px] truncate">{task.assignedUserName}</span>
+              <span className="text-[10px] text-slate-600 font-medium max-w-22.5 truncate">{task.assignedUserName}</span>
             </div>
           ) : (
             <span className="text-slate-300 text-xs">—</span>
@@ -2148,7 +2152,7 @@ export function FollowUpTaskListScreen() {
         </td>
 
         {/* Row actions — appear on hover */}
-        <td className="px-3 py-3 w-[120px]" onClick={e => e.stopPropagation()}>
+        <td className="px-3 py-3 w-30" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
             <Button variant="secondary" size="sm" onClick={() => { setSelectedTask(task); setOpenTaskInEdit(true); }}>Edit</Button>
             {task.status !== "CANCELLED" && task.status !== "COMPLETED" && (
@@ -2307,7 +2311,7 @@ export function FollowUpTaskListScreen() {
 
             return (
               <div key={ds} className={`flex flex-col border-r border-slate-100 last:border-r-0 ${isToday ? "bg-[#E6F1FB]/20" : ""}`}>
-                <div className="flex-1 px-1.5 py-2 space-y-1.5 overflow-y-auto min-h-[160px] max-h-[360px]">
+                <div className="flex-1 px-1.5 py-2 space-y-1.5 overflow-y-auto min-h-40 max-h-90">
                   {dayTasks.map(task => {
                     const actType = activityTypeOf(task);
                     const chipCls = ACTIVITY_CHIP[actType];
@@ -2503,11 +2507,11 @@ export function FollowUpTaskListScreen() {
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Subject</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Contact</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Deal / Entity</th>
-                    <th className="w-[90px] px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Schedule</th>
+                    <th className="w-22.5 px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Schedule</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Assigned To</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Priority / Status</th>
                     <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">SLA</th>
-                    <th className="w-[120px] px-3 py-2.5" />
+                    <th className="w-30 px-3 py-2.5" />
                   </tr>
                 </thead>
                 <tbody>

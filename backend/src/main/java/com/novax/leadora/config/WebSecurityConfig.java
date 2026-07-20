@@ -61,7 +61,7 @@ public class WebSecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/error", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/forgot-password",
-                                "/api/v1/auth/reset-password", "/api/v1/health", "/api/v1/feedback/public/**")
+                                "/api/v1/auth/reset-password", "/api/v1/health", "/api/v1/feedback/public/**", "/api/v1/public/**")
                         .permitAll()
                         .requestMatchers("/api/v1/auth/profile").authenticated()
                         .requestMatchers("/api/v1/**").authenticated()
@@ -72,6 +72,7 @@ public class WebSecurityConfig {
                             String path = request.getRequestURI();
                             if ("/".equals(path) || "/error".equals(path) || "/api/v1/health".equals(path)
                                     || path.startsWith("/api/v1/feedback/public/")
+                                    || path.startsWith("/api/v1/public/")
                                     || path.startsWith("/api/v1/auth/login")
                                     || path.startsWith("/api/v1/auth/logout")
                                     || path.startsWith("/api/v1/auth/forgot-password")

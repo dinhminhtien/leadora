@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { useUpdateReminder, useEscalateReminder } from "@/features/reminder/hooks/use_reminders";
 import { useAuthStore } from "@/stores/auth_store";
 import type { Reminder, ReminderPriority, UpdateReminderPayload } from "@/services/reminder_service";
+import { Portal } from "@/components/ui/Portal";
 
 const inputCls =
   "w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-400 focus:bg-white transition";
@@ -108,167 +109,170 @@ export function UpdateReminderModal({ reminder, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-md mx-4">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center size-8 rounded-full bg-blue-50">
-              <Bell className="size-4 text-blue-500" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-slate-800">Update Reminder</h2>
-              <p className="text-[10px] text-slate-400 max-w-[240px] truncate">{reminder.title}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-slate-100 text-slate-400 transition">
-            <X className="size-4" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="px-5 py-4 space-y-3">
-          {/* Status banners */}
-          {reminder.status === "OVERDUE" && (
-            <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-semibold">
-              <AlertTriangle className="size-3.5 shrink-0" /> This reminder is overdue
-            </div>
-          )}
-          {isTimeOverdue && (
-            <div className="flex items-center gap-2 rounded-lg bg-orange-50 border border-orange-200 px-3 py-2 text-xs text-orange-700 font-semibold">
-              <AlertTriangle className="size-3.5 shrink-0" /> Past due — system will mark as overdue shortly (up to 5 min). Refresh to escalate.
-            </div>
-          )}
-          {reminder.status === "DONE" && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700 font-semibold">
-                <CheckCircle className="size-3.5 shrink-0" /> This reminder is already completed
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+        <div className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-md mx-4">
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center size-8 rounded-full bg-blue-50">
+                <Bell className="size-4 text-blue-500" />
               </div>
-              <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={forceIfDone}
-                  onChange={e => setForceIfDone(e.target.checked)}
-                  className="rounded border-slate-300"
-                />
-                Update anyway
-              </label>
+              <div>
+                <h2 className="text-sm font-bold text-slate-800">Update Reminder</h2>
+                <p className="text-[10px] text-slate-400 max-w-60 truncate">{reminder.title}</p>
+              </div>
             </div>
-          )}
-
-          {/* Access denied */}
-          {!canEdit && (
-            <div className="flex items-center gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-500 font-semibold">
-              <AlertTriangle className="size-3.5 shrink-0" /> Access Denied — only the assignee or a manager can edit this reminder.
-            </div>
-          )}
-
-          {/* Error / success */}
-          {error && (
-            <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-semibold">
-              <AlertTriangle className="size-3.5 shrink-0" /> {error}
-            </div>
-          )}
-          {successMsg && (
-            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700 font-semibold">
-              <CheckCircle className="size-3.5 shrink-0" /> {successMsg}
-            </div>
-          )}
-
-          {/* Form fields */}
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Title</label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={e => set("title", e.target.value)}
-              disabled={!canEdit}
-              className={inputCls + (!canEdit ? " opacity-50 cursor-not-allowed" : "")}
-              maxLength={255}
-            />
+            <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-slate-100 text-slate-400 transition">
+              <X className="size-4" />
+            </button>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Description</label>
-            <textarea
-              value={form.description}
-              onChange={e => set("description", e.target.value)}
-              disabled={!canEdit}
-              rows={2}
-              className={inputCls + " resize-none" + (!canEdit ? " opacity-50 cursor-not-allowed" : "")}
-            />
-          </div>
+          {/* Body */}
+          <div className="px-5 py-4 space-y-3">
+            {/* Status banners */}
+            {reminder.status === "OVERDUE" && (
+              <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-semibold">
+                <AlertTriangle className="size-3.5 shrink-0" /> This reminder is overdue
+              </div>
+            )}
+            {isTimeOverdue && (
+              <div className="flex items-center gap-2 rounded-lg bg-orange-50 border border-orange-200 px-3 py-2 text-xs text-orange-700 font-semibold">
+                <AlertTriangle className="size-3.5 shrink-0" /> Past due — system will mark as overdue shortly (up to 5 min). Refresh to escalate.
+              </div>
+            )}
+            {reminder.status === "DONE" && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700 font-semibold">
+                  <CheckCircle className="size-3.5 shrink-0" /> This reminder is already completed
+                </div>
+                <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={forceIfDone}
+                    onChange={e => setForceIfDone(e.target.checked)}
+                    className="rounded border-slate-300"
+                  />
+                  Update anyway
+                </label>
+              </div>
+            )}
 
-          <div className="grid grid-cols-2 gap-3">
+            {/* Access denied */}
+            {!canEdit && (
+              <div className="flex items-center gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-500 font-semibold">
+                <AlertTriangle className="size-3.5 shrink-0" /> Access Denied — only the assignee or a manager can edit this reminder.
+              </div>
+            )}
+
+            {/* Error / success */}
+            {error && (
+              <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-semibold">
+                <AlertTriangle className="size-3.5 shrink-0" /> {error}
+              </div>
+            )}
+            {successMsg && (
+              <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700 font-semibold">
+                <CheckCircle className="size-3.5 shrink-0" /> {successMsg}
+              </div>
+            )}
+
+            {/* Form fields */}
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Due Date &amp; Time</label>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Title</label>
               <input
-                type="datetime-local"
-                value={form.remindAt}
-                onChange={e => set("remindAt", e.target.value)}
+                type="text"
+                value={form.title}
+                onChange={e => set("title", e.target.value)}
                 disabled={!canEdit}
                 className={inputCls + (!canEdit ? " opacity-50 cursor-not-allowed" : "")}
+                maxLength={255}
               />
             </div>
+
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Priority</label>
-              <select
-                value={form.priority}
-                onChange={e => set("priority", e.target.value as ReminderPriority)}
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Description</label>
+              <textarea
+                value={form.description}
+                onChange={e => set("description", e.target.value)}
                 disabled={!canEdit}
-                className={inputCls + (!canEdit ? " opacity-50 cursor-not-allowed" : "")}
-              >
-                <option value="HIGH">High</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="LOW">Low</option>
-              </select>
+                rows={2}
+                className={inputCls + " resize-none" + (!canEdit ? " opacity-50 cursor-not-allowed" : "")}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Due Date &amp; Time</label>
+                <input
+                  type="datetime-local"
+                  value={form.remindAt}
+                  min={new Date().toISOString().slice(0, 16)}
+                  onChange={e => set("remindAt", e.target.value)}
+                  disabled={!canEdit}
+                  className={inputCls + (!canEdit ? " opacity-50 cursor-not-allowed" : "")}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Priority</label>
+                <select
+                  value={form.priority}
+                  onChange={e => set("priority", e.target.value as ReminderPriority)}
+                  disabled={!canEdit}
+                  className={inputCls + (!canEdit ? " opacity-50 cursor-not-allowed" : "")}
+                >
+                  <option value="HIGH">High</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="LOW">Low</option>
+                </select>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 pb-5 pt-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={onClose} className="text-xs border-slate-200 text-slate-600">
-            Cancel
-          </Button>
-
-          {showEscalate && canEdit && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEscalate}
-              isLoading={escalateMutation.isPending}
-              className="text-xs border-orange-300 text-orange-600 hover:bg-orange-50"
-            >
-              Escalate
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 px-5 pb-5 pt-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={onClose} className="text-xs border-slate-200 text-slate-600">
+              Cancel
             </Button>
-          )}
 
-          {showMarkDone && canEdit && (
+            {showEscalate && canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleEscalate}
+                isLoading={escalateMutation.isPending}
+                className="text-xs border-orange-300 text-orange-600 hover:bg-orange-50"
+              >
+                Escalate
+              </Button>
+            )}
+
+            {showMarkDone && canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMarkDone}
+                isLoading={updateMutation.isPending}
+                className="text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              >
+                Mark as Done
+              </Button>
+            )}
+
             <Button
-              variant="outline"
+              variant="primary"
               size="sm"
-              onClick={handleMarkDone}
+              onClick={handleSave}
               isLoading={updateMutation.isPending}
-              className="text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              disabled={!canEdit}
+              className="text-xs font-bold"
             >
-              Mark as Done
+              Save Changes
             </Button>
-          )}
-
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleSave}
-            isLoading={updateMutation.isPending}
-            disabled={!canEdit}
-            className="text-xs font-bold"
-          >
-            Save Changes
-          </Button>
+          </div>
         </div>
       </div>
-    </div>
+    </Portal>
   );
 }

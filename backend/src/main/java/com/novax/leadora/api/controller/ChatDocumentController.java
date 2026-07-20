@@ -18,11 +18,16 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 
-/** Company-document knowledge base for the chat assistant's RAG (shared across users). */
+/**
+ * Company-document knowledge base for the chat assistant's RAG. The ingested content is shared
+ * knowledge (every role benefits from it through chat answers), but managing it — upload, list,
+ * delete — is a Manager-only capability; other roles interact with the knowledge base solely
+ * through the chat assistant (UC-25.7/25.8).
+ */
 @RestController
 @RequestMapping("/api/v1/chat/documents")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+@PreAuthorize("hasRole('MANAGER')")
 public class ChatDocumentController {
 
     private final CurrentUserProvider currentUserProvider;
@@ -30,9 +35,8 @@ public class ChatDocumentController {
     private final ListDocumentsUseCase listDocumentsUseCase;
     private final DeleteDocumentUseCase deleteDocumentUseCase;
 
-    /** Upload a document (PDF / DOCX / TXT / MD) and ingest it for RAG. Manager only. */
+    /** Upload a document (PDF / DOCX / TXT / MD) and ingest it for RAG. */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<DocumentResponse>> upload(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestParam(value = "title", required = false) String title,
@@ -49,9 +53,8 @@ public class ChatDocumentController {
         return ResponseEntity.ok(ApiResponse.success(listDocumentsUseCase.execute()));
     }
 
-    /** Delete a document and its embeddings. Manager only. */
+    /** Delete a document and its embeddings. */
     @DeleteMapping("/{documentId}")
-    @PreAuthorize("hasRole('MANAGER')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID documentId) {
         deleteDocumentUseCase.execute(documentId);
         return ResponseEntity.ok(ApiResponse.success(null, "Document deleted"));

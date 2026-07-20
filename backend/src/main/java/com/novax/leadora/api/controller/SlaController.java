@@ -29,6 +29,10 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/sla")
 @RequiredArgsConstructor
+// Baseline guard: every SLA endpoint requires a logged-in user (monitoring feeds the
+// per-record SLA badges shown to Sales, so reads stay role-agnostic); mutating rule
+// endpoints and the compliance report tighten this per-method below.
+@PreAuthorize("isAuthenticated()")
 public class SlaController {
 
     private final GetSlaRulesUseCase getSlaRulesUseCase;
@@ -98,11 +102,11 @@ public class SlaController {
     }
 
     /**
-     * UC-17.6 — View SLA performance report (Admin, Manager, Reservation Staff,
-     * Front Office)
+     * UC-23.3 — View SLA Compliance Report. Manager/Admin only per the SRS
+     * (the report aggregates team-wide SLA warnings/violations).
      */
     @GetMapping("/report")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'RESERVATION_STAFF', 'FRONT_OFFICE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<ApiResponse<SlaReportResponse>> getReport(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,

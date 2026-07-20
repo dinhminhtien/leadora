@@ -323,12 +323,13 @@ export function CustomerProfileDetailScreen({ customerId }: { customerId: string
   const { data: historyData } = useCustomerHistory(customerId);
   const { data: usersData } = useQuery({
     queryKey: ["users-list-summary"],
-    queryFn: () => userService.getList({ size: 100, status: "ACTIVE" }),
+    // Flat /users endpoint — /users/accounts is Admin-only and would 403 for Sales/Manager.
+    queryFn: () => userService.getSummaries(),
   });
 
   const customer = customerData?.data as Customer | undefined;
   const tasks: Task[] = tasksData?.data?.content ?? [];
-  const users = usersData?.data?.content ?? [];
+  const users = usersData?.data ?? [];
 
   const taskStats = useMemo(() => ({
     total: tasks.length,
