@@ -99,7 +99,7 @@ const UserSelect: React.FC<UserSelectProps> = ({ users, value, onChange, disable
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full min-h-[42px] px-3 py-1.5 flex items-center justify-between text-left rounded-xl border border-border bg-input text-sm text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.025)] disabled:cursor-not-allowed disabled:opacity-50 dark:shadow-none transition"
+        className="w-full min-h-10.5 px-3 py-1.5 flex items-center justify-between text-left rounded-xl border border-border bg-input text-sm text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.025)] disabled:cursor-not-allowed disabled:opacity-50 dark:shadow-none transition"
       >
         {selectedUser ? (
           <div className="flex flex-col">
@@ -134,7 +134,7 @@ const UserSelect: React.FC<UserSelectProps> = ({ users, value, onChange, disable
             onClick={e => e.stopPropagation()}
             autoFocus
           />
-          <div className="overflow-y-auto max-h-[180px] flex flex-col gap-1 pr-1">
+          <div className="overflow-y-auto max-h-45 flex flex-col gap-1 pr-1">
             {filteredUsers.length > 0 ? (
               filteredUsers.map(u => (
                 <button
@@ -1055,7 +1055,7 @@ export function DealListScreen() {
                   placeholder="Describe deal requirements, guest details, etc..."
                   value={newDeal.notes}
                   onChange={e => setNewDeal({ ...newDeal, notes: e.target.value })}
-                  className="w-full min-h-[80px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
+                  className="w-full min-h-20 p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
                 />
               </div>
 
@@ -1300,7 +1300,7 @@ export function DealListScreen() {
                   value={editingDeal.notes || ""}
                   disabled={isAlreadyClosed}
                   onChange={e => setEditingDeal({ ...editingDeal, notes: e.target.value })}
-                  className="w-full min-h-[100px] p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white disabled:bg-slate-50 disabled:text-slate-400 transition"
+                  className="w-full min-h-25 p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white disabled:bg-slate-50 disabled:text-slate-400 transition"
                 />
               </div>
 

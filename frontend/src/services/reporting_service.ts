@@ -32,16 +32,43 @@ export type StageSummary = {
   value: number;
 };
 
+export type LeaderboardEntry = {
+  name: string;
+  actionCount: number;
+};
+
 export type DashboardSummary = {
   activeLeadsCount: number;
   totalLeadsCount: number;
+  activeLeadsGrowthPct?: number;
   activeDealsCount: number;
   activeDealsValue: number;
   weightedPipelineValue: number;
   totalDealsValue: number;
   pendingTasksCount: number;
   overdueTasksCount: number;
+  slaComplianceRatePct?: number;
+  avgResponseHours?: number;
+  avgDealSize?: number;
+  avgDealSizeGrowthPct?: number;
+  winRatePct?: number;
+  winRateBenchmarkLabel?: string;
   funnelStages: StageSummary[];
+  leaderboard?: LeaderboardEntry[];
+};
+
+export type PublicStats = {
+  pipelineValueLogged: number;
+  weeklySalesGrowthPct: number;
+  corporateSlaRatingPct: number;
+  directChannelConversionPct: number;
+};
+
+export const publicStatsService = {
+  async getPublicStats(): Promise<ApiResponse<PublicStats>> {
+    const response = await apiClient.get<ApiResponse<PublicStats>>("/public/stats");
+    return response.data;
+  },
 };
 
 // ── UC-23.1 Sales Performance Statistics ─────────────────────────────────────

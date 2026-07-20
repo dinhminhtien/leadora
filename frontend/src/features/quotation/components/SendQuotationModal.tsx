@@ -477,7 +477,7 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
                   type="date"
                   value={reminderDate}
                   onChange={(e) => setReminderDate(e.target.value)}
-                  className="max-w-[180px]"
+                  className="max-w-45"
                 />
               </div>
             )}
