@@ -40,8 +40,18 @@ export type UpdateReminderPayload = {
 
 const ENDPOINT = "/reminders";
 
+export type ReminderListParams = {
+  userId?: string;
+  status?: string;
+  /** ISO 8601 date-time — server-side filter (GetRemindersUseCase). */
+  remindFrom?: string;
+  remindTo?: string;
+  /** "priority" for HIGH→LOW ordering, or omitted for remindAt ascending. */
+  sortBy?: string;
+};
+
 export const reminderService = {
-  async getList(params?: { userId?: string; status?: string }): Promise<ApiResponse<Reminder[]>> {
+  async getList(params?: ReminderListParams): Promise<ApiResponse<Reminder[]>> {
     const response = await apiClient.get<ApiResponse<Reminder[]>>(ENDPOINT, { params });
     return response.data;
   },

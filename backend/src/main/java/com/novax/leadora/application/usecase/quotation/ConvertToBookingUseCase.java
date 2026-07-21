@@ -2,6 +2,8 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.ConvertToBookingRequest;
 import com.novax.leadora.api.dto.response.BookingResponse;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
+import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
@@ -14,6 +16,7 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingRepository
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +24,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ConvertToBookingUseCase {
@@ -29,11 +33,16 @@ public class ConvertToBookingUseCase {
     private final BookingRepository bookingRepository;
     private final QuotationDetailRepository quotationDetailRepository;
     private final BookingDetailRepository bookingDetailRepository;
+    private final QuotationAccessPolicy quotationAccessPolicy;
+    private final QuotationAvailabilityChecker availabilityChecker;
+    private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Transactional
     public BookingResponse execute(UUID quotationId, ConvertToBookingRequest request) {
         QuotationEntity quotation = quotationRepository.findById(quotationId)
-                .orElseThrow(() -> new RuntimeException("Quotation not found: " + quotationId));
+                .orElseThrow(() -> new ResourceNotFoundException("Quotation", quotationId));
+
+        quotationAccessPolicy.assertCanView(quotationAccessPolicy.currentUser(), quotation);
 
         // PRE-1: Only ACCEPTED quotations can be converted
         if (quotation.getStatus() != QuotationStatus.ACCEPTED) {
@@ -58,6 +67,9 @@ public class ConvertToBookingUseCase {
         if (quotation.getCustomer() == null) {
             throw new IllegalArgumentException("Customer information is missing (BR-23)");
         }
+
+        // E3: room must still be available for the (possibly re-confirmed) dates — BR-24
+        availabilityChecker.assertRoomAvailable(checkInDate, checkOutDate, quotation.getRoomType());
 
         // Generate booking code from year + quotation UUID prefix (unique per quotation)
         String bookingCode = "BK-" + checkInDate.getYear() + "-"
@@ -100,6 +112,13 @@ public class ConvertToBookingUseCase {
         // POST-1: Update quotation status to CONVERTED
         quotation.setStatus(QuotationStatus.CONVERTED);
         quotationRepository.save(quotation);
+
+        // UC-17.2: start SLA tracking — non-fatal if no BOOKING_CONFIRM rule configured
+        try {
+            startSlaTrackingUseCase.execute("BOOKING_CONFIRM", "BOOKING", saved.getBookingId());
+        } catch (Exception e) {
+            log.warn("SLA tracking failed for booking {}: {}", saved.getBookingId(), e.getMessage());
+        }
 
         return BookingResponse.from(saved);
     }

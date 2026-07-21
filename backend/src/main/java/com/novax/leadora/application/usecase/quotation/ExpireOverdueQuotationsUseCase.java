@@ -1,12 +1,14 @@
 package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.ExpireOverdueRequest;
+import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationClosureLogEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationClosureLogRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ExpireOverdueQuotationsUseCase {
@@ -29,6 +32,7 @@ public class ExpireOverdueQuotationsUseCase {
 
     private final QuotationRepository quotationRepository;
     private final QuotationClosureLogRepository closureLogRepository;
+    private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
 
     @Transactional
     public Map<String, Object> execute(ExpireOverdueRequest request) {
@@ -53,6 +57,12 @@ public class ExpireOverdueQuotationsUseCase {
                     .previousStatus(previousStatus)
                     .newStatus("EXPIRED")
                     .build());
+
+            try {
+                resolveSlaBreachUseCase.executeByEntity("QUOTATION", q.getQuotationId());
+            } catch (Exception e) {
+                log.warn("SLA auto-resolve failed for expired quotation {}: {}", q.getQuotationId(), e.getMessage());
+            }
 
             return q.getQuotationId().toString();
         }).collect(Collectors.toList());

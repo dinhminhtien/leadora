@@ -2,6 +2,8 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.ReviseQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
+import com.novax.leadora.common.exception.BusinessException;
+import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
@@ -11,12 +13,14 @@ import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRe
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.temporal.ChronoUnit;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -24,9 +28,18 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ReviseQuotationUseCase {
 
+    // Only a quotation still "in play" can be revised — matches the set of statuses
+    // the frontend already shows the Revise action for (QuotationListScreen.tsx).
+    private static final Set<QuotationStatus> REVISABLE_STATUSES = Set.of(
+            QuotationStatus.DRAFT, QuotationStatus.SENT, QuotationStatus.INTERESTED,
+            QuotationStatus.REJECTED, QuotationStatus.PENDING_REVISION
+    );
+
     private final QuotationRepository quotationRepository;
     private final QuotationDetailRepository quotationDetailRepository;
     private final CurrentUserProvider currentUserProvider;
+    private final QuotationAccessPolicy quotationAccessPolicy;
+    private final QuotationAvailabilityChecker availabilityChecker;
 
     @Transactional
     public QuotationResponse execute(UUID parentId, ReviseQuotationRequest request) {
@@ -37,7 +50,17 @@ public class ReviseQuotationUseCase {
 
         // Load parent quotation to inherit deal + customer (BR-22)
         QuotationEntity parent = quotationRepository.findById(parentId)
-                .orElseThrow(() -> new RuntimeException("Quotation not found: " + parentId));
+                .orElseThrow(() -> new ResourceNotFoundException("Quotation", parentId));
+
+        quotationAccessPolicy.assertCanView(quotationAccessPolicy.currentUser(), parent);
+
+        if (!REVISABLE_STATUSES.contains(parent.getStatus())) {
+            throw new BusinessException("QUOTATION_NOT_REVISABLE",
+                    "Quotation cannot be revised from status " + parent.getStatus().name(), HttpStatus.CONFLICT);
+        }
+
+        // E2: room type must exist and be available for the requested dates (BR-24)
+        availabilityChecker.assertRoomAvailable(request.getCheckInDate(), request.getCheckOutDate(), request.getRoomType());
 
         // Pricing calculations
         long nights = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
@@ -97,6 +120,11 @@ public class ReviseQuotationUseCase {
                 .lineTotal(totalAmount)
                 .build();
         quotationDetailRepository.save(detail);
+
+        // BR-22: exactly one version stays "active" — supersede the parent now that a
+        // new version exists, instead of leaving both live simultaneously.
+        parent.setStatus(QuotationStatus.SUPERSEDED);
+        quotationRepository.save(parent);
 
         return QuotationResponse.fromWithDetail(saved, (int) nights,
                 request.getNumberOfRooms(), request.getPricePerNight());

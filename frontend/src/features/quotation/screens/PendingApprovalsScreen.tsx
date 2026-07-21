@@ -319,8 +319,6 @@ export function PendingApprovalsScreen() {
         id: selectedQuote.id,
         payload: {
           action: actionMap[decision],
-          managerName,
-          managerRole,
           notes: notes || undefined,
         },
       });

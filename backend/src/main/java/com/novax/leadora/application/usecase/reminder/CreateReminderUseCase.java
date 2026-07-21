@@ -2,6 +2,7 @@ package com.novax.leadora.application.usecase.reminder;
 
 import com.novax.leadora.api.dto.request.CreateReminderRequest;
 import com.novax.leadora.api.dto.response.ReminderResponse;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
@@ -31,6 +32,7 @@ public class CreateReminderUseCase {
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
     private final CurrentUserProvider currentUserProvider;
+    private final SystemAuditLogService systemAuditLogService;
 
     @Transactional
     public ReminderResponse execute(CreateReminderRequest request) {
@@ -83,6 +85,9 @@ public class CreateReminderUseCase {
             notificationRepository.save(notification);
             log.info("Reminder notification sent to user={}", assignedUser.getUserId());
         }
+
+        systemAuditLogService.log("REMINDER", "REMINDER", saved.getReminderId(), "CREATED", createdBy,
+                null, "title=" + saved.getTitle() + ", remindAt=" + saved.getRemindAt(), null);
 
         log.info("Reminder created: id={}, assignedUser={}, remindAt={}",
                 saved.getReminderId(), assignedUser.getUserId(), saved.getRemindAt());

@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import type { Quotation } from "@/services/quotation_service";
 import { useCloseQuotation } from "@/features/quotation/hooks/use_quotations";
-import { useAuthStore } from "@/stores/auth_store";
 import { Portal } from "@/components/ui/Portal";
 
 
@@ -54,7 +53,6 @@ const STATUS_LABEL: Partial<Record<Quotation["status"], string>> = {
 };
 
 export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalProps) {
-  const { user } = useAuthStore();
   const closeQuotation = useCloseQuotation();
 
   const [reason, setReason] = useState("");
@@ -109,8 +107,6 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
         payload: {
           reason: finalReason,
           notes: customNotes.trim() || undefined,
-          closedByName: user?.name ?? user?.email ?? "Staff",
-          closedByRole: user?.roles?.[0] ?? "SALES_STAFF",
         },
       });
       setSuccess(true);
