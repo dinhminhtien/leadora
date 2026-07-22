@@ -45,14 +45,34 @@ public class IntentClassifier {
     // Question / read markers — if present, the verb is part of a question, not a command
     // ("lead nào được tạo cuối cùng?", "ai đã xóa..."). Deliberately excludes the bare "cho toi"
     // because that also appears in real commands ("xóa ... cho tôi").
+    //
+    // NOTE: a bare "?" is deliberately NOT a marker. Politeness turns a command into a question
+    // mark without changing what is being asked ("xóa hết lead giúp tôi được không?"), so treating
+    // "?" as proof of a read intent let mutation commands through the guardrail. The semantic
+    // markers below carry the real signal; they cover ordinary questions on their own.
     private static final List<String> QUESTION_READ_MARKERS = List.of(
-            "?", "cho toi biet", "cho toi xem", "cho minh biet", "cho biet", "liet ke", "danh sach",
+            "cho toi biet", "cho toi xem", "cho minh biet", "cho biet", "liet ke", "danh sach",
             "bao nhieu", "co bao nhieu", "dem ", "la ai", "la gi", "nao ", "khi nao", "the nao",
             "ngay tao", "luc nao", "o dau", "tai sao", "vi sao", "co phai", "phai khong", "dung khong",
+            "ra sao", "bao gio", "co khong", "hay khong", "nhu the nao",
             "ai tao", "ai them", "nguoi tao", "tinh hinh", "tom tat", "tong hop", "thong ke", "bao cao",
             "chi tiet", "thong tin", "tra cuu", "tim ", "tim kiem", "hien thi", "co nhung", "gom ",
             "how many", "how much", "list", "show", "what", "which", "who", "when", "where", "why",
             "summary", "report", "tell me", "are there", "do i have", "find", "search", "display");
+
+    // Requests that operate on the CONVERSATION, not on CRM data: translate / summarise /
+    // rephrase the answer the assistant just gave. These share vocabulary with the off-topic
+    // list ("dich sang", "translate"), so without this list they were refused as off-topic even
+    // in the middle of a business conversation — see the [1.5] step in classify().
+    private static final List<String> META_COMMANDS = List.of(
+            "dich sang", "dich giup", "dich ra", "dich lai", "dich ho", "dich dum", "translate",
+            "sang tieng viet", "sang tieng anh", "bang tieng viet", "bang tieng anh",
+            "tieng viet di", "tieng anh di", "tra loi bang tieng", "in english", "in vietnamese",
+            "tom tat lai", "ngan gon", "rut gon", "viet lai", "trinh bay lai", "dinh dang lai",
+            "giai thich ro", "noi ro hon", "chi tiet hon", "lam ro", "noi lai",
+            "khong hieu", "y ban la gi", "ban vua noi gi",
+            "summarize that", "summarise that", "rephrase", "shorter", "in more detail",
+            "explain that", "say that again", "repeat that");
 
     // Verbs that, when a message STARTS with them, indicate an imperative command.
     private static final List<String> START_VERBS = List.of(
@@ -91,6 +111,11 @@ public class IntentClassifier {
             "cham soc", "follow up", "theo doi", "trang thai", "status", "giai doan", "stage",
             "uu tien", "priority", "han chot", "deadline", "lich su", "phan tich", "thong ke",
             "bao cao", "dashboard", "bang dieu khien",
+            // org / people vocabulary — without these, a team question carrying no other business
+            // word ("top 5 nhân viên bán tốt nhất") never reaches the routing step and falls
+            // through to GENERAL_BUSINESS instead of TEAM_SUMMARY. Kept to unambiguous workplace
+            // nouns so the off-topic check below stays effective.
+            "nhan vien", "team", "doi ngu", "phong ban", "department", "xep hang", "ranking",
             // company knowledge / docs
             "cong ty", "noi quy", "quy dinh", "chinh sach", "policy", "tai lieu", "document",
             "huong dan", "quy trinh", "process", "so tay", "handbook", "quy che", "bieu mau", "sop");
@@ -145,12 +170,31 @@ public class IntentClassifier {
      *                       ongoing business conversation instead of being treated as off-topic.
      */
     public IntentResult classify(String rawMessage, String lastIntentName) {
-        String text = normalize(rawMessage);
-        boolean vi = isVietnamese(rawMessage);
+        return classify(rawMessage, lastIntentName, isVietnamese(rawMessage));
+    }
 
-        // [1] Read-only guardrail (BR-35) — highest priority.
+    /**
+     * @param vietnamese language the canned refusal messages should use. Callers that have the
+     *                   session history should pass {@link #resolveVietnamese(String, List)} so a
+     *                   short turn inherits the conversation's language instead of being judged
+     *                   alone; the two-argument overload judges the message in isolation.
+     */
+    public IntentResult classify(String rawMessage, String lastIntentName, boolean vietnamese) {
+        String text = normalize(rawMessage);
+        boolean vi = vietnamese;
+
+        // [1] Read-only guardrail (BR-35) — highest priority. Stays above the meta step so
+        // "xóa hết lead rồi dịch sang tiếng Việt" is still refused.
         if (isMutation(text)) {
             return IntentResult.blocked(ChatIntent.MUTATION_BLOCKED, GuardrailMessages.mutationRefusal(vi));
+        }
+
+        // [1.5] Meta-request about this conversation (translate / summarise / rephrase the previous
+        // answer). Must sit ABOVE the off-topic check: these phrases overlap the off-topic list, so
+        // otherwise a mid-conversation "dịch sang tiếng Việt" was refused as off-topic.
+        // Requires a prior turn — on the very first message there is nothing to operate on.
+        if (lastIntentName != null && containsAny(text, META_COMMANDS)) {
+            return IntentResult.of(ChatIntent.META_CONVERSATION);
         }
 
         boolean hasBusiness = containsAny(text, BUSINESS_KEYWORDS);
@@ -178,10 +222,18 @@ public class IntentClassifier {
         if (containsAny(text, DOC_KEYWORDS)) {
             return IntentResult.of(ChatIntent.DOC_QUERY);
         }
+        // An explicit possessive ("của tôi", "my ") is checked BEFORE the team keywords: several
+        // team words are also ordinary ranking words ("top ", "nhieu nhat"), so "top 5 deal của
+        // tôi" used to be routed to the team-wide summary instead of the user's own records.
+        // A genuine team question ("top 5 nhân viên", "so sánh giữa các bạn") carries no
+        // possessive, so it still falls through to TEAM_SUMMARY below.
+        if (containsAny(text, ASSIGNED_KEYWORDS)) {
+            return IntentResult.of(ChatIntent.ASSIGNED_DATA);
+        }
         if (containsAny(text, TEAM_KEYWORDS)) {
             return IntentResult.of(ChatIntent.TEAM_SUMMARY);
         }
-        if (containsAny(text, ASSIGNED_KEYWORDS) || containsAny(text, CRM_OBJECTS)) {
+        if (containsAny(text, CRM_OBJECTS)) {
             return IntentResult.of(ChatIntent.ASSIGNED_DATA);
         }
         return IntentResult.of(ChatIntent.GENERAL_BUSINESS);
@@ -264,6 +316,69 @@ public class IntentClassifier {
             }
         }
         return false;
+    }
+
+    /** Language to answer in when nothing in the session gives a usable signal. */
+    private static final boolean DEFAULT_VIETNAMESE = true;
+
+    /** Minimum word count at which a message is considered long enough to judge on its own. */
+    private static final int CONFIDENT_WORD_COUNT = 5;
+
+    // English function words. Their presence is as strong a signal as a Vietnamese diacritic:
+    // it lets a short English turn ("show my lead") be answered in English instead of falling
+    // through to the session default.
+    private static final String[] EN_FUNCTION_WORDS = {
+            " my ", " me ", " i ", " the ", " is ", " are ", " show ", " list ", " all ",
+            " what ", " who ", " how ", " which ", " for ", " of ", " and ", " give ",
+            " please ", " can ", " do ", " does ", " any ", " with ", " from ", " this "
+    };
+
+    /**
+     * Decides the reply language for a turn, falling back to the rest of the session.
+     *
+     * <p>Short turns ("ok", "more", "còn nữa") carry no reliable signal on their own, so judging
+     * each message in isolation makes the assistant flip languages mid-conversation. This walks
+     * back through the user's earlier turns and reuses the language of the most recent one that
+     * <em>was</em> decisive — the same inheritance trick already used for intent.
+     *
+     * @param current           the current user turn
+     * @param priorUserMessages earlier USER turns of this session, oldest first (nullable)
+     */
+    public static boolean resolveVietnamese(String current, List<String> priorUserMessages) {
+        if (hasStrongLanguageSignal(current)) {
+            return isVietnamese(current);
+        }
+        if (priorUserMessages != null) {
+            for (int i = priorUserMessages.size() - 1; i >= 0; i--) {
+                String prior = priorUserMessages.get(i);
+                if (hasStrongLanguageSignal(prior)) {
+                    return isVietnamese(prior);
+                }
+            }
+        }
+        return DEFAULT_VIETNAMESE;
+    }
+
+    /** True when a message is decisive enough to set the conversation's language by itself. */
+    static boolean hasStrongLanguageSignal(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        String lower = raw.toLowerCase();
+        if (lower.matches("(?s).*[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ].*")) {
+            return true; // Vietnamese diacritics — unambiguous
+        }
+        String wrapped = " " + lower.replaceAll("\\s+", " ").trim() + " ";
+        for (String w : EN_FUNCTION_WORDS) {
+            if (wrapped.contains(w)) {
+                return true;
+            }
+        }
+        // isVietnamese() also recognises accent-less Vietnamese via its stop-word list.
+        if (isVietnamese(raw)) {
+            return true;
+        }
+        return wrapped.trim().split(" ").length >= CONFIDENT_WORD_COUNT;
     }
 
     private boolean containsAny(String text, List<String> needles) {

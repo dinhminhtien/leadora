@@ -13,6 +13,16 @@ public enum ChatIntent {
     /** Not related to sales/CRM/company knowledge. Politely refused. */
     OFF_TOPIC,
 
+    /**
+     * A request that operates on THIS conversation rather than on CRM data: translate,
+     * summarise, rephrase, shorten or explain an answer the assistant already gave.
+     *
+     * <p>Needs no fresh data — the conversation history is the whole input — so it skips both
+     * the CRM queries and the RAG lookup, making it the cheapest non-blocked intent.
+     * Only reachable once the session has a prior turn to operate on.
+     */
+    META_CONVERSATION,
+
     /** Question about the current user's own assigned leads/deals/tasks. */
     ASSIGNED_DATA,
 

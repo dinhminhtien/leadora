@@ -68,13 +68,21 @@ public class SendChatMessageUseCase {
         // Persist the user turn.
         AiChatMessageEntity userMessage = saveMessage(session, ChatRole.USER, content, null);
 
+        // Reply language: resolved across the session, not from this turn alone, so a short
+        // follow-up ("ok", "còn nữa") keeps the language instead of flipping back to the default.
+        List<String> priorUserMessages = history.stream()
+                .filter(m -> m.getRole() == ChatRole.USER)
+                .map(AiChatMessageEntity::getContent)
+                .toList();
+        boolean vi = IntentClassifier.resolveVietnamese(content, priorUserMessages);
+
         // [1] Guardrail (context-aware: inherits the prior turn's data scope for follow-ups).
         String lastIntentName = history.stream()
                 .filter(m -> m.getRole() == ChatRole.ASSISTANT && m.getIntentMatched() != null)
                 .reduce((first, second) -> second) // last assistant turn
                 .map(msg -> msg.getIntentMatched())
                 .orElse(null);
-        IntentResult intent = intentClassifier.classify(content, lastIntentName);
+        IntentResult intent = intentClassifier.classify(content, lastIntentName, vi);
         if (intent.blocked()) {
             AiChatMessageEntity blockedReply =
                     saveMessage(session, ChatRole.ASSISTANT, intent.blockMessage(), intent.intent().name());
@@ -87,10 +95,9 @@ public class SendChatMessageUseCase {
 
         // [3] Generate (best-effort: a failed/unavailable LLM degrades to a friendly message,
         // in the same language as the question).
-        boolean vi = IntentClassifier.isVietnamese(content);
         String reply;
         try {
-            reply = chatLlmService.generate(referenceBlock, history, content);
+            reply = chatLlmService.generate(referenceBlock, history, content, vi);
             if (!StringUtils.hasText(reply)) {
                 reply = GuardrailMessages.noData(vi);
             }
@@ -109,6 +116,11 @@ public class SendChatMessageUseCase {
 
     private String buildReferenceBlock(ChatIntent intent, UserEntity user, String content) {
         return switch (intent) {
+            // Operates on the conversation itself (translate/summarise/rephrase the previous
+            // answer), so no fresh data is needed — the history sent to the LLM is the whole
+            // input. Skipping both the CRM queries and the RAG lookup makes this the cheapest
+            // non-blocked intent, in latency and in tokens.
+            case META_CONVERSATION -> "";
             case ASSIGNED_DATA -> crmContextService.assignedContext(user);
             // Team-wide summary is a Manager/Admin privilege; a Sales Staff is downgraded to
             // their own scope so they can never see the whole team's data via this intent.
