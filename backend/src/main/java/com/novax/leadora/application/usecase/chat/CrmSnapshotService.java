@@ -10,8 +10,8 @@ import com.novax.leadora.application.usecase.chat.dto.RepDealStat;
 import com.novax.leadora.application.usecase.chat.dto.RepLeadCount;
 import com.novax.leadora.application.usecase.chat.dto.TaskStatusCount;
 import com.novax.leadora.application.usecase.chat.intent.CrmArea;
-import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.PaymentStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
@@ -98,12 +98,11 @@ public class CrmSnapshotService {
     private boolean topPrivilege;
 
     /** Whether {@code user}'s role may read every record (team-wide), vs only their own. */
-    public boolean canSeeAllData(UserEntity user) {
+    public boolean canSeeAllData(ChatActor actor) {
         if (topPrivilege) {
             return true;
         }
-        String role = (user.getRole() != null && user.getRole().getRoleName() != null)
-                ? user.getRole().getRoleName().trim().toUpperCase() : "";
+        String role = actor.roleName() != null ? actor.roleName().trim().toUpperCase() : "";
         return FULL_SCOPE_ROLES.contains(role);
     }
 
@@ -111,11 +110,11 @@ public class CrmSnapshotService {
      * Facts the user may view: team-wide for Manager/Admin, own otherwise. Use for generic CRM
      * questions ("what leads are there?").
      */
-    public String scopedSnapshot(UserEntity user, Set<CrmArea> areas) {
-        boolean all = canSeeAllData(user);
-        return snapshot(user, all ? null : user.getUserId(), areas,
+    public String scopedSnapshot(ChatActor actor, Set<CrmArea> areas) {
+        boolean all = canSeeAllData(actor);
+        return snapshot(actor, all ? null : actor.userId(), areas,
                 all ? "== Full CRM data (manager access) =="
-                        : "== CRM data assigned to " + user.getFullName() + " ==");
+                        : "== CRM data assigned to " + actor.fullName() + " ==");
     }
 
     /**
@@ -125,12 +124,12 @@ public class CrmSnapshotService {
      * deals"). A Manager asking for "my leads" means the ones assigned to them, not the whole
      * company's — answering with everything silently ignores the word they emphasised.
      */
-    public String personalSnapshot(UserEntity user, Set<CrmArea> areas) {
-        return snapshot(user, user.getUserId(), areas,
-                "== CRM data assigned personally to " + user.getFullName() + " ==");
+    public String personalSnapshot(ChatActor actor, Set<CrmArea> areas) {
+        return snapshot(actor, actor.userId(), areas,
+                "== CRM data assigned personally to " + actor.fullName() + " ==");
     }
 
-    private String snapshot(UserEntity user, UUID scopeUserId, Set<CrmArea> areas, String header) {
+    private String snapshot(ChatActor actor, UUID scopeUserId, Set<CrmArea> areas, String header) {
         OffsetDateTime now = OffsetDateTime.now();
         StringBuilder sb = new StringBuilder(header).append("\n");
         List<CrmArea> emptyAreas = new ArrayList<>();
@@ -154,7 +153,7 @@ public class CrmSnapshotService {
         }
 
         if (!emptyAreas.isEmpty()) {
-            appendAffordances(sb, user, scopeUserId, emptyAreas);
+            appendAffordances(sb, actor, scopeUserId, emptyAreas);
         }
         return sb.toString();
     }
@@ -327,10 +326,10 @@ public class CrmSnapshotService {
      * records. For everyone else the block explicitly forbids naming colleagues, because merely
      * listing who holds the records would leak data the caller cannot read.
      */
-    private void appendAffordances(StringBuilder sb, UserEntity user, UUID scopeUserId,
+    private void appendAffordances(StringBuilder sb, ChatActor actor, UUID scopeUserId,
                                    List<CrmArea> emptyAreas) {
         boolean personalScope = scopeUserId != null;
-        boolean privileged = canSeeAllData(user);
+        boolean privileged = canSeeAllData(actor);
 
         StringJoiner names = new StringJoiner(", ");
         emptyAreas.forEach(a -> names.add(a.name().toLowerCase()));
@@ -341,7 +340,7 @@ public class CrmSnapshotService {
                 .append("Empty for this scope: ").append(names).append(".\n");
 
         if (personalScope) {
-            sb.append("Nothing in those areas is assigned to ").append(user.getFullName());
+            sb.append("Nothing in those areas is assigned to ").append(actor.fullName());
             sb.append(privileged
                     ? ", whose role can nevertheless view every record — the personal scope is "
                       + "empty there, the company's data is not.\n"

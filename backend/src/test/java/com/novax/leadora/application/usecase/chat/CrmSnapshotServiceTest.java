@@ -98,12 +98,12 @@ class CrmSnapshotServiceTest {
         when(customerRepository.countByStatusForChat(any())).thenReturn(List.of());
     }
 
-    private static UserEntity user(String role) {
-        return UserEntity.builder()
+    private static ChatActor user(String role) {
+        return ChatActor.from(UserEntity.builder()
                 .userId(USER_ID)
                 .fullName("Trần Nhật Minh")
                 .role(RoleEntity.builder().roleId(1).roleName(role).build())
-                .build();
+                .build());
     }
 
     /** The user's own scope: no leads, but a deal and some tasks. */

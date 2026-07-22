@@ -1,6 +1,6 @@
 package com.novax.leadora.infrastructure.integration.ai;
 
-import com.novax.leadora.infrastructure.persistence.entity.AiChatMessageEntity;
+import com.novax.leadora.application.usecase.chat.ChatTurn;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ChatRole;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -137,17 +137,17 @@ public class ChatLlmService {
      * @param vietnamese     resolved reply language; reinforces rule 4 for turns that are too short
      *                       for the model to judge on its own ("ok", "còn nữa")
      */
-    public String generate(String referenceBlock, List<AiChatMessageEntity> history,
+    public String generate(String referenceBlock, List<ChatTurn> history,
                            String userMessage, boolean vietnamese) {
         List<Message> priorMessages = new ArrayList<>();
         if (history != null) {
             // Only replay the most recent turns — keeps the prompt (and latency) bounded.
             int from = Math.max(0, history.size() - MAX_HISTORY_MESSAGES);
-            for (AiChatMessageEntity m : history.subList(from, history.size())) {
-                if (m.getRole() == ChatRole.USER) {
-                    priorMessages.add(new UserMessage(m.getContent()));
-                } else if (m.getRole() == ChatRole.ASSISTANT) {
-                    priorMessages.add(new AssistantMessage(m.getContent()));
+            for (ChatTurn turn : history.subList(from, history.size())) {
+                if (turn.role() == ChatRole.USER) {
+                    priorMessages.add(new UserMessage(turn.content()));
+                } else if (turn.role() == ChatRole.ASSISTANT) {
+                    priorMessages.add(new AssistantMessage(turn.content()));
                 }
             }
         }
