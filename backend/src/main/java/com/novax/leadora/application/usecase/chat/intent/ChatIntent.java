@@ -23,7 +23,16 @@ public enum ChatIntent {
      */
     META_CONVERSATION,
 
-    /** Question about the current user's own assigned leads/deals/tasks. */
+    /**
+     * Question carrying an explicit possessive ("lead <em>của tôi</em>", "<em>my</em> deals").
+     *
+     * <p>Always scoped to the records assigned to the asker, <b>whatever their role</b>. A Manager
+     * asking for "my leads" means the ones assigned to them; answering with the whole company's
+     * data silently ignores the word they emphasised.
+     */
+    PERSONAL_DATA,
+
+    /** Question about leads/deals/tasks with no possessive — scoped by role (all for Manager). */
     ASSIGNED_DATA,
 
     /** Question about team-wide aggregates / summaries. */

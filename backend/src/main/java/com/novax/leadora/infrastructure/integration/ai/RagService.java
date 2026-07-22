@@ -2,6 +2,8 @@ package com.novax.leadora.infrastructure.integration.ai;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.vectorstore.SearchRequest;
@@ -30,6 +32,9 @@ public class RagService {
     private static final String META_DOC_ID = "documentId";
     private static final String META_TITLE = "title";
     private static final String META_FILE = "fileName";
+
+    /** Cache of finished retrieval blocks, keyed by the normalised query. */
+    static final String CONTEXT_CACHE = "rag-context";
 
     private static final int TOP_K = 4;
     private static final double SIMILARITY_THRESHOLD = 0.5;
@@ -68,16 +73,40 @@ public class RagService {
         return chunks.size();
     }
 
-    /** Removes every chunk belonging to a document. */
+    /** Removes every chunk belonging to a document, and invalidates any cached retrievals. */
+    @CacheEvict(cacheNames = CONTEXT_CACHE, allEntries = true)
     public void deleteDocument(UUID documentId) {
         var expr = new FilterExpressionBuilder().eq(META_DOC_ID, documentId.toString()).build();
         vectorStore.delete(expr);
     }
 
     /**
+     * Drops every cached retrieval. Called after a successful ingest so newly added chunks become
+     * visible immediately instead of after the cache TTL.
+     *
+     * <p>Must be invoked from another bean — a call from inside this class would bypass the proxy
+     * and silently do nothing.
+     */
+    @CacheEvict(cacheNames = CONTEXT_CACHE, allEntries = true)
+    public void evictContextCache() {
+        log.debug("RAG context cache evicted");
+    }
+
+    /**
      * Retrieves the most relevant document chunks for a query and returns them as a single
      * text block (empty string when nothing relevant is found). Never throws — RAG is best-effort.
+     *
+     * <p>Cached because the call is two round trips: embedding the query with Gemini, then the
+     * vector search. Company documents change rarely, so a repeated question can be served from
+     * Redis instead. Caching the finished text rather than just the query embedding covers both
+     * hops; {@code VectorStore.similaritySearch} takes query text and embeds internally, so there
+     * is no supported way to inject a pre-computed vector without bypassing the abstraction.
+     *
+     * <p>Empty results are not cached ({@code unless}), so a question asked before a document is
+     * uploaded is retried afterwards rather than staying empty for the whole TTL.
      */
+    @Cacheable(cacheNames = CONTEXT_CACHE, key = "#query.trim().toLowerCase()",
+            unless = "#result == null || #result.isEmpty()")
     public String retrieveContext(String query) {
         try {
             SearchRequest request = SearchRequest.builder()

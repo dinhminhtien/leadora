@@ -135,10 +135,11 @@ class IntentClassifierTest {
 
         @ParameterizedTest(name = "{0} -> {1}")
         @CsvSource({
-                "'cho tôi xem lead của tôi',            ASSIGNED_DATA",
-                "'deal của mình đang ở giai đoạn nào',  ASSIGNED_DATA",
-                "'show my leads',                       ASSIGNED_DATA",
+                "'cho tôi xem lead của tôi',            PERSONAL_DATA",
+                "'deal của mình đang ở giai đoạn nào',  PERSONAL_DATA",
+                "'show my leads',                       PERSONAL_DATA",
                 "'task nào đang quá hạn',               ASSIGNED_DATA",
+                "'liệt kê các deal đang mở',            ASSIGNED_DATA",
                 "'tổng hợp doanh số cả team',           TEAM_SUMMARY",
                 "'xếp hạng nhân viên theo doanh thu',   TEAM_SUMMARY",
                 "'so sánh hiệu suất giữa các bạn',      TEAM_SUMMARY",
@@ -160,7 +161,21 @@ class IntentClassifierTest {
                 "my top deals",
         })
         void possessiveBeatsTeamKeywords(String message) {
-            assertThat(classifier.classify(message, null).intent()).isEqualTo(ChatIntent.ASSIGNED_DATA);
+            assertThat(classifier.classify(message, null).intent()).isEqualTo(ChatIntent.PERSONAL_DATA);
+        }
+
+        /**
+         * The possessive must survive into PERSONAL_DATA rather than ASSIGNED_DATA: the two differ
+         * only for a Manager, where ASSIGNED_DATA widens to the whole company and would answer
+         * "my leads" with everyone's.
+         */
+        @Test
+        @DisplayName("a possessive question is PERSONAL_DATA, not role-scoped ASSIGNED_DATA")
+        void possessiveIsPinnedToTheAsker() {
+            assertThat(classifier.classify("cho tôi xem lead của tôi", null).intent())
+                    .isEqualTo(ChatIntent.PERSONAL_DATA);
+            assertThat(classifier.classify("có bao nhiêu lead trong hệ thống", null).intent())
+                    .isEqualTo(ChatIntent.ASSIGNED_DATA);
         }
 
         @Test
@@ -201,6 +216,8 @@ class IntentClassifierTest {
         void ambiguousFollowUpInheritsScope() {
             assertThat(classifier.classify("còn ai nữa không", ChatIntent.TEAM_SUMMARY.name()).intent())
                     .isEqualTo(ChatIntent.TEAM_SUMMARY);
+            assertThat(classifier.classify("còn ai nữa không", ChatIntent.PERSONAL_DATA.name()).intent())
+                    .isEqualTo(ChatIntent.PERSONAL_DATA);
         }
     }
 

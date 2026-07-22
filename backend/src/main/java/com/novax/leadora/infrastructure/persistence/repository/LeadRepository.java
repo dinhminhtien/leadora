@@ -1,5 +1,7 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
+import com.novax.leadora.application.usecase.chat.dto.LeadStatusCount;
+import com.novax.leadora.application.usecase.chat.dto.RepLeadCount;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.specification.LeadSpecification;
@@ -103,4 +105,38 @@ public interface LeadRepository
     List<LeadEntity> findByCreatedAtRange(
             @Param("startDate") OffsetDateTime startDate,
             @Param("endDate") OffsetDateTime endDate);
+
+    // ── Chat-assistant snapshot ───────────────────────────────────────────────
+    // A null :userId means "every lead" (Manager/Admin scope); a non-null value restricts to that
+    // user's records. One parameterised query serves both scopes, so the BR-36 scope filter is
+    // always applied in SQL and can never be forgotten by a caller branching in Java.
+
+    @Query("""
+            SELECT new com.novax.leadora.application.usecase.chat.dto.LeadStatusCount(l.status, COUNT(l))
+            FROM LeadEntity l
+            WHERE (:userId IS NULL OR l.assignedUser.userId = :userId)
+            GROUP BY l.status
+            """)
+    List<LeadStatusCount> countByStatusForChat(@Param("userId") UUID userId);
+
+    /** Newest leads only — the assistant lists at most a couple of dozen, so never fetch more. */
+    @EntityGraph(attributePaths = {"assignedUser"})
+    @Query("""
+            SELECT l FROM LeadEntity l
+            WHERE (:userId IS NULL OR l.assignedUser.userId = :userId)
+            ORDER BY l.createdAt DESC
+            """)
+    List<LeadEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
+
+    /**
+     * Lead counts per assignee, for the "ask about someone else's leads instead" suggestion.
+     * Callers must gate this on the caller being allowed to see all records (BR-36).
+     */
+    @Query("""
+            SELECT new com.novax.leadora.application.usecase.chat.dto.RepLeadCount(u.fullName, COUNT(l))
+            FROM LeadEntity l JOIN l.assignedUser u
+            GROUP BY u.fullName
+            ORDER BY COUNT(l) DESC
+            """)
+    List<RepLeadCount> countPerAssignee(Pageable pageable);
 }

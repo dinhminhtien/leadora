@@ -2,6 +2,7 @@ package com.novax.leadora.infrastructure.persistence.repository;
 
 import com.novax.leadora.infrastructure.persistence.entity.AiChatMessageEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ChatRole;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -23,4 +24,20 @@ public interface AiChatMessageRepository extends JpaRepository<AiChatMessageEnti
             + "ORDER BY m.createdAt ASC, CASE WHEN m.role = :userRole THEN 0 ELSE 1 END ASC")
     List<AiChatMessageEntity> findSessionMessagesOrdered(@Param("sessionId") UUID sessionId,
                                                          @Param("userRole") ChatRole userRole);
+
+    /**
+     * The most recent messages of a session, <b>newest first</b> — the prompt only replays the last
+     * few turns, so loading the whole transcript on every message wastes a growing amount of work
+     * as a conversation gets long. Callers reverse the result to get chronological order.
+     *
+     * <p>The tie-break is inverted relative to {@link #findSessionMessagesOrdered}: sorting newest
+     * first must put the ASSISTANT reply <em>before</em> its USER question when the two share a
+     * timestamp, so that reversing yields question-then-answer. Copying the ascending tie-break
+     * here would silently swap every same-timestamp pair in the prompt.
+     */
+    @Query("SELECT m FROM AiChatMessageEntity m WHERE m.session.sessionId = :sessionId "
+            + "ORDER BY m.createdAt DESC, CASE WHEN m.role = :userRole THEN 1 ELSE 0 END ASC")
+    List<AiChatMessageEntity> findRecentForPrompt(@Param("sessionId") UUID sessionId,
+                                                  @Param("userRole") ChatRole userRole,
+                                                  Pageable pageable);
 }

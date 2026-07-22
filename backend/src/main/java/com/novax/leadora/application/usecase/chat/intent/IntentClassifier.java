@@ -227,8 +227,10 @@ public class IntentClassifier {
         // tôi" used to be routed to the team-wide summary instead of the user's own records.
         // A genuine team question ("top 5 nhân viên", "so sánh giữa các bạn") carries no
         // possessive, so it still falls through to TEAM_SUMMARY below.
+        //
+        // The possessive also pins the scope to the asker regardless of role — see PERSONAL_DATA.
         if (containsAny(text, ASSIGNED_KEYWORDS)) {
-            return IntentResult.of(ChatIntent.ASSIGNED_DATA);
+            return IntentResult.of(ChatIntent.PERSONAL_DATA);
         }
         if (containsAny(text, TEAM_KEYWORDS)) {
             return IntentResult.of(ChatIntent.TEAM_SUMMARY);
@@ -247,7 +249,7 @@ public class IntentClassifier {
         try {
             ChatIntent prev = ChatIntent.valueOf(name);
             return switch (prev) {
-                case ASSIGNED_DATA, TEAM_SUMMARY, DOC_QUERY, GENERAL_BUSINESS -> prev;
+                case PERSONAL_DATA, ASSIGNED_DATA, TEAM_SUMMARY, DOC_QUERY, GENERAL_BUSINESS -> prev;
                 default -> null;
             };
         } catch (IllegalArgumentException ex) {

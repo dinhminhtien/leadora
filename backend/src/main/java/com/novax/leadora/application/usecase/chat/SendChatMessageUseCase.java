@@ -17,10 +17,13 @@ import com.novax.leadora.infrastructure.persistence.repository.AiChatMessageRepo
 import com.novax.leadora.infrastructure.persistence.repository.AiChatSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -43,10 +46,16 @@ public class SendChatMessageUseCase {
 
     private static final int TITLE_MAX = 60;
 
+    /**
+     * How many prior messages to load for the prompt. Matches the cap {@code ChatLlmService}
+     * applies when replaying turns, so nothing is fetched only to be discarded.
+     */
+    private static final int PROMPT_HISTORY_LIMIT = 10;
+
     private final AiChatSessionRepository sessionRepository;
     private final AiChatMessageRepository messageRepository;
     private final IntentClassifier intentClassifier;
-    private final CrmContextService crmContextService;
+    private final CrmSnapshotService crmSnapshotService;
     private final RagService ragService;
     private final ChatLlmService chatLlmService;
 
@@ -54,9 +63,12 @@ public class SendChatMessageUseCase {
     public SendMessageResponse execute(UUID sessionId, UserEntity user, String content) {
         AiChatSessionEntity session = loadOwnedActiveSession(sessionId, user);
 
-        // History BEFORE this turn (for the LLM's conversational context).
-        List<AiChatMessageEntity> history =
-                messageRepository.findSessionMessagesOrdered(sessionId, ChatRole.USER);
+        // History BEFORE this turn (for the LLM's conversational context). Only the last few turns
+        // are replayed, so fetch exactly that many rather than the whole transcript — the query is
+        // newest-first and gets reversed back into chronological order here.
+        List<AiChatMessageEntity> history = new ArrayList<>(messageRepository.findRecentForPrompt(
+                sessionId, ChatRole.USER, PageRequest.of(0, PROMPT_HISTORY_LIMIT)));
+        Collections.reverse(history);
 
         // Auto-title the session from the first user message.
         boolean firstTurn = history.isEmpty();
@@ -121,17 +133,19 @@ public class SendChatMessageUseCase {
             // input. Skipping both the CRM queries and the RAG lookup makes this the cheapest
             // non-blocked intent, in latency and in tokens.
             case META_CONVERSATION -> "";
-            case ASSIGNED_DATA -> crmContextService.assignedContext(user);
+            // Explicit possessive ("lead của tôi") — pinned to the asker even for a Manager.
+            case PERSONAL_DATA -> crmSnapshotService.personalSnapshot(user);
+            case ASSIGNED_DATA -> crmSnapshotService.scopedSnapshot(user);
             // Team-wide summary is a Manager/Admin privilege; a Sales Staff is downgraded to
             // their own scope so they can never see the whole team's data via this intent.
-            case TEAM_SUMMARY -> crmContextService.canSeeAllData(user)
-                    ? crmContextService.teamSummary()
-                    : crmContextService.assignedContext(user);
+            case TEAM_SUMMARY -> crmSnapshotService.canSeeAllData(user)
+                    ? crmSnapshotService.teamSummary()
+                    : crmSnapshotService.scopedSnapshot(user);
             case DOC_QUERY -> ragService.retrieveContext(content);
             case GENERAL_BUSINESS -> {
                 // Light blend: company docs + the user's own data.
                 String rag = ragService.retrieveContext(content);
-                String assigned = crmContextService.assignedContext(user);
+                String assigned = crmSnapshotService.scopedSnapshot(user);
                 yield (StringUtils.hasText(rag) ? rag + "\n" : "") + assigned;
             }
             default -> "";
