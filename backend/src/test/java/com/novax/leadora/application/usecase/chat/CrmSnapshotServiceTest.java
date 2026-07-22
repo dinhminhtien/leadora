@@ -4,6 +4,7 @@ import com.novax.leadora.application.usecase.chat.dto.DealStatusAggregate;
 import com.novax.leadora.application.usecase.chat.dto.LeadStatusCount;
 import com.novax.leadora.application.usecase.chat.dto.RepLeadCount;
 import com.novax.leadora.application.usecase.chat.dto.TaskStatusCount;
+import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
@@ -289,6 +290,75 @@ class CrmSnapshotServiceTest {
 
             assertThat(snapshot).contains("Empty for this scope: bookings.");
             assertThat(snapshot).contains("Company-wide bookings:");
+        }
+    }
+
+    @Nested
+    @DisplayName("Listing headers state coverage and where the rest is")
+    class ListingHeaders {
+
+        private void givenLeads(long total, int returned) {
+            when(leadRepository.countByStatusForChat(eq(USER_ID)))
+                    .thenReturn(List.of(new LeadStatusCount(LeadStatus.NEW, total)));
+            List<LeadEntity> rows = new java.util.ArrayList<>();
+            for (int i = 0; i < returned; i++) {
+                rows.add(LeadEntity.builder().leadId(UUID.randomUUID())
+                        .fullName("Lead " + i).status(LeadStatus.NEW).build());
+            }
+            when(leadRepository.findRecentForChat(eq(USER_ID), any())).thenReturn(rows);
+        }
+
+        /**
+         * The failure this guards against is quiet: 25 rows presented as "your leads" is a wrong
+         * answer to "show me all my leads" when there are 143. The header has to carry both
+         * numbers so the assistant can say which it is.
+         */
+        @Test
+        @DisplayName("a capped listing is marked TRUNCATED with the real total")
+        void marksTruncation() {
+            // Deliberately not asserting the cap itself — that is a tuning knob, and a test that
+            // pins it would have to be edited every time the listings are made shorter.
+            givenLeads(143, 10);
+
+            String snapshot = service.personalSnapshot(user("SALES"), Set.of(CrmArea.LEADS));
+
+            assertThat(snapshot).contains(" of 143");
+            assertThat(snapshot).contains("TRUNCATED");
+            assertThat(snapshot).containsPattern("the remaining \\d+ are only on the screen");
+        }
+
+        @Test
+        @DisplayName("a complete listing is not marked TRUNCATED")
+        void doesNotMarkCompleteListings() {
+            givenLeads(3, 3);
+
+            String snapshot = service.personalSnapshot(user("SALES"), Set.of(CrmArea.LEADS));
+
+            assertThat(snapshot).contains("showing 3 of 3");
+            assertThat(snapshot).doesNotContain("TRUNCATED");
+        }
+
+        /**
+         * The path is supplied as data rather than left to the model's memory: an invented link
+         * looks authoritative and 404s, which is worse than naming the screen in words.
+         */
+        @Test
+        @DisplayName("the header carries the screen label and path")
+        void carriesTheScreenPath() {
+            givenLeads(143, 25);
+
+            String snapshot = service.personalSnapshot(user("SALES"), Set.of(CrmArea.LEADS));
+
+            assertThat(snapshot).contains("Leads screen at /leads");
+        }
+
+        @Test
+        @DisplayName("every area knows a screen path")
+        void everyAreaHasAScreen() {
+            for (CrmArea area : CrmArea.values()) {
+                assertThat(area.screenPath()).startsWith("/");
+                assertThat(area.screenLabel()).isNotBlank();
+            }
         }
     }
 

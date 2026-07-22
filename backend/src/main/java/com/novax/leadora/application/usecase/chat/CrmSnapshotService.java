@@ -60,13 +60,17 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CrmSnapshotService {
 
-    private static final int MAX_LEADS = 25;
-    private static final int MAX_DEALS = 15;
+    // Listing caps. Deliberately small: chat is not a data grid, and every row costs tokens on
+    // every turn. Since each listing header carries a link to the screen holding the full list,
+    // a bigger cap buys a longer answer nobody reads rather than a more useful one. Ten rows is
+    // about as much as a chat bubble can show before it stops being scannable.
+    private static final int MAX_LEADS = 10;
+    private static final int MAX_DEALS = 10;
     private static final int MAX_TASKS = 10;
     private static final int MAX_QUOTATIONS = 10;
     private static final int MAX_BOOKINGS = 10;
     private static final int MAX_PAYMENTS = 8;
-    private static final int MAX_CUSTOMERS = 12;
+    private static final int MAX_CUSTOMERS = 10;
     private static final int MAX_REPS = 20;
 
     /** How many staff members to name when suggesting whose records to ask about instead. */
@@ -165,7 +169,7 @@ public class CrmSnapshotService {
                 .append(joinCounts(counts, c -> c.status() + "=" + c.count())).append("\n");
 
         if (detail && total > 0) {
-            sb.append("Lead list (newest first, up to ").append(MAX_LEADS).append("):\n");
+            sb.append(listingHeader("Lead list, newest first", Math.min(total, MAX_LEADS), total, CrmArea.LEADS));
             leadRepository.findRecentForChat(scope, page(MAX_LEADS)).forEach(l ->
                     sb.append("  - \"").append(l.getFullName())
                             .append("\" | ").append(l.getStatus())
@@ -187,7 +191,7 @@ public class CrmSnapshotService {
                 .append(", won value (WON) ").append(dealValue(agg, DealStatus.WON)).append("\n");
 
         if (detail && total > 0) {
-            sb.append("Deal details (up to ").append(MAX_DEALS).append("):\n");
+            sb.append(listingHeader("Deal details, newest first", Math.min(total, MAX_DEALS), total, CrmArea.DEALS));
             dealRepository.findRecentForChat(scope, page(MAX_DEALS)).forEach(d ->
                     sb.append("  - \"").append(d.getDealName())
                             .append("\" | ").append(d.getPipelineStage())
@@ -212,8 +216,7 @@ public class CrmSnapshotService {
                 .append("\n");
 
         if (detail && open > 0) {
-            sb.append("Open tasks (up to ").append(MAX_TASKS)
-                    .append(", earliest deadline first):\n");
+            sb.append(listingHeader("Open tasks, earliest deadline first", Math.min(open, MAX_TASKS), open, CrmArea.TASKS));
             taskRepository.findOpenForChat(scope, CLOSED_TASK_STATUSES, page(MAX_TASKS)).forEach(t ->
                     sb.append("  - \"").append(t.getTitle())
                             .append("\" | due ").append(t.getEndAt())
@@ -232,7 +235,7 @@ public class CrmSnapshotService {
                         + " worth " + a.amountOrZero())).append("\n");
 
         if (detail && total > 0) {
-            sb.append("Quotation details (up to ").append(MAX_QUOTATIONS).append("):\n");
+            sb.append(listingHeader("Quotation details, newest first", Math.min(total, MAX_QUOTATIONS), total, CrmArea.QUOTATIONS));
             quotationRepository.findRecentForChat(scope, page(MAX_QUOTATIONS)).forEach(q ->
                     sb.append("  - v").append(q.getVersion())
                             .append(" | ").append(q.getStatus())
@@ -257,7 +260,7 @@ public class CrmSnapshotService {
                         + " worth " + a.amountOrZero())).append("\n");
 
         if (detail && total > 0) {
-            sb.append("Booking details (up to ").append(MAX_BOOKINGS).append("):\n");
+            sb.append(listingHeader("Booking details, newest first", Math.min(total, MAX_BOOKINGS), total, CrmArea.BOOKINGS));
             bookingRepository.findRecentForChat(scope, page(MAX_BOOKINGS)).forEach(b ->
                     sb.append("  - \"").append(b.getBookingCode())
                             .append("\" | ").append(b.getStatus())
@@ -281,7 +284,7 @@ public class CrmSnapshotService {
                 .append(joinCounts(agg, a -> a.status() + "=" + a.count())).append("\n");
 
         if (detail && total > 0) {
-            sb.append("Payment details (up to ").append(MAX_PAYMENTS).append("):\n");
+            sb.append(listingHeader("Payment details, newest first", Math.min(total, MAX_PAYMENTS), total, CrmArea.PAYMENTS));
             paymentRepository.findRecentForChat(scope, page(MAX_PAYMENTS)).forEach(p ->
                     sb.append("  - booking ")
                             .append(p.getBooking() != null ? p.getBooking().getBookingCode() : "-")
@@ -301,7 +304,7 @@ public class CrmSnapshotService {
                 .append(joinCounts(counts, c -> c.status() + "=" + c.count())).append("\n");
 
         if (detail && total > 0) {
-            sb.append("Customer list (newest first, up to ").append(MAX_CUSTOMERS).append("):\n");
+            sb.append(listingHeader("Customer list, newest first", Math.min(total, MAX_CUSTOMERS), total, CrmArea.CUSTOMERS));
             customerRepository.findRecentForChat(scope, page(MAX_CUSTOMERS)).forEach(c ->
                     sb.append("  - \"").append(c.getFullName())
                             .append("\" | ").append(c.getStatus())
@@ -470,6 +473,26 @@ public class CrmSnapshotService {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Header for a listing, stating how much of the area it actually covers and where the rest is.
+     *
+     * <p>A capped list read as a complete one is a quiet way to be wrong: "here are your leads"
+     * over 25 of 143 rows is a false answer to "show me all my leads". Naming both numbers lets
+     * the assistant say which it is, and carrying the screen path means it can hand the full list
+     * to the UI instead of trying to paginate through chat.
+     */
+    private static String listingHeader(String noun, long shown, long total, CrmArea area) {
+        StringBuilder h = new StringBuilder(noun)
+                .append(" (showing ").append(shown).append(" of ").append(total);
+        if (total > shown) {
+            h.append("; TRUNCATED - the remaining ").append(total - shown)
+                    .append(" are only on the screen below");
+        }
+        h.append(") | full list: ").append(area.screenLabel())
+                .append(" screen at ").append(area.screenPath()).append("\n");
+        return h.toString();
+    }
 
     private static Pageable page(int size) {
         return PageRequest.of(0, size);
