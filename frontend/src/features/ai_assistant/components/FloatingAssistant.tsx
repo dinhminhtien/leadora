@@ -26,6 +26,7 @@ import {
   ShieldAlert,
   Bot,
 } from "lucide-react";
+import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
@@ -892,13 +893,56 @@ function DocsView({
 
 /* ─────────────────────── Message rendering ─────────────────────── */
 
+/**
+ * Renders a link in an assistant answer.
+ *
+ * The assistant points at Leadora screens when a list is too long for chat — "the full list is on
+ * [Leads](/leads)". Those are app routes, so they get `next/link` and stay in the same tab: the
+ * assistant lives in the dashboard layout and survives client-side navigation, so the page behind
+ * the panel changes while the conversation stays open. Opening a new tab instead would start a
+ * fresh app, and the conversation would not follow — the session id lives in `sessionStorage`,
+ * which is per-tab.
+ *
+ * Everything is treated as untrusted: this is model-generated text. Only in-app paths and plain
+ * http(s) links become links at all; anything else (`javascript:`, `data:`, a malformed href)
+ * renders as text, so a hallucinated or injected URL cannot become something clickable.
+ */
+function AssistantLink({ href, children, ...rest }: React.ComponentPropsWithoutRef<"a">) {
+  const target = (href ?? "").trim();
+
+  // In-app route: same tab, client-side navigation, conversation preserved.
+  if (target.startsWith("/") && !target.startsWith("//")) {
+    return (
+      <Link href={target} className="text-primary underline underline-offset-2">
+        {children}
+      </Link>
+    );
+  }
+
+  if (/^https?:\/\//i.test(target)) {
+    return (
+      <a
+        href={target}
+        className="text-primary underline underline-offset-2"
+        target="_blank"
+        rel="noopener noreferrer"
+        {...rest}
+      >
+        {children}
+      </a>
+    );
+  }
+
+  return <span>{children}</span>;
+}
+
 const MD_COMPONENTS: Components = {
   p: (props) => <p className="mb-1.5 last:mb-0" {...props} />,
   ul: (props) => <ul className="mb-1.5 list-disc space-y-0.5 pl-4 last:mb-0" {...props} />,
   ol: (props) => <ol className="mb-1.5 list-decimal space-y-0.5 pl-4 last:mb-0" {...props} />,
   li: (props) => <li className="leading-relaxed" {...props} />,
   strong: (props) => <strong className="font-semibold text-foreground" {...props} />,
-  a: (props) => <a className="text-primary underline" target="_blank" rel="noreferrer" {...props} />,
+  a: AssistantLink,
   code: (props) => <code className="rounded bg-border/70 px-1 py-0.5 font-mono text-[10px]" {...props} />,
   table: (props) => (
     <div className="my-1.5 overflow-x-auto">
