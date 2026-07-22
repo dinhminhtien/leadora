@@ -3,6 +3,7 @@ package com.novax.leadora.application.usecase.chat;
 import com.novax.leadora.api.dto.response.ChatMessageResponse;
 import com.novax.leadora.api.dto.response.SendMessageResponse;
 import com.novax.leadora.application.usecase.chat.intent.ChatIntent;
+import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.application.usecase.chat.intent.IntentClassifier;
 import com.novax.leadora.application.usecase.chat.intent.IntentResult;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
@@ -25,6 +26,7 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -88,6 +90,11 @@ public class SendChatMessageUseCase {
                 .toList();
         boolean vi = IntentClassifier.resolveVietnamese(content, priorUserMessages);
 
+        // Which areas to detail is resolved the same way, and for the same reason: a follow-up
+        // ("yes, list them in detail") names no area, so judging it alone would drop the listing
+        // the user is asking to see.
+        Set<CrmArea> areas = IntentClassifier.resolveAreas(content, priorUserMessages);
+
         // [1] Guardrail (context-aware: inherits the prior turn's data scope for follow-ups).
         String lastIntentName = history.stream()
                 .filter(m -> m.getRole() == ChatRole.ASSISTANT && m.getIntentMatched() != null)
@@ -103,7 +110,7 @@ public class SendChatMessageUseCase {
         }
 
         // [2] Prefetch scoped context.
-        String referenceBlock = buildReferenceBlock(intent, user, content);
+        String referenceBlock = buildReferenceBlock(intent.intent(), areas, user, content);
 
         // [3] Generate (best-effort: a failed/unavailable LLM degrades to a friendly message,
         // in the same language as the question).
@@ -126,9 +133,9 @@ public class SendChatMessageUseCase {
         return buildResponse(userMessage, assistantMessage, intent.intent(), false);
     }
 
-    private String buildReferenceBlock(IntentResult result, UserEntity user, String content) {
-        var areas = result.areas();
-        return switch (result.intent()) {
+    private String buildReferenceBlock(ChatIntent intent, Set<CrmArea> areas, UserEntity user,
+                                       String content) {
+        return switch (intent) {
             // Operates on the conversation itself (translate/summarise/rephrase the previous
             // answer), so no fresh data is needed — the history sent to the LLM is the whole
             // input. Skipping both the CRM queries and the RAG lookup makes this the cheapest

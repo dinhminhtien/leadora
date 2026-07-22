@@ -1,28 +1,20 @@
 package com.novax.leadora.application.usecase.chat.intent;
 
-import java.util.Set;
-
 /**
  * Outcome of intent classification. When {@code blocked} is true the guardrail
  * supplies a ready-to-return {@code blockMessage} and the assistant makes no LLM call.
  *
- * @param areas subject areas the question refers to. Every area still contributes its counts to
- *              the snapshot; these are the ones that also get a row-by-row listing, so the prompt
- *              stays proportionate to what was actually asked.
+ * <p>Which CRM areas to detail is deliberately NOT part of this: like the reply language, it is
+ * resolved across the session rather than from one message, so it is computed by the caller via
+ * {@link IntentClassifier#resolveAreas}.
  */
-public record IntentResult(ChatIntent intent, boolean blocked, String blockMessage,
-                           Set<CrmArea> areas) {
+public record IntentResult(ChatIntent intent, boolean blocked, String blockMessage) {
 
-    public static IntentResult of(ChatIntent intent, Set<CrmArea> areas) {
-        return new IntentResult(intent, false, null, areas);
-    }
-
-    /** For intents that need no CRM listing at all (greetings, meta-requests). */
     public static IntentResult of(ChatIntent intent) {
-        return new IntentResult(intent, false, null, CrmArea.defaults());
+        return new IntentResult(intent, false, null);
     }
 
     public static IntentResult blocked(ChatIntent intent, String message) {
-        return new IntentResult(intent, true, message, Set.of());
+        return new IntentResult(intent, true, message);
     }
 }

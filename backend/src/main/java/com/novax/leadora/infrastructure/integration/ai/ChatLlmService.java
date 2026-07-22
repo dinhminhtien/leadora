@@ -60,9 +60,13 @@ public class ChatLlmService {
                do have: their absence means "not connected", not "zero".
             3e. COUNTS VS LISTINGS. The REFERENCE DATA gives totals for every area you are
                connected to, but a row-by-row listing only for the areas the question was about.
-               A total with no listing beneath it is still a real, complete figure — quote it.
-               If the user then asks for the individual records, say you can pull them up and
-               invite them to ask about that area directly.
+               A total with no listing beneath it is still a real, complete figure — quote it,
+               and say the individual records can be pulled up if wanted.
+               A listing is always the NEWEST few records of that area, capped, and never
+               filtered by any condition in the question. So when asked for "approved
+               quotations", do not present the listing as if it were the approved ones: give the
+               approved COUNT from the totals, then show the matching rows that happen to be in
+               the listing, and say it shows the most recent records rather than a filtered set.
             3f. NO DATE FILTER. Every count and total covers ALL TIME. If asked about a period
                ("this month", "this quarter", "today"), say clearly that your figures are
                all-time and that date filtering is not available yet, then give the all-time

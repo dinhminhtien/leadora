@@ -251,12 +251,39 @@ class IntentClassifierTest {
         }
 
         @Test
-        @DisplayName("a question naming no area falls back to the sales pipeline")
-        void fallsBackToDefaults() {
-            assertThat(IntentClassifier.detectAreas("tình hình của tôi thế nào"))
-                    .isEqualTo(CrmArea.defaults());
+        @DisplayName("a question naming no area detects nothing on its own")
+        void detectsNothingWhenNoAreaIsNamed() {
+            assertThat(IntentClassifier.detectAreas("tình hình của tôi thế nào")).isEmpty();
             assertThat(CrmArea.defaults())
                     .containsExactlyInAnyOrder(CrmArea.LEADS, CrmArea.DEALS, CrmArea.TASKS);
+        }
+
+        /**
+         * Found by running the assistant against real data: asking to list quotations and then
+         * confirming with "yes, list them in detail" silently dropped the quotation listing,
+         * because the follow-up names no area and was judged on its own.
+         */
+        @Test
+        @DisplayName("a follow-up inherits the area from earlier in the conversation")
+        void inheritsAreaFromHistory() {
+            List<String> history = List.of("liệt kê báo giá đã duyệt");
+            assertThat(IntentClassifier.resolveAreas("có, liệt kê chi tiết đi", history))
+                    .containsExactly(CrmArea.QUOTATIONS);
+        }
+
+        @Test
+        @DisplayName("a new area in the current turn overrides the inherited one")
+        void currentTurnWinsOverHistory() {
+            List<String> history = List.of("liệt kê báo giá đã duyệt");
+            assertThat(IntentClassifier.resolveAreas("còn booking thì sao", history))
+                    .containsExactly(CrmArea.BOOKINGS);
+        }
+
+        @Test
+        @DisplayName("falls back to the sales pipeline when nothing in the session names an area")
+        void fallsBackToDefaults() {
+            assertThat(IntentClassifier.resolveAreas("tình hình thế nào", List.of("xin chào")))
+                    .isEqualTo(CrmArea.defaults());
         }
 
         @Test
@@ -267,11 +294,11 @@ class IntentClassifierTest {
         }
 
         @Test
-        @DisplayName("areas ride along on the classification result")
-        void areasAreCarriedOnTheResult() {
-            IntentResult result = classifier.classify("báo giá của tôi", null);
-            assertThat(result.intent()).isEqualTo(ChatIntent.PERSONAL_DATA);
-            assertThat(result.areas()).contains(CrmArea.QUOTATIONS);
+        @DisplayName("area detection is independent of the routing decision")
+        void areaDetectionIsSeparateFromIntent() {
+            assertThat(classifier.classify("báo giá của tôi", null).intent())
+                    .isEqualTo(ChatIntent.PERSONAL_DATA);
+            assertThat(IntentClassifier.detectAreas("báo giá của tôi")).contains(CrmArea.QUOTATIONS);
         }
     }
 

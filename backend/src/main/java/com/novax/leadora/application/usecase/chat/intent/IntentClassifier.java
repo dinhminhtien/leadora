@@ -116,13 +116,11 @@ public class IntentClassifier {
                     "khach cu", "lien he", "contact"));
 
     /**
-     * Subject areas the message refers to, for sizing the snapshot. Returns
-     * {@link CrmArea#defaults()} when the question names none.
+     * Subject areas named by this message alone, empty when it names none.
      *
-     * <p>{@code LEADS} is matched on the bare word "lead", which is also a prefix of nothing else
-     * in the vocabulary, while {@code CUSTOMERS} owns "khach hang" — so "khách hàng tiềm năng"
-     * would match both. That is intentional and harmless: listing one extra related area is much
-     * cheaper than missing the one the user asked about.
+     * <p>{@code LEADS} is matched on the bare word "lead" while {@code CUSTOMERS} owns "khach
+     * hang", so "khách hàng tiềm năng" matches both. That is intentional and harmless: listing one
+     * extra related area is much cheaper than missing the one the user asked about.
      */
     public static Set<CrmArea> detectAreas(String rawMessage) {
         String text = normalize(rawMessage);
@@ -135,7 +133,33 @@ public class IntentClassifier {
                 }
             }
         });
-        return found.isEmpty() ? CrmArea.defaults() : found;
+        return found;
+    }
+
+    /**
+     * Areas to detail for this turn, falling back to the rest of the conversation.
+     *
+     * <p>Follow-ups rarely repeat the subject: "yes, list them in detail" names no area at all, so
+     * judging it alone drops back to the default pipeline areas and silently discards the listing
+     * the user was actually asking to see. Intent is already inherited this way; areas have to be
+     * too, or the two disagree about what the conversation is about.
+     *
+     * @param priorUserMessages earlier USER turns of this session, oldest first (nullable)
+     */
+    public static Set<CrmArea> resolveAreas(String current, List<String> priorUserMessages) {
+        Set<CrmArea> here = detectAreas(current);
+        if (!here.isEmpty()) {
+            return here;
+        }
+        if (priorUserMessages != null) {
+            for (int i = priorUserMessages.size() - 1; i >= 0; i--) {
+                Set<CrmArea> prior = detectAreas(priorUserMessages.get(i));
+                if (!prior.isEmpty()) {
+                    return prior;
+                }
+            }
+        }
+        return CrmArea.defaults();
     }
 
     private static final List<String> BUSINESS_KEYWORDS = List.of(
@@ -261,7 +285,6 @@ public class IntentClassifier {
         }
 
         // [3] Route business questions to the right data source.
-        Set<CrmArea> areas = detectAreas(rawMessage);
         if (containsAny(text, DOC_KEYWORDS)) {
             return IntentResult.of(ChatIntent.DOC_QUERY);
         }
@@ -273,15 +296,15 @@ public class IntentClassifier {
         //
         // The possessive also pins the scope to the asker regardless of role — see PERSONAL_DATA.
         if (containsAny(text, ASSIGNED_KEYWORDS)) {
-            return IntentResult.of(ChatIntent.PERSONAL_DATA, areas);
+            return IntentResult.of(ChatIntent.PERSONAL_DATA);
         }
         if (containsAny(text, TEAM_KEYWORDS)) {
-            return IntentResult.of(ChatIntent.TEAM_SUMMARY, areas);
+            return IntentResult.of(ChatIntent.TEAM_SUMMARY);
         }
         if (containsAny(text, CRM_OBJECTS)) {
-            return IntentResult.of(ChatIntent.ASSIGNED_DATA, areas);
+            return IntentResult.of(ChatIntent.ASSIGNED_DATA);
         }
-        return IntentResult.of(ChatIntent.GENERAL_BUSINESS, areas);
+        return IntentResult.of(ChatIntent.GENERAL_BUSINESS);
     }
 
     /** Returns the intent to continue if {@code name} is a data/RAG intent, else null. */
