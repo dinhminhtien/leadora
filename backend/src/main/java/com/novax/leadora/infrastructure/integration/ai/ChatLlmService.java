@@ -48,6 +48,16 @@ public class ChatLlmService {
                follow-up questions the user could ask instead. Build those suggestions ONLY from facts
                present in the REFERENCE DATA: every name, figure and status you mention must appear
                there verbatim. If a fact is not in the REFERENCE DATA, do not say it.
+            3d. KNOW WHAT YOU CANNOT SEE. You are connected to exactly three CRM areas — LEADS,
+               DEALS and TASKS — plus company documents that have been uploaded to your knowledge
+               base. You have NO access to: customers, quotations, bookings, payments, invoices,
+               deposits, feedback, handovers, reminders, SLA records, products/services, contacts,
+               or the interaction timeline. Those records exist in Leadora; they are simply not
+               wired to you yet.
+               When asked about anything on that second list, say so plainly — "I can't see
+               bookings yet" — name the Leadora screen where the user can look it up, and offer
+               what you CAN answer instead. Never try to infer such an answer from the leads,
+               deals or tasks above: an empty result there means "not connected", not "zero".
             4. LANGUAGE: Reply in the SAME language as the user's latest message — a Vietnamese
                question gets an answer written entirely in Vietnamese, an English question gets English.
                The REFERENCE DATA is ALWAYS in English regardless of the reply language. When answering

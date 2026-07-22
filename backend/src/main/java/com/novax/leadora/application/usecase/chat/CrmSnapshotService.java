@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.StringJoiner;
@@ -152,7 +153,9 @@ public class CrmSnapshotService {
                     .append("\" | ").append(d.getPipelineStage())
                     .append(" | ").append(d.getStatus())
                     .append(" | value ").append(d.getExpectedRevenue())
-                    .append(" | expected close ").append(d.getExpectedCloseDate()).append("\n"));
+                    .append(" | expected close ").append(d.getExpectedCloseDate())
+                    .append(" | assigned to: ").append(assigneeLabel(d.getAssignedUser()))
+                    .append("\n"));
         }
 
         // ── Tasks (overdue is derived: not closed, and past end_at) ──
@@ -167,18 +170,34 @@ public class CrmSnapshotService {
                 .append(", open/in progress ").append(openTasks)
                 .append(", overdue ").append(overdueCount).append("\n");
 
-        if (overdueCount > 0) {
-            List<TaskEntity> overdue = taskRepository.findOverdueForChat(
-                    scopeUserId, CLOSED_TASK_STATUSES, now, PageRequest.of(0, MAX_TASKS));
-            sb.append("Overdue tasks (up to ").append(MAX_TASKS).append("):\n");
-            overdue.forEach(t -> sb.append("  - \"").append(t.getTitle())
+        if (openTasks > 0) {
+            List<TaskEntity> open = taskRepository.findOpenForChat(
+                    scopeUserId, CLOSED_TASK_STATUSES, PageRequest.of(0, MAX_TASKS));
+            sb.append("Open tasks (up to ").append(MAX_TASKS)
+                    .append(", earliest deadline first):\n");
+            open.forEach(t -> sb.append("  - \"").append(t.getTitle())
                     .append("\" | due ").append(t.getEndAt())
                     .append(" | priority ").append(t.getPriority())
-                    .append(" | ").append(t.getStatus()).append("\n"));
+                    .append(" | ").append(t.getStatus())
+                    .append(isOverdue(t, now) ? " | OVERDUE" : "")
+                    .append("\n"));
         }
 
-        if (leadTotal == 0 && dealTotal == 0 && taskTotal == 0) {
-            appendAffordances(sb, user, scopeUserId);
+        // Guidance is emitted per area, not only when the whole snapshot is empty. Someone with
+        // no leads but a couple of deals still needs an answer to "show my leads" that goes
+        // further than "none" — and that combination is the common case, not the rare one.
+        List<String> emptyAreas = new ArrayList<>();
+        if (leadTotal == 0) {
+            emptyAreas.add("leads");
+        }
+        if (dealTotal == 0) {
+            emptyAreas.add("deals");
+        }
+        if (taskTotal == 0) {
+            emptyAreas.add("tasks");
+        }
+        if (!emptyAreas.isEmpty()) {
+            appendAffordances(sb, user, scopeUserId, emptyAreas);
         }
         return sb.toString();
     }
@@ -192,40 +211,57 @@ public class CrmSnapshotService {
      * records. For everyone else the block explicitly forbids naming colleagues, because merely
      * listing who holds the leads would leak data the caller cannot read.
      */
-    private void appendAffordances(StringBuilder sb, UserEntity user, UUID scopeUserId) {
+    private void appendAffordances(StringBuilder sb, UserEntity user, UUID scopeUserId,
+                                   List<String> emptyAreas) {
         boolean personalScope = scopeUserId != null;
         boolean privileged = canSeeAllData(user);
 
-        sb.append("\n-- WHY THIS IS EMPTY, AND WHAT YOU MAY OFFER --\n");
+        sb.append("\n-- WHY SOME AREAS ARE EMPTY, AND WHAT YOU MAY OFFER --\n");
         sb.append("These facts are real. Build follow-up suggestions ONLY from them, and never ")
                 .append("mention a name or figure that does not appear here.\n");
+        sb.append("Empty for this scope: ").append(String.join(", ", emptyAreas)).append(".\n");
 
         if (personalScope && privileged) {
-            sb.append("Nothing is assigned directly to ").append(user.getFullName())
+            sb.append("Nothing in those areas is assigned directly to ").append(user.getFullName())
                     .append(", whose role can nevertheless view every record. ")
-                    .append("The personal scope is empty; the company's data is not.\n");
+                    .append("The personal scope is empty there; the company's data is not.\n");
         } else if (personalScope) {
-            sb.append("Nothing is currently assigned to ").append(user.getFullName()).append(".\n");
+            sb.append("Nothing in those areas is currently assigned to ")
+                    .append(user.getFullName()).append(".\n");
         } else {
-            sb.append("No records exist in the scope this user is allowed to read.\n");
+            sb.append("No records exist there in the scope this user is allowed to read.\n");
         }
 
-        if (privileged) {
-            long leadTotal = leadRepository.countByStatusForChat(null).stream()
-                    .mapToLong(LeadStatusCount::count).sum();
-            long dealTotal = dealRepository.aggregateByStatusForChat(null).stream()
-                    .mapToLong(DealStatusAggregate::count).sum();
-            long taskTotal = taskRepository.countByStatusForChat(null).stream()
-                    .mapToLong(TaskStatusCount::count).sum();
-            sb.append("Company-wide totals: ").append(leadTotal).append(" leads, ")
-                    .append(dealTotal).append(" deals, ").append(taskTotal).append(" tasks.\n");
+        if (!privileged) {
+            // BR-36: naming who does hold the records would itself disclose data this caller
+            // cannot read, so the suggestions must stay inside their own scope.
+            sb.append("This user may only read their own records, so do NOT name other staff ")
+                    .append("members and do NOT offer team-wide figures. You may suggest asking ")
+                    .append("about the areas above that are NOT empty, about company documents ")
+                    .append("and policies, or contacting their manager about record assignment.\n");
+            return;
+        }
 
+        if (!personalScope) {
+            // The snapshot already covers every record, so there is no wider scope to fall back
+            // on: these areas are empty company-wide. Re-querying would repeat the counts printed
+            // above and add a meaningless "company-wide: 0" line.
+            sb.append("This scope already covers every record, so those areas are empty ")
+                    .append("company-wide — there is no wider scope to offer. You may suggest ")
+                    .append("the areas above that are NOT empty, or company documents.\n");
+            return;
+        }
+
+        if (emptyAreas.contains("leads")) {
             List<LeadStatusCount> byStatus = leadRepository.countByStatusForChat(null);
+            long companyLeads = byStatus.stream().mapToLong(LeadStatusCount::count).sum();
+            sb.append("Company-wide leads: ").append(companyLeads);
             if (!byStatus.isEmpty()) {
-                StringJoiner statuses = new StringJoiner(", ");
+                StringJoiner statuses = new StringJoiner(", ", " (", ")");
                 byStatus.forEach(c -> statuses.add(c.status() + "=" + c.count()));
-                sb.append("Leads by status: ").append(statuses).append("\n");
+                sb.append(statuses);
             }
+            sb.append("\n");
 
             List<RepLeadCount> perRep =
                     leadRepository.countPerAssignee(PageRequest.of(0, MAX_SUGGESTED_REPS));
@@ -233,14 +269,32 @@ public class CrmSnapshotService {
                 StringJoiner reps = new StringJoiner(", ");
                 perRep.forEach(r -> reps.add(r.repName() + "=" + r.count()));
                 sb.append("Leads per staff member: ").append(reps).append("\n");
-                sb.append("You may offer to look up any of the staff members named above, ")
-                        .append("a team-wide summary, or a specific lead status.\n");
+                sb.append("You may offer the leads of any staff member named above, a team-wide ")
+                        .append("summary, or a specific lead status.\n");
             }
-        } else {
-            sb.append("This user may only read their own records, so do NOT name other staff ")
-                    .append("members and do NOT offer team-wide figures. You may suggest asking ")
-                    .append("about company documents and policies, or contacting their manager ")
-                    .append("about record assignment.\n");
+        }
+
+        if (emptyAreas.contains("deals")) {
+            List<DealStatusAggregate> agg = dealRepository.aggregateByStatusForChat(null);
+            long companyDeals = agg.stream().mapToLong(DealStatusAggregate::count).sum();
+            sb.append("Company-wide deals: ").append(companyDeals);
+            if (!agg.isEmpty()) {
+                StringJoiner statuses = new StringJoiner(", ", " (", ")");
+                agg.forEach(a -> statuses.add(a.status() + "=" + a.count()
+                        + " worth " + a.revenueOrZero()));
+                sb.append(statuses);
+            }
+            sb.append("\nYou may offer a team-wide deal summary or the deals of a named staff member.\n");
+        }
+
+        if (emptyAreas.contains("tasks")) {
+            long companyTasks = taskRepository.countByStatusForChat(null).stream()
+                    .mapToLong(TaskStatusCount::count).sum();
+            sb.append("Company-wide tasks: ").append(companyTasks)
+                    .append(", of which overdue: ")
+                    .append(taskRepository.countOverdueForChat(
+                            null, CLOSED_TASK_STATUSES, OffsetDateTime.now()))
+                    .append("\nYou may offer the team's overdue tasks.\n");
         }
     }
 
@@ -311,6 +365,13 @@ public class CrmSnapshotService {
 
     private static String nullToDash(String s) {
         return (s == null || s.isBlank()) ? "-" : s;
+    }
+
+    /** BR-17: overdue is derived, never stored — not closed, and past its {@code end_at}. */
+    private static boolean isOverdue(TaskEntity task, OffsetDateTime now) {
+        return task.getEndAt() != null
+                && task.getEndAt().isBefore(now)
+                && !CLOSED_TASK_STATUSES.contains(task.getStatus());
     }
 
     private static String assigneeLabel(UserEntity assignee) {

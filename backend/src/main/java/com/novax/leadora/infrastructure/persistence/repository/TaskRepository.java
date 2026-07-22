@@ -102,17 +102,21 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
                         @Param("closedStatuses") List<TaskStatus> closedStatuses,
                         @Param("now") OffsetDateTime now);
 
+        /**
+         * Tasks still to be done, earliest deadline first — overdue ones therefore come first.
+         *
+         * <p>Listing only the overdue ones (as this did originally) leaves the assistant unable to
+         * name a single task whenever nothing has slipped, which is the normal case: the assistant
+         * could report "3 open tasks" but not what they were.
+         */
         @EntityGraph(attributePaths = { "assignedUser" })
         @Query("""
                         SELECT t FROM TaskEntity t
                         WHERE (:userId IS NULL OR t.assignedUser.userId = :userId)
                           AND t.status NOT IN :closedStatuses
-                          AND t.endAt IS NOT NULL
-                          AND t.endAt < :now
-                        ORDER BY t.endAt ASC
+                        ORDER BY t.endAt ASC NULLS LAST
                         """)
-        List<TaskEntity> findOverdueForChat(@Param("userId") UUID userId,
+        List<TaskEntity> findOpenForChat(@Param("userId") UUID userId,
                         @Param("closedStatuses") List<TaskStatus> closedStatuses,
-                        @Param("now") OffsetDateTime now,
                         Pageable pageable);
 }
