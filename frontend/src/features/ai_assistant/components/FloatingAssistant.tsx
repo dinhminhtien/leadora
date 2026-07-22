@@ -42,7 +42,7 @@ import {
   useDeleteChatSession,
   useDeleteDocument,
   useRenameChatSession,
-  useSendChatMessage,
+  useStreamChatMessage,
   useUploadDocument,
 } from "@/features/ai_assistant/hooks/use_chat_sessions";
 import { LiaMascot } from "./LiaMascot";
@@ -272,7 +272,7 @@ function AssistantPanel({
   const messagesQuery = useChatMessages(selectedSessionId);
   const sessionsQuery = useChatSessions();
   const createSession = useCreateChatSession();
-  const sendMessage = useSendChatMessage();
+  const sendMessage = useStreamChatMessage();
   const renameSession = useRenameChatSession();
   const deleteSession = useDeleteChatSession();
 
@@ -317,7 +317,8 @@ function AssistantPanel({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, pendingUserText, sendMessage.isPending, scrollToBottom]);
+  }, [messages, pendingUserText, sendMessage.isPending, sendMessage.streamingText,
+      scrollToBottom]);
 
   // If the persisted session can't be loaded (deleted, different user after re-login,
   // or a reset DB), drop it and fall back to a fresh blank chat.
@@ -344,9 +345,9 @@ function AssistantPanel({
     setPendingUserText(text);
     setView("chat");
     try {
-      const res = await sendMessage.mutateAsync({ sessionId, content: text });
-      const newId = res.data?.assistantMessage?.messageId;
-      if (newId) setAnimateId(newId);
+      // The reply has already been revealed token by token, so the type-on-arrival
+      // animation would replay text the user has read — skip it for streamed turns.
+      await sendMessage.mutateAsync({ sessionId, content: text });
     } finally {
       setPendingUserText(null);
     }
@@ -519,10 +520,14 @@ function AssistantPanel({
                 />
               ))}
               {pendingUserText && <RawBubble role="USER" text={pendingUserText} />}
-              {sendMessage.isPending && (
-                <div className="flex items-center gap-2 pl-1 text-[11px] text-primary">
-                  <Loader2 className="size-3.5 animate-spin" /> Lia is typing…
-                </div>
+              {sendMessage.streamingText ? (
+                <RawBubble role="ASSISTANT" text={sendMessage.streamingText} />
+              ) : (
+                sendMessage.isPending && (
+                  <div className="flex items-center gap-2 pl-1 text-[11px] text-primary">
+                    <Loader2 className="size-3.5 animate-spin" /> Lia is typing…
+                  </div>
+                )
               )}
             </div>
           )}

@@ -9,6 +9,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -139,31 +140,9 @@ public class ChatLlmService {
      */
     public String generate(String referenceBlock, List<ChatTurn> history,
                            String userMessage, boolean vietnamese) {
-        List<Message> priorMessages = new ArrayList<>();
-        if (history != null) {
-            // Only replay the most recent turns — keeps the prompt (and latency) bounded.
-            int from = Math.max(0, history.size() - MAX_HISTORY_MESSAGES);
-            for (ChatTurn turn : history.subList(from, history.size())) {
-                if (turn.role() == ChatRole.USER) {
-                    priorMessages.add(new UserMessage(turn.content()));
-                } else if (turn.role() == ChatRole.ASSISTANT) {
-                    priorMessages.add(new AssistantMessage(turn.content()));
-                }
-            }
-        }
-
-        String systemText = SYSTEM_PROMPT + (vietnamese ? LANGUAGE_HINT_VI : LANGUAGE_HINT_EN);
-        if (StringUtils.hasText(referenceBlock)) {
-            systemText = systemText
-                    + "\n\n=== REFERENCE DATA (current live snapshot — authoritative, "
-                    + "overrides any older figures mentioned earlier) ===\n" + referenceBlock;
-        } else {
-            systemText = systemText + "\n\n(No reference data was retrieved for this request.)";
-        }
-
         String content = chatClient.prompt()
-                .system(systemText)
-                .messages(priorMessages)
+                .system(systemText(referenceBlock, vietnamese))
+                .messages(priorMessages(history))
                 .user(userMessage)
                 .call()
                 .content();
@@ -171,11 +150,57 @@ public class ChatLlmService {
         return stripReasoning(content);
     }
 
+    /** Replays only the most recent turns — keeps the prompt, and so the latency, bounded. */
+    private List<Message> priorMessages(List<ChatTurn> history) {
+        List<Message> messages = new ArrayList<>();
+        if (history == null) {
+            return messages;
+        }
+        int from = Math.max(0, history.size() - MAX_HISTORY_MESSAGES);
+        for (ChatTurn turn : history.subList(from, history.size())) {
+            if (turn.role() == ChatRole.USER) {
+                messages.add(new UserMessage(turn.content()));
+            } else if (turn.role() == ChatRole.ASSISTANT) {
+                messages.add(new AssistantMessage(turn.content()));
+            }
+        }
+        return messages;
+    }
+
+    private String systemText(String referenceBlock, boolean vietnamese) {
+        String text = SYSTEM_PROMPT + (vietnamese ? LANGUAGE_HINT_VI : LANGUAGE_HINT_EN);
+        return StringUtils.hasText(referenceBlock)
+                ? text + "\n\n=== REFERENCE DATA (current live snapshot — authoritative, "
+                        + "overrides any older figures mentioned earlier) ===\n" + referenceBlock
+                : text + "\n\n(No reference data was retrieved for this request.)";
+    }
+
+    /**
+     * Same prompt as {@link #generate}, delivered as it is produced.
+     *
+     * <p>The model spends most of a turn writing, not thinking: waiting for the last token before
+     * showing the first turns a five-second answer into a five-second blank screen. Streaming does
+     * not make the answer arrive sooner, it makes it start sooner — which is the part a reader
+     * actually experiences.
+     *
+     * <p>Chunk boundaries are the provider's and mean nothing: callers must concatenate before
+     * post-processing, never treat a chunk as a unit of text.
+     */
+    public Flux<String> stream(String referenceBlock, List<ChatTurn> history,
+                               String userMessage, boolean vietnamese) {
+        return chatClient.prompt()
+                .system(systemText(referenceBlock, vietnamese))
+                .messages(priorMessages(history))
+                .user(userMessage)
+                .stream()
+                .content();
+    }
+
     /**
      * Removes the chain-of-thought block that reasoning models (e.g. qwen3) emit, so the user
      * only sees the final answer. Harmless for models that don't produce {@code <think>} tags.
      */
-    static String stripReasoning(String content) {
+    public static String stripReasoning(String content) {
         if (content == null) {
             return "";
         }

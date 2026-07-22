@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback, useRef, useState } from "react";
+
 import {
   useMutation,
   useQuery,
@@ -73,6 +75,96 @@ export function useSendChatMessage() {
       queryClient.invalidateQueries({ queryKey: key });
       queryClient.invalidateQueries({ queryKey: SESSIONS_KEY });
     },
+  });
+}
+
+/**
+ * Send a message and watch the reply appear as it is written.
+ *
+ * The assistant spends most of a turn writing rather than deciding, so waiting for the last word
+ * before showing the first turns a few seconds of work into a few seconds of blank screen. This
+ * exposes the partial text as it arrives; the caller renders `streamingText` under the feed until
+ * the finished message lands in the cache and takes its place.
+ *
+ * The reply is only persisted server-side when the answer completes, so an interrupted turn
+ * leaves no half-written message behind — which is also why the partial text is kept in component
+ * state rather than written into the query cache as it grows.
+ */
+export function useStreamChatMessage() {
+  const queryClient = useQueryClient();
+  const [streamingText, setStreamingText] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: async ({
+      sessionId,
+      content,
+    }: {
+      sessionId: string;
+      content: string;
+    }) => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setStreamingText("");
+      setIsStreaming(true);
+
+      let accumulated = "";
+      return chatAssistantService.streamMessage(
+        sessionId,
+        content,
+        (fragment) => {
+          accumulated += fragment;
+          setStreamingText(accumulated);
+        },
+        (userMessage) => {
+          // Show the question the moment the server has recorded it, without waiting for the
+          // answer — otherwise the input clears and nothing appears for a second or more.
+          appendToCache(queryClient, sessionId, [userMessage]);
+        },
+        controller.signal,
+      );
+    },
+    onSuccess: (res, variables) => {
+      appendToCache(queryClient, variables.sessionId, [
+        res.userMessage,
+        res.assistantMessage,
+      ]);
+      const key = ["chat-messages", variables.sessionId] as const;
+      queryClient.invalidateQueries({ queryKey: key });
+      // Refresh the session list so the auto-generated title and ordering update.
+      queryClient.invalidateQueries({ queryKey: SESSIONS_KEY });
+    },
+    onSettled: () => {
+      setIsStreaming(false);
+      setStreamingText("");
+      abortRef.current = null;
+    },
+  });
+
+  const stop = useCallback(() => abortRef.current?.abort(), []);
+
+  return { ...mutation, streamingText, isStreaming, stop };
+}
+
+/** Adds messages to the cached feed, ignoring ones already present. */
+function appendToCache(
+  queryClient: ReturnType<typeof useQueryClient>,
+  sessionId: string,
+  messages: (ChatMessage | undefined)[],
+) {
+  const key = ["chat-messages", sessionId] as const;
+  queryClient.setQueryData<ApiResponse<ChatMessage[]>>(key, (old) => {
+    const list = old?.data ? [...old.data] : [];
+    const seen = new Set(list.map((m) => m.messageId));
+    for (const message of messages) {
+      if (message && !seen.has(message.messageId)) list.push(message);
+    }
+    return old
+      ? { ...old, data: list }
+      : ({ success: true, data: list } as ApiResponse<ChatMessage[]>);
   });
 }
 
