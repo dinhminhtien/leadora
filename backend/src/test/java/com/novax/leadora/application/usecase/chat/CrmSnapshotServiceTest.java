@@ -1,22 +1,22 @@
 package com.novax.leadora.application.usecase.chat;
 
-import com.novax.leadora.application.usecase.chat.dto.DealStatusAggregate;
-import com.novax.leadora.application.usecase.chat.dto.LeadStatusCount;
+import com.novax.leadora.application.usecase.chat.dto.ChatCounts;
 import com.novax.leadora.application.usecase.chat.dto.RepLeadCount;
-import com.novax.leadora.application.usecase.chat.dto.TaskStatusCount;
+import com.novax.leadora.application.usecase.chat.dto.StatusBucket;
+import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
+import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
-import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
-import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
+import com.novax.leadora.infrastructure.persistence.repository.ChatAggregateRepository;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
+import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
-import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -30,7 +30,10 @@ import org.mockito.quality.Strictness;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -39,15 +42,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Tests for the guidance the snapshot attaches when a scope comes back empty.
+ * Behaviour of the reference block the assistant is given: what it says when a scope is empty,
+ * what it refuses to say to a user who may not see it, and how much of a long list it shows.
  *
- * <p>This is the part of the assistant that decides whether "show my leads" ends at "you have
- * none" or continues with something the user can actually do next, so its trigger conditions and
- * its data-scope rules are worth pinning down. The repositories are mocked: the queries themselves
- * are covered by {@code ChatQueryCompilationTest}, and what matters here is the branching.
+ * <p>The repositories are mocked. The queries themselves are covered elsewhere —
+ * {@code ChatQueryCompilationTest} for the declared JPQL and {@code ChatAggregateRepositoryTest}
+ * for the batched statement — and what matters here is the branching on top of them.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -55,47 +59,42 @@ class CrmSnapshotServiceTest {
 
     private static final UUID USER_ID = UUID.randomUUID();
 
-    @Mock
-    private LeadRepository leadRepository;
-
-    @Mock
-    private DealRepository dealRepository;
-
-    @Mock
-    private TaskRepository taskRepository;
-
-    @Mock
-    private QuotationRepository quotationRepository;
-
-    @Mock
-    private BookingRepository bookingRepository;
-
-    @Mock
-    private PaymentRepository paymentRepository;
-
-    @Mock
-    private CustomerRepository customerRepository;
+    @Mock private ChatAggregateRepository chatAggregateRepository;
+    @Mock private LeadRepository leadRepository;
+    @Mock private DealRepository dealRepository;
+    @Mock private TaskRepository taskRepository;
+    @Mock private QuotationRepository quotationRepository;
+    @Mock private BookingRepository bookingRepository;
+    @Mock private PaymentRepository paymentRepository;
+    @Mock private CustomerRepository customerRepository;
 
     private CrmSnapshotService service;
 
     @BeforeEach
     void setUp() {
-        service = new CrmSnapshotService(leadRepository, dealRepository, taskRepository,
-                quotationRepository, bookingRepository, paymentRepository, customerRepository);
+        service = new CrmSnapshotService(chatAggregateRepository, leadRepository, dealRepository,
+                taskRepository, quotationRepository, bookingRepository, paymentRepository,
+                customerRepository);
 
-        // Default: every scope is empty. Individual tests fill in what they need.
-        when(leadRepository.countByStatusForChat(any())).thenReturn(List.of());
-        when(dealRepository.aggregateByStatusForChat(any())).thenReturn(List.of());
-        when(taskRepository.countByStatusForChat(any())).thenReturn(List.of());
-        when(taskRepository.countOverdueForChat(any(), anyList(), any())).thenReturn(0L);
+        // Default: nothing anywhere. Individual tests fill in what they need.
+        when(chatAggregateRepository.countAll(any())).thenReturn(counts(Map.of(), 0));
         when(leadRepository.findRecentForChat(any(), any())).thenReturn(List.of());
         when(dealRepository.findRecentForChat(any(), any())).thenReturn(List.of());
         when(taskRepository.findOpenForChat(any(), anyList(), any())).thenReturn(List.of());
         when(leadRepository.countPerAssignee(any())).thenReturn(List.of());
-        when(quotationRepository.aggregateByStatusForChat(any())).thenReturn(List.of());
-        when(bookingRepository.aggregateByStatusForChat(any())).thenReturn(List.of());
-        when(paymentRepository.aggregateByStatusForChat(any())).thenReturn(List.of());
-        when(customerRepository.countByStatusForChat(any())).thenReturn(List.of());
+    }
+
+    // ── fixtures ──────────────────────────────────────────────────────────────
+
+    private static ChatCounts counts(Map<CrmArea, List<StatusBucket>> byArea, long overdue) {
+        // Built key-first: EnumMap's copy constructor cannot infer the key type from an empty map.
+        Map<CrmArea, List<StatusBucket>> map = new EnumMap<>(CrmArea.class);
+        map.putAll(byArea);
+        return new ChatCounts(map, overdue);
+    }
+
+    private static StatusBucket bucket(String status, long count) {
+        return new StatusBucket(status, count, null);
     }
 
     private static ChatActor user(String role) {
@@ -106,37 +105,36 @@ class CrmSnapshotServiceTest {
                 .build());
     }
 
-    /** The user's own scope: no leads, but a deal and some tasks. */
-    private void givenPersonalScopeHasDealsAndTasksButNoLeads() {
-        when(dealRepository.aggregateByStatusForChat(eq(USER_ID)))
-                .thenReturn(List.of(new DealStatusAggregate(
-                        DealStatus.OPEN, 1L, new BigDecimal("5000000"))));
-        when(taskRepository.countByStatusForChat(eq(USER_ID)))
-                .thenReturn(List.of(new TaskStatusCount(TaskStatus.OPEN, 2L)));
+    /** The user's own scope: no leads, but a deal and some tasks — the shape real data takes. */
+    private void givenOwnScopeHasDealsAndTasksButNoLeads() {
+        when(chatAggregateRepository.countAll(eq(USER_ID))).thenReturn(counts(Map.of(
+                CrmArea.DEALS, List.of(new StatusBucket("OPEN", 1, new BigDecimal("5000000"))),
+                CrmArea.TASKS, List.of(bucket("OPEN", 2))), 0));
     }
 
     private void givenCompanyWideLeadsExist() {
-        when(leadRepository.countByStatusForChat(isNull())).thenReturn(List.of(
-                new LeadStatusCount(LeadStatus.NEW, 8L),
-                new LeadStatusCount(LeadStatus.CONVERTED, 12L)));
+        when(chatAggregateRepository.countAll(isNull())).thenReturn(counts(Map.of(
+                CrmArea.LEADS, List.of(bucket("NEW", 8), bucket("CONVERTED", 12))), 0));
         when(leadRepository.countPerAssignee(any())).thenReturn(List.of(
                 new RepLeadCount("Alice Smith", 6L),
                 new RepLeadCount("Tiến Đinh", 4L)));
     }
+
+    // ── tests ─────────────────────────────────────────────────────────────────
 
     @Nested
     @DisplayName("Guidance is emitted per area")
     class PerArea {
 
         /**
-         * The case that motivated the change: a Manager with no leads of their own but a deal and
-         * two tasks. Requiring the WHOLE snapshot to be empty meant this — the common shape of
-         * real data — produced no guidance at all.
+         * The case that motivated per-area guidance: a Manager with no leads of their own but a
+         * deal and two tasks. Requiring the whole snapshot to be empty meant this shape — the
+         * common one in real data — produced no guidance at all.
          */
         @Test
         @DisplayName("empty leads still get guidance when deals and tasks have rows")
         void emptyLeadsGetGuidanceEvenWhenOtherAreasHaveData() {
-            givenPersonalScopeHasDealsAndTasksButNoLeads();
+            givenOwnScopeHasDealsAndTasksButNoLeads();
             givenCompanyWideLeadsExist();
 
             String snapshot = service.personalSnapshot(user("MANAGER"), CrmArea.defaults());
@@ -150,7 +148,7 @@ class CrmSnapshotServiceTest {
         @Test
         @DisplayName("areas that have data are not named as empty")
         void doesNotClaimNonEmptyAreasAreEmpty() {
-            givenPersonalScopeHasDealsAndTasksButNoLeads();
+            givenOwnScopeHasDealsAndTasksButNoLeads();
             givenCompanyWideLeadsExist();
 
             String snapshot = service.personalSnapshot(user("MANAGER"), CrmArea.defaults());
@@ -160,15 +158,15 @@ class CrmSnapshotServiceTest {
         }
 
         @Test
-        @DisplayName("no guidance at all when every area has data")
+        @DisplayName("no guidance at all when every asked-about area has data")
         void noGuidanceWhenNothingIsEmpty() {
-            when(leadRepository.countByStatusForChat(eq(USER_ID)))
-                    .thenReturn(List.of(new LeadStatusCount(LeadStatus.NEW, 3L)));
-            givenPersonalScopeHasDealsAndTasksButNoLeads();
+            when(chatAggregateRepository.countAll(eq(USER_ID))).thenReturn(counts(Map.of(
+                    CrmArea.LEADS, List.of(bucket("NEW", 3)),
+                    CrmArea.DEALS, List.of(bucket("OPEN", 1)),
+                    CrmArea.TASKS, List.of(bucket("OPEN", 2))), 0));
 
-            String snapshot = service.personalSnapshot(user("MANAGER"), CrmArea.defaults());
-
-            assertThat(snapshot).doesNotContain("WHAT YOU MAY OFFER");
+            assertThat(service.personalSnapshot(user("MANAGER"), CrmArea.defaults()))
+                    .doesNotContain("WHAT YOU MAY OFFER");
         }
     }
 
@@ -177,8 +175,8 @@ class CrmSnapshotServiceTest {
     class ScopeLeakage {
 
         /**
-         * Naming who does hold the leads would disclose exactly what a Sales user is not allowed
-         * to read, so the suggestions have to stay inside their own scope.
+         * Naming who does hold the leads would disclose exactly what a Sales user may not read,
+         * so the suggestions have to stay inside their own scope.
          */
         @Test
         @DisplayName("a Sales user is never told about colleagues or company totals")
@@ -198,9 +196,8 @@ class CrmSnapshotServiceTest {
         void managerGetsColleagueNames() {
             givenCompanyWideLeadsExist();
 
-            String snapshot = service.personalSnapshot(user("MANAGER"), CrmArea.defaults());
-
-            assertThat(snapshot).contains("Alice Smith=6");
+            assertThat(service.personalSnapshot(user("MANAGER"), CrmArea.defaults()))
+                    .contains("Alice Smith=6");
         }
     }
 
@@ -209,25 +206,25 @@ class CrmSnapshotServiceTest {
     class Scope {
 
         @Test
-        @DisplayName("personalSnapshot always queries the user's own records, even for a Manager")
-        void personalSnapshotIsAlwaysPinnedToTheUser() {
+        @DisplayName("personalSnapshot queries the user's own records, even for a Manager")
+        void personalSnapshotIsPinnedToTheUser() {
             service.personalSnapshot(user("MANAGER"), CrmArea.defaults());
             // A null argument would mean "every record"; the personal snapshot must not use it.
-            org.mockito.Mockito.verify(leadRepository).countByStatusForChat(eq(USER_ID));
+            verify(chatAggregateRepository).countAll(eq(USER_ID));
         }
 
         @Test
         @DisplayName("scopedSnapshot widens to all records for a Manager")
         void scopedSnapshotWidensForManager() {
             service.scopedSnapshot(user("MANAGER"), CrmArea.defaults());
-            org.mockito.Mockito.verify(leadRepository).countByStatusForChat(isNull());
+            verify(chatAggregateRepository).countAll(isNull());
         }
 
         @Test
         @DisplayName("scopedSnapshot stays personal for a Sales user")
         void scopedSnapshotStaysPersonalForSales() {
             service.scopedSnapshot(user("SALES"), CrmArea.defaults());
-            org.mockito.Mockito.verify(leadRepository).countByStatusForChat(eq(USER_ID));
+            verify(chatAggregateRepository).countAll(eq(USER_ID));
         }
     }
 
@@ -244,21 +241,26 @@ class CrmSnapshotServiceTest {
         void alwaysIncludesCountsForEveryArea() {
             String snapshot = service.personalSnapshot(user("SALES"), Set.of(CrmArea.LEADS));
 
-            assertThat(snapshot).contains("Leads: total");
-            assertThat(snapshot).contains("Deals: total");
-            assertThat(snapshot).contains("Tasks: total");
-            assertThat(snapshot).contains("Quotations: total");
-            assertThat(snapshot).contains("Bookings: total");
-            assertThat(snapshot).contains("Payments: total");
-            assertThat(snapshot).contains("Customers: total");
+            assertThat(snapshot)
+                    .contains("Leads: total")
+                    .contains("Deals: total")
+                    .contains("Tasks: total")
+                    .contains("Quotations: total")
+                    .contains("Bookings: total")
+                    .contains("Payments: total")
+                    .contains("Customers: total");
         }
 
         @Test
         @DisplayName("only the asked-about area is listed row by row")
         void listsOnlyTheRequestedArea() {
-            when(leadRepository.countByStatusForChat(eq(USER_ID)))
-                    .thenReturn(List.of(new LeadStatusCount(LeadStatus.NEW, 2L)));
-            givenPersonalScopeHasDealsAndTasksButNoLeads();
+            when(chatAggregateRepository.countAll(eq(USER_ID))).thenReturn(counts(Map.of(
+                    CrmArea.LEADS, List.of(bucket("NEW", 2)),
+                    CrmArea.DEALS, List.of(bucket("OPEN", 1)),
+                    CrmArea.TASKS, List.of(bucket("OPEN", 2))), 0));
+            when(leadRepository.findRecentForChat(eq(USER_ID), any()))
+                    .thenReturn(List.of(LeadEntity.builder().leadId(UUID.randomUUID())
+                            .fullName("Bruce Wayne").status(LeadStatus.NEW).build()));
 
             String leadsOnly = service.personalSnapshot(user("SALES"), Set.of(CrmArea.LEADS));
 
@@ -267,20 +269,15 @@ class CrmSnapshotServiceTest {
             assertThat(leadsOnly).doesNotContain("Open tasks");
         }
 
-        /**
-         * Guidance follows the same rule: an empty payments area is not worth explaining when the
-         * question was about leads.
-         */
         @Test
         @DisplayName("no guidance for empty areas the question did not mention")
         void guidanceIgnoresUnaskedAreas() {
-            when(leadRepository.countByStatusForChat(eq(USER_ID)))
-                    .thenReturn(List.of(new LeadStatusCount(LeadStatus.NEW, 2L)));
-
-            String snapshot = service.personalSnapshot(user("MANAGER"), Set.of(CrmArea.LEADS));
+            when(chatAggregateRepository.countAll(eq(USER_ID))).thenReturn(counts(Map.of(
+                    CrmArea.LEADS, List.of(bucket("NEW", 2))), 0));
 
             // Bookings and payments are empty too, but were not asked about.
-            assertThat(snapshot).doesNotContain("WHAT YOU MAY OFFER");
+            assertThat(service.personalSnapshot(user("MANAGER"), Set.of(CrmArea.LEADS)))
+                    .doesNotContain("WHAT YOU MAY OFFER");
         }
 
         @Test
@@ -298,9 +295,9 @@ class CrmSnapshotServiceTest {
     class ListingHeaders {
 
         private void givenLeads(long total, int returned) {
-            when(leadRepository.countByStatusForChat(eq(USER_ID)))
-                    .thenReturn(List.of(new LeadStatusCount(LeadStatus.NEW, total)));
-            List<LeadEntity> rows = new java.util.ArrayList<>();
+            when(chatAggregateRepository.countAll(eq(USER_ID))).thenReturn(counts(Map.of(
+                    CrmArea.LEADS, List.of(bucket("NEW", total))), 0));
+            List<LeadEntity> rows = new ArrayList<>();
             for (int i = 0; i < returned; i++) {
                 rows.add(LeadEntity.builder().leadId(UUID.randomUUID())
                         .fullName("Lead " + i).status(LeadStatus.NEW).build());
@@ -309,15 +306,14 @@ class CrmSnapshotServiceTest {
         }
 
         /**
-         * The failure this guards against is quiet: 25 rows presented as "your leads" is a wrong
-         * answer to "show me all my leads" when there are 143. The header has to carry both
-         * numbers so the assistant can say which it is.
+         * The failure this guards against is quiet: 10 rows presented as "your leads" is a wrong
+         * answer to "show me all my leads" when there are 143.
          */
         @Test
         @DisplayName("a capped listing is marked TRUNCATED with the real total")
         void marksTruncation() {
-            // Deliberately not asserting the cap itself — that is a tuning knob, and a test that
-            // pins it would have to be edited every time the listings are made shorter.
+            // Not asserting the cap itself — it is a tuning knob, and a test that pins it would
+            // need editing every time the listings are made shorter.
             givenLeads(143, 10);
 
             String snapshot = service.personalSnapshot(user("SALES"), Set.of(CrmArea.LEADS));
@@ -345,11 +341,10 @@ class CrmSnapshotServiceTest {
         @Test
         @DisplayName("the header carries the screen label and path")
         void carriesTheScreenPath() {
-            givenLeads(143, 25);
+            givenLeads(143, 10);
 
-            String snapshot = service.personalSnapshot(user("SALES"), Set.of(CrmArea.LEADS));
-
-            assertThat(snapshot).contains("Leads screen at /leads");
+            assertThat(service.personalSnapshot(user("SALES"), Set.of(CrmArea.LEADS)))
+                    .contains("Leads screen at /leads");
         }
 
         @Test
@@ -366,21 +361,24 @@ class CrmSnapshotServiceTest {
     @DisplayName("Task listing")
     class Tasks {
 
+        private void givenOneOpenTask(String title, OffsetDateTime deadline, long overdue) {
+            when(chatAggregateRepository.countAll(eq(USER_ID))).thenReturn(counts(Map.of(
+                    CrmArea.TASKS, List.of(bucket("OPEN", 1))), overdue));
+            when(taskRepository.findOpenForChat(eq(USER_ID), anyList(), any()))
+                    .thenReturn(List.of(TaskEntity.builder()
+                            .taskId(UUID.randomUUID())
+                            .title(title)
+                            .status(TaskStatus.OPEN)
+                            .endAt(deadline)
+                            .build()));
+        }
+
         @Test
         @DisplayName("open tasks are listed even when none are overdue")
         void listsOpenTasksNotOnlyOverdue() {
-            when(taskRepository.countByStatusForChat(eq(USER_ID)))
-                    .thenReturn(List.of(new TaskStatusCount(TaskStatus.OPEN, 1L)));
-            when(taskRepository.findOpenForChat(eq(USER_ID), anyList(), any()))
-                    .thenReturn(List.of(com.novax.leadora.infrastructure.persistence.entity.TaskEntity
-                            .builder()
-                            .taskId(UUID.randomUUID())
-                            .title("Gọi lại khách hàng ACME")
-                            .status(TaskStatus.OPEN)
-                            .endAt(OffsetDateTime.now().plusDays(3))
-                            .build()));
+            givenOneOpenTask("Gọi lại khách hàng ACME", OffsetDateTime.now().plusDays(3), 0);
 
-            String snapshot = service.personalSnapshot(user("SALES"), CrmArea.defaults());
+            String snapshot = service.personalSnapshot(user("SALES"), Set.of(CrmArea.TASKS));
 
             assertThat(snapshot).contains("Open tasks");
             assertThat(snapshot).contains("Gọi lại khách hàng ACME");
@@ -390,19 +388,9 @@ class CrmSnapshotServiceTest {
         @Test
         @DisplayName("an overdue task is flagged in the listing")
         void flagsOverdueTasks() {
-            when(taskRepository.countByStatusForChat(eq(USER_ID)))
-                    .thenReturn(List.of(new TaskStatusCount(TaskStatus.OPEN, 1L)));
-            when(taskRepository.countOverdueForChat(eq(USER_ID), anyList(), any())).thenReturn(1L);
-            when(taskRepository.findOpenForChat(eq(USER_ID), anyList(), any()))
-                    .thenReturn(List.of(com.novax.leadora.infrastructure.persistence.entity.TaskEntity
-                            .builder()
-                            .taskId(UUID.randomUUID())
-                            .title("Gửi báo giá trễ hạn")
-                            .status(TaskStatus.OPEN)
-                            .endAt(OffsetDateTime.now().minusDays(2))
-                            .build()));
+            givenOneOpenTask("Gửi báo giá trễ hạn", OffsetDateTime.now().minusDays(2), 1);
 
-            String snapshot = service.personalSnapshot(user("SALES"), CrmArea.defaults());
+            String snapshot = service.personalSnapshot(user("SALES"), Set.of(CrmArea.TASKS));
 
             assertThat(snapshot).contains("Gửi báo giá trễ hạn");
             assertThat(snapshot).contains("OVERDUE");

@@ -1,6 +1,5 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
-import com.novax.leadora.application.usecase.chat.dto.DealStatusAggregate;
 import com.novax.leadora.application.usecase.chat.dto.RepDealStat;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
@@ -36,15 +35,6 @@ public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpec
     // ── Chat-assistant snapshot ───────────────────────────────────────────────
     // A null :userId means "every deal" (Manager/Admin scope); a non-null value restricts to that
     // user's records — the BR-36 filter lives in SQL for both scopes.
-
-    @Query("""
-            SELECT new com.novax.leadora.application.usecase.chat.dto.DealStatusAggregate(
-                       d.status, COUNT(d), SUM(d.expectedRevenue))
-            FROM DealEntity d
-            WHERE (:userId IS NULL OR d.assignedUser.userId = :userId)
-            GROUP BY d.status
-            """)
-    List<DealStatusAggregate> aggregateByStatusForChat(@Param("userId") UUID userId);
 
     @EntityGraph(attributePaths = {"assignedUser"})
     @Query("""

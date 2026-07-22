@@ -1,6 +1,5 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
-import com.novax.leadora.application.usecase.chat.dto.TaskStatusCount;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import org.springframework.data.domain.Page;
@@ -82,25 +81,6 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
         // A null :userId means "every task" (Manager/Admin scope); a non-null value restricts to
         // that user's records. "Overdue" is derived (BR-17), not stored: not closed, and past
         // end_at — there is no due_date column and no OVERDUE status.
-
-        @Query("""
-                        SELECT new com.novax.leadora.application.usecase.chat.dto.TaskStatusCount(t.status, COUNT(t))
-                        FROM TaskEntity t
-                        WHERE (:userId IS NULL OR t.assignedUser.userId = :userId)
-                        GROUP BY t.status
-                        """)
-        List<TaskStatusCount> countByStatusForChat(@Param("userId") UUID userId);
-
-        @Query("""
-                        SELECT COUNT(t) FROM TaskEntity t
-                        WHERE (:userId IS NULL OR t.assignedUser.userId = :userId)
-                          AND t.status NOT IN :closedStatuses
-                          AND t.endAt IS NOT NULL
-                          AND t.endAt < :now
-                        """)
-        long countOverdueForChat(@Param("userId") UUID userId,
-                        @Param("closedStatuses") List<TaskStatus> closedStatuses,
-                        @Param("now") OffsetDateTime now);
 
         /**
          * Tasks still to be done, earliest deadline first — overdue ones therefore come first.

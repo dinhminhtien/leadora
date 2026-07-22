@@ -1,6 +1,5 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
-import com.novax.leadora.application.usecase.chat.dto.QuotationStatusAggregate;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
@@ -35,15 +34,6 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
     // ── Chat-assistant snapshot ───────────────────────────────────────────────
     // Quotations have no assignee column: they are scoped through the deal they belong to, so
     // "my quotations" means those of the deals assigned to the caller. A null :userId means all.
-
-    @Query("""
-            SELECT new com.novax.leadora.application.usecase.chat.dto.QuotationStatusAggregate(
-                       q.status, COUNT(q), SUM(q.totalAmount))
-            FROM QuotationEntity q
-            WHERE (:userId IS NULL OR q.deal.assignedUser.userId = :userId)
-            GROUP BY q.status
-            """)
-    List<QuotationStatusAggregate> aggregateByStatusForChat(@Param("userId") UUID userId);
 
     @EntityGraph(attributePaths = {"customer", "deal"})
     @Query("""

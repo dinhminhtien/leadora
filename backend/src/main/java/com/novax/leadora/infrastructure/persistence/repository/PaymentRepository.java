@@ -1,6 +1,5 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
-import com.novax.leadora.application.usecase.chat.dto.PaymentStatusAggregate;
 import org.springframework.data.domain.Pageable;
 import com.novax.leadora.infrastructure.persistence.entity.PaymentEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.PaymentStatus;
@@ -39,15 +38,6 @@ public interface PaymentRepository extends JpaRepository<PaymentEntity, UUID>, J
 
     // ── Chat-assistant snapshot ───────────────────────────────────────────────
     // Payments hang off a booking, so they inherit that booking's assignee for scoping.
-
-    @Query("""
-            SELECT new com.novax.leadora.application.usecase.chat.dto.PaymentStatusAggregate(
-                       p.status, COUNT(p), SUM(p.amount))
-            FROM PaymentEntity p
-            WHERE (:userId IS NULL OR p.booking.assignedUser.userId = :userId)
-            GROUP BY p.status
-            """)
-    List<PaymentStatusAggregate> aggregateByStatusForChat(@Param("userId") UUID userId);
 
     @EntityGraph(attributePaths = {"booking"})
     @Query("""

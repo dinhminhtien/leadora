@@ -1,21 +1,16 @@
 package com.novax.leadora.application.usecase.chat;
 
-import com.novax.leadora.application.usecase.chat.dto.BookingStatusAggregate;
-import com.novax.leadora.application.usecase.chat.dto.CustomerStatusCount;
-import com.novax.leadora.application.usecase.chat.dto.DealStatusAggregate;
-import com.novax.leadora.application.usecase.chat.dto.LeadStatusCount;
-import com.novax.leadora.application.usecase.chat.dto.PaymentStatusAggregate;
-import com.novax.leadora.application.usecase.chat.dto.QuotationStatusAggregate;
+import com.novax.leadora.application.usecase.chat.dto.ChatCounts;
 import com.novax.leadora.application.usecase.chat.dto.RepDealStat;
 import com.novax.leadora.application.usecase.chat.dto.RepLeadCount;
-import com.novax.leadora.application.usecase.chat.dto.TaskStatusCount;
+import com.novax.leadora.application.usecase.chat.dto.StatusBucket;
 import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
-import com.novax.leadora.infrastructure.persistence.entity.enums.PaymentStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
+import com.novax.leadora.infrastructure.persistence.repository.ChatAggregateRepository;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
@@ -80,6 +75,8 @@ public class CrmSnapshotService {
     private static final List<TaskStatus> CLOSED_TASK_STATUSES =
             List.of(TaskStatus.COMPLETED, TaskStatus.CANCELLED);
 
+    /** Every area's counts in one round trip; the per-entity repositories only fetch listings. */
+    private final ChatAggregateRepository chatAggregateRepository;
     private final LeadRepository leadRepository;
     private final DealRepository dealRepository;
     private final TaskRepository taskRepository;
@@ -131,19 +128,22 @@ public class CrmSnapshotService {
 
     private String snapshot(ChatActor actor, UUID scopeUserId, Set<CrmArea> areas, String header) {
         OffsetDateTime now = OffsetDateTime.now();
+        // Every area's counts in one round trip. Fetching them area by area cost more in network
+        // latency to a remote database than the model spent producing its first token.
+        ChatCounts counts = chatAggregateRepository.countAll(scopeUserId);
         StringBuilder sb = new StringBuilder(header).append("\n");
         List<CrmArea> emptyAreas = new ArrayList<>();
 
         for (CrmArea area : CrmArea.values()) {
             boolean detail = areas.contains(area);
             long total = switch (area) {
-                case LEADS -> appendLeads(sb, scopeUserId, detail);
-                case DEALS -> appendDeals(sb, scopeUserId, detail);
-                case TASKS -> appendTasks(sb, scopeUserId, detail, now);
-                case QUOTATIONS -> appendQuotations(sb, scopeUserId, detail);
-                case BOOKINGS -> appendBookings(sb, scopeUserId, detail);
-                case PAYMENTS -> appendPayments(sb, scopeUserId, detail);
-                case CUSTOMERS -> appendCustomers(sb, scopeUserId, detail);
+                case LEADS -> appendLeads(sb, counts, scopeUserId, detail);
+                case DEALS -> appendDeals(sb, counts, scopeUserId, detail);
+                case TASKS -> appendTasks(sb, counts, scopeUserId, detail, now);
+                case QUOTATIONS -> appendQuotations(sb, counts, scopeUserId, detail);
+                case BOOKINGS -> appendBookings(sb, counts, scopeUserId, detail);
+                case PAYMENTS -> appendPayments(sb, counts, scopeUserId, detail);
+                case CUSTOMERS -> appendCustomers(sb, counts, scopeUserId, detail);
             };
             // Guidance is only worth giving for what was actually asked about: an empty payments
             // area is not interesting when the question was about leads.
@@ -161,11 +161,10 @@ public class CrmSnapshotService {
     // ── Per-area sections ─────────────────────────────────────────────────────
     // Each returns the area's row count so the caller can spot empty areas.
 
-    private long appendLeads(StringBuilder sb, UUID scope, boolean detail) {
-        List<LeadStatusCount> counts = leadRepository.countByStatusForChat(scope);
-        long total = counts.stream().mapToLong(LeadStatusCount::count).sum();
+    private long appendLeads(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+        long total = counts.total(CrmArea.LEADS);
         sb.append("Leads: total ").append(total)
-                .append(joinCounts(counts, c -> c.status() + "=" + c.count())).append("\n");
+                .append(statusBreakdown(counts.of(CrmArea.LEADS))).append("\n");
 
         if (detail && total > 0) {
             sb.append(listingHeader("Lead list, newest first", Math.min(total, MAX_LEADS), total, CrmArea.LEADS));
@@ -181,13 +180,14 @@ public class CrmSnapshotService {
         return total;
     }
 
-    private long appendDeals(StringBuilder sb, UUID scope, boolean detail) {
-        List<DealStatusAggregate> agg = dealRepository.aggregateByStatusForChat(scope);
-        long total = agg.stream().mapToLong(DealStatusAggregate::count).sum();
+    private long appendDeals(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+        long total = counts.total(CrmArea.DEALS);
         sb.append("Deals: total ").append(total)
-                .append(", open ").append(dealCount(agg, DealStatus.OPEN))
-                .append(", expected value (OPEN) ").append(dealValue(agg, DealStatus.OPEN))
-                .append(", won value (WON) ").append(dealValue(agg, DealStatus.WON)).append("\n");
+                .append(", open ").append(counts.count(CrmArea.DEALS, DealStatus.OPEN.name()))
+                .append(", expected value (OPEN) ")
+                .append(counts.amount(CrmArea.DEALS, DealStatus.OPEN.name()))
+                .append(", won value (WON) ")
+                .append(counts.amount(CrmArea.DEALS, DealStatus.WON.name())).append("\n");
 
         if (detail && total > 0) {
             sb.append(listingHeader("Deal details, newest first", Math.min(total, MAX_DEALS), total, CrmArea.DEALS));
@@ -203,15 +203,13 @@ public class CrmSnapshotService {
         return total;
     }
 
-    private long appendTasks(StringBuilder sb, UUID scope, boolean detail, OffsetDateTime now) {
-        List<TaskStatusCount> counts = taskRepository.countByStatusForChat(scope);
-        long total = counts.stream().mapToLong(TaskStatusCount::count).sum();
-        long open = counts.stream().filter(c -> c.status() == TaskStatus.OPEN)
-                .mapToLong(TaskStatusCount::count).sum();
+    private long appendTasks(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail,
+                             OffsetDateTime now) {
+        long total = counts.total(CrmArea.TASKS);
+        long open = counts.count(CrmArea.TASKS, TaskStatus.OPEN.name());
         sb.append("Tasks: total ").append(total)
                 .append(", open/in progress ").append(open)
-                .append(", overdue ")
-                .append(taskRepository.countOverdueForChat(scope, CLOSED_TASK_STATUSES, now))
+                .append(", overdue ").append(counts.overdueTasks())
                 .append("\n");
 
         if (detail && open > 0) {
@@ -226,12 +224,11 @@ public class CrmSnapshotService {
         return total;
     }
 
-    private long appendQuotations(StringBuilder sb, UUID scope, boolean detail) {
-        List<QuotationStatusAggregate> agg = quotationRepository.aggregateByStatusForChat(scope);
-        long total = agg.stream().mapToLong(QuotationStatusAggregate::count).sum();
+    private long appendQuotations(StringBuilder sb, ChatCounts counts, UUID scope,
+                                  boolean detail) {
+        long total = counts.total(CrmArea.QUOTATIONS);
         sb.append("Quotations: total ").append(total)
-                .append(joinCounts(agg, a -> a.status() + "=" + a.count()
-                        + " worth " + a.amountOrZero())).append("\n");
+                .append(valueBreakdown(counts.of(CrmArea.QUOTATIONS))).append("\n");
 
         if (detail && total > 0) {
             sb.append(listingHeader("Quotation details, newest first", Math.min(total, MAX_QUOTATIONS), total, CrmArea.QUOTATIONS));
@@ -251,12 +248,10 @@ public class CrmSnapshotService {
         return total;
     }
 
-    private long appendBookings(StringBuilder sb, UUID scope, boolean detail) {
-        List<BookingStatusAggregate> agg = bookingRepository.aggregateByStatusForChat(scope);
-        long total = agg.stream().mapToLong(BookingStatusAggregate::count).sum();
+    private long appendBookings(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+        long total = counts.total(CrmArea.BOOKINGS);
         sb.append("Bookings: total ").append(total)
-                .append(joinCounts(agg, a -> a.status() + "=" + a.count()
-                        + " worth " + a.amountOrZero())).append("\n");
+                .append(valueBreakdown(counts.of(CrmArea.BOOKINGS))).append("\n");
 
         if (detail && total > 0) {
             sb.append(listingHeader("Booking details, newest first", Math.min(total, MAX_BOOKINGS), total, CrmArea.BOOKINGS));
@@ -274,13 +269,12 @@ public class CrmSnapshotService {
         return total;
     }
 
-    private long appendPayments(StringBuilder sb, UUID scope, boolean detail) {
-        List<PaymentStatusAggregate> agg = paymentRepository.aggregateByStatusForChat(scope);
-        long total = agg.stream().mapToLong(PaymentStatusAggregate::count).sum();
+    private long appendPayments(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+        long total = counts.total(CrmArea.PAYMENTS);
         sb.append("Payments: total ").append(total)
-                .append(", PAID amount ").append(paymentValue(agg, PaymentStatus.PAID))
-                .append(", PENDING amount ").append(paymentValue(agg, PaymentStatus.PENDING))
-                .append(joinCounts(agg, a -> a.status() + "=" + a.count())).append("\n");
+                .append(", PAID amount ").append(counts.amount(CrmArea.PAYMENTS, "PAID"))
+                .append(", PENDING amount ").append(counts.amount(CrmArea.PAYMENTS, "PENDING"))
+                .append(statusBreakdown(counts.of(CrmArea.PAYMENTS))).append("\n");
 
         if (detail && total > 0) {
             sb.append(listingHeader("Payment details, newest first", Math.min(total, MAX_PAYMENTS), total, CrmArea.PAYMENTS));
@@ -296,11 +290,10 @@ public class CrmSnapshotService {
         return total;
     }
 
-    private long appendCustomers(StringBuilder sb, UUID scope, boolean detail) {
-        List<CustomerStatusCount> counts = customerRepository.countByStatusForChat(scope);
-        long total = counts.stream().mapToLong(CustomerStatusCount::count).sum();
+    private long appendCustomers(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+        long total = counts.total(CrmArea.CUSTOMERS);
         sb.append("Customers: total ").append(total)
-                .append(joinCounts(counts, c -> c.status() + "=" + c.count())).append("\n");
+                .append(statusBreakdown(counts.of(CrmArea.CUSTOMERS))).append("\n");
 
         if (detail && total > 0) {
             sb.append(listingHeader("Customer list, newest first", Math.min(total, MAX_CUSTOMERS), total, CrmArea.CUSTOMERS));
@@ -368,20 +361,21 @@ public class CrmSnapshotService {
             return;
         }
 
+        // One more round trip covers the fallback for every empty area, however many there are.
+        ChatCounts companyWide = chatAggregateRepository.countAll(null);
         for (CrmArea area : emptyAreas) {
-            appendCompanyWideFallback(sb, area);
+            appendCompanyWideFallback(sb, area, companyWide);
         }
     }
 
     /** Company-wide figures a privileged caller can be offered when their own scope is empty. */
-    private void appendCompanyWideFallback(StringBuilder sb, CrmArea area) {
+    private void appendCompanyWideFallback(StringBuilder sb, CrmArea area, ChatCounts companyWide) {
+        sb.append("Company-wide ").append(area.name().toLowerCase()).append(": ")
+                .append(companyWide.total(area));
+
         switch (area) {
             case LEADS -> {
-                List<LeadStatusCount> byStatus = leadRepository.countByStatusForChat(null);
-                sb.append("Company-wide leads: ")
-                        .append(byStatus.stream().mapToLong(LeadStatusCount::count).sum())
-                        .append(joinCounts(byStatus, c -> c.status() + "=" + c.count())).append("\n");
-
+                sb.append(statusBreakdown(companyWide.of(CrmArea.LEADS))).append("\n");
                 List<RepLeadCount> perRep = leadRepository.countPerAssignee(page(MAX_SUGGESTED_REPS));
                 if (!perRep.isEmpty()) {
                     StringJoiner reps = new StringJoiner(", ");
@@ -391,68 +385,40 @@ public class CrmSnapshotService {
                             .append("team-wide summary, or a specific lead status.\n");
                 }
             }
-            case DEALS -> {
-                List<DealStatusAggregate> agg = dealRepository.aggregateByStatusForChat(null);
-                sb.append("Company-wide deals: ")
-                        .append(agg.stream().mapToLong(DealStatusAggregate::count).sum())
-                        .append(joinCounts(agg, a -> a.status() + "=" + a.count()
-                                + " worth " + a.revenueOrZero()))
-                        .append("\nYou may offer a team-wide deal summary or a named staff ")
-                        .append("member's deals.\n");
-            }
-            case TASKS -> sb.append("Company-wide tasks: ")
-                    .append(taskRepository.countByStatusForChat(null).stream()
-                            .mapToLong(TaskStatusCount::count).sum())
-                    .append(", of which overdue: ")
-                    .append(taskRepository.countOverdueForChat(
-                            null, CLOSED_TASK_STATUSES, OffsetDateTime.now()))
+            case DEALS -> sb.append(valueBreakdown(companyWide.of(CrmArea.DEALS)))
+                    .append("\nYou may offer a team-wide deal summary or a named staff ")
+                    .append("member's deals.\n");
+            case TASKS -> sb.append(", of which overdue: ").append(companyWide.overdueTasks())
                     .append("\nYou may offer the team's overdue tasks.\n");
-            case QUOTATIONS -> sb.append("Company-wide quotations: ")
-                    .append(quotationRepository.aggregateByStatusForChat(null).stream()
-                            .mapToLong(QuotationStatusAggregate::count).sum())
-                    .append("\nYou may offer the team's quotations.\n");
-            case BOOKINGS -> sb.append("Company-wide bookings: ")
-                    .append(bookingRepository.aggregateByStatusForChat(null).stream()
-                            .mapToLong(BookingStatusAggregate::count).sum())
-                    .append("\nYou may offer the team's bookings.\n");
-            case PAYMENTS -> sb.append("Company-wide payments: ")
-                    .append(paymentRepository.aggregateByStatusForChat(null).stream()
-                            .mapToLong(PaymentStatusAggregate::count).sum())
-                    .append("\nYou may offer the team's payments.\n");
-            case CUSTOMERS -> sb.append("Company-wide customers: ")
-                    .append(customerRepository.countByStatusForChat(null).stream()
-                            .mapToLong(CustomerStatusCount::count).sum())
-                    .append("\nYou may offer the team's customers.\n");
+            case QUOTATIONS -> sb.append("\nYou may offer the team's quotations.\n");
+            case BOOKINGS -> sb.append("\nYou may offer the team's bookings.\n");
+            case PAYMENTS -> sb.append("\nYou may offer the team's payments.\n");
+            case CUSTOMERS -> sb.append("\nYou may offer the team's customers.\n");
         }
     }
 
     /** Team-wide aggregates across all sales reps. Caller must check {@link #canSeeAllData}. */
     public String teamSummary() {
-        OffsetDateTime now = OffsetDateTime.now();
+        // Two round trips for the whole summary: every area's counts, then the per-rep pivot.
+        ChatCounts counts = chatAggregateRepository.countAll(null);
         StringBuilder sb = new StringBuilder("== Whole sales team summary ==\n");
 
-        List<DealStatusAggregate> dealAgg = dealRepository.aggregateByStatusForChat(null);
-        sb.append("Deals: total ").append(dealAgg.stream().mapToLong(DealStatusAggregate::count).sum())
-                .append(" (open ").append(dealCount(dealAgg, DealStatus.OPEN))
-                .append(", won ").append(dealCount(dealAgg, DealStatus.WON))
-                .append(", lost ").append(dealCount(dealAgg, DealStatus.LOST)).append(")")
-                .append(", WON value ").append(dealValue(dealAgg, DealStatus.WON))
-                .append(", pipeline value (OPEN) ").append(dealValue(dealAgg, DealStatus.OPEN))
+        sb.append("Deals: total ").append(counts.total(CrmArea.DEALS))
+                .append(" (open ").append(counts.count(CrmArea.DEALS, DealStatus.OPEN.name()))
+                .append(", won ").append(counts.count(CrmArea.DEALS, DealStatus.WON.name()))
+                .append(", lost ").append(counts.count(CrmArea.DEALS, DealStatus.LOST.name()))
+                .append(")")
+                .append(", WON value ").append(counts.amount(CrmArea.DEALS, DealStatus.WON.name()))
+                .append(", pipeline value (OPEN) ")
+                .append(counts.amount(CrmArea.DEALS, DealStatus.OPEN.name()))
                 .append("\n");
 
-        sb.append("Leads: total ").append(leadRepository.countByStatusForChat(null).stream()
-                .mapToLong(LeadStatusCount::count).sum()).append("\n");
-        sb.append("Tasks: total ").append(taskRepository.countByStatusForChat(null).stream()
-                        .mapToLong(TaskStatusCount::count).sum())
-                .append(", overdue ")
-                .append(taskRepository.countOverdueForChat(null, CLOSED_TASK_STATUSES, now))
-                .append("\n");
-        sb.append("Quotations: total ").append(quotationRepository.aggregateByStatusForChat(null)
-                .stream().mapToLong(QuotationStatusAggregate::count).sum()).append("\n");
-        sb.append("Bookings: total ").append(bookingRepository.aggregateByStatusForChat(null)
-                .stream().mapToLong(BookingStatusAggregate::count).sum()).append("\n");
-        sb.append("Customers: total ").append(customerRepository.countByStatusForChat(null)
-                .stream().mapToLong(CustomerStatusCount::count).sum()).append("\n");
+        sb.append("Leads: total ").append(counts.total(CrmArea.LEADS)).append("\n");
+        sb.append("Tasks: total ").append(counts.total(CrmArea.TASKS))
+                .append(", overdue ").append(counts.overdueTasks()).append("\n");
+        sb.append("Quotations: total ").append(counts.total(CrmArea.QUOTATIONS)).append("\n");
+        sb.append("Bookings: total ").append(counts.total(CrmArea.BOOKINGS)).append("\n");
+        sb.append("Customers: total ").append(counts.total(CrmArea.CUSTOMERS)).append("\n");
 
         // Per-rep breakdown: the query returns one row per (rep, status); pivot to one line per rep.
         List<RepDealStat> stats = dealRepository.statsPerAssignee();
@@ -497,31 +463,24 @@ public class CrmSnapshotService {
         return PageRequest.of(0, size);
     }
 
-    /** Renders " {A=1, B=2}" for a status breakdown, or "" when there is nothing to show. */
-    private static <T> String joinCounts(List<T> rows, java.util.function.Function<T, String> render) {
-        if (rows.isEmpty()) {
+    /** Renders " {NEW=8, LOST=5}", or "" when the area has no records. */
+    private static String statusBreakdown(List<StatusBucket> buckets) {
+        return render(buckets, b -> b.status() + "=" + b.count());
+    }
+
+    /** As above, with each status's total value — for the areas that carry money. */
+    private static String valueBreakdown(List<StatusBucket> buckets) {
+        return render(buckets, b -> b.status() + "=" + b.count() + " worth " + b.amountOrZero());
+    }
+
+    private static String render(List<StatusBucket> buckets,
+                                 java.util.function.Function<StatusBucket, String> format) {
+        if (buckets.isEmpty()) {
             return "";
         }
         StringJoiner joiner = new StringJoiner(", ", " {", "}");
-        rows.forEach(r -> joiner.add(render.apply(r)));
+        buckets.forEach(b -> joiner.add(format.apply(b)));
         return joiner.toString();
-    }
-
-    private static long dealCount(List<DealStatusAggregate> agg, DealStatus status) {
-        return agg.stream().filter(a -> a.status() == status)
-                .mapToLong(DealStatusAggregate::count).sum();
-    }
-
-    private static BigDecimal dealValue(List<DealStatusAggregate> agg, DealStatus status) {
-        return agg.stream().filter(a -> a.status() == status)
-                .map(DealStatusAggregate::revenueOrZero)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private static BigDecimal paymentValue(List<PaymentStatusAggregate> agg, PaymentStatus status) {
-        return agg.stream().filter(a -> a.status() == status)
-                .map(PaymentStatusAggregate::amountOrZero)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private static long repCount(List<RepDealStat> stats, DealStatus status) {
