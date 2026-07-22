@@ -1,5 +1,6 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
+import com.novax.leadora.application.usecase.chat.dto.BookingStatusAggregate;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import org.springframework.data.domain.Page;
@@ -41,4 +42,23 @@ public interface BookingRepository extends JpaRepository<BookingEntity, UUID>, J
     List<BookingEntity> findByCreatedAtRange(
             @Param("startDate") OffsetDateTime startDate,
             @Param("endDate") OffsetDateTime endDate);
+
+    // ── Chat-assistant snapshot ───────────────────────────────────────────────
+
+    @Query("""
+            SELECT new com.novax.leadora.application.usecase.chat.dto.BookingStatusAggregate(
+                       b.status, COUNT(b), SUM(b.totalAmount))
+            FROM BookingEntity b
+            WHERE (:userId IS NULL OR b.assignedUser.userId = :userId)
+            GROUP BY b.status
+            """)
+    List<BookingStatusAggregate> aggregateByStatusForChat(@Param("userId") UUID userId);
+
+    @EntityGraph(attributePaths = {"customer", "assignedUser"})
+    @Query("""
+            SELECT b FROM BookingEntity b
+            WHERE (:userId IS NULL OR b.assignedUser.userId = :userId)
+            ORDER BY b.createdAt DESC
+            """)
+    List<BookingEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
 }

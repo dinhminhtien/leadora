@@ -1,22 +1,31 @@
 package com.novax.leadora.application.usecase.chat;
 
+import com.novax.leadora.application.usecase.chat.dto.BookingStatusAggregate;
+import com.novax.leadora.application.usecase.chat.dto.CustomerStatusCount;
 import com.novax.leadora.application.usecase.chat.dto.DealStatusAggregate;
 import com.novax.leadora.application.usecase.chat.dto.LeadStatusCount;
+import com.novax.leadora.application.usecase.chat.dto.PaymentStatusAggregate;
+import com.novax.leadora.application.usecase.chat.dto.QuotationStatusAggregate;
 import com.novax.leadora.application.usecase.chat.dto.RepDealStat;
 import com.novax.leadora.application.usecase.chat.dto.RepLeadCount;
 import com.novax.leadora.application.usecase.chat.dto.TaskStatusCount;
-import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
-import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
+import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.PaymentStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
+import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
+import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
+import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
+import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -36,9 +45,13 @@ import java.util.UUID;
  *
  * <p><b>Aggregate in the database, list only what is shown.</b> Counts and sums come from
  * {@code GROUP BY} queries and listings are capped with {@code Pageable}, so the work is O(rows
- * displayed) rather than O(table). The previous implementation loaded whole tables via
- * {@code findAll()} and counted in the JVM, which also triggered one extra query per row when
- * rendering the assignee (the association is lazy and {@code findAll()} carries no entity graph).
+ * displayed) rather than O(table).
+ *
+ * <p><b>Detail is proportionate to the question.</b> Every area contributes its counts, because
+ * one line each is cheap and lets the assistant answer "how many bookings?" whatever was asked.
+ * Row-by-row listings are only produced for the areas the question actually mentions: listing all
+ * seven areas at once runs to thousands of tokens on every turn, which costs money, slows the
+ * model's prefill, and buries the relevant rows among irrelevant ones.
  *
  * <p>Every method returns plain strings, holding no managed entities, so callers may run them off
  * the request thread and outside the caller's transaction.
@@ -50,6 +63,10 @@ public class CrmSnapshotService {
     private static final int MAX_LEADS = 25;
     private static final int MAX_DEALS = 15;
     private static final int MAX_TASKS = 10;
+    private static final int MAX_QUOTATIONS = 10;
+    private static final int MAX_BOOKINGS = 10;
+    private static final int MAX_PAYMENTS = 8;
+    private static final int MAX_CUSTOMERS = 12;
     private static final int MAX_REPS = 20;
 
     /** How many staff members to name when suggesting whose records to ask about instead. */
@@ -62,11 +79,14 @@ public class CrmSnapshotService {
     private final LeadRepository leadRepository;
     private final DealRepository dealRepository;
     private final TaskRepository taskRepository;
+    private final QuotationRepository quotationRepository;
+    private final BookingRepository bookingRepository;
+    private final PaymentRepository paymentRepository;
+    private final CustomerRepository customerRepository;
 
     /**
      * Roles allowed to see ALL CRM records via chat. Any other role is scoped to their own assigned
-     * records — so "show me the leads" returns just their leads, while a Manager/Admin sees the
-     * whole team's. Optionally widened by {@code AI_CHAT_TOP_PRIVILEGE} (dev escape hatch).
+     * records. Optionally widened by {@code AI_CHAT_TOP_PRIVILEGE} (dev escape hatch).
      */
     private static final Set<String> FULL_SCOPE_ROLES = Set.of("MANAGER", "ADMIN");
 
@@ -84,12 +104,12 @@ public class CrmSnapshotService {
     }
 
     /**
-     * Facts about leads/deals/tasks the user may view: team-wide for Manager/Admin, own otherwise.
-     * Use for generic CRM questions ("what leads are there?").
+     * Facts the user may view: team-wide for Manager/Admin, own otherwise. Use for generic CRM
+     * questions ("what leads are there?").
      */
-    public String scopedSnapshot(UserEntity user) {
+    public String scopedSnapshot(UserEntity user, Set<CrmArea> areas) {
         boolean all = canSeeAllData(user);
-        return snapshot(user, all ? null : user.getUserId(),
+        return snapshot(user, all ? null : user.getUserId(), areas,
                 all ? "== Full CRM data (manager access) =="
                         : "== CRM data assigned to " + user.getFullName() + " ==");
     }
@@ -99,107 +119,200 @@ public class CrmSnapshotService {
      *
      * <p>Use when the question carries an explicit possessive ("lead <em>của tôi</em>", "<em>my</em>
      * deals"). A Manager asking for "my leads" means the ones assigned to them, not the whole
-     * company's — answering with everything silently ignores the word they emphasised. When that
-     * personal scope turns out to be empty, the snapshot carries the facts needed to suggest a
-     * useful next question instead of dead-ending.
+     * company's — answering with everything silently ignores the word they emphasised.
      */
-    public String personalSnapshot(UserEntity user) {
-        return snapshot(user, user.getUserId(),
+    public String personalSnapshot(UserEntity user, Set<CrmArea> areas) {
+        return snapshot(user, user.getUserId(), areas,
                 "== CRM data assigned personally to " + user.getFullName() + " ==");
     }
 
-    private String snapshot(UserEntity user, UUID scopeUserId, String header) {
+    private String snapshot(UserEntity user, UUID scopeUserId, Set<CrmArea> areas, String header) {
         OffsetDateTime now = OffsetDateTime.now();
         StringBuilder sb = new StringBuilder(header).append("\n");
+        List<CrmArea> emptyAreas = new ArrayList<>();
 
-        // ── Leads: counts from the database, listing capped at what we actually print ──
-        List<LeadStatusCount> leadCounts = leadRepository.countByStatusForChat(scopeUserId);
-        long leadTotal = leadCounts.stream().mapToLong(LeadStatusCount::count).sum();
-        sb.append("Leads: total ").append(leadTotal);
-        if (!leadCounts.isEmpty()) {
-            StringJoiner byStatus = new StringJoiner(", ", " {", "}");
-            leadCounts.forEach(c -> byStatus.add(c.status() + "=" + c.count()));
-            sb.append(byStatus);
-        }
-        sb.append("\n");
-
-        if (leadTotal > 0) {
-            List<LeadEntity> leads =
-                    leadRepository.findRecentForChat(scopeUserId, PageRequest.of(0, MAX_LEADS));
-            sb.append("Lead list (newest first, up to ").append(MAX_LEADS).append("):\n");
-            leads.forEach(l -> sb.append("  - \"").append(l.getFullName())
-                    .append("\" | ").append(l.getStatus())
-                    .append(" | company: ").append(nullToDash(l.getCompanyName()))
-                    .append(" | email: ").append(nullToDash(l.getEmail()))
-                    .append(" | source: ").append(nullToDash(l.getSource()))
-                    .append(" | assigned to: ").append(assigneeLabel(l.getAssignedUser()))
-                    .append(" | created: ").append(l.getCreatedAt())
-                    .append("\n"));
+        for (CrmArea area : CrmArea.values()) {
+            boolean detail = areas.contains(area);
+            long total = switch (area) {
+                case LEADS -> appendLeads(sb, scopeUserId, detail);
+                case DEALS -> appendDeals(sb, scopeUserId, detail);
+                case TASKS -> appendTasks(sb, scopeUserId, detail, now);
+                case QUOTATIONS -> appendQuotations(sb, scopeUserId, detail);
+                case BOOKINGS -> appendBookings(sb, scopeUserId, detail);
+                case PAYMENTS -> appendPayments(sb, scopeUserId, detail);
+                case CUSTOMERS -> appendCustomers(sb, scopeUserId, detail);
+            };
+            // Guidance is only worth giving for what was actually asked about: an empty payments
+            // area is not interesting when the question was about leads.
+            if (total == 0 && detail) {
+                emptyAreas.add(area);
+            }
         }
 
-        // ── Deals ──
-        List<DealStatusAggregate> dealAgg = dealRepository.aggregateByStatusForChat(scopeUserId);
-        long dealTotal = dealAgg.stream().mapToLong(DealStatusAggregate::count).sum();
-        sb.append("Deals: total ").append(dealTotal)
-                .append(", open ").append(countOf(dealAgg, DealStatus.OPEN))
-                .append(", expected value (OPEN) ").append(valueOf(dealAgg, DealStatus.OPEN))
-                .append(", won value (WON) ").append(valueOf(dealAgg, DealStatus.WON)).append("\n");
-
-        if (dealTotal > 0) {
-            List<DealEntity> deals =
-                    dealRepository.findRecentForChat(scopeUserId, PageRequest.of(0, MAX_DEALS));
-            sb.append("Deal details (up to ").append(MAX_DEALS).append("):\n");
-            deals.forEach(d -> sb.append("  - \"").append(d.getDealName())
-                    .append("\" | ").append(d.getPipelineStage())
-                    .append(" | ").append(d.getStatus())
-                    .append(" | value ").append(d.getExpectedRevenue())
-                    .append(" | expected close ").append(d.getExpectedCloseDate())
-                    .append(" | assigned to: ").append(assigneeLabel(d.getAssignedUser()))
-                    .append("\n"));
-        }
-
-        // ── Tasks (overdue is derived: not closed, and past end_at) ──
-        List<TaskStatusCount> taskCounts = taskRepository.countByStatusForChat(scopeUserId);
-        long taskTotal = taskCounts.stream().mapToLong(TaskStatusCount::count).sum();
-        long openTasks = taskCounts.stream()
-                .filter(c -> c.status() == TaskStatus.OPEN)
-                .mapToLong(TaskStatusCount::count).sum();
-        long overdueCount =
-                taskRepository.countOverdueForChat(scopeUserId, CLOSED_TASK_STATUSES, now);
-        sb.append("Tasks: total ").append(taskTotal)
-                .append(", open/in progress ").append(openTasks)
-                .append(", overdue ").append(overdueCount).append("\n");
-
-        if (openTasks > 0) {
-            List<TaskEntity> open = taskRepository.findOpenForChat(
-                    scopeUserId, CLOSED_TASK_STATUSES, PageRequest.of(0, MAX_TASKS));
-            sb.append("Open tasks (up to ").append(MAX_TASKS)
-                    .append(", earliest deadline first):\n");
-            open.forEach(t -> sb.append("  - \"").append(t.getTitle())
-                    .append("\" | due ").append(t.getEndAt())
-                    .append(" | priority ").append(t.getPriority())
-                    .append(" | ").append(t.getStatus())
-                    .append(isOverdue(t, now) ? " | OVERDUE" : "")
-                    .append("\n"));
-        }
-
-        // Guidance is emitted per area, not only when the whole snapshot is empty. Someone with
-        // no leads but a couple of deals still needs an answer to "show my leads" that goes
-        // further than "none" — and that combination is the common case, not the rare one.
-        List<String> emptyAreas = new ArrayList<>();
-        if (leadTotal == 0) {
-            emptyAreas.add("leads");
-        }
-        if (dealTotal == 0) {
-            emptyAreas.add("deals");
-        }
-        if (taskTotal == 0) {
-            emptyAreas.add("tasks");
-        }
         if (!emptyAreas.isEmpty()) {
             appendAffordances(sb, user, scopeUserId, emptyAreas);
         }
         return sb.toString();
+    }
+
+    // ── Per-area sections ─────────────────────────────────────────────────────
+    // Each returns the area's row count so the caller can spot empty areas.
+
+    private long appendLeads(StringBuilder sb, UUID scope, boolean detail) {
+        List<LeadStatusCount> counts = leadRepository.countByStatusForChat(scope);
+        long total = counts.stream().mapToLong(LeadStatusCount::count).sum();
+        sb.append("Leads: total ").append(total)
+                .append(joinCounts(counts, c -> c.status() + "=" + c.count())).append("\n");
+
+        if (detail && total > 0) {
+            sb.append("Lead list (newest first, up to ").append(MAX_LEADS).append("):\n");
+            leadRepository.findRecentForChat(scope, page(MAX_LEADS)).forEach(l ->
+                    sb.append("  - \"").append(l.getFullName())
+                            .append("\" | ").append(l.getStatus())
+                            .append(" | company: ").append(dash(l.getCompanyName()))
+                            .append(" | email: ").append(dash(l.getEmail()))
+                            .append(" | source: ").append(dash(l.getSource()))
+                            .append(" | assigned to: ").append(assigneeLabel(l.getAssignedUser()))
+                            .append(" | created: ").append(l.getCreatedAt()).append("\n"));
+        }
+        return total;
+    }
+
+    private long appendDeals(StringBuilder sb, UUID scope, boolean detail) {
+        List<DealStatusAggregate> agg = dealRepository.aggregateByStatusForChat(scope);
+        long total = agg.stream().mapToLong(DealStatusAggregate::count).sum();
+        sb.append("Deals: total ").append(total)
+                .append(", open ").append(dealCount(agg, DealStatus.OPEN))
+                .append(", expected value (OPEN) ").append(dealValue(agg, DealStatus.OPEN))
+                .append(", won value (WON) ").append(dealValue(agg, DealStatus.WON)).append("\n");
+
+        if (detail && total > 0) {
+            sb.append("Deal details (up to ").append(MAX_DEALS).append("):\n");
+            dealRepository.findRecentForChat(scope, page(MAX_DEALS)).forEach(d ->
+                    sb.append("  - \"").append(d.getDealName())
+                            .append("\" | ").append(d.getPipelineStage())
+                            .append(" | ").append(d.getStatus())
+                            .append(" | value ").append(d.getExpectedRevenue())
+                            .append(" | expected close ").append(d.getExpectedCloseDate())
+                            .append(" | assigned to: ").append(assigneeLabel(d.getAssignedUser()))
+                            .append("\n"));
+        }
+        return total;
+    }
+
+    private long appendTasks(StringBuilder sb, UUID scope, boolean detail, OffsetDateTime now) {
+        List<TaskStatusCount> counts = taskRepository.countByStatusForChat(scope);
+        long total = counts.stream().mapToLong(TaskStatusCount::count).sum();
+        long open = counts.stream().filter(c -> c.status() == TaskStatus.OPEN)
+                .mapToLong(TaskStatusCount::count).sum();
+        sb.append("Tasks: total ").append(total)
+                .append(", open/in progress ").append(open)
+                .append(", overdue ")
+                .append(taskRepository.countOverdueForChat(scope, CLOSED_TASK_STATUSES, now))
+                .append("\n");
+
+        if (detail && open > 0) {
+            sb.append("Open tasks (up to ").append(MAX_TASKS)
+                    .append(", earliest deadline first):\n");
+            taskRepository.findOpenForChat(scope, CLOSED_TASK_STATUSES, page(MAX_TASKS)).forEach(t ->
+                    sb.append("  - \"").append(t.getTitle())
+                            .append("\" | due ").append(t.getEndAt())
+                            .append(" | priority ").append(t.getPriority())
+                            .append(" | ").append(t.getStatus())
+                            .append(isOverdue(t, now) ? " | OVERDUE" : "").append("\n"));
+        }
+        return total;
+    }
+
+    private long appendQuotations(StringBuilder sb, UUID scope, boolean detail) {
+        List<QuotationStatusAggregate> agg = quotationRepository.aggregateByStatusForChat(scope);
+        long total = agg.stream().mapToLong(QuotationStatusAggregate::count).sum();
+        sb.append("Quotations: total ").append(total)
+                .append(joinCounts(agg, a -> a.status() + "=" + a.count()
+                        + " worth " + a.amountOrZero())).append("\n");
+
+        if (detail && total > 0) {
+            sb.append("Quotation details (up to ").append(MAX_QUOTATIONS).append("):\n");
+            quotationRepository.findRecentForChat(scope, page(MAX_QUOTATIONS)).forEach(q ->
+                    sb.append("  - v").append(q.getVersion())
+                            .append(" | ").append(q.getStatus())
+                            .append(" | customer: ")
+                            .append(q.getCustomer() != null ? q.getCustomer().getFullName() : "-")
+                            .append(" | deal: ")
+                            .append(q.getDeal() != null ? q.getDeal().getDealName() : "-")
+                            .append(" | total ").append(q.getTotalAmount())
+                            .append(" | room: ").append(dash(q.getRoomType()))
+                            .append(" | stay ").append(q.getCheckInDate())
+                            .append(" -> ").append(q.getCheckOutDate())
+                            .append(" | valid until ").append(q.getValidUntil()).append("\n"));
+        }
+        return total;
+    }
+
+    private long appendBookings(StringBuilder sb, UUID scope, boolean detail) {
+        List<BookingStatusAggregate> agg = bookingRepository.aggregateByStatusForChat(scope);
+        long total = agg.stream().mapToLong(BookingStatusAggregate::count).sum();
+        sb.append("Bookings: total ").append(total)
+                .append(joinCounts(agg, a -> a.status() + "=" + a.count()
+                        + " worth " + a.amountOrZero())).append("\n");
+
+        if (detail && total > 0) {
+            sb.append("Booking details (up to ").append(MAX_BOOKINGS).append("):\n");
+            bookingRepository.findRecentForChat(scope, page(MAX_BOOKINGS)).forEach(b ->
+                    sb.append("  - \"").append(b.getBookingCode())
+                            .append("\" | ").append(b.getStatus())
+                            .append(" | customer: ")
+                            .append(b.getCustomer() != null ? b.getCustomer().getFullName() : "-")
+                            .append(" | stay ").append(b.getCheckInDate())
+                            .append(" -> ").append(b.getCheckOutDate())
+                            .append(" | total ").append(b.getTotalAmount())
+                            .append(" | assigned to: ").append(assigneeLabel(b.getAssignedUser()))
+                            .append("\n"));
+        }
+        return total;
+    }
+
+    private long appendPayments(StringBuilder sb, UUID scope, boolean detail) {
+        List<PaymentStatusAggregate> agg = paymentRepository.aggregateByStatusForChat(scope);
+        long total = agg.stream().mapToLong(PaymentStatusAggregate::count).sum();
+        sb.append("Payments: total ").append(total)
+                .append(", PAID amount ").append(paymentValue(agg, PaymentStatus.PAID))
+                .append(", PENDING amount ").append(paymentValue(agg, PaymentStatus.PENDING))
+                .append(joinCounts(agg, a -> a.status() + "=" + a.count())).append("\n");
+
+        if (detail && total > 0) {
+            sb.append("Payment details (up to ").append(MAX_PAYMENTS).append("):\n");
+            paymentRepository.findRecentForChat(scope, page(MAX_PAYMENTS)).forEach(p ->
+                    sb.append("  - booking ")
+                            .append(p.getBooking() != null ? p.getBooking().getBookingCode() : "-")
+                            .append(" | ").append(p.getPaymentType())
+                            .append(" | ").append(p.getStatus())
+                            .append(" | amount ").append(p.getAmount())
+                            .append(" | due ").append(p.getDueDate())
+                            .append(" | paid at ").append(p.getPaidAt()).append("\n"));
+        }
+        return total;
+    }
+
+    private long appendCustomers(StringBuilder sb, UUID scope, boolean detail) {
+        List<CustomerStatusCount> counts = customerRepository.countByStatusForChat(scope);
+        long total = counts.stream().mapToLong(CustomerStatusCount::count).sum();
+        sb.append("Customers: total ").append(total)
+                .append(joinCounts(counts, c -> c.status() + "=" + c.count())).append("\n");
+
+        if (detail && total > 0) {
+            sb.append("Customer list (newest first, up to ").append(MAX_CUSTOMERS).append("):\n");
+            customerRepository.findRecentForChat(scope, page(MAX_CUSTOMERS)).forEach(c ->
+                    sb.append("  - \"").append(c.getFullName())
+                            .append("\" | ").append(c.getStatus())
+                            .append(" | ").append(c.getCustomerType())
+                            .append(" | company: ").append(dash(c.getCompanyName()))
+                            .append(" | email: ").append(dash(c.getEmail()))
+                            .append(" | phone: ").append(dash(c.getPhone()))
+                            .append(" | assigned to: ").append(assigneeLabel(c.getAssignedUser()))
+                            .append("\n"));
+        }
+        return total;
     }
 
     /**
@@ -209,25 +322,27 @@ public class CrmSnapshotService {
      *
      * <p><b>BR-36:</b> the per-staff breakdown is only ever added for a caller allowed to see all
      * records. For everyone else the block explicitly forbids naming colleagues, because merely
-     * listing who holds the leads would leak data the caller cannot read.
+     * listing who holds the records would leak data the caller cannot read.
      */
     private void appendAffordances(StringBuilder sb, UserEntity user, UUID scopeUserId,
-                                   List<String> emptyAreas) {
+                                   List<CrmArea> emptyAreas) {
         boolean personalScope = scopeUserId != null;
         boolean privileged = canSeeAllData(user);
 
-        sb.append("\n-- WHY SOME AREAS ARE EMPTY, AND WHAT YOU MAY OFFER --\n");
-        sb.append("These facts are real. Build follow-up suggestions ONLY from them, and never ")
-                .append("mention a name or figure that does not appear here.\n");
-        sb.append("Empty for this scope: ").append(String.join(", ", emptyAreas)).append(".\n");
+        StringJoiner names = new StringJoiner(", ");
+        emptyAreas.forEach(a -> names.add(a.name().toLowerCase()));
 
-        if (personalScope && privileged) {
-            sb.append("Nothing in those areas is assigned directly to ").append(user.getFullName())
-                    .append(", whose role can nevertheless view every record. ")
-                    .append("The personal scope is empty there; the company's data is not.\n");
-        } else if (personalScope) {
-            sb.append("Nothing in those areas is currently assigned to ")
-                    .append(user.getFullName()).append(".\n");
+        sb.append("\n-- WHY SOME AREAS ARE EMPTY, AND WHAT YOU MAY OFFER --\n")
+                .append("These facts are real. Build follow-up suggestions ONLY from them, and ")
+                .append("never mention a name or figure that does not appear here.\n")
+                .append("Empty for this scope: ").append(names).append(".\n");
+
+        if (personalScope) {
+            sb.append("Nothing in those areas is assigned to ").append(user.getFullName());
+            sb.append(privileged
+                    ? ", whose role can nevertheless view every record — the personal scope is "
+                      + "empty there, the company's data is not.\n"
+                    : ".\n");
         } else {
             sb.append("No records exist there in the scope this user is allowed to read.\n");
         }
@@ -244,57 +359,68 @@ public class CrmSnapshotService {
 
         if (!personalScope) {
             // The snapshot already covers every record, so there is no wider scope to fall back
-            // on: these areas are empty company-wide. Re-querying would repeat the counts printed
-            // above and add a meaningless "company-wide: 0" line.
+            // on: these areas are empty company-wide, and re-querying would just repeat zeros.
             sb.append("This scope already covers every record, so those areas are empty ")
                     .append("company-wide — there is no wider scope to offer. You may suggest ")
                     .append("the areas above that are NOT empty, or company documents.\n");
             return;
         }
 
-        if (emptyAreas.contains("leads")) {
-            List<LeadStatusCount> byStatus = leadRepository.countByStatusForChat(null);
-            long companyLeads = byStatus.stream().mapToLong(LeadStatusCount::count).sum();
-            sb.append("Company-wide leads: ").append(companyLeads);
-            if (!byStatus.isEmpty()) {
-                StringJoiner statuses = new StringJoiner(", ", " (", ")");
-                byStatus.forEach(c -> statuses.add(c.status() + "=" + c.count()));
-                sb.append(statuses);
-            }
-            sb.append("\n");
-
-            List<RepLeadCount> perRep =
-                    leadRepository.countPerAssignee(PageRequest.of(0, MAX_SUGGESTED_REPS));
-            if (!perRep.isEmpty()) {
-                StringJoiner reps = new StringJoiner(", ");
-                perRep.forEach(r -> reps.add(r.repName() + "=" + r.count()));
-                sb.append("Leads per staff member: ").append(reps).append("\n");
-                sb.append("You may offer the leads of any staff member named above, a team-wide ")
-                        .append("summary, or a specific lead status.\n");
-            }
+        for (CrmArea area : emptyAreas) {
+            appendCompanyWideFallback(sb, area);
         }
+    }
 
-        if (emptyAreas.contains("deals")) {
-            List<DealStatusAggregate> agg = dealRepository.aggregateByStatusForChat(null);
-            long companyDeals = agg.stream().mapToLong(DealStatusAggregate::count).sum();
-            sb.append("Company-wide deals: ").append(companyDeals);
-            if (!agg.isEmpty()) {
-                StringJoiner statuses = new StringJoiner(", ", " (", ")");
-                agg.forEach(a -> statuses.add(a.status() + "=" + a.count()
-                        + " worth " + a.revenueOrZero()));
-                sb.append(statuses);
+    /** Company-wide figures a privileged caller can be offered when their own scope is empty. */
+    private void appendCompanyWideFallback(StringBuilder sb, CrmArea area) {
+        switch (area) {
+            case LEADS -> {
+                List<LeadStatusCount> byStatus = leadRepository.countByStatusForChat(null);
+                sb.append("Company-wide leads: ")
+                        .append(byStatus.stream().mapToLong(LeadStatusCount::count).sum())
+                        .append(joinCounts(byStatus, c -> c.status() + "=" + c.count())).append("\n");
+
+                List<RepLeadCount> perRep = leadRepository.countPerAssignee(page(MAX_SUGGESTED_REPS));
+                if (!perRep.isEmpty()) {
+                    StringJoiner reps = new StringJoiner(", ");
+                    perRep.forEach(r -> reps.add(r.repName() + "=" + r.count()));
+                    sb.append("Leads per staff member: ").append(reps).append("\n")
+                            .append("You may offer the leads of any staff member named above, a ")
+                            .append("team-wide summary, or a specific lead status.\n");
+                }
             }
-            sb.append("\nYou may offer a team-wide deal summary or the deals of a named staff member.\n");
-        }
-
-        if (emptyAreas.contains("tasks")) {
-            long companyTasks = taskRepository.countByStatusForChat(null).stream()
-                    .mapToLong(TaskStatusCount::count).sum();
-            sb.append("Company-wide tasks: ").append(companyTasks)
+            case DEALS -> {
+                List<DealStatusAggregate> agg = dealRepository.aggregateByStatusForChat(null);
+                sb.append("Company-wide deals: ")
+                        .append(agg.stream().mapToLong(DealStatusAggregate::count).sum())
+                        .append(joinCounts(agg, a -> a.status() + "=" + a.count()
+                                + " worth " + a.revenueOrZero()))
+                        .append("\nYou may offer a team-wide deal summary or a named staff ")
+                        .append("member's deals.\n");
+            }
+            case TASKS -> sb.append("Company-wide tasks: ")
+                    .append(taskRepository.countByStatusForChat(null).stream()
+                            .mapToLong(TaskStatusCount::count).sum())
                     .append(", of which overdue: ")
                     .append(taskRepository.countOverdueForChat(
                             null, CLOSED_TASK_STATUSES, OffsetDateTime.now()))
                     .append("\nYou may offer the team's overdue tasks.\n");
+            case QUOTATIONS -> sb.append("Company-wide quotations: ")
+                    .append(quotationRepository.aggregateByStatusForChat(null).stream()
+                            .mapToLong(QuotationStatusAggregate::count).sum())
+                    .append("\nYou may offer the team's quotations.\n");
+            case BOOKINGS -> sb.append("Company-wide bookings: ")
+                    .append(bookingRepository.aggregateByStatusForChat(null).stream()
+                            .mapToLong(BookingStatusAggregate::count).sum())
+                    .append("\nYou may offer the team's bookings.\n");
+            case PAYMENTS -> sb.append("Company-wide payments: ")
+                    .append(paymentRepository.aggregateByStatusForChat(null).stream()
+                            .mapToLong(PaymentStatusAggregate::count).sum())
+                    .append("\nYou may offer the team's payments.\n");
+            case CUSTOMERS -> sb.append("Company-wide customers: ")
+                    .append(customerRepository.countByStatusForChat(null).stream()
+                            .mapToLong(CustomerStatusCount::count).sum())
+                    .append("\nYou may offer the team's customers.\n");
         }
     }
 
@@ -304,25 +430,27 @@ public class CrmSnapshotService {
         StringBuilder sb = new StringBuilder("== Whole sales team summary ==\n");
 
         List<DealStatusAggregate> dealAgg = dealRepository.aggregateByStatusForChat(null);
-        long dealTotal = dealAgg.stream().mapToLong(DealStatusAggregate::count).sum();
-        sb.append("Deals: total ").append(dealTotal)
-                .append(" (open ").append(countOf(dealAgg, DealStatus.OPEN))
-                .append(", won ").append(countOf(dealAgg, DealStatus.WON))
-                .append(", lost ").append(countOf(dealAgg, DealStatus.LOST)).append(")")
-                .append(", WON value ").append(valueOf(dealAgg, DealStatus.WON))
-                .append(", pipeline value (OPEN) ").append(valueOf(dealAgg, DealStatus.OPEN))
+        sb.append("Deals: total ").append(dealAgg.stream().mapToLong(DealStatusAggregate::count).sum())
+                .append(" (open ").append(dealCount(dealAgg, DealStatus.OPEN))
+                .append(", won ").append(dealCount(dealAgg, DealStatus.WON))
+                .append(", lost ").append(dealCount(dealAgg, DealStatus.LOST)).append(")")
+                .append(", WON value ").append(dealValue(dealAgg, DealStatus.WON))
+                .append(", pipeline value (OPEN) ").append(dealValue(dealAgg, DealStatus.OPEN))
                 .append("\n");
 
-        long leadTotal = leadRepository.countByStatusForChat(null).stream()
-                .mapToLong(LeadStatusCount::count).sum();
-        sb.append("Leads: total ").append(leadTotal).append("\n");
-
-        long taskTotal = taskRepository.countByStatusForChat(null).stream()
-                .mapToLong(TaskStatusCount::count).sum();
-        sb.append("Tasks: total ").append(taskTotal)
+        sb.append("Leads: total ").append(leadRepository.countByStatusForChat(null).stream()
+                .mapToLong(LeadStatusCount::count).sum()).append("\n");
+        sb.append("Tasks: total ").append(taskRepository.countByStatusForChat(null).stream()
+                        .mapToLong(TaskStatusCount::count).sum())
                 .append(", overdue ")
                 .append(taskRepository.countOverdueForChat(null, CLOSED_TASK_STATUSES, now))
                 .append("\n");
+        sb.append("Quotations: total ").append(quotationRepository.aggregateByStatusForChat(null)
+                .stream().mapToLong(QuotationStatusAggregate::count).sum()).append("\n");
+        sb.append("Bookings: total ").append(bookingRepository.aggregateByStatusForChat(null)
+                .stream().mapToLong(BookingStatusAggregate::count).sum()).append("\n");
+        sb.append("Customers: total ").append(customerRepository.countByStatusForChat(null)
+                .stream().mapToLong(CustomerStatusCount::count).sum()).append("\n");
 
         // Per-rep breakdown: the query returns one row per (rep, status); pivot to one line per rep.
         List<RepDealStat> stats = dealRepository.statsPerAssignee();
@@ -341,14 +469,36 @@ public class CrmSnapshotService {
         return sb.toString();
     }
 
-    private static long countOf(List<DealStatusAggregate> agg, DealStatus status) {
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static Pageable page(int size) {
+        return PageRequest.of(0, size);
+    }
+
+    /** Renders " {A=1, B=2}" for a status breakdown, or "" when there is nothing to show. */
+    private static <T> String joinCounts(List<T> rows, java.util.function.Function<T, String> render) {
+        if (rows.isEmpty()) {
+            return "";
+        }
+        StringJoiner joiner = new StringJoiner(", ", " {", "}");
+        rows.forEach(r -> joiner.add(render.apply(r)));
+        return joiner.toString();
+    }
+
+    private static long dealCount(List<DealStatusAggregate> agg, DealStatus status) {
         return agg.stream().filter(a -> a.status() == status)
                 .mapToLong(DealStatusAggregate::count).sum();
     }
 
-    private static BigDecimal valueOf(List<DealStatusAggregate> agg, DealStatus status) {
+    private static BigDecimal dealValue(List<DealStatusAggregate> agg, DealStatus status) {
         return agg.stream().filter(a -> a.status() == status)
                 .map(DealStatusAggregate::revenueOrZero)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static BigDecimal paymentValue(List<PaymentStatusAggregate> agg, PaymentStatus status) {
+        return agg.stream().filter(a -> a.status() == status)
+                .map(PaymentStatusAggregate::amountOrZero)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
@@ -363,7 +513,7 @@ public class CrmSnapshotService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private static String nullToDash(String s) {
+    private static String dash(String s) {
         return (s == null || s.isBlank()) ? "-" : s;
     }
 

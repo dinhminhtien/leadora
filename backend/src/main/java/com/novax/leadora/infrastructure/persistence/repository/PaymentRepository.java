@@ -1,5 +1,7 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
+import com.novax.leadora.application.usecase.chat.dto.PaymentStatusAggregate;
+import org.springframework.data.domain.Pageable;
 import com.novax.leadora.infrastructure.persistence.entity.PaymentEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.PaymentStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -34,4 +36,24 @@ public interface PaymentRepository extends JpaRepository<PaymentEntity, UUID>, J
 
     @Query(value = "SELECT * FROM payments p WHERE REPLACE(CAST(p.payment_id AS text), '-', '') LIKE :prefix || '%'", nativeQuery = true)
     List<PaymentEntity> findByPaymentIdPrefix(@Param("prefix") String prefix);
+
+    // ── Chat-assistant snapshot ───────────────────────────────────────────────
+    // Payments hang off a booking, so they inherit that booking's assignee for scoping.
+
+    @Query("""
+            SELECT new com.novax.leadora.application.usecase.chat.dto.PaymentStatusAggregate(
+                       p.status, COUNT(p), SUM(p.amount))
+            FROM PaymentEntity p
+            WHERE (:userId IS NULL OR p.booking.assignedUser.userId = :userId)
+            GROUP BY p.status
+            """)
+    List<PaymentStatusAggregate> aggregateByStatusForChat(@Param("userId") UUID userId);
+
+    @EntityGraph(attributePaths = {"booking"})
+    @Query("""
+            SELECT p FROM PaymentEntity p
+            WHERE (:userId IS NULL OR p.booking.assignedUser.userId = :userId)
+            ORDER BY p.createdAt DESC
+            """)
+    List<PaymentEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
 }

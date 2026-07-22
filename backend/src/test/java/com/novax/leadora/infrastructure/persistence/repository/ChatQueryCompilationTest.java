@@ -57,14 +57,32 @@ class ChatQueryCompilationTest {
     @Autowired
     private AiChatMessageRepository chatMessageRepository;
 
+    @Autowired
+    private QuotationRepository quotationRepository;
+
+    @Autowired
+    private BookingRepository bookingRepository;
+
+    @Autowired
+    private PaymentRepository paymentRepository;
+
+    @Autowired
+    private CustomerRepository customerRepository;
+
     @Test
     @DisplayName("every declared query compiles, including the chat snapshot projections")
     void declaredQueriesCompile() {
         // Reaching this point means Spring Data parsed and validated the @Query of every method on
-        // these repositories — the constructor expressions into the chat DTO records included.
+        // these repositories — the constructor expressions into the chat DTO records included, and
+        // the association paths the snapshot scopes through (a quotation has no assignee of its
+        // own and is reached via its deal; a payment via its booking).
         assertThat(leadRepository).isNotNull();
         assertThat(dealRepository).isNotNull();
         assertThat(taskRepository).isNotNull();
         assertThat(chatMessageRepository).isNotNull();
+        assertThat(quotationRepository).isNotNull();
+        assertThat(bookingRepository).isNotNull();
+        assertThat(paymentRepository).isNotNull();
+        assertThat(customerRepository).isNotNull();
     }
 }

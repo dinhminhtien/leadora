@@ -222,6 +222,60 @@ class IntentClassifierTest {
     }
 
     @Nested
+    @DisplayName("Subject-area detection")
+    class Areas {
+
+        @ParameterizedTest(name = "{0} -> {1}")
+        @CsvSource({
+                "'có bao nhiêu booking chưa xác nhận', BOOKINGS",
+                "'liệt kê báo giá đã duyệt',           QUOTATIONS",
+                "'khách hàng nào chưa thanh toán',     PAYMENTS",
+                "'danh sách khách hàng doanh nghiệp',  CUSTOMERS",
+                "'lead nào mới nhất',                  LEADS",
+                "'deal nào sắp chốt',                  DEALS",
+                "'task nào quá hạn',                   TASKS",
+        })
+        void detectsTheAreaAsked(String message, CrmArea expected) {
+            assertThat(IntentClassifier.detectAreas(message)).contains(expected);
+        }
+
+        /**
+         * The whole point of area detection: a question about bookings must not drag in listings
+         * of leads, deals and tasks, which would cost thousands of tokens on every turn.
+         */
+        @Test
+        @DisplayName("an area-specific question does not pull in unrelated areas")
+        void doesNotWidenBeyondWhatWasAsked() {
+            assertThat(IntentClassifier.detectAreas("có bao nhiêu booking"))
+                    .containsExactly(CrmArea.BOOKINGS);
+        }
+
+        @Test
+        @DisplayName("a question naming no area falls back to the sales pipeline")
+        void fallsBackToDefaults() {
+            assertThat(IntentClassifier.detectAreas("tình hình của tôi thế nào"))
+                    .isEqualTo(CrmArea.defaults());
+            assertThat(CrmArea.defaults())
+                    .containsExactlyInAnyOrder(CrmArea.LEADS, CrmArea.DEALS, CrmArea.TASKS);
+        }
+
+        @Test
+        @DisplayName("a question spanning two areas detects both")
+        void detectsMultipleAreas() {
+            assertThat(IntentClassifier.detectAreas("báo giá nào đã thành booking"))
+                    .containsExactlyInAnyOrder(CrmArea.QUOTATIONS, CrmArea.BOOKINGS);
+        }
+
+        @Test
+        @DisplayName("areas ride along on the classification result")
+        void areasAreCarriedOnTheResult() {
+            IntentResult result = classifier.classify("báo giá của tôi", null);
+            assertThat(result.intent()).isEqualTo(ChatIntent.PERSONAL_DATA);
+            assertThat(result.areas()).contains(CrmArea.QUOTATIONS);
+        }
+    }
+
+    @Nested
     @DisplayName("Reply language resolution")
     class Language {
 

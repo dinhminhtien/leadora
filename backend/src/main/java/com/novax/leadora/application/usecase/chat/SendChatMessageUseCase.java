@@ -103,7 +103,7 @@ public class SendChatMessageUseCase {
         }
 
         // [2] Prefetch scoped context.
-        String referenceBlock = buildReferenceBlock(intent.intent(), user, content);
+        String referenceBlock = buildReferenceBlock(intent, user, content);
 
         // [3] Generate (best-effort: a failed/unavailable LLM degrades to a friendly message,
         // in the same language as the question).
@@ -126,26 +126,27 @@ public class SendChatMessageUseCase {
         return buildResponse(userMessage, assistantMessage, intent.intent(), false);
     }
 
-    private String buildReferenceBlock(ChatIntent intent, UserEntity user, String content) {
-        return switch (intent) {
+    private String buildReferenceBlock(IntentResult result, UserEntity user, String content) {
+        var areas = result.areas();
+        return switch (result.intent()) {
             // Operates on the conversation itself (translate/summarise/rephrase the previous
             // answer), so no fresh data is needed — the history sent to the LLM is the whole
             // input. Skipping both the CRM queries and the RAG lookup makes this the cheapest
             // non-blocked intent, in latency and in tokens.
             case META_CONVERSATION -> "";
             // Explicit possessive ("lead của tôi") — pinned to the asker even for a Manager.
-            case PERSONAL_DATA -> crmSnapshotService.personalSnapshot(user);
-            case ASSIGNED_DATA -> crmSnapshotService.scopedSnapshot(user);
+            case PERSONAL_DATA -> crmSnapshotService.personalSnapshot(user, areas);
+            case ASSIGNED_DATA -> crmSnapshotService.scopedSnapshot(user, areas);
             // Team-wide summary is a Manager/Admin privilege; a Sales Staff is downgraded to
             // their own scope so they can never see the whole team's data via this intent.
             case TEAM_SUMMARY -> crmSnapshotService.canSeeAllData(user)
                     ? crmSnapshotService.teamSummary()
-                    : crmSnapshotService.scopedSnapshot(user);
+                    : crmSnapshotService.scopedSnapshot(user, areas);
             case DOC_QUERY -> ragService.retrieveContext(content);
             case GENERAL_BUSINESS -> {
                 // Light blend: company docs + the user's own data.
                 String rag = ragService.retrieveContext(content);
-                String assigned = crmSnapshotService.scopedSnapshot(user);
+                String assigned = crmSnapshotService.scopedSnapshot(user, areas);
                 yield (StringUtils.hasText(rag) ? rag + "\n" : "") + assigned;
             }
             default -> "";

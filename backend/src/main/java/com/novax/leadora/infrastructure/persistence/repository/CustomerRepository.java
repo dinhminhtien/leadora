@@ -1,5 +1,6 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
+import com.novax.leadora.application.usecase.chat.dto.CustomerStatusCount;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerType;
@@ -58,4 +59,23 @@ public interface CustomerRepository extends JpaRepository<CustomerEntity, UUID>,
     Optional<CustomerEntity> findFirstByEmail(String email);
     Optional<CustomerEntity> findFirstByPhone(String phone);
     Optional<CustomerEntity> findFirstByFullName(String fullName);
+
+    // ── Chat-assistant snapshot ───────────────────────────────────────────────
+
+    @Query("""
+            SELECT new com.novax.leadora.application.usecase.chat.dto.CustomerStatusCount(
+                       c.status, COUNT(c))
+            FROM CustomerEntity c
+            WHERE (:userId IS NULL OR c.assignedUser.userId = :userId)
+            GROUP BY c.status
+            """)
+    List<CustomerStatusCount> countByStatusForChat(@Param("userId") UUID userId);
+
+    @EntityGraph(attributePaths = {"assignedUser"})
+    @Query("""
+            SELECT c FROM CustomerEntity c
+            WHERE (:userId IS NULL OR c.assignedUser.userId = :userId)
+            ORDER BY c.createdAt DESC
+            """)
+    List<CustomerEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
 }

@@ -4,7 +4,10 @@ import com.novax.leadora.application.usecase.chat.GuardrailMessages;
 import org.springframework.stereotype.Component;
 
 import java.text.Normalizer;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Rule-based classifier — step [1] of the hybrid chat pipeline.
@@ -95,6 +98,45 @@ public class IntentClassifier {
             "nguoi dung", "tai khoan", "user", "account", "ho so",
             "san pham", "dich vu", "product", "service", "lien he", "contact", "nguoi lien he",
             "tuong tac", "interaction", "timeline", "dong thoi gian", "lich su tuong tac");
+
+    // Which subject area each vocabulary belongs to. Drives how much detail the snapshot carries:
+    // every area contributes its counts, but only the areas named here get a row-by-row listing.
+    private static final Map<CrmArea, List<String>> AREA_KEYWORDS = Map.of(
+            CrmArea.LEADS, List.of("lead", "khach hang tiem nang", "tiem nang", "prospect"),
+            CrmArea.DEALS, List.of("deal", "co hoi", "giao dich", "thuong vu", "opportunity",
+                    "pipeline", "doanh so", "doanh thu", "revenue", "chot", "won", "lost"),
+            CrmArea.TASKS, List.of("task", "cong viec", "nhiem vu", "viec can lam", "lich hen",
+                    "cuoc hen", "appointment", "qua han", "overdue", "deadline", "han chot"),
+            CrmArea.QUOTATIONS, List.of("bao gia", "quotation", "quote", "bang gia", "chao gia"),
+            CrmArea.BOOKINGS, List.of("booking", "dat phong", "dat cho", "don dat phong",
+                    "check in", "checkin", "check out", "checkout", "luu tru"),
+            CrmArea.PAYMENTS, List.of("thanh toan", "payment", "hoa don", "invoice", "tien coc",
+                    "dat coc", "deposit", "cong no", "da tra", "chua tra"),
+            CrmArea.CUSTOMERS, List.of("khach hang", "customer", "client", "khach le", "khach doan",
+                    "khach cu", "lien he", "contact"));
+
+    /**
+     * Subject areas the message refers to, for sizing the snapshot. Returns
+     * {@link CrmArea#defaults()} when the question names none.
+     *
+     * <p>{@code LEADS} is matched on the bare word "lead", which is also a prefix of nothing else
+     * in the vocabulary, while {@code CUSTOMERS} owns "khach hang" — so "khách hàng tiềm năng"
+     * would match both. That is intentional and harmless: listing one extra related area is much
+     * cheaper than missing the one the user asked about.
+     */
+    public static Set<CrmArea> detectAreas(String rawMessage) {
+        String text = normalize(rawMessage);
+        Set<CrmArea> found = EnumSet.noneOf(CrmArea.class);
+        AREA_KEYWORDS.forEach((area, keywords) -> {
+            for (String keyword : keywords) {
+                if (text.contains(keyword)) {
+                    found.add(area);
+                    return;
+                }
+            }
+        });
+        return found.isEmpty() ? CrmArea.defaults() : found;
+    }
 
     private static final List<String> BUSINESS_KEYWORDS = List.of(
             // CRM objects are business keywords too
@@ -219,6 +261,7 @@ public class IntentClassifier {
         }
 
         // [3] Route business questions to the right data source.
+        Set<CrmArea> areas = detectAreas(rawMessage);
         if (containsAny(text, DOC_KEYWORDS)) {
             return IntentResult.of(ChatIntent.DOC_QUERY);
         }
@@ -230,15 +273,15 @@ public class IntentClassifier {
         //
         // The possessive also pins the scope to the asker regardless of role — see PERSONAL_DATA.
         if (containsAny(text, ASSIGNED_KEYWORDS)) {
-            return IntentResult.of(ChatIntent.PERSONAL_DATA);
+            return IntentResult.of(ChatIntent.PERSONAL_DATA, areas);
         }
         if (containsAny(text, TEAM_KEYWORDS)) {
-            return IntentResult.of(ChatIntent.TEAM_SUMMARY);
+            return IntentResult.of(ChatIntent.TEAM_SUMMARY, areas);
         }
         if (containsAny(text, CRM_OBJECTS)) {
-            return IntentResult.of(ChatIntent.ASSIGNED_DATA);
+            return IntentResult.of(ChatIntent.ASSIGNED_DATA, areas);
         }
-        return IntentResult.of(ChatIntent.GENERAL_BUSINESS);
+        return IntentResult.of(ChatIntent.GENERAL_BUSINESS, areas);
     }
 
     /** Returns the intent to continue if {@code name} is a data/RAG intent, else null. */
