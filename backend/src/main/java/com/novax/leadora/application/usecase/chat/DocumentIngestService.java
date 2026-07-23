@@ -56,6 +56,10 @@ public class DocumentIngestService {
                 doc.setChunkCount(chunks);
                 documentRepository.save(doc);
             });
+
+            // Retrieval results are cached; without this a question asked before the upload would
+            // keep returning the pre-upload answer until the cache TTL expired.
+            ragService.evictContextCache();
             log.info("Background ingest finished for document {} ({}) — {} chunks", documentId, fileName, chunks);
         } catch (Throwable ex) {
             // Throwable, not Exception: a huge PDF can OOM the parser (an Error) — with a

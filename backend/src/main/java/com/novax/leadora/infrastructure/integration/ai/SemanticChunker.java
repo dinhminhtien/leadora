@@ -145,7 +145,7 @@ public class SemanticChunker {
 
     /** Splits text into sentences on terminators (., !, ?, …) and hard line breaks. */
     private List<String> splitIntoSentences(String text) {
-        String[] parts = text.split("(?<=[.!?…])\\s+|\\R+");
+        String[] parts = unwrapLines(text).split("(?<=[.!?…])\\s+|\\R+");
         List<String> sentences = new ArrayList<>();
         for (String p : parts) {
             String s = p.trim();
@@ -154,6 +154,59 @@ public class SemanticChunker {
             }
         }
         return sentences;
+    }
+
+    /**
+     * Rejoins paragraph lines that a PDF extractor broke at the page's visual right margin.
+     *
+     * <p>Tika emits PDF text one <em>physical</em> line at a time, so a paragraph wrapped across
+     * eight display lines arrives as eight lines. The sentence splitter treats every hard line
+     * break as a sentence end, which turns that one paragraph into eight "sentences" — inflating
+     * the per-sentence embedding calls five- to tenfold <em>and</em> putting chunk boundaries in
+     * the middle of sentences. More cost for worse retrieval.
+     *
+     * <p>The join is deliberately conservative: two lines are merged only when the first does not
+     * end in sentence punctuation <em>and</em> the second starts lower-case — the signature of a
+     * wrapped line. Anything else (a heading, a bullet, a numbered clause, a table row, a blank
+     * line) keeps its break, so genuine structure survives.
+     */
+    static String unwrapLines(String text) {
+        String[] lines = text.split("\\R", -1);
+        StringBuilder out = new StringBuilder(text.length());
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].strip();
+            boolean last = i == lines.length - 1;
+            if (line.isEmpty()) {
+                // A blank line is a paragraph separator, but a trailing one must not add a break
+                // that was not in the source — split(-1) yields an empty final element for any
+                // text ending in a newline, and for the empty string.
+                if (!last) {
+                    out.append('\n');
+                }
+                continue;
+            }
+            out.append(line);
+            if (last) {
+                break;
+            }
+            String next = lines[i + 1].strip();
+            out.append(isWrappedLine(line, next) ? ' ' : '\n');
+        }
+        return out.toString();
+    }
+
+    /** True when {@code next} looks like the continuation of {@code line} rather than a new one. */
+    private static boolean isWrappedLine(String line, String next) {
+        if (next.isEmpty()) {
+            return false;
+        }
+        char lastChar = line.charAt(line.length() - 1);
+        if (".!?…:;".indexOf(lastChar) >= 0) {
+            return false; // the line completed a sentence or introduced a list
+        }
+        // A continuation carries on in lower case. Anything starting upper-case, with a digit
+        // (numbered clause) or with a bullet glyph begins a new block.
+        return Character.isLowerCase(next.charAt(0));
     }
 
     /** Builds a windowed view: each entry is sentence i concatenated with its neighbours (±buffer). */
