@@ -8,6 +8,7 @@ import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.SlaStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.ChatAggregateRepository;
@@ -66,6 +67,7 @@ public class CrmSnapshotService {
     private static final int MAX_BOOKINGS = 10;
     private static final int MAX_PAYMENTS = 8;
     private static final int MAX_CUSTOMERS = 10;
+    private static final int MAX_SLA = 10;
     private static final int MAX_REPS = 20;
 
     /** How many staff members to name when suggesting whose records to ask about instead. */
@@ -144,6 +146,7 @@ public class CrmSnapshotService {
                 case BOOKINGS -> appendBookings(sb, counts, scopeUserId, detail);
                 case PAYMENTS -> appendPayments(sb, counts, scopeUserId, detail);
                 case CUSTOMERS -> appendCustomers(sb, counts, scopeUserId, detail);
+                case SLA -> appendSla(sb, counts, scopeUserId, detail);
             };
             // Guidance is only worth giving for what was actually asked about: an empty payments
             // area is not interesting when the question was about leads.
@@ -311,6 +314,48 @@ public class CrmSnapshotService {
     }
 
     /**
+     * SLA tracking rows — the table the breach scheduler maintains and the SLA Control screen
+     * shows, so the assistant and the screen agree. (The older {@code sla_records} table is not
+     * kept up to date by anything and is deliberately not read here.)
+     *
+     * <p>A tracking row references its subject polymorphically and has no assignee column, so
+     * ownership — and therefore BR-36 — is resolved by joining whichever parent it points at;
+     * that happens in SQL, in {@link ChatAggregateRepository}, for both the counts and the rows.
+     *
+     * <p>Like tasks, the counts cover every row but the listing shows only what is still worth
+     * acting on: a RESOLVED row is history. The header therefore reports the unresolved count, so
+     * "showing 10 of 12" never quietly means "10 of 12 including the closed ones".
+     */
+    private long appendSla(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+        long total = counts.total(CrmArea.SLA);
+        long active = counts.count(CrmArea.SLA, SlaStatus.ACTIVE.name());
+        long breached = counts.count(CrmArea.SLA, SlaStatus.BREACHED.name());
+        long unresolved = active + breached;
+
+        sb.append("SLA records: total ").append(total)
+                .append(", active ").append(active)
+                .append(", breached ").append(breached)
+                .append(statusBreakdown(counts.of(CrmArea.SLA))).append("\n");
+
+        if (detail && unresolved > 0) {
+            sb.append(listingHeader("Unresolved SLA records, earliest deadline first",
+                    Math.min(unresolved, MAX_SLA), unresolved, CrmArea.SLA));
+            chatAggregateRepository.unresolvedSla(scope, MAX_SLA).forEach(s ->
+                    sb.append("  - ").append(s.activityType())
+                            .append(" on ").append(s.entityType())
+                            .append(" | ").append(s.status())
+                            .append(" | deadline ").append(s.deadlineAt())
+                            // Null here is real: the subject may be unassigned, or no longer
+                            // exist at all. Saying so beats a bare dash the model might read
+                            // as a missing field.
+                            .append(" | assigned to: ")
+                            .append(s.assigneeName() != null ? s.assigneeName() : "(unassigned)")
+                            .append("\n"));
+        }
+        return total;
+    }
+
+    /**
      * Explains an empty result and supplies the facts the assistant may turn into follow-up
      * suggestions (system prompt rule 3c). Without this the model can only report "no data", or —
      * worse — invent plausible-looking colleagues to suggest.
@@ -394,6 +439,9 @@ public class CrmSnapshotService {
             case BOOKINGS -> sb.append("\nYou may offer the team's bookings.\n");
             case PAYMENTS -> sb.append("\nYou may offer the team's payments.\n");
             case CUSTOMERS -> sb.append("\nYou may offer the team's customers.\n");
+            case SLA -> sb.append(", of which breached: ")
+                    .append(companyWide.count(CrmArea.SLA, SlaStatus.BREACHED.name()))
+                    .append("\nYou may offer the team's breached or active SLA records.\n");
         }
     }
 
@@ -419,6 +467,9 @@ public class CrmSnapshotService {
         sb.append("Quotations: total ").append(counts.total(CrmArea.QUOTATIONS)).append("\n");
         sb.append("Bookings: total ").append(counts.total(CrmArea.BOOKINGS)).append("\n");
         sb.append("Customers: total ").append(counts.total(CrmArea.CUSTOMERS)).append("\n");
+        sb.append("SLA records: total ").append(counts.total(CrmArea.SLA))
+                .append(", breached ").append(counts.count(CrmArea.SLA, SlaStatus.BREACHED.name()))
+                .append("\n");
 
         // Per-rep breakdown: the query returns one row per (rep, status); pivot to one line per rep.
         List<RepDealStat> stats = dealRepository.statsPerAssignee();
