@@ -175,6 +175,13 @@ ai:
       # embedding calls. Set AI_SEMANTIC_CHUNKING=false to fall back to cheap token splitting.
       enabled: ${AI_SEMANTIC_CHUNKING:true}
 
+# SLA deadline calculation (BR-32/BR-42) — applies uniformly to every SLA rule.
+sla:
+  business-hours:
+    start: ${SLA_BUSINESS_HOURS_START:8}
+    end: ${SLA_BUSINESS_HOURS_END:18}
+    days: ${SLA_BUSINESS_DAYS:MON,TUE,WED,THU,FRI}
+
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
   bank:

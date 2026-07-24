@@ -2,7 +2,10 @@ package com.novax.leadora.application.usecase.sla;
 
 import com.novax.leadora.api.dto.response.SlaReportResponse;
 import com.novax.leadora.api.dto.response.SlaReportResponse.ActivityBreakdown;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.SlaTrackingEntity;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.SlaStatus;
 import com.novax.leadora.infrastructure.persistence.repository.SlaTrackingRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +28,8 @@ import java.util.Map;
 public class GetSlaReportUseCase {
 
     private final SlaTrackingRepository slaTrackingRepository;
+    private final CurrentUserProvider currentUserProvider;
+    private final SystemAuditLogService systemAuditLogService;
 
     private static final Map<String, String> ACTIVITY_LABELS = Map.of(
             "LEAD_RESPONSE",              "Lead Response",
@@ -58,7 +63,16 @@ public class GetSlaReportUseCase {
 
         OffsetDateTime now = OffsetDateTime.now();
 
-        // POST-3: log report access for audit
+        // POST-3: log report access for audit (BR-37)
+        UserEntity actor = null;
+        try {
+            actor = currentUserProvider.resolve(null);
+        } catch (Exception e) {
+            log.warn("Could not resolve actor for SLA report audit log: {}", e.getMessage());
+        }
+        systemAuditLogService.log("SLA", "SLA_REPORT", java.util.UUID.randomUUID(), "VIEWED", actor,
+                null, null, String.format("from=%s, to=%s, activityType=%s, entityType=%s, records=%d",
+                        from, to, activityType, entityType, records.size()));
         log.info("SLA report viewed: from={}, to={}, activityType={}, entityType={}, totalRecords={}",
                 from, to, activityType, entityType, records.size());
 

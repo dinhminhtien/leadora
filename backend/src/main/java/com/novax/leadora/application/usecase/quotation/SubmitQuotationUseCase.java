@@ -2,6 +2,7 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.SubmitQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
@@ -14,6 +15,7 @@ import com.novax.leadora.infrastructure.persistence.repository.QuotationReposito
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,11 +35,14 @@ public class SubmitQuotationUseCase {
     private final QuotationDetailRepository quotationDetailRepository;
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
+    private final QuotationAccessPolicy quotationAccessPolicy;
 
     @Transactional
     public QuotationResponse execute(UUID id, SubmitQuotationRequest request) {
         QuotationEntity quotation = quotationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Quotation", id));
+
+        quotationAccessPolicy.assertCanView(quotationAccessPolicy.currentUser(), quotation);
 
         if (quotation.getStatus() != QuotationStatus.DRAFT) {
             throw new IllegalStateException(
@@ -52,6 +57,18 @@ public class SubmitQuotationUseCase {
                 ? QuotationStatus.PENDING_APPROVAL
                 : QuotationStatus.APPROVED;
 
+        List<UserEntity> managers = List.of();
+        if (newStatus == QuotationStatus.PENDING_APPROVAL) {
+            managers = userRepository.findByRoleName("MANAGER");
+            // E3: discount exceeds authority and no manager exists to approve it —
+            // block submission instead of parking it in an unreachable queue.
+            if (managers.isEmpty()) {
+                throw new BusinessException("NO_MANAGER_AVAILABLE",
+                        "Discount exceeds authority and no manager is available for approval",
+                        HttpStatus.CONFLICT);
+            }
+        }
+
         quotation.setStatus(newStatus);
         if (newStatus == QuotationStatus.APPROVED) {
             quotation.setApprovedAt(OffsetDateTime.now());
@@ -62,7 +79,6 @@ public class SubmitQuotationUseCase {
         // BR-21/BR-34: alert Sales Managers so a discount >10% quotation doesn't sit
         // unnoticed in the pending-approvals queue
         if (newStatus == QuotationStatus.PENDING_APPROVAL) {
-            List<UserEntity> managers = userRepository.findByRoleName("MANAGER");
             String message = "Quotation " + saved.getQuotationId().toString().substring(0, 8).toUpperCase()
                     + " requires approval — discount " + discountPct + "% exceeds the 10% threshold.";
             for (UserEntity manager : managers) {

@@ -15,11 +15,14 @@ export type NotificationType =
   | "HANDOVER"
   | string;
 
+export type NotificationPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
+
 export type Notification = {
   id: string;
   title: string;
   message: string;
   type: NotificationType;
+  priority?: NotificationPriority;
   relatedEntity?: string;
   relatedId?: string;
   isRead: boolean;
@@ -33,6 +36,12 @@ export type NotificationListParams = {
   unreadOnly?: boolean;
   /** Manager/Admin only — org-wide feed across every user. Ignored for other roles server-side. */
   allUsers?: boolean;
+  type?: string;
+  priority?: NotificationPriority;
+  createdFrom?: string;
+  createdTo?: string;
+  /** "priority" (URGENT→LOW, ties newest-first) or omitted for newest-first. */
+  sortBy?: string;
   page?: number;
   size?: number;
 };
@@ -41,9 +50,9 @@ const ENDPOINT = "/notifications";
 
 export const notificationService = {
   async getList(params: NotificationListParams = {}): Promise<ApiResponse<PageResponse<Notification>>> {
-    const { unreadOnly = false, allUsers = false, page = 0, size = 20 } = params;
+    const { unreadOnly = false, allUsers = false, type, priority, createdFrom, createdTo, sortBy, page = 0, size = 20 } = params;
     const response = await apiClient.get<ApiResponse<PageResponse<Notification>>>(ENDPOINT, {
-      params: { unreadOnly, allUsers, page, size },
+      params: { unreadOnly, allUsers, type, priority, createdFrom, createdTo, sortBy, page, size },
     });
     return response.data;
   },

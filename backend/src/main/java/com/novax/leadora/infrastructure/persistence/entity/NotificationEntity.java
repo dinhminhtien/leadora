@@ -1,5 +1,6 @@
 package com.novax.leadora.infrastructure.persistence.entity;
 
+import com.novax.leadora.infrastructure.persistence.entity.enums.NotificationPriority;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -40,6 +41,11 @@ public class NotificationEntity {
 
     @Column(name = "related_id")
     private UUID relatedId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "priority", nullable = false, length = 10)
+    @Builder.Default
+    private NotificationPriority priority = NotificationPriority.NORMAL;
 
     @Builder.Default
     @Column(name = "is_read", nullable = false)

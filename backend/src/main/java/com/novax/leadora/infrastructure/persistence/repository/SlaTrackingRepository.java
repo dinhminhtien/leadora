@@ -22,6 +22,9 @@ public interface SlaTrackingRepository extends JpaRepository<SlaTrackingEntity, 
 
     List<SlaTrackingEntity> findByStatusAndWarningAtBeforeAndWarningNotifiedFalse(SlaStatus status, OffsetDateTime before);
 
+    /** UC-17.4: BREACHED records past escalationAt that haven't been escalated yet */
+    List<SlaTrackingEntity> findByStatusAndEscalationAtBeforeAndEscalationNotifiedFalse(SlaStatus status, OffsetDateTime before);
+
     /** UC-17.6: fetch records for report with optional entityType / activityType filters */
     @Query("SELECT s FROM SlaTrackingEntity s " +
            "WHERE s.startedAt >= :from AND s.startedAt <= :to " +
