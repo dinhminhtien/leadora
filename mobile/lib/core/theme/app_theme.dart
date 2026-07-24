@@ -17,9 +17,16 @@ class AppTheme {
   static ThemeData dark() => _build(Brightness.dark);
 
   static ThemeData _build(Brightness brightness) {
+    final isLight = brightness == Brightness.light;
+    // Seed generates the harmonized M3 palette; pin `primary` to the exact
+    // Leadora Blue used on the web (deeper in light, brighter in dark) so the
+    // primary action color matches the website pixel-for-pixel.
     final scheme = ColorScheme.fromSeed(
       seedColor: AppColors.brandSeed,
       brightness: brightness,
+    ).copyWith(
+      primary: isLight ? const Color(0xFF185FA5) : const Color(0xFF3BA4F7),
+      onPrimary: isLight ? Colors.white : const Color(0xFF001018),
     );
 
     final base = ThemeData(useMaterial3: true, colorScheme: scheme);
