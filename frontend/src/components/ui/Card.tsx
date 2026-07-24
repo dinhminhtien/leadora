@@ -8,9 +8,9 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, hoverable = false, ...props }, ref) => (
     <div
       ref={ref}
-      className={`rounded-xl border border-border bg-background p-5 shadow-sm ${
+      className={`rounded-xl border border-border bg-card text-card-foreground p-5 shadow-elev-1 ${
         hoverable
-          ? "transition-all hover:shadow-md hover:border-primary/20 cursor-pointer"
+          ? "transition-all duration-150 hover:shadow-elev-2 hover:border-primary/20 cursor-pointer"
           : ""
       } ${className || ""}`}
       {...props}
