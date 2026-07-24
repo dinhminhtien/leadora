@@ -234,9 +234,25 @@ class IntentClassifierTest {
                 "'lead nào mới nhất',                  LEADS",
                 "'deal nào sắp chốt',                  DEALS",
                 "'task nào quá hạn',                   TASKS",
+                "'deal nào vi phạm cam kết dịch vụ',   SLA",
+                "'còn bao nhiêu SLA chưa xử lý',       SLA",
         })
         void detectsTheAreaAsked(String message, CrmArea expected) {
             assertThat(IntentClassifier.detectAreas(message)).contains(expected);
+        }
+
+        /**
+         * "sla" is a substring of ordinary words. Matching it bare would attach an SLA listing to
+         * any question containing "translate" or "slack" — thousands of wasted tokens, and rows
+         * the user never asked about. The keyword is space-wrapped for exactly this reason.
+         */
+        @ParameterizedTest(name = "{0} is not an SLA question")
+        @ValueSource(strings = {
+                "dịch câu trả lời vừa rồi, translate it to English",
+                "gửi link slack cho tôi",
+        })
+        void doesNotMatchSlaInsideAnotherWord(String message) {
+            assertThat(IntentClassifier.detectAreas(message)).doesNotContain(CrmArea.SLA);
         }
 
         /**

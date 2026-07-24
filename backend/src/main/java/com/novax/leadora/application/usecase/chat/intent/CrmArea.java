@@ -28,7 +28,10 @@ public enum CrmArea {
     QUOTATIONS("Quotations", "/quotations"),
     BOOKINGS("Bookings", "/booking-confirmation"),
     PAYMENTS("Payments", "/deposit-payment"),
-    CUSTOMERS("Customer Profiles", "/customer-profiles");
+    CUSTOMERS("Customer Profiles", "/customer-profiles"),
+    // Appended rather than slotted next to DEALS (which it hangs off) so the order of the
+    // existing sections in the reference block does not shift.
+    SLA("SLA Control", "/sla");
 
     private final String screenLabel;
     private final String screenPath;
