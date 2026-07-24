@@ -473,7 +473,7 @@ public class CrmSnapshotService {
 
         // Per-rep breakdown: the query returns one row per (rep, status); pivot to one line per rep.
         List<RepDealStat> stats = dealRepository.statsPerAssignee();
-        List<String> reps = stats.stream().map(RepDealStat::repName).distinct().limit(MAX_REPS).toList();
+        List<String> reps = stats.stream().map(s -> s.repName()).distinct().limit(MAX_REPS).toList();
         if (!reps.isEmpty()) {
             sb.append("By staff member (up to ").append(MAX_REPS).append("):\n");
             for (String rep : reps) {
@@ -536,13 +536,13 @@ public class CrmSnapshotService {
 
     private static long repCount(List<RepDealStat> stats, DealStatus status) {
         return stats.stream().filter(s -> s.status() == status)
-                .mapToLong(RepDealStat::count).sum();
+                .mapToLong(s -> s.count()).sum();
     }
 
     private static BigDecimal repValue(List<RepDealStat> stats, DealStatus status) {
         return stats.stream().filter(s -> s.status() == status)
-                .map(RepDealStat::revenueOrZero)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(s -> s.revenueOrZero())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
     }
 
     private static String dash(String s) {

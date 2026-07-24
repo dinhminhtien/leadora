@@ -18,6 +18,6 @@ public record ChatTurnContext(ChatMessageResponse userMessage, List<ChatTurn> hi
                               String lastIntent) {
 
     public List<String> priorUserMessages() {
-        return history.stream().filter(ChatTurn::isUser).map(ChatTurn::content).toList();
+        return history.stream().filter(t -> t.isUser()).map(t -> t.content()).toList();
     }
 }

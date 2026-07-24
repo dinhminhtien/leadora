@@ -23,21 +23,21 @@ public record ChatCounts(Map<CrmArea, List<StatusBucket>> byArea, long overdueTa
 
     /** Total records in an area, across every status. */
     public long total(CrmArea area) {
-        return of(area).stream().mapToLong(StatusBucket::count).sum();
+        return of(area).stream().mapToLong(b -> b.count()).sum();
     }
 
     /** Records in one status; pass {@code SomeStatus.name()} so the enum stays the source. */
     public long count(CrmArea area, String status) {
         return of(area).stream()
                 .filter(b -> b.status().equals(status))
-                .mapToLong(StatusBucket::count).sum();
+                .mapToLong(b -> b.count()).sum();
     }
 
     /** Total value of the records in one status, zero when the area carries no amounts. */
     public BigDecimal amount(CrmArea area, String status) {
         return of(area).stream()
                 .filter(b -> b.status().equals(status))
-                .map(StatusBucket::amountOrZero)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(b -> b.amountOrZero())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
     }
 }
