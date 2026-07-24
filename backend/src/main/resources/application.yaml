@@ -175,6 +175,38 @@ ai:
       # embedding calls. Set AI_SEMANTIC_CHUNKING=false to fall back to cheap token splitting.
       enabled: ${AI_SEMANTIC_CHUNKING:true}
 
+    # Vision OCR: read the text INSIDE images (scanned pages, charts, screenshots) with the same
+    # Gemini chat model. Tika only extracts a document's text layer, so image-only files otherwise
+    # ingest to 0 chunks and vanish. Every image is a request against the SAME daily quota as the
+    # chat assistant and costs more tokens than text, so this is OPT-IN and hard-capped.
+    #   mode: OFF (default, no OCR) | SCANNED_ONLY (only text-poor docs) | ALL_IMAGES (every image)
+    # QUALITY preset (quota no object): AI_VISION_OCR_MODE=ALL_IMAGES, AI_VISION_OCR_MODEL=gemini-2.5-pro,
+    # AI_VISION_OCR_MAX_IMAGES high, and keep AI_SEMANTIC_CHUNKING=true.
+    vision-ocr:
+      mode: ${AI_VISION_OCR_MODE:OFF}
+      # Below this many characters of extracted text, SCANNED_ONLY treats the document as scanned.
+      scanned-text-threshold: ${AI_VISION_OCR_SCANNED_THRESHOLD:200}
+      # Max images sent to the vision model per document — the primary guard on quota/cost.
+      max-images: ${AI_VISION_OCR_MAX_IMAGES:20}
+      # Model for OCR only. Blank = reuse the chat model (gemini-2.5-flash). Set gemini-2.5-pro for
+      # markedly better reading of dense scans / complex tables / figures, at higher quota cost.
+      model: ${AI_VISION_OCR_MODEL:}
+      # Page rendering: for a PDF page whose text layer is sparse (scanned or drawn as vector
+      # graphics — charts/diagrams/complex tables), render the WHOLE page and OCR it, instead of only
+      # lifting embedded raster images (which cannot see vector content). Text-rich pages are left to
+      # Tika so clean text is not re-OCR'd into near-duplicate chunks.
+      page-render:
+        enabled: ${AI_VISION_OCR_PAGE_RENDER:true}
+        text-threshold: ${AI_VISION_OCR_PAGE_RENDER_THRESHOLD:100}
+        dpi: ${AI_VISION_OCR_PAGE_RENDER_DPI:200}
+
+    # Retrieval tuning for the RAG context fed to the chat model.
+    retrieval:
+      # Chunks returned per query — higher grounds the answer in more context.
+      top-k: ${AI_RAG_TOP_K:6}
+      # Minimum cosine similarity (0..1) to count a chunk as relevant — lower favours recall.
+      similarity-threshold: ${AI_RAG_SIMILARITY_THRESHOLD:0.4}
+
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
   bank:
