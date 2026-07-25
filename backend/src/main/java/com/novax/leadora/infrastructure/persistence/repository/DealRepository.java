@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,6 +19,10 @@ import java.util.UUID;
 
 @Repository
 public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpecificationExecutor<DealEntity> {
+    
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT d FROM DealEntity d WHERE d.dealId = :id")
+    java.util.Optional<DealEntity> findByIdForUpdate(@Param("id") UUID id);
     List<DealEntity> findByAssignedUser_UserId(UUID assignedUserId);
     List<DealEntity> findByCustomer_CustomerId(UUID customerId);
     List<DealEntity> findByStatus(DealStatus status);
