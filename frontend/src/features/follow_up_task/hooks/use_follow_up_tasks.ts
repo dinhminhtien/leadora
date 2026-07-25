@@ -100,7 +100,8 @@ export function useUsers() {
 export function useResolveTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (taskId: string) => taskService.resolve(taskId),
+    mutationFn: ({ taskId, resultNote }: { taskId: string; resultNote: string }) =>
+      taskService.resolve(taskId, resultNote),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
       queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] });

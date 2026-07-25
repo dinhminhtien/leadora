@@ -25,10 +25,12 @@ import {
   useMarkNotificationRead,
   useMarkAllRead,
 } from "@/features/notification/hooks/use_notifications";
-import type { Notification } from "@/services/notification_service";
+import { notificationService, type Notification, type NotificationPriority } from "@/services/notification_service";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { useAuthStore } from "@/stores/auth_store";
 import { hasFullAccess } from "@/shared/auth/access";
+import { toast } from "@/stores/toast_store";
+import { getApiErrorMessage } from "@/lib/api_error";
 
 const PAGE_SIZE = 20;
 
@@ -78,6 +80,21 @@ const FILTER_OPTIONS = [
   { value: "HANDOVER", label: "Handover" },
 ];
 
+const PRIORITY_OPTIONS: { value: NotificationPriority | ""; label: string }[] = [
+  { value: "", label: "All priorities" },
+  { value: "URGENT", label: "Urgent" },
+  { value: "HIGH", label: "High" },
+  { value: "NORMAL", label: "Normal" },
+  { value: "LOW", label: "Low" },
+];
+
+const PRIORITY_VARIANT: Record<string, "danger" | "warning" | "success" | "primary" | "default"> = {
+  URGENT: "danger",
+  HIGH: "warning",
+  NORMAL: "default",
+  LOW: "default",
+};
+
 function getRelatedRoute(n: Notification): string | null {
   if (!n.relatedEntity || !n.relatedId) return null;
   const entity = n.relatedEntity.toUpperCase();
@@ -121,34 +138,55 @@ export function NotificationListScreen() {
 
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [typeFilter, setTypeFilter] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<NotificationPriority | "">("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sortBy, setSortBy] = useState<"createdAt" | "priority">("createdAt");
   const [page, setPage] = useState(0);
   // Manager/Admin only — org-wide "who did what" activity feed instead of just their own.
   const [viewAllUsers, setViewAllUsers] = useState(false);
   const allUsers = canViewAll && viewAllUsers;
 
-  const { data: pageData, isLoading, isError } = useNotifications({ unreadOnly, allUsers, page, size: PAGE_SIZE });
+  const { data: pageData, isLoading, isError } = useNotifications({
+    unreadOnly,
+    allUsers,
+    type: typeFilter || undefined,
+    priority: priorityFilter || undefined,
+    createdFrom: dateFrom ? new Date(dateFrom).toISOString() : undefined,
+    createdTo: dateTo ? new Date(dateTo + "T23:59:59").toISOString() : undefined,
+    sortBy: sortBy === "priority" ? "priority" : undefined,
+    page,
+    size: PAGE_SIZE,
+  });
   const { data: unreadCount = 0 } = useUnreadNotificationCount();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllRead();
 
+  // Server already applies every active filter — no client-side re-filtering,
+  // which previously desynced the displayed rows from the "Page X of Y" count.
   const notifications = pageData?.content ?? [];
   const totalPages = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalPages : (pageData?.totalPages ?? 1);
   const totalElements = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalElements : (pageData?.totalElements ?? 0);
-
-  const filtered = typeFilter
-    ? notifications.filter((n) => n.type === typeFilter)
-    : notifications;
 
   // Team Activity rows belong to someone else — viewing them must not flip their
   // read state (the backend rejects this anyway; keep the client from even trying).
   const isOwnNotification = (n: Notification) => !n.recipientId || n.recipientId === user?.id;
 
-  // Navigation must not depend on the mark-read call succeeding — it's a
-  // best-effort side effect, not a gate (a failed/rejected mutation must never
-  // block getting to the related record).
-  const handleNotificationClick = (n: Notification) => {
+  // UC-15.2: check access (and mark-as-read, for your own notifications) via
+  // GET /notifications/{id} BEFORE navigating — a 403 must block the redirect,
+  // not just fire a best-effort mark-read alongside it.
+  const handleNotificationClick = async (n: Notification) => {
     const route = getRelatedRoute(n);
-    if (route) router.push(route);
+    if (!route) return;
+    try {
+      await notificationService.getById(n.id);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "You do not have permission to access this notification."));
+      return;
+    }
+    router.push(route);
+    // getById already marks it read server-side for your own notifications; this
+    // just refreshes the list/badge cache to match.
     if (!n.isRead && isOwnNotification(n)) {
       markRead.mutate({ id: n.id, read: true });
     }
@@ -199,19 +237,52 @@ export function NotificationListScreen() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold">
           <Filter className="size-3.5" />
           Filter:
         </div>
         <select
           value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
+          onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }}
           className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-slate-400 transition"
         >
           {FILTER_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
+        </select>
+
+        <select
+          value={priorityFilter}
+          onChange={(e) => { setPriorityFilter(e.target.value as NotificationPriority | ""); setPage(0); }}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-slate-400 transition"
+        >
+          {PRIORITY_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => { setDateFrom(e.target.value); setPage(0); }}
+          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-slate-400 transition"
+        />
+        <span className="text-xs text-slate-400">to</span>
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
+          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-slate-400 transition"
+        />
+
+        <select
+          value={sortBy}
+          onChange={(e) => { setSortBy(e.target.value as "createdAt" | "priority"); setPage(0); }}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-slate-400 transition"
+        >
+          <option value="createdAt">Sort: Newest first</option>
+          <option value="priority">Sort: Priority</option>
         </select>
 
         <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -277,7 +348,7 @@ export function NotificationListScreen() {
                   Failed to load notifications. Please refresh.
                 </TableCell>
               </TableRow>
-            ) : filtered.length === 0 ? (
+            ) : notifications.length === 0 ? (
               /* E3 — no notifications */
               <TableRow hoverable={false}>
                 <TableCell colSpan={allUsers ? 6 : 5} className="py-14 text-center text-xs text-slate-400">
@@ -285,7 +356,7 @@ export function NotificationListScreen() {
                     <BellOff className="size-8 text-slate-300" />
                     <span className="font-bold text-slate-600 text-sm">No notifications available</span>
                     <span>
-                      {unreadOnly || typeFilter
+                      {unreadOnly || typeFilter || priorityFilter || dateFrom || dateTo
                         ? "Try clearing the filters to see all notifications."
                         : "You're all caught up — no alerts or updates right now."}
                     </span>
@@ -293,7 +364,7 @@ export function NotificationListScreen() {
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((n) => {
+              notifications.map((n) => {
                 const route = getRelatedRoute(n);
                 const isClickable = !!route;
                 return (
@@ -335,15 +406,26 @@ export function NotificationListScreen() {
                       </TableCell>
                     )}
 
-                    {/* Type badge */}
+                    {/* Type + priority badges */}
                     <TableCell className="py-3 px-4">
-                      <Badge
-                        variant={TYPE_VARIANT[n.type] ?? "default"}
-                        size="sm"
-                        className="text-[9px] font-bold uppercase"
-                      >
-                        {TYPE_LABEL[n.type] ?? n.type}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge
+                          variant={TYPE_VARIANT[n.type] ?? "default"}
+                          size="sm"
+                          className="text-[9px] font-bold uppercase"
+                        >
+                          {TYPE_LABEL[n.type] ?? n.type}
+                        </Badge>
+                        {n.priority && n.priority !== "NORMAL" && (
+                          <Badge
+                            variant={PRIORITY_VARIANT[n.priority] ?? "default"}
+                            size="sm"
+                            className="text-[9px] font-bold uppercase"
+                          >
+                            {n.priority}
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
 
                     {/* Time */}

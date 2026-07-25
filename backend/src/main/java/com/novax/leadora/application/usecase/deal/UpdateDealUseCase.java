@@ -79,7 +79,9 @@ public class UpdateDealUseCase {
             deal.setExpectedRevenue(request.getValue());
         }
         if (request.getStatus() != null) {
-            deal.setStatus(dealMapper.mapStatusToEnum(request.getStatus()));
+            DealStatus targetStatus = dealMapper.mapStatusToEnum(request.getStatus());
+            dealValidation.validateStatusTransition(deal.getStatus(), targetStatus, deal, request.getNotes());
+            deal.setStatus(targetStatus);
         }
         if (request.getExpectedClose() != null) {
             deal.setExpectedCloseDate(request.getExpectedClose());
@@ -100,7 +102,7 @@ public class UpdateDealUseCase {
     }
 
     @Transactional
-    public DealResponse updateDealStatus(UUID id, String status) {
+    public DealResponse updateDealStatus(UUID id, String status, String notes) {
         DealEntity deal = dealRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Deal", id));
 
@@ -111,12 +113,18 @@ public class UpdateDealUseCase {
         }
 
         DealStatus enumStatus = dealMapper.mapStatusToEnum(status);
+        dealValidation.validateStatusTransition(deal.getStatus(), enumStatus, deal, notes);
+
         deal.setStatus(enumStatus);
 
         if (enumStatus == DealStatus.WON) {
             deal.setPipelineStage(DealPipelineStage.CLOSED_WON);
         } else if (enumStatus == DealStatus.LOST) {
             deal.setPipelineStage(DealPipelineStage.CLOSED_LOST);
+        }
+
+        if (notes != null && !notes.trim().isEmpty() && deal.getNotes() == null) {
+            deal.setNotes(notes);
         }
 
         DealEntity updatedDeal = dealRepository.save(deal);

@@ -5,7 +5,6 @@ import { CheckCircle2, XCircle, Sparkles, RotateCcw, AlertCircle, X, MessageSqua
 import { Button } from "@/components/ui/Button";
 import type { Quotation } from "@/services/quotation_service";
 import { useTrackCustomerResponse } from "@/features/quotation/hooks/use_quotations";
-import { useAuthStore } from "@/stores/auth_store";
 import { Portal } from "@/components/ui/Portal";
 
 
@@ -84,7 +83,6 @@ const STATUS_MAP: Record<ResponseType, Quotation["status"]> = {
 };
 
 export function RecordResponseModal({ quote, onClose, onRecorded }: RecordResponseModalProps) {
-  const { user } = useAuthStore();
   const trackResponse = useTrackCustomerResponse();
 
   const [selected, setSelected] = useState<ResponseType | null>(null);
@@ -117,8 +115,6 @@ export function RecordResponseModal({ quote, onClose, onRecorded }: RecordRespon
           customerResponse: RESPONSE_API_MAP[selected],
           lostReason: selected === "rejected" ? lostReason : undefined,
           notes: notes.trim() || undefined,
-          recordedByName: user?.name ?? user?.email ?? "Staff",
-          recordedByRole: user?.roles?.[0] ?? "SALES_STAFF",
         },
       });
       setSuccess(true);

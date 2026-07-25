@@ -1,5 +1,7 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -28,4 +30,16 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
     List<QuotationEntity> findByCreatedAtRange(
             @Param("startDate") OffsetDateTime startDate,
             @Param("endDate") OffsetDateTime endDate);
+
+    // ── Chat-assistant snapshot ───────────────────────────────────────────────
+    // Quotations have no assignee column: they are scoped through the deal they belong to, so
+    // "my quotations" means those of the deals assigned to the caller. A null :userId means all.
+
+    @EntityGraph(attributePaths = {"customer", "deal"})
+    @Query("""
+            SELECT q FROM QuotationEntity q
+            WHERE (:userId IS NULL OR q.deal.assignedUser.userId = :userId)
+            ORDER BY q.createdAt DESC
+            """)
+    List<QuotationEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
 }

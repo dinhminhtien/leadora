@@ -2,9 +2,14 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.SendQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
+import com.novax.leadora.common.exception.BusinessException;
+import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationSendLogEntity;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
@@ -12,6 +17,7 @@ import com.novax.leadora.infrastructure.persistence.repository.QuotationReposito
 import com.novax.leadora.infrastructure.persistence.repository.QuotationSendLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,16 +34,38 @@ public class SendQuotationUseCase {
     private final QuotationEmailService quotationEmailService;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     private final NotificationRepository notificationRepository;
+    private final CurrentUserProvider currentUserProvider;
+    private final QuotationAccessPolicy quotationAccessPolicy;
+    private final SystemAuditLogService systemAuditLogService;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, SendQuotationRequest request) {
         QuotationEntity quotation = quotationRepository.findById(quotationId)
-                .orElseThrow(() -> new RuntimeException("Quotation not found: " + quotationId));
+                .orElseThrow(() -> new ResourceNotFoundException("Quotation", quotationId));
+
+        quotationAccessPolicy.assertCanView(quotationAccessPolicy.currentUser(), quotation);
 
         // BR-21: Only APPROVED quotations can be sent to customer
         if (quotation.getStatus() != QuotationStatus.APPROVED) {
             throw new IllegalStateException(
                     "Only APPROVED quotations can be sent. Current status: " + quotation.getStatus().name());
+        }
+
+        // E3: EMAIL method requires a valid recipient address
+        boolean isEmail = "EMAIL".equalsIgnoreCase(request.getSendMethod());
+        if (isEmail && (request.getRecipientEmail() == null || request.getRecipientEmail().isBlank())) {
+            throw new BusinessException("INVALID_RECIPIENT_CONTACT",
+                    "Recipient email is required when sending by EMAIL", HttpStatus.BAD_REQUEST);
+        }
+
+        UserEntity actor = currentUserProvider.resolve(null);
+        String actorRole = actor.getRole() != null ? actor.getRole().getRoleName() : null;
+
+        // POST-3: send the email FIRST when method is EMAIL (UC-14.4 E4) — a delivery
+        // failure must surface as an error, not silently leave the quotation marked
+        // SENT when the customer never actually received it.
+        if (isEmail) {
+            quotationEmailService.sendQuotationEmail(quotation, request, actor.getFullName());
         }
 
         // POST-1: Update status to SENT
@@ -53,11 +81,14 @@ public class SendQuotationUseCase {
                 .recipientName(request.getRecipientName())
                 .recipientEmail(request.getRecipientEmail())
                 .recipientPhone(request.getRecipientPhone())
-                .sentByName(request.getSentByName())
-                .sentByRole(request.getSentByRole())
+                .sentByName(actor.getFullName())
+                .sentByRole(actorRole)
                 .personalMessage(request.getPersonalMessage())
                 .build();
         sendLogRepository.save(sendLog);
+
+        systemAuditLogService.log("QUOTATION", "QUOTATION", quotationId, "SENT", actor,
+                "APPROVED", "SENT", "via " + request.getSendMethod() + " to " + request.getRecipientName());
 
         // UC-17.2: auto-resolve SLA tracking — quotation sent = action completed
         try {
@@ -80,15 +111,6 @@ public class SendQuotationUseCase {
                 notificationRepository.save(notification);
             } catch (Exception e) {
                 log.warn("Quotation-sent notification failed for quotation {}: {}", quotationId, e.getMessage());
-            }
-        }
-
-        // POST-3: Send email when method is EMAIL (UC-14.4) — failure is logged but does not rollback DB state
-        if ("EMAIL".equalsIgnoreCase(request.getSendMethod())) {
-            try {
-                quotationEmailService.sendQuotationEmail(saved, request);
-            } catch (Exception e) {
-                log.warn("Email delivery failed for quotation {} — status remains SENT: {}", quotationId, e.getMessage());
             }
         }
 

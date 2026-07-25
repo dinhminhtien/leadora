@@ -12,14 +12,17 @@ import com.novax.leadora.application.usecase.chat.GetChatMessagesUseCase;
 import com.novax.leadora.application.usecase.chat.GetChatSessionsUseCase;
 import com.novax.leadora.application.usecase.chat.RenameChatSessionUseCase;
 import com.novax.leadora.application.usecase.chat.SendChatMessageUseCase;
+import com.novax.leadora.application.usecase.chat.StreamChatMessageUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.UUID;
@@ -43,6 +46,7 @@ public class ChatController {
     private final GetChatSessionsUseCase getChatSessionsUseCase;
     private final GetChatMessagesUseCase getChatMessagesUseCase;
     private final SendChatMessageUseCase sendChatMessageUseCase;
+    private final StreamChatMessageUseCase streamChatMessageUseCase;
     private final RenameChatSessionUseCase renameChatSessionUseCase;
     private final DeleteChatSessionUseCase deleteChatSessionUseCase;
 
@@ -85,6 +89,28 @@ public class ChatController {
         SendMessageResponse response =
                 sendChatMessageUseCase.execute(sessionId, user, request.getContent());
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * Send a message and receive the reply as it is written.
+     *
+     * <p>Same pipeline as the endpoint above, streamed over Server-Sent Events so the answer
+     * starts appearing in well under a second instead of after the model has finished. The
+     * non-streaming endpoint is kept as a fallback: a proxy that buffers responses, or a network
+     * that blocks event streams, would otherwise leave the assistant looking broken rather than
+     * merely slower.
+     *
+     * <p>The acting user is resolved here, on the request thread, while the entity is still
+     * attached to its persistence context.
+     */
+    @PostMapping(value = "/sessions/{sessionId}/messages/stream",
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamMessage(
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody SendChatMessageRequest request) {
+        UserEntity user = currentUserProvider.resolve(userId);
+        return streamChatMessageUseCase.execute(sessionId, user, request.getContent());
     }
 
     /** Rename Chat Session. */

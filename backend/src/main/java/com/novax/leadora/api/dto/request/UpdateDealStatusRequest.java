@@ -22,4 +22,6 @@ public class UpdateDealStatusRequest {
             regexp = "(?i)^(active|open|won|lost)$",
             message = "Status must be one of: active, won, lost")
     private String status;
+
+    private String notes;
 }

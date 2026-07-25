@@ -25,6 +25,10 @@ public interface ReminderRepository extends JpaRepository<ReminderEntity, UUID> 
     /** Used by scheduler — only needs user for notification, no createdBy needed */
     List<ReminderEntity> findByStatusAndRemindAtBefore(ReminderStatus status, OffsetDateTime time);
 
+    /** BR-34: reminders due soon that haven't had the "due soon" heads-up sent yet */
+    List<ReminderEntity> findByStatusAndPreDueNotifiedFalseAndRemindAtBetween(
+            ReminderStatus status, OffsetDateTime from, OffsetDateTime to);
+
     List<ReminderEntity> findByRelatedEntityAndRelatedId(String relatedEntity, UUID relatedId);
 
     @EntityGraph(attributePaths = {"user", "createdBy"})

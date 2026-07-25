@@ -3,11 +3,13 @@ package com.novax.leadora.application.usecase.booking;
 import com.novax.leadora.api.dto.request.CreateBookingRequest;
 import com.novax.leadora.api.dto.response.BookingDetailResponse;
 import com.novax.leadora.api.dto.response.BookingResponse;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.*;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.InventoryStatus;
 import com.novax.leadora.infrastructure.persistence.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +23,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CreateBookingRequestUseCase {
@@ -31,6 +34,7 @@ public class CreateBookingRequestUseCase {
     private final QuotationRepository quotationRepository;
     private final UserRepository userRepository;
     private final ProductServiceRepository productServiceRepository;
+    private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Transactional
     public BookingResponse execute(CreateBookingRequest request) {
@@ -101,6 +105,13 @@ public class CreateBookingRequestUseCase {
 
         savedBooking.setTotalAmount(totalAmount);
         BookingEntity finalSavedBooking = bookingRepository.save(savedBooking);
+
+        // UC-17.2: start SLA tracking — non-fatal if no BOOKING_CONFIRM rule configured
+        try {
+            startSlaTrackingUseCase.execute("BOOKING_CONFIRM", "BOOKING", finalSavedBooking.getBookingId());
+        } catch (Exception e) {
+            log.warn("SLA tracking failed for booking {}: {}", finalSavedBooking.getBookingId(), e.getMessage());
+        }
 
         List<BookingDetailResponse> detailResponses = detailEntities.stream()
                 .map(BookingDetailResponse::from)

@@ -142,6 +142,7 @@ function MonitorTab() {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolveTarget, setResolveTarget] = useState<{ trackingId: string; entityId?: string; isTask: boolean } | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
+  const [resultNote, setResultNote] = useState("");
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [infoDialog, setInfoDialog] = useState<{ title: string; message: string } | null>(null);
   const { show: showToast, ToastContainer } = useToast();
@@ -164,7 +165,7 @@ function MonitorTab() {
     try {
       if (isTask && entityId) {
         try {
-          await resolveTaskMutation.mutateAsync(entityId);
+          await resolveTaskMutation.mutateAsync({ taskId: entityId, resultNote });
         } catch (e: unknown) {
           const status = (e as { response?: { status?: number } })?.response?.status;
           if (status === 404) {
@@ -178,6 +179,7 @@ function MonitorTab() {
       }
       setResolveTarget(null);
       setResolveError(null);
+      setResultNote("");
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setResolveError(msg ?? "Failed to resolve. Please try again.");
@@ -230,8 +232,11 @@ function MonitorTab() {
             : "Mark this SLA breach as resolved? This action cannot be undone."}
           error={resolveError}
           onConfirm={handleConfirmResolve}
-          onCancel={() => { setResolveTarget(null); setResolveError(null); }}
+          onCancel={() => { setResolveTarget(null); setResolveError(null); setResultNote(""); }}
           isLoading={resolveMutation.isPending || resolveTaskMutation.isPending}
+          showNoteField={resolveTarget.isTask}
+          noteValue={resultNote}
+          onChangeNote={setResultNote}
         />
       )}
     <div className="space-y-5">
@@ -542,6 +547,9 @@ function ResolveDialog({
   onConfirm,
   onCancel,
   isLoading,
+  showNoteField,
+  noteValue = "",
+  onChangeNote,
 }: {
   title: string;
   message: string;
@@ -549,7 +557,12 @@ function ResolveDialog({
   onConfirm: () => void;
   onCancel: () => void;
   isLoading?: boolean;
+  showNoteField?: boolean;
+  noteValue?: string;
+  onChangeNote?: (val: string) => void;
 }) {
+  const isConfirmDisabled = showNoteField && !noteValue.trim();
+
   return (
     <Portal>
       <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -564,6 +577,20 @@ function ResolveDialog({
               <p className="text-xs text-slate-500 leading-relaxed">{message}</p>
             </div>
           </div>
+          {showNoteField && (
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+                Completion Note *
+              </label>
+              <textarea
+                rows={3}
+                placeholder="Describe how the task was completed..."
+                value={noteValue}
+                onChange={(e) => onChangeNote?.(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition resize-none"
+              />
+            </div>
+          )}
           {error && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-semibold">
               <AlertTriangle className="size-3.5 shrink-0" /> {error}
@@ -573,7 +600,13 @@ function ResolveDialog({
             <Button onClick={onCancel} variant="outline" size="sm" className="text-xs border-slate-200 text-slate-600 font-semibold">
               Cancel
             </Button>
-            <Button onClick={onConfirm} isLoading={isLoading} size="sm" className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5">
+            <Button
+              onClick={onConfirm}
+              isLoading={isLoading}
+              disabled={isConfirmDisabled}
+              size="sm"
+              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5"
+            >
               <CheckCircle className="size-3" /> Confirm
             </Button>
           </div>
