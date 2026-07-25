@@ -73,6 +73,13 @@ public class ChatLlmService {
                quotations", do not present the listing as if it were the approved ones: give the
                approved COUNT from the totals, then show the matching rows that happen to be in
                the listing, and say it shows the most recent records rather than a filtered set.
+            3e2. PER-PERSON QUESTIONS. The REFERENCE DATA may contain a block headed
+               "== CRM data assigned to <name> ... ==" (a staff member the question named) and/or
+               a "Deals per staff member" table of EXACT aggregates. ANSWER FROM THOSE: they cover
+               ALL of that person's records, so per-person counts and totals from them are complete
+               figures — state them directly. Never refuse a per-person total with "the listing is
+               not filtered by assignee" when such a block or table is present; only fall back to
+               suggesting the screen filter when neither is.
             3f. NO DATE FILTER. Every count and total covers ALL TIME. If asked about a period
                ("this month", "this quarter", "today"), say clearly that your figures are
                all-time and that date filtering is not available yet, then give the all-time

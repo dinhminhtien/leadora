@@ -20,6 +20,7 @@ import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
+import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -70,6 +71,7 @@ class CrmSnapshotServiceTest {
     @Mock private BookingRepository bookingRepository;
     @Mock private PaymentRepository paymentRepository;
     @Mock private CustomerRepository customerRepository;
+    @Mock private UserRepository userRepository;
 
     private CrmSnapshotService service;
 
@@ -77,7 +79,7 @@ class CrmSnapshotServiceTest {
     void setUp() {
         service = new CrmSnapshotService(chatAggregateRepository, leadRepository, dealRepository,
                 taskRepository, quotationRepository, bookingRepository, paymentRepository,
-                customerRepository);
+                customerRepository, userRepository);
 
         // Default: nothing anywhere. Individual tests fill in what they need.
         when(chatAggregateRepository.countAll(any())).thenReturn(counts(Map.of(), 0));
@@ -85,6 +87,8 @@ class CrmSnapshotServiceTest {
         when(dealRepository.findRecentForChat(any(), any())).thenReturn(List.of());
         when(taskRepository.findOpenForChat(any(), anyList(), any())).thenReturn(List.of());
         when(leadRepository.countPerAssignee(any())).thenReturn(List.of());
+        when(dealRepository.statsPerAssignee()).thenReturn(List.of());
+        when(userRepository.findAllWithRole()).thenReturn(List.of());
     }
 
     // ── fixtures ──────────────────────────────────────────────────────────────
@@ -228,6 +232,66 @@ class CrmSnapshotServiceTest {
         void scopedSnapshotStaysPersonalForSales() {
             service.scopedSnapshot(user("SALES"), CrmArea.defaults());
             verify(chatAggregateRepository).countAll(eq(USER_ID));
+        }
+    }
+
+    @Nested
+    @DisplayName("Staff member named in the question")
+    class MentionedStaff {
+
+        private final UUID repId = UUID.randomUUID();
+
+        private void givenStaff(String fullName) {
+            when(userRepository.findAllWithRole()).thenReturn(List.of(UserEntity.builder()
+                    .userId(repId)
+                    .fullName(fullName)
+                    .build()));
+        }
+
+        @Test
+        @DisplayName("a Manager's question naming a rep is answered from that rep's scope")
+        void managerQuestionNamingARepScopesToThatRep() {
+            givenStaff("Tiến Đinh");
+            String out = service.mentionedStaffSnapshot(
+                    user("MANAGER"), CrmArea.defaults(), "tổng deal của Tiến Đinh");
+            assertThat(out).contains("Tiến Đinh");
+            verify(chatAggregateRepository).countAll(eq(repId));
+        }
+
+        @Test
+        @DisplayName("the match ignores case and Vietnamese diacritics")
+        void matchIsDiacriticInsensitive() {
+            givenStaff("Tiến Đinh");
+            String out = service.mentionedStaffSnapshot(
+                    user("MANAGER"), CrmArea.defaults(), "deal cua tien dinh thoi");
+            assertThat(out).isNotEmpty();
+        }
+
+        @Test
+        @DisplayName("a display-name suffix after \" - \" does not defeat the match")
+        void suffixedDisplayNameMatchesItsBarePart() {
+            givenStaff("Đinh Minh Tiến - FSchool CT");
+            String out = service.mentionedStaffSnapshot(
+                    user("MANAGER"), CrmArea.defaults(), "xem deal của Đinh Minh Tiến");
+            assertThat(out).isNotEmpty();
+        }
+
+        @Test
+        @DisplayName("BR-36: a Sales user's mention of a colleague is ignored entirely")
+        void salesUserMentionIsIgnored() {
+            givenStaff("Tiến Đinh");
+            String out = service.mentionedStaffSnapshot(
+                    user("SALES"), CrmArea.defaults(), "deal của Tiến Đinh");
+            assertThat(out).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a question naming nobody returns empty so the caller falls back")
+        void noMentionMeansEmpty() {
+            givenStaff("Tiến Đinh");
+            String out = service.mentionedStaffSnapshot(
+                    user("MANAGER"), CrmArea.defaults(), "tổng giá trị của deal");
+            assertThat(out).isEmpty();
         }
     }
 
