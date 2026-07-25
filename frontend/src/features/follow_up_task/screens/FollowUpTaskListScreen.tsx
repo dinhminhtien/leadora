@@ -1282,7 +1282,7 @@ function EntitySearchPicker({
     companyName: c.company ?? null,
   }));
   const dealResults: DealResult[] = (dealSearch.data?.data ?? []).map((d) => {
-    const rec = d as Record<string, unknown>;
+    const rec = d as unknown as Record<string, unknown>;
     const contact = typeof rec.contactName === "string" ? rec.contactName : null;
     const stage = typeof rec.stage === "string" ? rec.stage : null;
     return {

@@ -17,6 +17,8 @@ import java.util.UUID;
 @Repository
 public interface PaymentRepository extends JpaRepository<PaymentEntity, UUID>, JpaSpecificationExecutor<PaymentEntity> {
     List<PaymentEntity> findByBooking_BookingId(UUID bookingId);
+    List<PaymentEntity> findByBooking_BookingIdIn(List<UUID> bookingIds);
+    boolean existsByBooking_BookingIdAndStatus(UUID bookingId, PaymentStatus status);
     List<PaymentEntity> findByStatus(PaymentStatus status);
     // ── Performance report query (eliminates N+1 and filters at DB level) ──
     @EntityGraph(attributePaths = {"booking", "booking.assignedUser"})

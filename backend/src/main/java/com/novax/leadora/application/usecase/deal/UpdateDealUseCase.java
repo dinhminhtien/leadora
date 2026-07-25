@@ -3,7 +3,9 @@ package com.novax.leadora.application.usecase.deal;
 import com.novax.leadora.api.dto.request.DealRequest;
 import com.novax.leadora.api.dto.response.DealResponse;
 import com.novax.leadora.common.exception.BusinessRuleException;
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import org.springframework.http.HttpStatus;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
@@ -31,7 +33,7 @@ public class UpdateDealUseCase {
 
     @Transactional
     public DealResponse execute(UUID id, DealRequest request) {
-        DealEntity deal = dealRepository.findById(id)
+        DealEntity deal = dealRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Deal", id));
 
         dealAccessPolicy.assertCanView(dealAccessPolicy.currentUser(), deal);
@@ -93,6 +95,20 @@ public class UpdateDealUseCase {
         if (request.getOwner() != null && !request.getOwner().trim().isEmpty()) {
             UserEntity owner = resolveOwner(request.getOwner());
             if (owner != null) {
+                UserEntity currentAssigned = deal.getAssignedUser();
+                boolean isChanging = currentAssigned == null || !currentAssigned.getUserId().equals(owner.getUserId());
+                if (isChanging) {
+                    UserEntity currentUser = dealAccessPolicy.currentUser();
+                    boolean isAssigningToSelf = currentUser != null && currentUser.getUserId().equals(owner.getUserId());
+                    if (!isAssigningToSelf) {
+                        String role = currentUser != null && currentUser.getRole() != null && currentUser.getRole().getRoleName() != null
+                                ? currentUser.getRole().getRoleName().trim().toUpperCase() : "";
+                        boolean isManager = "MANAGER".equals(role) || "ADMIN".equals(role);
+                        if (!isManager) {
+                            throw new BusinessException("ROLE_RESTRICTION", "Only a manager or admin can assign a deal to another user.", HttpStatus.FORBIDDEN);
+                        }
+                    }
+                }
                 deal.setAssignedUser(owner);
             }
         }
@@ -103,7 +119,7 @@ public class UpdateDealUseCase {
 
     @Transactional
     public DealResponse updateDealStatus(UUID id, String status, String notes) {
-        DealEntity deal = dealRepository.findById(id)
+        DealEntity deal = dealRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Deal", id));
 
         dealAccessPolicy.assertCanView(dealAccessPolicy.currentUser(), deal);

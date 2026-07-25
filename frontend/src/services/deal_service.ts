@@ -1,13 +1,45 @@
 import { apiClient, type ApiResponse } from "@/services/api_client";
 import type { ListQuery } from "@/shared/types/api";
 
-export type Deal = Record<string, unknown> & {
+export interface Deal {
   id: string;
-  name?: string;
-  status?: string;
-};
+  title: string;
+  contactName: string;
+  email?: string;
+  phone?: string;
+  value: number;
+  probability: number;
+  stage: "Inquiry" | "Site Visit" | "Proposal" | "Negotiation" | "Contract" | "Confirmed";
+  owner: string;
+  ownerEmail?: string;
+  status: "active" | "won" | "lost";
+  expectedClose: string;
+  createdAt?: string;
+  notes?: string;
+}
 
 export type DealPayload = Record<string, unknown>;
+
+export interface PipelineDealCardResponse {
+  deal: Deal;
+  hasActiveQuotation: boolean;
+  activeQuotationStatus: string | null;
+  hasActiveBooking: boolean;
+  activeBookingStatus: string | null;
+  paymentStatus: string | null;
+}
+
+export interface DealWorkflowSummaryResponse {
+  dealId: string;
+  dealStatus: string;
+  pipelineStage: string;
+  activeQuotationId: string | null;
+  activeQuotationStatus: string | null;
+  activeBookingId: string | null;
+  activeBookingStatus: string | null;
+  currentPaymentStatus: string | null;
+  hasPaidPayment: boolean;
+}
 
 const ENDPOINT = "/deals";
 
@@ -16,6 +48,18 @@ export const dealService = {
     const response = await apiClient.get<ApiResponse<Deal[]>>(ENDPOINT, {
       params,
     });
+    return response.data;
+  },
+
+  async getPipeline(params?: ListQuery) {
+    const response = await apiClient.get<ApiResponse<PipelineDealCardResponse[]>>(`${ENDPOINT}/pipeline`, {
+      params,
+    });
+    return response.data;
+  },
+
+  async getWorkflowSummary(id: string) {
+    const response = await apiClient.get<ApiResponse<DealWorkflowSummaryResponse>>(`${ENDPOINT}/${id}/workflow`);
     return response.data;
   },
 
@@ -37,3 +81,4 @@ export const dealService = {
     return response.data;
   },
 };
+

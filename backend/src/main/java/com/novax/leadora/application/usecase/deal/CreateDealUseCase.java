@@ -7,6 +7,9 @@ import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.common.security.CurrentUserProvider;
+import com.novax.leadora.common.exception.BusinessException;
+import org.springframework.http.HttpStatus;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
@@ -25,6 +28,7 @@ public class CreateDealUseCase {
     private final UserRepository userRepository;
     private final DealMapper dealMapper;
     private final DealValidation dealValidation;
+    private final CurrentUserProvider currentUserProvider;
 
     @Transactional
     public DealResponse execute(DealRequest request) {
@@ -35,13 +39,18 @@ public class CreateDealUseCase {
         CustomerEntity customer = customerRepository.findById(request.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer", request.getCustomerId()));
 
-        // Find assigned user if owner specified
+        UserEntity currentUser = currentUserProvider.resolve(null);
         UserEntity owner = resolveOwner(request.getOwner());
         if (owner == null) {
-            // Fallback to first user in system if exists, or leave null
-            List<UserEntity> users = userRepository.findAll();
-            if (!users.isEmpty()) {
-                owner = users.get(0);
+            owner = currentUser;
+        }
+
+        if (owner != null && currentUser != null && !owner.getUserId().equals(currentUser.getUserId())) {
+            String role = currentUser.getRole() != null && currentUser.getRole().getRoleName() != null
+                    ? currentUser.getRole().getRoleName().trim().toUpperCase() : "";
+            boolean isManager = "MANAGER".equals(role) || "ADMIN".equals(role);
+            if (!isManager) {
+                throw new BusinessException("ROLE_RESTRICTION", "Only a manager or admin can assign a deal to another user.", HttpStatus.FORBIDDEN);
             }
         }
 
