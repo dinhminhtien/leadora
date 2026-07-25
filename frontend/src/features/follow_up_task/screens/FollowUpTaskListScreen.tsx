@@ -713,6 +713,10 @@ function TaskDetailDrawer({
 
   function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
+    if (form.status === "COMPLETED" && !form.resultNote?.trim()) {
+      toast.error("Completion note (Result / Notes) is required to complete the task.");
+      return;
+    }
     updateMutation.mutate({ ...form }, {
       onSuccess: () => { toast.success("Task updated successfully."); setEditing(false); onClose(); },
       onError: (error) => { toast.error(getApiErrorMessage(error, "Failed to update task.")); },

@@ -64,7 +64,7 @@ public class DealController {
     public ResponseEntity<ApiResponse<DealResponse>> updateDealStatus(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateDealStatusRequest request) {
-        DealResponse updated = updateDealUseCase.updateDealStatus(id, request.getStatus());
+        DealResponse updated = updateDealUseCase.updateDealStatus(id, request.getStatus(), request.getNotes());
         return ResponseEntity.ok(ApiResponse.success(updated, "Deal status updated successfully"));
     }
 }

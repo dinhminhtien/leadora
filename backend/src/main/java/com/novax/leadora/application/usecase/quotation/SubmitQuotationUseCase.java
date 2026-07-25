@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -29,7 +30,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SubmitQuotationUseCase {
 
-    private static final BigDecimal DISCOUNT_APPROVAL_THRESHOLD = new BigDecimal("10");
+    @Value("${app.quotation.discount-threshold:10}")
+    private BigDecimal discountApprovalThreshold;
 
     private final QuotationRepository quotationRepository;
     private final QuotationDetailRepository quotationDetailRepository;
@@ -52,8 +54,8 @@ public class SubmitQuotationUseCase {
         BigDecimal discountPct = quotation.getDiscountPercent() != null
                 ? quotation.getDiscountPercent() : BigDecimal.ZERO;
 
-        // BR-21/BR-40: discount > 10% → pending manager approval; ≤ 10% → auto-approved
-        QuotationStatus newStatus = discountPct.compareTo(DISCOUNT_APPROVAL_THRESHOLD) > 0
+        // BR-21/BR-40: discount > threshold → pending manager approval; ≤ threshold → auto-approved
+        QuotationStatus newStatus = discountPct.compareTo(discountApprovalThreshold) > 0
                 ? QuotationStatus.PENDING_APPROVAL
                 : QuotationStatus.APPROVED;
 
@@ -80,7 +82,7 @@ public class SubmitQuotationUseCase {
         // unnoticed in the pending-approvals queue
         if (newStatus == QuotationStatus.PENDING_APPROVAL) {
             String message = "Quotation " + saved.getQuotationId().toString().substring(0, 8).toUpperCase()
-                    + " requires approval — discount " + discountPct + "% exceeds the 10% threshold.";
+                    + " requires approval — discount " + discountPct + "% exceeds the " + discountApprovalThreshold + "% threshold.";
             for (UserEntity manager : managers) {
                 NotificationEntity notification = NotificationEntity.builder()
                         .user(manager)
