@@ -81,9 +81,10 @@ public class DocumentImageExtractor {
     private int pageRenderDpi;
 
     /**
-     * Returns each embedded image re-encoded as PNG bytes, capped at {@code max}. Only PDF and DOCX
-     * carry embedded raster images in this pipeline; TXT/MD have none, and legacy binary DOC is not
-     * mined here (rare, and its image model differs).
+     * Returns each embedded image re-encoded as PNG bytes, capped at {@code max}. PDF and DOCX
+     * carry embedded raster images; a directly uploaded image file (.png/.jpg/.jpeg) IS the image
+     * and is handed over whole. TXT/MD have none, and legacy binary DOC is not mined here (rare,
+     * and its image model differs).
      */
     public List<byte[]> extractPngImages(String fileName, byte[] content, int max) {
         String lower = fileName == null ? "" : fileName.toLowerCase();
@@ -96,7 +97,31 @@ public class DocumentImageExtractor {
         if (lower.endsWith(".docx")) {
             return fromDocx(content, max);
         }
+        if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+            return fromImageFile(content);
+        }
         return List.of();
+    }
+
+    /**
+     * The uploaded file is itself the image. No {@link #MIN_DIMENSION_PX} filter here: that guard
+     * exists to skip decorative logos/bullets mined out of documents, but a file the user picked
+     * explicitly is always intentional — reject nothing, just normalize and hand it over.
+     */
+    private List<byte[]> fromImageFile(byte[] content) {
+        try {
+            BufferedImage img = ImageIO.read(new ByteArrayInputStream(content));
+            if (img == null) {
+                log.warn("Uploaded image could not be decoded (unsupported/corrupt encoding)");
+                return List.of();
+            }
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(normalize(img), "png", baos);
+            return List.of(baos.toByteArray());
+        } catch (Exception ex) {
+            log.warn("Uploaded image extraction failed: {}", ex.getMessage());
+            return List.of();
+        }
     }
 
     private List<byte[]> fromPdf(byte[] content, int max) {

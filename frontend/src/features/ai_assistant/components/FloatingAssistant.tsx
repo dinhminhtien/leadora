@@ -815,7 +815,7 @@ function DocsView({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.docx,.doc,.txt,.md"
+        accept=".pdf,.docx,.doc,.txt,.md,.png,.jpg,.jpeg"
         onChange={onFileChange}
         className="hidden"
       />
@@ -825,7 +825,7 @@ function DocsView({
         className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/10 py-2.5 text-[11px] font-semibold text-primary transition hover:bg-primary/10 disabled:opacity-60"
       >
         {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-        Upload a document (PDF, DOCX, TXT, MD)
+        Upload a document (PDF, DOCX, TXT, MD, PNG, JPG)
       </button>
       <p className="text-center text-[9px] text-muted-foreground">Max 5MB per file.</p>
 

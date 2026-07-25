@@ -177,13 +177,13 @@ ai:
 
     # Vision OCR: read the text INSIDE images (scanned pages, charts, screenshots) with the same
     # Gemini chat model. Tika only extracts a document's text layer, so image-only files otherwise
-    # ingest to 0 chunks and vanish. Every image is a request against the SAME daily quota as the
-    # chat assistant and costs more tokens than text, so this is OPT-IN and hard-capped.
-    #   mode: OFF (default, no OCR) | SCANNED_ONLY (only text-poor docs) | ALL_IMAGES (every image)
-    # QUALITY preset (quota no object): AI_VISION_OCR_MODE=ALL_IMAGES, AI_VISION_OCR_MODEL=gemini-2.5-pro,
-    # AI_VISION_OCR_MAX_IMAGES high, and keep AI_SEMANTIC_CHUNKING=true.
+    # ingest to 0 chunks and vanish. ON by default (ALL_IMAGES) now that Vertex AI (billed) carries
+    # the quota; the max-images cap, size filter and de-dup still bound the per-document spend.
+    #   mode: OFF (no OCR) | SCANNED_ONLY (only text-poor docs) | ALL_IMAGES (default, every image)
+    # Set AI_VISION_OCR_MODE=OFF or SCANNED_ONLY to spend less; AI_VISION_OCR_MODEL=gemini-2.5-pro
+    # for markedly better reading of dense scans.
     vision-ocr:
-      mode: ${AI_VISION_OCR_MODE:OFF}
+      mode: ${AI_VISION_OCR_MODE:ALL_IMAGES}
       # Below this many characters of extracted text, SCANNED_ONLY treats the document as scanned.
       scanned-text-threshold: ${AI_VISION_OCR_SCANNED_THRESHOLD:200}
       # Max images sent to the vision model per document — the primary guard on quota/cost.

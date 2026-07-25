@@ -19,10 +19,10 @@ import java.util.List;
  * service transcribes those pixels back into text that {@link RagService} can chunk and embed.
  *
  * <p><b>Why it is gated and capped.</b> Vision OCR runs on the chat model, so every image is a
- * request against the <em>same</em> daily free-tier quota as the assistant, and an image costs more
- * tokens than a line of text. Left unbounded, one multi-page scan would exhaust the day's quota and
- * starve the chat. Hence the default is {@code OFF}, {@code SCANNED_ONLY} spends nothing on documents
- * that already have text, and {@code max-images} hard-caps the spend per document.
+ * request against the <em>same</em> quota as the assistant, and an image costs more tokens than a
+ * line of text. The application config ships {@code ALL_IMAGES} (Vertex AI carries the quota) but
+ * keeps {@code max-images} as a hard cap per document; set {@code AI_VISION_OCR_MODE} to
+ * {@code SCANNED_ONLY} (spend nothing on documents that already have text) or {@code OFF} to save.
  *
  * <p>Best-effort, exactly like the rest of RAG: any failure returns an empty string and ingestion
  * continues text-only rather than failing.
@@ -34,7 +34,7 @@ public class VisionOcrService {
     /**
      * When vision OCR runs.
      * <ul>
-     *   <li>{@code OFF} — never (default). No image is sent to the model.</li>
+     *   <li>{@code OFF} — never. No image is sent to the model.</li>
      *   <li>{@code SCANNED_ONLY} — only when Tika extracted little/no text, i.e. a scanned or
      *       image-only document. Cheap: digital documents that already have text are left untouched.</li>
      *   <li>{@code ALL_IMAGES} — every embedded image, even in a text-rich document (reads charts,
