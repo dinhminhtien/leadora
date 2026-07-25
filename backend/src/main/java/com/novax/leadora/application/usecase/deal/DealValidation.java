@@ -1,6 +1,7 @@
 package com.novax.leadora.application.usecase.deal;
 
 import com.novax.leadora.api.dto.request.DealRequest;
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.BusinessRuleException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
@@ -11,6 +12,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -23,10 +25,16 @@ public class DealValidation {
     private final BookingRepository bookingRepository;
     private final CurrentUserProvider currentUserProvider;
     private final SystemAuditLogService auditLogService;
+    private final DealWorkflowResolver dealWorkflowResolver;
 
     public void validateStageTransition(DealPipelineStage currentStage, DealPipelineStage targetStage, DealEntity deal, DealRequest request) {
         if (currentStage == targetStage) {
             return;
+        }
+
+        // BR-DEAL-WON-01/02: Won Immutability check
+        if (currentStage == DealPipelineStage.CLOSED_WON) {
+            throw new BusinessException("DEAL_STATE_CONFLICT", "A WON deal is immutable and cannot be transitioned to another stage.", HttpStatus.CONFLICT);
         }
 
         int currentIdx = getStageOrder(currentStage);
@@ -47,7 +55,7 @@ public class DealValidation {
         if (targetStage == DealPipelineStage.CLOSED_WON) {
             validateClosedWonRules(deal, request.getNotes());
         } else if (targetStage == DealPipelineStage.CLOSED_LOST) {
-            validateClosedLostRules(request.getNotes());
+            validateClosedLostRules(deal, request.getNotes());
         }
     }
 
@@ -56,10 +64,15 @@ public class DealValidation {
             return;
         }
 
+        // BR-DEAL-WON-01/02: Won Immutability check
+        if (currentStatus == DealStatus.WON) {
+            throw new BusinessException("DEAL_STATE_CONFLICT", "A WON deal is immutable and cannot be transitioned to another status.", HttpStatus.CONFLICT);
+        }
+
         if (targetStatus == DealStatus.WON) {
             validateClosedWonRules(deal, notes);
         } else if (targetStatus == DealStatus.LOST) {
-            validateClosedLostRules(notes);
+            validateClosedLostRules(deal, notes);
         }
     }
 
@@ -85,10 +98,15 @@ public class DealValidation {
         }
     }
 
-    private void validateClosedLostRules(String notes) {
+    private void validateClosedLostRules(DealEntity deal, String notes) {
         String lostReason = notes != null ? notes.trim() : "";
         if (lostReason.isEmpty()) {
             throw new BusinessRuleException("A closed-lost reason must be provided in the Notes/Reason field to mark a deal as Closed Lost.");
+        }
+
+        // BR-DEAL-LOST-01: Chặn Deal LOST khi đã có thanh toán cho Active Booking
+        if (deal != null && deal.getDealId() != null && dealWorkflowResolver.hasPaidPaymentForActiveBooking(deal.getDealId())) {
+            throw new BusinessException("WORKFLOW_CONSTRAINT_VIOLATION", "Cannot mark a Deal as Closed Lost when its active Booking has paid payments.", HttpStatus.UNPROCESSABLE_ENTITY);
         }
     }
 
