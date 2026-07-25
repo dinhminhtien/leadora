@@ -33,6 +33,7 @@ public class CreateQuotationUseCase {
     private final DealRepository dealRepository;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
     private final CurrentUserProvider currentUserProvider;
+    private final QuotationAvailabilityChecker availabilityChecker;
 
     @Transactional
     public QuotationResponse execute(CreateQuotationRequest request) {
@@ -40,6 +41,9 @@ public class CreateQuotationUseCase {
         if (!request.getCheckOutDate().isAfter(request.getCheckInDate())) {
             throw new IllegalArgumentException("Check-out date must be after check-in date");
         }
+
+        // E2: room type must exist and be available for the requested dates (BR-24)
+        availabilityChecker.assertRoomAvailable(request.getCheckInDate(), request.getCheckOutDate(), request.getRoomType());
 
         // 2. Fetch deal and get linked customer
         DealEntity deal = dealRepository.findById(request.getDealId())

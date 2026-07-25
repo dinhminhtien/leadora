@@ -118,9 +118,9 @@ export function DashboardScreen() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-xs">
-        <Loader2 className="size-8 text-blue-600 animate-spin mb-3" />
-        <p className="text-xs text-slate-500 font-bold">Loading dashboard analytics...</p>
+      <div className="card-elev flex flex-col items-center justify-center py-24">
+        <Loader2 className="size-8 text-primary animate-spin mb-3" />
+        <p className="text-xs text-muted-foreground font-bold">Loading dashboard analytics...</p>
       </div>
     );
   }
@@ -131,24 +131,24 @@ export function DashboardScreen() {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Banner: Modern Theme-Aware Panel */}
-      <div className="relative overflow-hidden bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 text-zinc-800 dark:text-zinc-100 shadow-xs">
-        <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-primary/5 dark:bg-primary/10 blur-[80px] pointer-events-none" />
-        <div className="absolute -bottom-20 -left-20 w-60 h-60 rounded-full bg-emerald-500/5 blur-[80px] pointer-events-none" />
+      {/* Welcome Banner: v2 elevated surface with brand glow */}
+      <div className="card-elev relative overflow-hidden p-6">
+        <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-primary/8 blur-[80px] pointer-events-none" />
+        <div className="absolute -bottom-20 -left-20 w-60 h-60 rounded-full bg-teal/8 blur-[80px] pointer-events-none" />
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 dark:bg-primary/20 border border-primary/20 dark:border-primary/30 text-[10px] font-bold text-primary dark:text-primary-foreground tracking-wider uppercase mb-3">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary tracking-wider uppercase mb-3">
               <Sparkles className="size-3" />
               <span>Direct Sales Active</span>
             </div>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">Welcome back, {userName}!</h1>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-foreground">Welcome back, {userName}!</h1>
+            <p className="text-xs text-muted-foreground mt-1">
               Here is the status of your hotel sales pipeline and follow-up activities for today.
             </p>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className="text-xs text-zinc-500 dark:text-zinc-400 font-semibold bg-zinc-200/50 dark:bg-zinc-800/60 border border-zinc-300/40 dark:border-zinc-700/35 px-2.5 py-1 rounded-lg">
+            <span className="text-xs text-muted-foreground font-semibold bg-muted border border-border px-2.5 py-1 rounded-lg">
               {currentDateString}
             </span>
           </div>

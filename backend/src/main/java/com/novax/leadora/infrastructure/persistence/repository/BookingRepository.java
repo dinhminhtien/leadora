@@ -21,6 +21,8 @@ import java.util.UUID;
 public interface BookingRepository extends JpaRepository<BookingEntity, UUID>, JpaSpecificationExecutor<BookingEntity> {
     Optional<BookingEntity> findByBookingCode(String bookingCode);
 
+    boolean existsByQuotation_Deal_DealIdAndStatus(UUID dealId, BookingStatus status);
+
     @EntityGraph(attributePaths = {"customer", "assignedUser", "quotation"})
     List<BookingEntity> findByCustomer_CustomerId(UUID customerId);
 
@@ -41,4 +43,14 @@ public interface BookingRepository extends JpaRepository<BookingEntity, UUID>, J
     List<BookingEntity> findByCreatedAtRange(
             @Param("startDate") OffsetDateTime startDate,
             @Param("endDate") OffsetDateTime endDate);
+
+    // ── Chat-assistant snapshot ───────────────────────────────────────────────
+
+    @EntityGraph(attributePaths = {"customer", "assignedUser"})
+    @Query("""
+            SELECT b FROM BookingEntity b
+            WHERE (:userId IS NULL OR b.assignedUser.userId = :userId)
+            ORDER BY b.createdAt DESC
+            """)
+    List<BookingEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
 }

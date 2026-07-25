@@ -11,5 +11,6 @@ public enum QuotationStatus {
     CONVERTED,
     PENDING_REVISION,
     ACCEPTED,
-    INTERESTED
+    INTERESTED,
+    SUPERSEDED
 }

@@ -26,6 +26,7 @@ public class BackfillSlaTrackingUseCase {
     private final QuotationRepository quotationRepository;
     private final SlaTrackingRepository slaTrackingRepository;
     private final SlaRuleRepository slaRuleRepository;
+    private final BusinessCalendarService businessCalendarService;
 
     private static final Set<QuotationStatus> COMPLETED_STATUSES = Set.of(
             QuotationStatus.SENT, QuotationStatus.ACCEPTED, QuotationStatus.INTERESTED,
@@ -68,7 +69,7 @@ public class BackfillSlaTrackingUseCase {
 
         for (QuotationEntity q : untracked) {
             OffsetDateTime startTime = q.getCreatedAt() != null ? q.getCreatedAt() : now;
-            OffsetDateTime deadlineAt = startTime.plusHours(rule.getDeadlineHours());
+            OffsetDateTime deadlineAt = businessCalendarService.addBusinessHours(startTime, rule.getDeadlineHours());
             boolean isCompleted = COMPLETED_STATUSES.contains(q.getStatus());
 
             OffsetDateTime resolvedAt = null;
@@ -87,8 +88,8 @@ public class BackfillSlaTrackingUseCase {
                     .activityType("QUOTATION_SENT")
                     .startedAt(startTime)
                     .deadlineAt(deadlineAt)
-                    .warningAt(deadlineAt.minusHours(rule.getWarningThreshold()))
-                    .escalationAt(deadlineAt.plusHours(rule.getEscalationThreshold()))
+                    .warningAt(businessCalendarService.subtractBusinessHours(deadlineAt, rule.getWarningThreshold()))
+                    .escalationAt(businessCalendarService.addBusinessHours(deadlineAt, rule.getEscalationThreshold()))
                     .status(status)
                     .resolvedAt(resolvedAt)
                     .build();

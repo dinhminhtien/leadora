@@ -381,24 +381,24 @@ function LeadTable({
   editMode: boolean;
 }) {
   if (isLoading) return (
-    <div className="flex items-center justify-center py-20 gap-2 text-slate-400">
+    <div className="flex items-center justify-center py-20 gap-2 text-muted-foreground">
       <Loader2 className="size-5 animate-spin" /> Loading…
     </div>
   );
 
   if (isError) return (
-    <div className="flex flex-col items-center justify-center py-20 gap-2 text-rose-500">
+    <div className="flex flex-col items-center justify-center py-20 gap-2 text-destructive">
       <ServerCrash className="size-8 mb-1" />
       <p className="text-sm font-semibold">Server error — please contact your Admin.</p>
     </div>
   );
 
   if (leads.length === 0) return (
-    <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+    <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
       <Handshake className="size-10 mb-3 opacity-30" />
       <p className="text-sm font-medium">No results found</p>
       {hasFilters && (
-        <button onClick={onClearFilters} className="mt-2 text-xs text-blue-500 hover:underline">
+        <button onClick={onClearFilters} className="mt-2 text-xs text-primary hover:underline">
           Clear filters
         </button>
       )}

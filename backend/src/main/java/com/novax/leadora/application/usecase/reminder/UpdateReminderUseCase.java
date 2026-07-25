@@ -2,6 +2,7 @@ package com.novax.leadora.application.usecase.reminder;
 
 import com.novax.leadora.api.dto.request.UpdateReminderRequest;
 import com.novax.leadora.api.dto.response.ReminderResponse;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
@@ -28,6 +29,7 @@ public class UpdateReminderUseCase {
     private final ReminderRepository reminderRepository;
     private final UserRepository userRepository;
     private final CurrentUserProvider currentUserProvider;
+    private final SystemAuditLogService systemAuditLogService;
 
     @Transactional
     public ReminderResponse execute(UUID reminderId, UpdateReminderRequest request) {
@@ -60,6 +62,8 @@ public class UpdateReminderUseCase {
             throw new BusinessException("INVALID_DEADLINE", "Due date must be in the future", HttpStatus.BAD_REQUEST);
         }
 
+        String oldValue = "status=" + reminder.getStatus() + ", remindAt=" + reminder.getRemindAt();
+
         if (request.getTitle() != null) {
             reminder.setTitle(request.getTitle());
         }
@@ -86,6 +90,10 @@ public class UpdateReminderUseCase {
         }
 
         ReminderEntity saved = reminderRepository.save(reminder);
+
+        String newValue = "status=" + saved.getStatus() + ", remindAt=" + saved.getRemindAt();
+        systemAuditLogService.log("REMINDER", "REMINDER", reminderId, "UPDATED", updater, oldValue, newValue, null);
+
         log.info("Reminder updated: id={} by userId={}", reminderId, callerId);
         return ReminderResponse.from(saved);
     }

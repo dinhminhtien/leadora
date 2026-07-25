@@ -25,8 +25,11 @@ public class BookingDetailEntity extends BaseEntity {
     private BookingEntity booking;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "product_id", nullable = false)
+    @JoinColumn(name = "product_id")
     private ProductServiceEntity productService;
+
+    @Column(name = "description", columnDefinition = "TEXT")
+    private String description;
 
     @Column(name = "room_number", length = 20)
     private String roomNumber;

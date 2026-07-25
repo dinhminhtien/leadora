@@ -84,6 +84,15 @@ public class UpdateTaskUseCase {
                             "Completed tasks cannot be cancelled directly. Please reopen the task first.",
                             HttpStatus.CONFLICT);
                 }
+                if (newStatus == TaskStatus.COMPLETED) {
+                    String note = StringUtils.hasText(request.getResultNote()) ? request.getResultNote() : task.getResultNote();
+                    if (!StringUtils.hasText(note)) {
+                        throw new BusinessException(
+                                "TASK_COMPLETION_NOTE_REQUIRED",
+                                "Task completion note is required.",
+                                HttpStatus.BAD_REQUEST);
+                    }
+                }
                 task.setStatus(newStatus);
             } catch (IllegalArgumentException ignored) {}
         }

@@ -13,6 +13,7 @@ public class TrackCustomerResponseRequest {
 
     private String lostReason;
     private String notes;
-    private String recordedByName;
-    private String recordedByRole;
+
+    // recordedByName/recordedByRole intentionally removed — actor is resolved server-side
+    // from the authenticated session (BR-37), never trusted from the client.
 }

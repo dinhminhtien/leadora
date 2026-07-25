@@ -88,6 +88,7 @@ public class GetQuotationOutcomeReportUseCase {
             case PENDING_REVISION -> "Pending revision";
             case ACCEPTED -> "Accepted";
             case INTERESTED -> "Interested";
+            case SUPERSEDED -> "Superseded";
         };
     }
 }

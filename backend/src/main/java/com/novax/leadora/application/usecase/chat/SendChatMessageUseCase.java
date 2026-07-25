@@ -3,168 +3,101 @@ package com.novax.leadora.application.usecase.chat;
 import com.novax.leadora.api.dto.response.ChatMessageResponse;
 import com.novax.leadora.api.dto.response.SendMessageResponse;
 import com.novax.leadora.application.usecase.chat.intent.ChatIntent;
+import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.application.usecase.chat.intent.IntentClassifier;
 import com.novax.leadora.application.usecase.chat.intent.IntentResult;
-import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.integration.ai.ChatLlmService;
-import com.novax.leadora.infrastructure.integration.ai.RagService;
-import com.novax.leadora.infrastructure.persistence.entity.AiChatMessageEntity;
-import com.novax.leadora.infrastructure.persistence.entity.AiChatSessionEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
-import com.novax.leadora.infrastructure.persistence.entity.enums.ChatRole;
-import com.novax.leadora.infrastructure.persistence.entity.enums.ChatSessionStatus;
-import com.novax.leadora.infrastructure.persistence.repository.AiChatMessageRepository;
-import com.novax.leadora.infrastructure.persistence.repository.AiChatSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * UC — Query Assigned Sales CRM Data / Query Team Sales CRM Summary via the chat assistant.
  *
- * <p>Implements the hybrid pipeline:
+ * <p>Orchestrates the hybrid pipeline:
  * <pre>
- *   classify intent → (block mutation/off-topic) → prefetch scoped CRM/RAG context → LLM → persist
+ *   record turn → classify → (block mutation/off-topic) → gather scoped context → generate → record
  * </pre>
  *
- * <p>Note: the LLM call happens inside the transaction for simplicity. A local model can be slow,
- * so under high concurrency this would hold a DB connection — acceptable for the current MVP /
- * single-tenant dev setup; revisit (split read/generate/write transactions) when scaling.
+ * <p><b>Deliberately not transactional.</b> Only the first and last steps touch the database, and
+ * each opens its own short transaction in {@link ChatTurnWriter}. Wrapping the whole method, as it
+ * once was, held a connection for the entire model call — several seconds — so a handful of
+ * concurrent conversations could exhaust the pool and stall requests that had nothing to do with
+ * chat. Everything between the two writes runs with no transaction open, and works on detached
+ * records ({@link ChatActor}, {@link ChatTurn}) so there is nothing lazy left to trip over.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SendChatMessageUseCase {
 
-    private static final int TITLE_MAX = 60;
-
-    private final AiChatSessionRepository sessionRepository;
-    private final AiChatMessageRepository messageRepository;
+    private final ChatTurnWriter turnWriter;
     private final IntentClassifier intentClassifier;
-    private final CrmContextService crmContextService;
-    private final RagService ragService;
+    private final ContextAssembler contextAssembler;
     private final ChatLlmService chatLlmService;
 
-    @Transactional
     public SendMessageResponse execute(UUID sessionId, UserEntity user, String content) {
-        AiChatSessionEntity session = loadOwnedActiveSession(sessionId, user);
+        ChatActor actor = ChatActor.from(user);
 
-        // History BEFORE this turn (for the LLM's conversational context).
-        List<AiChatMessageEntity> history =
-                messageRepository.findSessionMessagesOrdered(sessionId, ChatRole.USER);
+        // [0] One short transaction: verify ownership, record the question, read back the context.
+        ChatTurnContext ctx = turnWriter.begin(sessionId, actor, content);
+        List<String> priorUserMessages = ctx.priorUserMessages();
 
-        // Auto-title the session from the first user message.
-        boolean firstTurn = history.isEmpty();
-        if (firstTurn && (!StringUtils.hasText(session.getTitle())
-                || "New conversation".equals(session.getTitle()))) {
-            session.setTitle(truncate(content, TITLE_MAX));
-        }
+        // Reply language and subject areas are both resolved across the session rather than from
+        // this turn alone: a follow-up ("ok", "yes, in detail") carries neither signal, and judging
+        // it in isolation would flip the language and drop the listing the user is asking about.
+        boolean vi = IntentClassifier.resolveVietnamese(content, priorUserMessages);
+        Set<CrmArea> areas = IntentClassifier.resolveAreas(content, priorUserMessages);
 
-        // Persist the user turn.
-        AiChatMessageEntity userMessage = saveMessage(session, ChatRole.USER, content, null);
-
-        // [1] Guardrail (context-aware: inherits the prior turn's data scope for follow-ups).
-        String lastIntentName = history.stream()
-                .filter(m -> m.getRole() == ChatRole.ASSISTANT && m.getIntentMatched() != null)
-                .reduce((first, second) -> second) // last assistant turn
-                .map(msg -> msg.getIntentMatched())
-                .orElse(null);
-        IntentResult intent = intentClassifier.classify(content, lastIntentName);
+        // [1] Guardrail. A blocked turn never reaches the model, so it costs no tokens.
+        IntentResult intent = intentClassifier.classify(content, ctx.lastIntent(), vi);
         if (intent.blocked()) {
-            AiChatMessageEntity blockedReply =
-                    saveMessage(session, ChatRole.ASSISTANT, intent.blockMessage(), intent.intent().name());
-            touch(session);
-            return buildResponse(userMessage, blockedReply, intent.intent(), true);
+            ChatMessageResponse blocked =
+                    turnWriter.complete(sessionId, intent.blockMessage(), intent.intent().name());
+            return response(ctx.userMessage(), blocked, intent.intent(), true);
         }
 
-        // [2] Prefetch scoped context.
-        String referenceBlock = buildReferenceBlock(intent.intent(), user, content);
+        // [2] Gather context — outside any transaction, sources in parallel where they are
+        // independent.
+        String referenceBlock = contextAssembler.assemble(intent.intent(), actor, areas, content);
 
-        // [3] Generate (best-effort: a failed/unavailable LLM degrades to a friendly message,
-        // in the same language as the question).
-        boolean vi = IntentClassifier.isVietnamese(content);
-        String reply;
+        // [3] Generate. Best-effort: an unavailable model degrades to a clear message in the
+        // user's language rather than a stack trace.
+        String reply = generate(sessionId, referenceBlock, ctx, content, vi);
+
+        // [4] Second short transaction.
+        ChatMessageResponse assistant =
+                turnWriter.complete(sessionId, reply, intent.intent().name());
+        return response(ctx.userMessage(), assistant, intent.intent(), false);
+    }
+
+    private String generate(UUID sessionId, String referenceBlock, ChatTurnContext ctx,
+                            String content, boolean vietnamese) {
         try {
-            reply = chatLlmService.generate(referenceBlock, history, content);
-            if (!StringUtils.hasText(reply)) {
-                reply = GuardrailMessages.noData(vi);
-            }
+            String reply = chatLlmService.generate(referenceBlock, ctx.history(), content, vietnamese);
+            return StringUtils.hasText(reply) ? reply : GuardrailMessages.noData(vietnamese);
         } catch (Exception ex) {
             log.error("LLM generation failed for session {}: {}", sessionId, ex.getMessage(), ex);
-            // Distinguish "out of quota/tokens" from a genuine error so the reply is actionable
-            // (and the dev can tell the two apart without digging through logs).
-            reply = AiErrorClassifier.userMessage(ex, vi);
+            // Distinguish "out of quota" from a genuine fault so the reply is actionable, and so
+            // the two can be told apart without reading the logs.
+            return AiErrorClassifier.userMessage(ex, vietnamese);
         }
-
-        AiChatMessageEntity assistantMessage =
-                saveMessage(session, ChatRole.ASSISTANT, reply, intent.intent().name());
-        touch(session);
-        return buildResponse(userMessage, assistantMessage, intent.intent(), false);
     }
 
-    private String buildReferenceBlock(ChatIntent intent, UserEntity user, String content) {
-        return switch (intent) {
-            case ASSIGNED_DATA -> crmContextService.assignedContext(user);
-            // Team-wide summary is a Manager/Admin privilege; a Sales Staff is downgraded to
-            // their own scope so they can never see the whole team's data via this intent.
-            case TEAM_SUMMARY -> crmContextService.canSeeAllData(user)
-                    ? crmContextService.teamSummary()
-                    : crmContextService.assignedContext(user);
-            case DOC_QUERY -> ragService.retrieveContext(content);
-            case GENERAL_BUSINESS -> {
-                // Light blend: company docs + the user's own data.
-                String rag = ragService.retrieveContext(content);
-                String assigned = crmContextService.assignedContext(user);
-                yield (StringUtils.hasText(rag) ? rag + "\n" : "") + assigned;
-            }
-            default -> "";
-        };
-    }
-
-    private AiChatSessionEntity loadOwnedActiveSession(UUID sessionId, UserEntity user) {
-        AiChatSessionEntity session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Chat session", sessionId));
-        if (session.getStatus() == ChatSessionStatus.DELETED
-                || !session.getUser().getUserId().equals(user.getUserId())) {
-            throw new ResourceNotFoundException("Chat session", sessionId);
-        }
-        return session;
-    }
-
-    private AiChatMessageEntity saveMessage(AiChatSessionEntity session, ChatRole role,
-                                            String content, String intentMatched) {
-        AiChatMessageEntity message = AiChatMessageEntity.builder()
-                .session(session)
-                .role(role)
-                .content(content)
-                .intentMatched(intentMatched)
-                .build();
-        return messageRepository.save(message);
-    }
-
-    /** Bumps the session's updatedAt so it floats to the top of the session list. */
-    private void touch(AiChatSessionEntity session) {
-        sessionRepository.save(session);
-    }
-
-    private SendMessageResponse buildResponse(AiChatMessageEntity userMessage,
-                                              AiChatMessageEntity assistantMessage,
-                                              ChatIntent intent, boolean blocked) {
+    private SendMessageResponse response(ChatMessageResponse userMessage,
+                                         ChatMessageResponse assistantMessage,
+                                         ChatIntent intent, boolean blocked) {
         return SendMessageResponse.builder()
-                .userMessage(ChatMessageResponse.from(userMessage))
-                .assistantMessage(ChatMessageResponse.from(assistantMessage))
+                .userMessage(userMessage)
+                .assistantMessage(assistantMessage)
                 .intent(intent.name())
                 .blocked(blocked)
                 .build();
-    }
-
-    private String truncate(String s, int max) {
-        String t = s.trim();
-        return t.length() <= max ? t : t.substring(0, max) + "…";
     }
 }

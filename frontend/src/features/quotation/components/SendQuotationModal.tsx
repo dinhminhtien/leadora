@@ -21,7 +21,6 @@ import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import type { Quotation } from "@/services/quotation_service";
 import { useSendQuotation } from "@/features/quotation/hooks/use_quotations";
-import { useAuthStore } from "@/stores/auth_store";
 import { Portal } from "@/components/ui/Portal";
 
 type SendMethod = "email" | "whatsapp" | "pdf";
@@ -164,7 +163,6 @@ export interface SendQuotationModalProps {
 export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModalProps) {
   const version = quote.version ?? 1;
   const sendQuotation = useSendQuotation();
-  const currentUser = useAuthStore((s) => s.user);
 
   const [method, setMethod] = useState<SendMethod>("email");
   const [recipientName, setRecipientName] = useState(quote.contactName);
@@ -241,8 +239,6 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
           recipientName,
           recipientEmail: recipientEmail || undefined,
           recipientPhone: recipientPhone || undefined,
-          sentByName: currentUser?.name ?? currentUser?.email ?? "Staff",
-          sentByRole: currentUser?.roles?.[0] ?? "SALES",
           personalMessage: personalMessage || undefined,
         },
       });

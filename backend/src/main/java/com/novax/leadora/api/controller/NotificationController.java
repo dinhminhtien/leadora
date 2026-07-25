@@ -12,9 +12,11 @@ import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -45,6 +47,11 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<Page<NotificationResponse>>> getNotifications(
             @RequestParam(required = false, defaultValue = "false") Boolean unreadOnly,
             @RequestParam(required = false, defaultValue = "false") Boolean allUsers,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime createdFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime createdTo,
+            @RequestParam(required = false) String sortBy,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         UserEntity currentUser = currentUserProvider.resolve(null);
@@ -52,8 +59,8 @@ public class NotificationController {
                 ? currentUser.getRole().getRoleName().trim().toUpperCase() : "";
         boolean aggregate = Boolean.TRUE.equals(allUsers) && FULL_ACCESS_ROLES.contains(role);
         UUID userId = aggregate ? null : currentUser.getUserId();
-        Page<NotificationResponse> result =
-                getNotificationsUseCase.execute(userId, unreadOnly, PageRequest.of(page, size));
+        Page<NotificationResponse> result = getNotificationsUseCase.execute(
+                userId, unreadOnly, type, priority, createdFrom, createdTo, sortBy, PageRequest.of(page, size));
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 

@@ -16,6 +16,7 @@ public class NotificationResponse {
     private String title;
     private String message;
     private String type;
+    private String priority;
     private String relatedEntity;
     private UUID relatedId;
     @JsonProperty("isRead")
@@ -33,6 +34,7 @@ public class NotificationResponse {
                 .title(entity.getTitle())
                 .message(entity.getMessage())
                 .type(entity.getType())
+                .priority(entity.getPriority() != null ? entity.getPriority().name() : null)
                 .relatedEntity(entity.getRelatedEntity())
                 .relatedId(entity.getRelatedId())
                 .isRead(Boolean.TRUE.equals(entity.getIsRead()))

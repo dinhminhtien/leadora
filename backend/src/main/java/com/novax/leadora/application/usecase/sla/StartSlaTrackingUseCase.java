@@ -20,6 +20,7 @@ public class StartSlaTrackingUseCase {
 
     private final SlaRuleRepository slaRuleRepository;
     private final SlaTrackingRepository slaTrackingRepository;
+    private final BusinessCalendarService businessCalendarService;
 
     /**
      * Starts SLA tracking for a newly created entity.
@@ -47,7 +48,8 @@ public class StartSlaTrackingUseCase {
 
         var rule = ruleOpt.get();
         OffsetDateTime now = OffsetDateTime.now();
-        OffsetDateTime deadlineAt = now.plusHours(rule.getDeadlineHours());
+        // BR-32/BR-42: deadline is computed in business hours, not continuous wall-clock time.
+        OffsetDateTime deadlineAt = businessCalendarService.addBusinessHours(now, rule.getDeadlineHours());
 
         SlaTrackingEntity tracking = SlaTrackingEntity.builder()
                 .ruleId(rule.getRuleId())
@@ -57,9 +59,9 @@ public class StartSlaTrackingUseCase {
                 .startedAt(now)
                 .deadlineAt(deadlineAt)
                 // warningAt fires BEFORE deadline
-                .warningAt(deadlineAt.minusHours(rule.getWarningThreshold()))
+                .warningAt(businessCalendarService.subtractBusinessHours(deadlineAt, rule.getWarningThreshold()))
                 // escalationAt fires AFTER deadline
-                .escalationAt(deadlineAt.plusHours(rule.getEscalationThreshold()))
+                .escalationAt(businessCalendarService.addBusinessHours(deadlineAt, rule.getEscalationThreshold()))
                 .status(SlaStatus.ACTIVE)
                 .build();
 

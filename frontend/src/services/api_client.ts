@@ -35,7 +35,7 @@ export type ApiErrorResponse = {
   timestamp?: string;
 };
 
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8085/api/v1";
 
 export const apiClient = axios.create({
@@ -46,6 +46,36 @@ export const apiClient = axios.create({
     "Content-Type": "application/json",
   },
 });
+
+/**
+ * The access token, from wherever it currently lives.
+ *
+ * Exported because not every call can go through axios: the streaming chat endpoint reads its
+ * response body incrementally, which needs `fetch`. Sharing this keeps the two paths from
+ * drifting apart — a second copy of the lookup order is a bug waiting for the day one of them
+ * changes.
+ */
+export async function resolveAccessToken(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+
+  const stored = localStorage.getItem("accessToken");
+  if (stored) return stored;
+
+  const cookie = document.cookie.match(/(^|;)\s*accessToken\s*=\s*([^;]+)/);
+  if (cookie) return cookie[2];
+
+  const supabase = createSupabaseBrowserClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
+}
+
+/** Authorization header for `fetch` calls, empty when there is no token to send. */
+export async function authHeaders(): Promise<Record<string, string>> {
+  const token = await resolveAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 // Inject access token as Bearer token on every request
 apiClient.interceptors.request.use(async (config) => {
@@ -58,26 +88,9 @@ apiClient.interceptors.request.use(async (config) => {
     );
 
     if (!isPublicAuth) {
-      let localToken = localStorage.getItem("accessToken");
-      if (!localToken) {
-        // Fallback to cookie if localStorage is empty
-        const match = document.cookie.match(/(^|;)\s*accessToken\s*=\s*([^;]+)/);
-        if (match) {
-          localToken = match[2];
-        }
-      }
-
-      if (localToken) {
-        config.headers.Authorization = `Bearer ${localToken}`;
-      } else {
-        const supabase = createSupabaseBrowserClient();
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (session?.access_token) {
-          config.headers.Authorization = `Bearer ${session.access_token}`;
-        }
+      const token = await resolveAccessToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
       }
     }
   }
