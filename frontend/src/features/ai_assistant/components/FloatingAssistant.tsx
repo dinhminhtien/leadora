@@ -301,6 +301,9 @@ function AssistantPanel({
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+  // Synchronous re-entry guard: `sendMessage.isPending` only flips on the next render, so two
+  // Enter presses in the same frame would both pass it and send the question twice.
+  const sendingRef = useRef(false);
 
   const sessions = useMemo(
     () => sessionsQuery.data?.data ?? [],
@@ -339,18 +342,30 @@ function AssistantPanel({
 
   const handleSend = async (textToSend?: string) => {
     const text = (textToSend ?? inputVal).trim();
-    if (!text || sendMessage.isPending) return;
+    if (!text || sendMessage.isPending || sendingRef.current) return;
+    sendingRef.current = true;
     const sessionId = await ensureSession();
-    if (!sessionId) return;
+    if (!sessionId) {
+      sendingRef.current = false;
+      return;
+    }
     setInputVal("");
     setPendingUserText(text);
     setView("chat");
     try {
       // The reply has already been revealed token by token, so the type-on-arrival
       // animation would replay text the user has read — skip it for streamed turns.
-      await sendMessage.mutateAsync({ sessionId, content: text });
+      await sendMessage.mutateAsync({
+        sessionId,
+        content: text,
+        // The server-recorded question enters the cache on the stream's `start` event and
+        // renders from `messages` — drop the optimistic bubble right then, or the question
+        // shows twice for the whole time the answer is streaming.
+        onUserRecorded: () => setPendingUserText(null),
+      });
     } finally {
       setPendingUserText(null);
+      sendingRef.current = false;
     }
   };
 

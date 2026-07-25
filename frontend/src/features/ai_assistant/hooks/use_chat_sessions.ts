@@ -100,9 +100,13 @@ export function useStreamChatMessage() {
     mutationFn: async ({
       sessionId,
       content,
+      onUserRecorded,
     }: {
       sessionId: string;
       content: string;
+      /** Fires once the server-recorded question is in the cache — the caller's optimistic
+       *  bubble must be dropped at that moment or the question renders twice while streaming. */
+      onUserRecorded?: () => void;
     }) => {
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -123,6 +127,7 @@ export function useStreamChatMessage() {
           // Show the question the moment the server has recorded it, without waiting for the
           // answer — otherwise the input clears and nothing appears for a second or more.
           appendToCache(queryClient, sessionId, [userMessage]);
+          onUserRecorded?.();
         },
         controller.signal,
       );
