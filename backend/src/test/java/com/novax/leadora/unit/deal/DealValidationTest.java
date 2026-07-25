@@ -13,15 +13,31 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
+import com.novax.leadora.common.security.CurrentUserProvider;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
+import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
+import java.util.UUID;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class DealValidationTest {
 
     private DealValidation dealValidation;
+    private BookingRepository bookingRepository;
+    private CurrentUserProvider currentUserProvider;
+    private SystemAuditLogService auditLogService;
 
     @BeforeEach
     void setUp() {
-        dealValidation = new DealValidation();
+        bookingRepository = mock(BookingRepository.class);
+        currentUserProvider = mock(CurrentUserProvider.class);
+        auditLogService = mock(SystemAuditLogService.class);
+        dealValidation = new DealValidation(bookingRepository, currentUserProvider, auditLogService);
     }
 
     @Test
@@ -137,7 +153,9 @@ class DealValidationTest {
     @Test
     @DisplayName("UT-DEAL-VAL-09: Full pipeline PROSPECTING → CLOSED_WON with all fields → passes")
     void testFullPipelineTransitionPasses() {
+        UUID dealId = UUID.randomUUID();
         DealEntity deal = DealEntity.builder()
+                .dealId(dealId)
                 .expectedRevenue(BigDecimal.valueOf(100000000))
                 .notes("Corporate wedding event 200 guests")
                 .expectedCloseDate(LocalDate.of(2026, 12, 31))
@@ -148,6 +166,9 @@ class DealValidationTest {
                 .notes("Corporate wedding event 200 guests")
                 .expectedClose(LocalDate.of(2026, 12, 31))
                 .build();
+
+        when(bookingRepository.existsByQuotation_Deal_DealIdAndStatus(eq(dealId), eq(BookingStatus.CONFIRMED)))
+                .thenReturn(true);
 
         assertDoesNotThrow(() -> dealValidation.validateStageTransition(
                 DealPipelineStage.PROSPECTING, DealPipelineStage.CLOSED_WON, deal, request));

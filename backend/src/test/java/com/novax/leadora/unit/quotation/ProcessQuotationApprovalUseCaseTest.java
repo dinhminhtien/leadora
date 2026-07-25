@@ -9,6 +9,10 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationApprovalHistoryRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.common.security.CurrentUserProvider;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
+import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,14 +39,28 @@ class ProcessQuotationApprovalUseCaseTest {
     @Mock
     private NotificationRepository notificationRepository;
 
+    @Mock
+    private CurrentUserProvider currentUserProvider;
+
+    @Mock
+    private SystemAuditLogService systemAuditLogService;
+
     @InjectMocks
     private ProcessQuotationApprovalUseCase approvalUseCase;
+
+    @BeforeEach
+    void setUp() {
+        UserEntity manager = UserEntity.builder()
+                .userId(UUID.randomUUID())
+                .fullName("Manager Tran")
+                .role(RoleEntity.builder().roleName("MANAGER").build())
+                .build();
+        lenient().when(currentUserProvider.resolve(null)).thenReturn(manager);
+    }
 
     private ProcessApprovalRequest buildApprovalRequest(String action) {
         ProcessApprovalRequest req = new ProcessApprovalRequest();
         req.setAction(action);
-        req.setManagerName("Manager Tran");
-        req.setManagerRole("MANAGER");
         req.setNotes("Approved for VIP client");
         return req;
     }
