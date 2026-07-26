@@ -31,7 +31,7 @@ public class BookingStatusTransitionService {
 
     // Allowed transitions for ProcessBookingUseCase (CRM/Sales actor — manual actions only)
     private static final Map<BookingStatus, Set<BookingStatus>> MANUAL_TRANSITIONS = Map.of(
-        PENDING,    Set.of(REJECTED, CANCELLED),
+        PENDING,    Set.of(CONFIRMED, REJECTED, CANCELLED),
         CONFIRMED,  Set.of(NO_SHOW, CANCELLED)
     );
 

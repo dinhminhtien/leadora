@@ -70,6 +70,9 @@ public class UpdatePaymentStatusUseCase {
         if (bStatus.equals("CANCELLED") || bStatus.equals("CHECKED_OUT")) {
             throw new IllegalStateException("Booking is cancelled or checked out, cannot update payment.");
         }
+        if (bStatus.equals("REJECTED")) {
+            throw new IllegalStateException("Booking is rejected, cannot update payment.");
+        }
 
         PaymentStatus oldStatus = payment.getStatus();
         PaymentStatus newStatus = request.getStatus();
