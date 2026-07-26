@@ -1,6 +1,7 @@
 package com.novax.leadora.integration.sla;
 
 import com.novax.leadora.application.usecase.sla.ProcessSlaBreachUseCase;
+import com.novax.leadora.application.usecase.sla.SlaEntityResolver;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.SlaTrackingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
@@ -48,6 +49,9 @@ class SlaIntegrationTest {
 
     @Mock
     private OpHandoverRepository opHandoverRepository;
+
+    @Mock
+    private SlaEntityResolver slaEntityResolver;
 
     @InjectMocks
     private ProcessSlaBreachUseCase processSlaBreachUseCase;
@@ -157,10 +161,9 @@ class SlaIntegrationTest {
         when(slaTrackingRepository.findByStatusAndDeadlineAtBefore(eq(SlaStatus.ACTIVE), any()))
                 .thenReturn(List.of(tracking));
         when(userRepository.findAllWithRole()).thenReturn(List.of(manager));
-        when(leadRepository.findById(leadEntityId)).thenReturn(java.util.Optional.of(
-                com.novax.leadora.infrastructure.persistence.entity.LeadEntity.builder()
-                        .assignedUser(assignedStaff)
-                        .build()));
+        // Looking the owning entity up per tracking type now lives in SlaEntityResolver, so the
+        // assigned user is stubbed there rather than on the individual repositories.
+        when(slaEntityResolver.resolveAssignedUser(tracking)).thenReturn(assignedStaff);
 
         processSlaBreachUseCase.execute();
 

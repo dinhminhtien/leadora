@@ -6,6 +6,7 @@ import com.novax.leadora.application.usecase.deal.CreateDealUseCase;
 import com.novax.leadora.application.usecase.deal.DealMapper;
 import com.novax.leadora.application.usecase.deal.DealValidation;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
@@ -49,6 +50,9 @@ class DealIntegrationTest {
     @Mock
     private DealValidation dealValidation;
 
+    @Mock
+    private CurrentUserProvider currentUserProvider;
+
     @InjectMocks
     private CreateDealUseCase createDealUseCase;
 
@@ -76,7 +80,8 @@ class DealIntegrationTest {
         when(customerRepository.findById(customerId)).thenReturn(Optional.of(customer));
         when(dealMapper.mapStageToEnum("PROSPECTING")).thenReturn(DealPipelineStage.PROSPECTING);
         when(dealMapper.mapStatusToEnum(null)).thenReturn(DealStatus.OPEN);
-        when(userRepository.findAll()).thenReturn(List.of(defaultUser));
+        // The owner now comes from the authenticated caller, not from "the first user in the table".
+        when(currentUserProvider.resolve(any())).thenReturn(defaultUser);
         when(dealRepository.save(any(DealEntity.class))).thenAnswer(inv -> {
             DealEntity d = inv.getArgument(0);
             d.setDealId(UUID.randomUUID());
