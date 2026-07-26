@@ -38,7 +38,6 @@ public class ConvertToBookingUseCase {
     private final QuotationDetailRepository quotationDetailRepository;
     private final BookingDetailRepository bookingDetailRepository;
     private final QuotationAccessPolicy quotationAccessPolicy;
-    private final QuotationAvailabilityChecker availabilityChecker;
     private final DealRepository dealRepository;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
@@ -83,8 +82,9 @@ public class ConvertToBookingUseCase {
             throw new BusinessException("CUSTOMER_MISSING", "Customer information is missing (BR-23)", HttpStatus.UNPROCESSABLE_ENTITY);
         }
 
-        // E3: room must still be available for the (possibly re-confirmed) dates — BR-24
-        availabilityChecker.assertRoomAvailable(checkInDate, checkOutDate, quotation.getRoomType());
+        // Room confirmation is not required to convert. The booking is created PENDING and
+        // the Reservation team confirms it separately, so an unconfirmed room delays the
+        // booking rather than blocking the conversion.
 
         // Generate booking code from year + quotation UUID prefix (unique per quotation)
         String bookingCode = "BK-" + checkInDate.getYear() + "-"

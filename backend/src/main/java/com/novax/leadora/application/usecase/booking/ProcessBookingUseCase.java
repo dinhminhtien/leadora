@@ -3,9 +3,13 @@ package com.novax.leadora.application.usecase.booking;
 import com.novax.leadora.api.dto.request.ProcessBookingRequest;
 import com.novax.leadora.api.dto.response.BookingDetailResponse;
 import com.novax.leadora.api.dto.response.BookingResponse;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
+import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
@@ -32,6 +36,9 @@ public class ProcessBookingUseCase {
     private final NotificationRepository notificationRepository;
     private final EmailService emailService;
     private final BookingStatusTransitionService bookingStatusTransitionService;
+    private final CurrentUserProvider currentUserProvider;
+    private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
+    private final SystemAuditLogService systemAuditLogService;
 
     @Transactional
     public BookingResponse execute(UUID bookingId, ProcessBookingRequest request) {
@@ -46,18 +53,29 @@ public class ProcessBookingUseCase {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + request.getStatus());
         }
 
-        BookingEntity saved = bookingStatusTransitionService.transition(bookingId, newStatus, false, request.getStatusReason());
+        // The actor's role decides which transitions are legal — only the Reservation team
+        // (and its MANAGER/ADMIN escalation path) may CONFIRM, since only they know
+        // whether the rooms exist. Resolved from the authenticated user, never the body.
+        UserEntity actor = currentUserProvider.resolve(null);
 
-        if (newStatus == BookingStatus.REJECTED && request.getStatusReason() != null) {
-            String currentReqs = saved.getSpecialRequests();
-            String reasonTag = "[Rejection Reason: " + request.getStatusReason() + "]";
-            if (currentReqs == null || currentReqs.isEmpty()) {
-                saved.setSpecialRequests(reasonTag);
-            } else {
-                saved.setSpecialRequests(currentReqs + "\n" + reasonTag);
-            }
-            saved = bookingRepository.save(saved);
+        BookingEntity saved = bookingStatusTransitionService.transition(
+                bookingId, newStatus, TransitionActor.fromUser(actor), request.getStatusReason());
+
+        // The rejection reason is already persisted structurally as booking.statusReason by
+        // the transition service (and read back from there by the UI), so it is no longer
+        // also appended into specialRequests — that duplicated customer-facing notes.
+
+        // UC-17.2: the Reservation team answered, so the BOOKING_CONFIRM clock stops here.
+        // Uses entityType BOOKING to match the tracking rows started by
+        // ConvertToBookingUseCase / CreateBookingRequestUseCase.
+        try {
+            resolveSlaBreachUseCase.executeByEntity("BOOKING", bookingId);
+        } catch (Exception e) {
+            log.warn("SLA auto-resolve failed for booking {}: {}", bookingId, e.getMessage());
         }
+
+        systemAuditLogService.log("BOOKING", "BOOKING", bookingId, newStatus.name(), actor,
+                oldStatus != null ? oldStatus.name() : null, newStatus.name(), request.getStatusReason());
 
         // UC-15.1: notify the assigned staff of the booking status decision
         if (saved.getAssignedUser() != null) {

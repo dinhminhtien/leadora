@@ -17,12 +17,12 @@ import '../../features/booking/presentation/screens/booking_list_screen.dart';
 import '../../features/deal/presentation/screens/create_deal_screen.dart';
 import '../../features/deal/presentation/screens/deal_detail_screen.dart';
 import '../../features/deal/presentation/screens/deal_list_screen.dart';
-import '../../features/deal/presentation/screens/pipeline_screen.dart';
 import '../../features/payment/presentation/screens/generate_payment_screen.dart';
 import '../../features/payment/presentation/screens/payment_detail_screen.dart';
 import '../../features/payment/presentation/screens/payment_list_screen.dart';
 import '../../features/interaction/data/interaction_models.dart';
 import '../../features/interaction/presentation/screens/edit_interaction_screen.dart';
+import '../../features/handover/presentation/screens/handover_list_screen.dart';
 import '../../features/interaction/presentation/screens/interaction_detail_screen.dart';
 import '../../features/interaction/presentation/screens/interaction_timeline_screen.dart';
 import '../../features/interaction/presentation/screens/log_interaction_screen.dart';
@@ -34,6 +34,7 @@ import '../../features/profile/data/profile_models.dart';
 import '../../features/profile/presentation/screens/change_password_screen.dart';
 import '../../features/profile/presentation/screens/edit_profile_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
+import '../../features/quotation/presentation/screens/quotation_form_screen.dart';
 import '../../features/quotation/presentation/screens/quotation_detail_screen.dart';
 import '../../features/quotation/presentation/screens/quotation_list_screen.dart';
 import '../../features/reminder/presentation/screens/reminder_list_screen.dart';
@@ -100,11 +101,29 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: RouteNames.quotations,
         builder: (_, _) => const QuotationListScreen(),
       ),
+      // Registered BEFORE the `:id` route: otherwise "/quotations/new" matches the
+      // detail path with an id of literally "new" (the same trap noted for deals).
+      GoRoute(
+        path: Routes.quotationCreate,
+        name: RouteNames.quotationCreate,
+        builder: (_, state) => QuotationFormScreen(
+          mode: QuotationFormMode.create,
+          initialDealId: state.uri.queryParameters['dealId'],
+        ),
+      ),
       GoRoute(
         path: Routes.quotationDetail,
         name: RouteNames.quotationDetail,
         builder: (_, state) =>
             QuotationDetailScreen(quotationId: state.pathParameters['id']!),
+        routes: [
+          GoRoute(
+            path: Routes.quotationReviseSub,
+            name: RouteNames.quotationRevise,
+            builder: (_, state) =>
+                ReviseQuotationLoader(quotationId: state.pathParameters['id']!),
+          ),
+        ],
       ),
       GoRoute(
         path: Routes.profile,
@@ -162,11 +181,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
-      // Sales pipeline — Kanban over the same /deals list the Deals tab uses.
+      // Handovers Sales submitted to the Front Office — read-only here. The arrival desk
+      // itself is a Front Office job and lives on the web app only, as does answering
+      // room requests: this app is for Sales.
       GoRoute(
-        path: Routes.pipeline,
-        name: RouteNames.pipeline,
-        builder: (_, _) => const PipelineScreen(),
+        path: Routes.handovers,
+        name: RouteNames.handovers,
+        builder: (_, _) => const HandoverListScreen(),
       ),
 
       // Browse entry points — reached from the Dashboard quick actions and

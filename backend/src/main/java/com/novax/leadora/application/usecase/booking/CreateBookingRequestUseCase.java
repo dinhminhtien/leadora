@@ -70,6 +70,10 @@ public class CreateBookingRequestUseCase {
                     HttpStatus.CONFLICT);
         }
 
+        // Room confirmation is not required here. The booking request is created PENDING for
+        // the Reservation team to answer, so an unconfirmed room is what this record is for
+        // rather than a reason to refuse it.
+
         // Update Quotation status to CONVERTED
         quotation.setStatus(QuotationStatus.CONVERTED);
         quotationRepository.save(quotation);

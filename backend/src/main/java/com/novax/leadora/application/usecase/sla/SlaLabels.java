@@ -19,6 +19,7 @@ final class SlaLabels {
             case "QUOTATION_APPROVAL" -> "Quotation Approval";
             case "CUSTOMER_FEEDBACK_RESPONSE" -> "Customer Feedback Response";
             case "BOOKING_CONFIRM" -> "Booking Confirmation";
+            case "ROOM_REQUEST" -> "Room Availability Confirmation";
             default -> activityType;
         };
     }

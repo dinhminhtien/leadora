@@ -22,6 +22,8 @@ import { Badge } from "@/components/ui/Badge";
 import type { Quotation } from "@/services/quotation_service";
 import { useSendQuotation } from "@/features/quotation/hooks/use_quotations";
 import { Portal } from "@/components/ui/Portal";
+import { RoomConfirmationPanel } from "@/features/room_request/components/RoomConfirmationPanel";
+import { apiErrorMessage } from "@/services/api_error";
 
 type SendMethod = "email" | "whatsapp" | "pdf";
 
@@ -177,6 +179,10 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
   const [e3Error, setE3Error] = useState("");
   const [e4Error, setE4Error] = useState("");
   const [sendSuccess, setSendSuccess] = useState(false);
+  // Room confirmation is a condition on the quotation, not a precondition for sending it:
+  // the panel below shows the Reservation team's answer so the rep can decide, and Send
+  // stays available either way.
+  const [roomConfirmed, setRoomConfirmed] = useState(false);
 
   const clearErrors = () => {
     setE3Error("");
@@ -242,9 +248,12 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
           personalMessage: personalMessage || undefined,
         },
       });
-    } catch {
+    } catch (err) {
       setIsSending(false);
-      setE4Error("Failed to update quotation status. Please try again.");
+      // Surface the backend's own reason — the room gate returns distinct codes
+      // (ROOM_NOT_REQUESTED, ROOM_PENDING_CONFIRMATION, ROOM_REJECTED, …) whose
+      // messages tell the rep exactly what to do next.
+      setE4Error(apiErrorMessage(err));
       return;
     }
 
@@ -334,6 +343,10 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
               <span className="text-[10px] text-slate-400">Version {version} will be logged</span>
             </div>
           </section>
+
+          {/* Sending is a promise of a room to the customer, so the Reservation team must
+              have confirmed it first. This panel shows that state and can raise the request. */}
+          <RoomConfirmationPanel quote={quote} onUsableChange={setRoomConfirmed} />
 
           {/* E3 Error */}
           {e3Error && (
@@ -498,6 +511,11 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
               variant="primary"
               onClick={handleSend}
               isLoading={isSending}
+              title={
+                roomConfirmed
+                  ? undefined
+                  : "The Reservation team has not confirmed these rooms yet — you can still send."
+              }
               leftIcon={!isSending ? <Send className="size-3.5" /> : undefined}
               className="flex-1 text-xs font-bold"
             >
