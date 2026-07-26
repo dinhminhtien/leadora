@@ -64,11 +64,16 @@ public class ContextAssembler {
             case META_CONVERSATION -> "";
             // Explicit possessive ("lead của tôi") — pinned to the asker even for a Manager.
             case PERSONAL_DATA -> crmSnapshotService.personalSnapshot(actor, areas);
-            case ASSIGNED_DATA -> crmSnapshotService.scopedSnapshot(actor, areas);
+            // A question naming a staff member ("deal của Tiến Đinh") gets a snapshot scoped to
+            // that person — exact totals, their rows — instead of the generic unfiltered listing
+            // that used to force a "filter it on the screen yourself" answer. BR-36 is enforced
+            // inside: non-privileged callers never match, and fall through to their own scope.
+            case ASSIGNED_DATA -> mentionedStaffOr(actor, areas, query,
+                    () -> crmSnapshotService.scopedSnapshot(actor, areas));
             // Team-wide figures are a Manager/Admin privilege; anyone else is quietly narrowed to
             // their own scope rather than refused, so the question still gets a useful answer.
             case TEAM_SUMMARY -> crmSnapshotService.canSeeAllData(actor)
-                    ? crmSnapshotService.teamSummary()
+                    ? mentionedStaffOr(actor, areas, query, crmSnapshotService::teamSummary)
                     : crmSnapshotService.scopedSnapshot(actor, areas);
             case DOC_QUERY -> ragService.retrieveContext(query);
             case GENERAL_BUSINESS -> blend(actor, areas, query);
@@ -76,11 +81,18 @@ public class ContextAssembler {
         };
     }
 
+    /** The named colleague's snapshot when the question mentions one, else the given fallback. */
+    private String mentionedStaffOr(ChatActor actor, Set<CrmArea> areas, String query,
+                                    java.util.function.Supplier<String> fallback) {
+        String mentioned = crmSnapshotService.mentionedStaffSnapshot(actor, areas, query);
+        return StringUtils.hasText(mentioned) ? mentioned : fallback.get();
+    }
+
     /** Company documents and the user's own figures, gathered concurrently. */
     private String blend(ChatActor actor, Set<CrmArea> areas, String query) {
         CompletableFuture<String> rag = supply(() -> ragService.retrieveContext(query), "RAG");
-        CompletableFuture<String> crm =
-                supply(() -> crmSnapshotService.scopedSnapshot(actor, areas), "CRM snapshot");
+        CompletableFuture<String> crm = supply(() -> mentionedStaffOr(actor, areas, query,
+                () -> crmSnapshotService.scopedSnapshot(actor, areas)), "CRM snapshot");
 
         try {
             CompletableFuture.allOf(rag, crm).get(GATHER_TIMEOUT_SECONDS, TimeUnit.SECONDS);
