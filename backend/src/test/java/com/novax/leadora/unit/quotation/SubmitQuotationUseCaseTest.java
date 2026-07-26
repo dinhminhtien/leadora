@@ -12,6 +12,7 @@ import com.novax.leadora.infrastructure.persistence.repository.NotificationRepos
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,9 @@ class SubmitQuotationUseCaseTest {
 
     @Mock
     private QuotationAccessPolicy quotationAccessPolicy;
+
+    @Mock
+    private StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @InjectMocks
     private SubmitQuotationUseCase submitQuotationUseCase;

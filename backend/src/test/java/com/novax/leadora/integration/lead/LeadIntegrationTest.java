@@ -6,6 +6,10 @@ import com.novax.leadora.application.usecase.lead.CreateLeadUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
+import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +28,18 @@ class LeadIntegrationTest {
 
     @Mock
     private LeadRepository leadRepository;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private StartSlaTrackingUseCase startSlaTrackingUseCase;
+
+    @Mock
+    private CurrentUserProvider currentUserProvider;
+
+    @Mock
+    private NotificationRepository notificationRepository;
 
     @InjectMocks
     private CreateLeadUseCase createLeadUseCase;
