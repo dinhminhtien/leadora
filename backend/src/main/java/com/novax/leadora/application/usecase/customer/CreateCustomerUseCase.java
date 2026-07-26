@@ -21,6 +21,7 @@ public class CreateCustomerUseCase {
 
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
+    private final CustomerDuplicatePolicy customerDuplicatePolicy;
 
     @Transactional
     public CustomerResponse execute(CreateCustomerRequest request) {
@@ -34,25 +35,9 @@ public class CreateCustomerUseCase {
                     HttpStatus.BAD_REQUEST);
         }
 
-        // Duplicate email check
-        if (StringUtils.hasText(request.getEmail())) {
-            customerRepository.findFirstByEmail(request.getEmail()).ifPresent(existing -> {
-                throw new BusinessException(
-                        "DUPLICATE_CUSTOMER_EMAIL",
-                        "A customer with email '" + request.getEmail() + "' already exists.",
-                        HttpStatus.CONFLICT);
-            });
-        }
-
-        // Duplicate phone check
-        if (StringUtils.hasText(request.getPhone())) {
-            customerRepository.findFirstByPhone(request.getPhone()).ifPresent(existing -> {
-                throw new BusinessException(
-                        "DUPLICATE_CUSTOMER_PHONE",
-                        "A customer with phone '" + request.getPhone() + "' already exists.",
-                        HttpStatus.CONFLICT);
-            });
-        }
+        // Shared with UpdateCustomerUseCase and ConvertLeadUseCase — see CustomerDuplicatePolicy
+        // for why this rule lives outside the use cases rather than being repeated in each.
+        customerDuplicatePolicy.assertNoDuplicate(request.getEmail(), request.getPhone());
 
         UserEntity assignedUser = null;
         if (request.getAssignedUserId() != null) {

@@ -91,11 +91,40 @@ export type LeadListParams = {
   size?: number;
 };
 
+/** Filters only — the stats endpoint is not paged and ignores sorting. */
+export type LeadStatsParams = Omit<LeadListParams, "page" | "size" | "sortBy" | "sortDir">;
+
+/**
+ * Counts across every lead matching the current filters, not just the page on screen.
+ *
+ * The tiles used to be computed from `content` — the ten rows the list had loaded — so the numbers
+ * moved when the user paged or re-sorted while the data stood still. Counting has to happen where
+ * all the rows are.
+ *
+ * `convertedRate` / `lostRate` are percentages already rounded to one decimal, and are `null` when
+ * there are no leads: "0.0%" would claim nothing converts, which is a different statement from
+ * having nothing to measure.
+ */
+export type LeadStats = {
+  total: number;
+  converted: number;
+  lost: number;
+  active: number;
+  qualified: number;
+  convertedRate: number | null;
+  lostRate: number | null;
+};
+
 // ── Service ───────────────────────────────────────────────────────────────────
 
 const ENDPOINT = "/leads";
 
 export const leadService = {
+  async getStats(params?: LeadStatsParams): Promise<ApiResponse<LeadStats>> {
+    const { data } = await apiClient.get<ApiResponse<LeadStats>>(`${ENDPOINT}/stats`, { params });
+    return data;
+  },
+
   async getList(params?: LeadListParams): Promise<ApiResponse<PageResponse<Lead>>> {
     const { data } = await apiClient.get<ApiResponse<PageResponse<Lead>>>(ENDPOINT, { params });
     return data;

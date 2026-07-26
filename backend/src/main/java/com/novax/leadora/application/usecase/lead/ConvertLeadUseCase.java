@@ -3,6 +3,8 @@ package com.novax.leadora.application.usecase.lead;
 import com.novax.leadora.api.dto.request.ConvertLeadRequest;
 import com.novax.leadora.api.dto.response.ConvertLeadResponse;
 import com.novax.leadora.api.dto.response.LeadResponse;
+import com.novax.leadora.application.usecase.customer.CustomerDuplicatePolicy;
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
@@ -13,6 +15,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -27,6 +30,7 @@ public class ConvertLeadUseCase {
     private final LeadRepository leadRepository;
     private final CustomerRepository customerRepository;
     private final LeadAccessPolicy leadAccessPolicy;
+    private final CustomerDuplicatePolicy customerDuplicatePolicy;
 
     @Transactional
     public ConvertLeadResponse execute(UUID leadId, ConvertLeadRequest request) {
@@ -42,14 +46,29 @@ public class ConvertLeadUseCase {
 
         // 2. Idempotency — already converted
         if (lead.getStatus() == LeadStatus.CONVERTED) {
-            throw new IllegalStateException("This lead has already been converted to a customer.");
+            throw new BusinessException("LEAD_ALREADY_CONVERTED",
+                    "This lead has already been converted to a customer.",
+                    HttpStatus.CONFLICT);
+        }
+
+        // 2b. LOST is a terminal state — UpdateLeadUseCase already refuses to move a lead out of
+        //     it, and conversion is the same kind of transition by another route. Without this the
+        //     two files disagreed: a Manager supplying a reason could convert a lead the rest of
+        //     the system treats as closed. Reopening is a deliberate act and should be one.
+        if (lead.getStatus() == LeadStatus.LOST) {
+            throw new BusinessException("LEAD_LOST",
+                    "A lost lead cannot be converted. Reopen it first if the customer came back.",
+                    "status",
+                    HttpStatus.UNPROCESSABLE_ENTITY);
         }
 
         // 3a. A lead must be assigned to a sales rep (by a Manager) before conversion.
         //     Unassigned leads are drafts that never progress past NEW.
         if (lead.getAssignedUser() == null) {
-            throw new IllegalStateException(
-                    "Lead must be assigned to a sales rep before it can be converted.");
+            throw new BusinessException("LEAD_UNASSIGNED",
+                    "Lead must be assigned to a sales rep before it can be converted.",
+                    "assignedUserId",
+                    HttpStatus.UNPROCESSABLE_ENTITY);
         }
 
         // 3. BR-07: a lead may be converted when QUALIFIED. Otherwise it may still be
@@ -57,9 +76,11 @@ public class ConvertLeadUseCase {
         //    (covers the "confirmed booking / customer request exists" exception).
         if (lead.getStatus() != LeadStatus.QUALIFIED) {
             if (!StringUtils.hasText(request.getReason())) {
-                throw new IllegalStateException(
-                        "Lead must be QUALIFIED before conversion, or a Sales Manager must approve with a reason. "
-                                + "Current status: " + lead.getStatus());
+                throw new BusinessException("LEAD_NOT_QUALIFIED",
+                        "Lead must be QUALIFIED before conversion, or a Sales Manager must approve "
+                                + "with a reason. Current status: " + lead.getStatus(),
+                        "reason",
+                        HttpStatus.UNPROCESSABLE_ENTITY);
             }
             // Only a Manager/Admin may approve the exception.
             leadAccessPolicy.assertFullAccess(currentUser);
@@ -69,6 +90,12 @@ public class ConvertLeadUseCase {
                     + ": " + request.getReason().trim() + "]";
             lead.setNotes(StringUtils.hasText(lead.getNotes()) ? lead.getNotes() + "\n" + note : note);
         }
+
+        // 3c. The conversion form is typed by hand and need not match the lead, so the
+        //     duplicate check done when the LEAD was created protects nothing here: two different
+        //     leads can be converted onto the same person. This is the same rule
+        //     CreateCustomerUseCase applies, shared rather than copied — see CustomerDuplicatePolicy.
+        customerDuplicatePolicy.assertNoDuplicate(request.getEmail(), request.getPhone());
 
         // 4. Create customer record from payload + inherit owner from lead
         CustomerEntity customer = CustomerEntity.builder()
