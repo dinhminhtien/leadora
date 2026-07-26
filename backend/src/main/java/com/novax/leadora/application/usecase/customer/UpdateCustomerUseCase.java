@@ -23,33 +23,19 @@ public class UpdateCustomerUseCase {
 
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
+    private final CustomerDuplicatePolicy customerDuplicatePolicy;
 
     @Transactional
     public CustomerResponse execute(UUID customerId, UpdateCustomerRequest request) {
         CustomerEntity customer = customerRepository.findByIdWithUsers(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer", customerId));
 
-        // Duplicate email check (skip if email unchanged)
-        if (StringUtils.hasText(request.getEmail())
-                && !request.getEmail().equalsIgnoreCase(customer.getEmail())) {
-            customerRepository.findFirstByEmail(request.getEmail()).ifPresent(existing -> {
-                throw new BusinessException(
-                        "DUPLICATE_CUSTOMER_EMAIL",
-                        "A customer with email '" + request.getEmail() + "' already exists.",
-                        HttpStatus.CONFLICT);
-            });
-        }
-
-        // Duplicate phone check (skip if phone unchanged)
-        if (StringUtils.hasText(request.getPhone())
-                && !request.getPhone().equals(customer.getPhone())) {
-            customerRepository.findFirstByPhone(request.getPhone()).ifPresent(existing -> {
-                throw new BusinessException(
-                        "DUPLICATE_CUSTOMER_PHONE",
-                        "A customer with phone '" + request.getPhone() + "' already exists.",
-                        HttpStatus.CONFLICT);
-            });
-        }
+        // Shared rule (see CustomerDuplicatePolicy). Passing this customer's own id lets the policy
+        // ignore a match against itself, which is what the two "skip if unchanged" guards used to
+        // do by hand — and it also covers the case they missed: changing the CASE of an existing
+        // phone, or re-saving an email that differs only in whitespace.
+        customerDuplicatePolicy.assertNoDuplicate(
+                request.getEmail(), request.getPhone(), customer.getCustomerId());
 
         customer.setFullName(request.getFullName());
         if (request.getCustomerType() != null) {

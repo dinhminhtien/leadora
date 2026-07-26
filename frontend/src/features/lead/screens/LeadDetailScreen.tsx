@@ -856,6 +856,23 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
   const currentStepIdx = PIPELINE.findIndex(p => p.status === lead.status);
   const isLost      = lead.status === "LOST";
   const isConverted = lead.status === "CONVERTED";
+
+  // BR-05 — what a lead still needs before it can sit in active follow-up.
+  // The status control already refuses two impossible moves up front (a converted lead, an
+  // unassigned one) and explains why. This was the third precondition and the only one left to
+  // fail on the server: the user changed the status, saved, and got a 422 that pointed at no
+  // field. Read from editForm so it clears the moment they type into the boxes above.
+  //
+  // Names kept short because they are printed inside the <option> itself. The hint below the
+  // select is not enough on its own: opening the dropdown covers it with the option list, so at
+  // the exact moment the user is asking "why can't I pick this?" the answer is behind the menu.
+  const missingForFollowUp = [
+    !editForm.phone?.trim() && !editForm.email?.trim() ? "phone or email" : null,
+    !editForm.source?.trim() ? "source" : null,
+    !editForm.interestedService?.trim() ? "interested service" : null,
+  ].filter(Boolean) as string[];
+
+  const statusLocked = isConverted || !editForm.assignedUserId;
   // Convert is unavailable until the lead is assigned (a Manager must assign it first)
   // and only for active, non-terminal leads.
   const canConvert  = !isLost && !isConverted && !isUnassigned;
@@ -1142,6 +1159,11 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
               </div>
 
+              {/* BR-05: the three fields a lead needs before it may enter active follow-up are
+                  phone/email, source and interested service. Interested Service was missing from
+                  this form while the Status control right below refuses CONTACTED without it —
+                  so the dialog stated a requirement it gave no way to satisfy. Kept next to
+                  Source Channel and above Status, in the order the guard reads them. */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-700">Source Channel</label>
@@ -1153,21 +1175,49 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
                   </select>
                 </div>
                 <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Interested Service</label>
+                  <input value={editForm.interestedService ?? ""}
+                    maxLength={100}
+                    placeholder="e.g. Wedding banquet, Conference, Rooms…"
+                    onChange={e => setEditForm(f => ({ ...f, interestedService: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
+                </div>
+              </div>
+
+              {/* Full width, unlike the paired rows above: the hint below carries the reason the
+                  control is blocked and which fields unblock it, which a half-column would wrap
+                  into an unreadable stack. */}
+              <div>
+                <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-700">Status</label>
                   <select value={editForm.status ?? ""}
-                    disabled={isConverted || !editForm.assignedUserId}
+                    disabled={statusLocked}
                     onChange={e => setEditForm(f => ({ ...f, status: e.target.value as LeadStatus }))}
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed">
-                    {allowedStatusOptions(lead.status).map(s => (
-                      <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-                    ))}
+                    {allowedStatusOptions(lead.status).map(s => {
+                      // Only the two active-follow-up states need BR-05's details. NEW and LOST
+                      // stay selectable on purpose: a junk lead must be closable immediately
+                      // rather than after filling in fields nobody will ever read.
+                      const needsDetails = s === "CONTACTED" || s === "QUALIFIED";
+                      const blocked = needsDetails && missingForFollowUp.length > 0;
+                      return (
+                        <option key={s} value={s} disabled={blocked}>
+                          {STATUS_LABEL[s]}
+                          {/* Name the missing fields here, not just "unavailable": the hint under
+                              the select is hidden by the open menu at the moment it is needed. */}
+                          {blocked ? ` — add ${missingForFollowUp.join(" + ")} first` : ""}
+                        </option>
+                      );
+                    })}
                   </select>
-                  <p className="text-[10px] text-slate-400">
+                  <p className={`text-[10px] ${missingForFollowUp.length ? "text-amber-600" : "text-slate-400"}`}>
                     {isConverted
                       ? "This lead has been converted to a customer — its status is locked."
                       : !editForm.assignedUserId
                         ? "This lead must be assigned to a sales rep before its status can change."
-                        : "Status only moves forward (New → Contacted → Qualified). “Converted” is set automatically during conversion."}
+                        : missingForFollowUp.length
+                          ? `To move this lead to Contacted or Qualified, fill in ${missingForFollowUp.join(", ")} in this form — the option unlocks as soon as you type. You can still mark it Lost.`
+                          : "Status only moves forward (New → Contacted → Qualified). “Converted” is set automatically during conversion."}
                   </p>
                 </div>
               </div>

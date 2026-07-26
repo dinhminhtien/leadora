@@ -58,10 +58,24 @@ public class ApiResponse<T> {
     }
 
     public static <T> ApiResponse<T> systemError() {
+        return systemError(null);
+    }
+
+    /**
+     * A genuine server fault, carrying a reference that ties it to the logged stack trace.
+     *
+     * <p>The message stays deliberately vague — a real 500 must not leak internals. The reference
+     * is what makes it actionable: without one, "please contact your Admin" leaves the user with
+     * nothing to report and the Admin with nothing to search for.
+     *
+     * @param reference short correlation id, or {@code null} when none was generated
+     */
+    public static <T> ApiResponse<T> systemError(String reference) {
         return ApiResponse.<T>builder()
                 .success(false)
                 .errorCode("INTERNAL_SERVER_ERROR")
                 .message("An unexpected error occurred. Please try again later.")
+                .details(reference)
                 .timestamp(OffsetDateTime.now().toString())
                 .build();
     }

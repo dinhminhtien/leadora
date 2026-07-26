@@ -5,6 +5,7 @@ import com.novax.leadora.common.exception.BusinessRuleException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -137,10 +139,53 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.businessError("INVALID_ARGUMENT", ex.getMessage(), null));
     }
 
+    /**
+     * A write the database refused: a value longer than its column, a NOT NULL left empty, a broken
+     * foreign key, a unique index already taken.
+     *
+     * <p>Without this handler such failures fell through to {@link #handleAllExceptions} and came
+     * back as HTTP 500 "An unexpected error occurred" — which is wrong twice over. It is not a
+     * server fault (the input was invalid), and the message tells the user nothing they can act on:
+     * every lead create/edit/convert failure looked identical and pointed at the Admin.
+     *
+     * <p><b>The cause is deliberately not echoed back.</b> {@code getMostSpecificCause()} carries
+     * the table, column and constraint names plus the offending value — a free description of the
+     * schema for anyone probing the API. It goes to the log, where support can find it by the
+     * reference below; the client gets a generic sentence and that reference.
+     *
+     * <p>This is the safety net, not the fix. Anything reaching here should have been rejected
+     * earlier by bean validation with a message naming the actual field.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrity(DataIntegrityViolationException ex) {
+        String reference = newReference();
+        log.error("Data integrity violation [ref={}]: {}", reference,
+                ex.getMostSpecificCause().getMessage(), ex);
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.businessError("DATA_CONSTRAINT_VIOLATION",
+                        "The data could not be saved because it breaks a database constraint — "
+                                + "a value may be too long, required, or already in use. "
+                                + "Please review the form and try again.",
+                        reference));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleAllExceptions(Exception ex) {
-        log.error("Unexpected system error: {}", ex.getMessage(), ex);
+        String reference = newReference();
+        log.error("Unexpected system error [ref={}]: {}", reference, ex.getMessage(), ex);
         return ResponseEntity.internalServerError()
-                .body(ApiResponse.systemError());
+                .body(ApiResponse.systemError(reference));
+    }
+
+    /**
+     * Short correlation id tying the response the user sees to the stack trace in the log.
+     *
+     * <p>"Please contact your Admin" is a dead end for both sides otherwise: the user has nothing
+     * to report and the Admin has nothing to search for. Six hex characters are enough to find one
+     * entry in a day's log while staying short enough to read over the phone. Deliberately not a
+     * full UUID — this is meant to be retyped by a human.
+     */
+    private static String newReference() {
+        return UUID.randomUUID().toString().substring(0, 6);
     }
 }
