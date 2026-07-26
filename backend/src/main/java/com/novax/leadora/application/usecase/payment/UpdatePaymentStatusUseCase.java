@@ -51,6 +51,20 @@ public class UpdatePaymentStatusUseCase {
             throw new IllegalStateException("Payment transaction is not linked to any booking.");
         }
 
+        // Lock Deal first if present (Lock ordering: Deal -> Booking)
+        QuotationEntity quotation = booking.getQuotation();
+        DealEntity deal = quotation != null ? quotation.getDeal() : null;
+        if (deal != null) {
+            final UUID dealId = deal.getDealId();
+            deal = dealRepository.findByIdForUpdate(dealId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Deal record not found", dealId));
+        }
+
+        // Lock Booking second
+        final UUID bookingId = booking.getBookingId();
+        booking = bookingRepository.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking record not found", bookingId));
+
         // BR-44: Check if booking is cancelled or checked out
         String bStatus = booking.getStatus() != null ? booking.getStatus().name() : "";
         if (bStatus.equals("CANCELLED") || bStatus.equals("CHECKED_OUT")) {
@@ -62,14 +76,7 @@ public class UpdatePaymentStatusUseCase {
 
         // Check business rules before making the transition
         if (oldStatus != PaymentStatus.PAID && newStatus == PaymentStatus.PAID) {
-            QuotationEntity quotation = booking.getQuotation();
-            DealEntity deal = quotation != null ? quotation.getDeal() : null;
             if (deal != null) {
-                final UUID dealId = deal.getDealId();
-                // Pessimistic lock on the Deal to prevent concurrent modifications (like Request A vs Request B race conditions)
-                deal = dealRepository.findByIdForUpdate(dealId)
-                        .orElseThrow(() -> new ResourceNotFoundException("Deal record not found", dealId));
-
                 // BR-DEAL-LOST-02: Confirmed payment on LOST deal triggers transaction rollback
                 if (deal.getStatus() == DealStatus.LOST) {
                     throw new BusinessException("DEAL_STATE_CONFLICT", "Cannot confirm payment for a LOST deal.", HttpStatus.CONFLICT);
@@ -122,8 +129,6 @@ public class UpdatePaymentStatusUseCase {
 
         // Auto-win trigger
         if (oldStatus != PaymentStatus.PAID && newStatus == PaymentStatus.PAID) {
-            QuotationEntity quotation = booking.getQuotation();
-            DealEntity deal = quotation != null ? quotation.getDeal() : null;
             if (deal != null) {
                 autoWinDealByPaymentUseCase.execute(saved, actor);
             }

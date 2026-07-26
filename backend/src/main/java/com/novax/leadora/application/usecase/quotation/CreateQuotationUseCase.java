@@ -2,7 +2,6 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.CreateQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
-import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
@@ -31,7 +30,6 @@ public class CreateQuotationUseCase {
     private final QuotationRepository quotationRepository;
     private final QuotationDetailRepository quotationDetailRepository;
     private final DealRepository dealRepository;
-    private final StartSlaTrackingUseCase startSlaTrackingUseCase;
     private final CurrentUserProvider currentUserProvider;
     private final QuotationAvailabilityChecker availabilityChecker;
 
@@ -112,13 +110,6 @@ public class CreateQuotationUseCase {
                 .build();
 
         quotationDetailRepository.save(detail);
-
-        // UC-17.2: start SLA tracking — non-fatal if no rule configured
-        try {
-            startSlaTrackingUseCase.execute("QUOTATION_SENT", "QUOTATION", saved.getQuotationId());
-        } catch (Exception e) {
-            log.warn("SLA tracking failed for quotation {}: {}", saved.getQuotationId(), e.getMessage());
-        }
 
         return QuotationResponse.fromWithDetail(saved, (int) nights,
                 request.getNumberOfRooms(), request.getPricePerNight());

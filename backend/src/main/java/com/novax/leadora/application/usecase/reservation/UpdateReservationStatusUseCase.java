@@ -8,12 +8,12 @@ import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.SalesFeedbackEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
-import com.novax.leadora.infrastructure.persistence.entity.enums.InventoryStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ReviewStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepository;
 import com.novax.leadora.infrastructure.integration.email.EmailService;
+import com.novax.leadora.application.usecase.booking.BookingStatusTransitionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,16 +34,17 @@ public class UpdateReservationStatusUseCase {
     private final BookingDetailRepository bookingDetailRepository;
     private final SalesFeedbackRepository salesFeedbackRepository;
     private final EmailService emailService;
+    private final BookingStatusTransitionService bookingStatusTransitionService;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
     @Transactional
     public ReservationResponse execute(UUID id, UpdateStatusRequest request) {
-        BookingEntity booking = bookingRepository.findById(id)
+        BookingEntity tempBooking = bookingRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation", id));
 
-        BookingStatus oldStatus = booking.getStatus();
+        BookingStatus oldStatus = tempBooking.getStatus();
         BookingStatus newStatus;
         try {
             newStatus = BookingStatus.valueOf(request.getStatus().toUpperCase());
@@ -51,14 +52,14 @@ public class UpdateReservationStatusUseCase {
             throw new BusinessRuleException("Invalid status: " + request.getStatus());
         }
 
-        LocalDate oldCheckIn = booking.getCheckInDate();
-        LocalDate oldCheckOut = booking.getCheckOutDate();
+        LocalDate oldCheckIn = tempBooking.getCheckInDate();
+        LocalDate oldCheckOut = tempBooking.getCheckOutDate();
 
         LocalDate newCheckIn = request.getCheckInDate() != null ? request.getCheckInDate() : oldCheckIn;
         LocalDate newCheckOut = request.getCheckOutDate() != null ? request.getCheckOutDate() : oldCheckOut;
 
-        // Check if dates changed, validate room availability
-        if (!newCheckIn.equals(oldCheckIn) || !newCheckOut.equals(oldCheckOut)) {
+        boolean datesChanged = !newCheckIn.equals(oldCheckIn) || !newCheckOut.equals(oldCheckOut);
+        if (datesChanged) {
             if (!newCheckOut.isAfter(newCheckIn)) {
                 throw new BusinessRuleException("Check-out date must be after the check-in date");
             }
@@ -69,26 +70,20 @@ public class UpdateReservationStatusUseCase {
                     validateRoomAvailability(detail.getProductService().getProductId(), detail.getProductService().getName(), newCheckIn, newCheckOut, detail.getQuantity(), id);
                 }
             }
-
-            booking.setCheckInDate(newCheckIn);
-            booking.setCheckOutDate(newCheckOut);
         }
 
-        // Apply new status
-        booking.setStatus(newStatus);
-        
-        // Update inventory statuses in booking details depending on new booking status
+        // Call the centralized transition service
+        BookingEntity booking = bookingStatusTransitionService.transition(id, newStatus, true, request.getReason());
+
+        if (datesChanged) {
+            booking.setCheckInDate(newCheckIn);
+            booking.setCheckOutDate(newCheckOut);
+            booking = bookingRepository.save(booking);
+        }
+
         List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(id);
-        if (newStatus == BookingStatus.CHECKED_IN) {
-            for (BookingDetailEntity detail : details) {
-                detail.setInventoryStatus(InventoryStatus.ALLOCATED);
-                bookingDetailRepository.save(detail);
-            }
-        } else if (newStatus == BookingStatus.CHECKED_OUT) {
-            for (BookingDetailEntity detail : details) {
-                detail.setInventoryStatus(InventoryStatus.RELEASED);
-                bookingDetailRepository.save(detail);
-            }
+
+        if (newStatus == BookingStatus.CHECKED_OUT) {
             // Trigger feedback invitation if customer has email and hasn't been invited yet
             if (booking.getCustomer() != null && org.springframework.util.StringUtils.hasText(booking.getCustomer().getEmail())) {
                 boolean alreadyInvited = !salesFeedbackRepository.findByBooking_BookingId(id).isEmpty();
@@ -121,20 +116,13 @@ public class UpdateReservationStatusUseCase {
                     }
                 }
             }
-        } else if (newStatus == BookingStatus.CANCELLED || newStatus == BookingStatus.REJECTED) {
-            for (BookingDetailEntity detail : details) {
-                detail.setInventoryStatus(InventoryStatus.RELEASED);
-                bookingDetailRepository.save(detail);
-            }
         }
-
-        BookingEntity saved = bookingRepository.save(booking);
 
         // BR-37: Write Slf4j Audit Log
         log.info("[AUDIT] Action: UPDATE_RESERVATION_STATUS, TargetRecord: {}, OldValue: {}, NewValue: {}, OldCheckIn: {}, NewCheckIn: {}, OldCheckOut: {}, NewCheckOut: {}, Reason: {}, Timestamp: {}",
                 id, oldStatus, newStatus, oldCheckIn, newCheckIn, oldCheckOut, newCheckOut, request.getReason(), OffsetDateTime.now());
 
-        return ReservationResponse.from(saved, details);
+        return ReservationResponse.from(booking, details);
     }
 
     private void validateRoomAvailability(UUID productId, String productName, LocalDate checkInDate, LocalDate checkOutDate, int requestQty, UUID currentBookingId) {
