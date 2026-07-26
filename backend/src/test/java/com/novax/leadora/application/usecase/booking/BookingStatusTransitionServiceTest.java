@@ -79,6 +79,22 @@ class BookingStatusTransitionServiceTest {
     }
 
     @Test
+    @DisplayName("Should successfully transition status from PENDING to CONFIRMED manually")
+    void testTransitionPendingToConfirmedSuccess() {
+        when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
+        when(bookingDetailRepository.findByBooking_BookingId(bookingId)).thenReturn(details);
+        when(bookingRepository.save(any(BookingEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        BookingEntity result = service.transition(bookingId, BookingStatus.CONFIRMED, false, "Approved booking");
+
+        assertThat(result.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(result.getStatusReason()).isEqualTo("Approved booking");
+
+        verify(bookingRepository).findByIdForUpdate(bookingId);
+        verify(bookingRepository).save(booking);
+    }
+
+    @Test
     @DisplayName("Should throw ResourceNotFoundException when booking is not found")
     void testTransitionBookingNotFound() {
         when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.empty());

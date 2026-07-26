@@ -66,12 +66,14 @@ export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId
 
   if (!summary) return null;
 
+  const isClosed = summary.dealStatus?.toLowerCase() === "won" || summary.dealStatus?.toLowerCase() === "lost";
+
   const steps = [
     {
       title: "Inquiry Stage",
       description: "Initial client inquiry registered",
       isCompleted: true, // Inquiry is always completed once deal is active
-      isActive: summary.pipelineStage === "Inquiry",
+      isActive: !isClosed && summary.pipelineStage === "Inquiry",
       meta: (
         <span className="text-[10px] text-slate-400 font-medium">
           Stage: {summary.pipelineStage}
@@ -82,7 +84,7 @@ export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId
       title: "Proposal / Quotation",
       description: "Send pricing options & get approval",
       isCompleted: !!summary.activeQuotationId,
-      isActive: summary.pipelineStage === "Proposal" || summary.pipelineStage === "Site Visit",
+      isActive: !isClosed && (summary.pipelineStage === "Proposal" || summary.pipelineStage === "Site Visit"),
       meta: summary.activeQuotationId ? (
         <div className="flex items-center gap-1.5 mt-1 bg-blue-50/60 border border-blue-100 px-2 py-0.5 rounded text-[10px] text-blue-700 w-fit">
           <FileText className="size-3" />
@@ -99,7 +101,7 @@ export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId
       title: "Booking Reservation",
       description: "Confirm details & reserve resources",
       isCompleted: !!summary.activeBookingId,
-      isActive: summary.pipelineStage === "Negotiation" || summary.pipelineStage === "Contract",
+      isActive: !isClosed && (summary.pipelineStage === "Negotiation" || summary.pipelineStage === "Contract"),
       meta: summary.activeBookingId ? (
         <div className="flex items-center gap-1.5 mt-1 bg-indigo-50/60 border border-indigo-100 px-2 py-0.5 rounded text-[10px] text-indigo-700 w-fit">
           <Calendar className="size-3" />
@@ -116,7 +118,7 @@ export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId
       title: "Securing Payment",
       description: "Require deposit or full payment",
       isCompleted: summary.hasPaidPayment,
-      isActive: summary.activeBookingId && !summary.hasPaidPayment,
+      isActive: !isClosed && summary.activeBookingId && !summary.hasPaidPayment,
       meta: summary.currentPaymentStatus ? (
         <div className={`flex items-center gap-1.5 mt-1 border px-2 py-0.5 rounded text-[10px] w-fit font-bold ${
           summary.hasPaidPayment 
@@ -133,11 +135,11 @@ export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId
     {
       title: "Deal Closed Won",
       description: "Contract signed, booking paid, sales complete",
-      isCompleted: summary.dealStatus === "won",
-      isActive: summary.dealStatus === "won" || summary.pipelineStage === "Confirmed",
+      isCompleted: summary.dealStatus?.toLowerCase() === "won",
+      isActive: !isClosed && (summary.dealStatus?.toLowerCase() === "won" || summary.pipelineStage === "Confirmed"),
       meta: (
         <div className="flex items-center gap-1.5 mt-1">
-          <Badge variant={summary.dealStatus === "won" ? "success" : "default"} className="text-[8px] font-bold uppercase">
+          <Badge variant={summary.dealStatus?.toLowerCase() === "won" ? "success" : summary.dealStatus?.toLowerCase() === "lost" ? "danger" : "default"} className="text-[8px] font-bold uppercase">
             {summary.dealStatus}
           </Badge>
         </div>
