@@ -347,15 +347,15 @@ export function DepositPaymentScreen() {
   const getStatusBadge = (status: PaymentStatus) => {
     switch (status) {
       case "PAID":
-        return <Badge variant="success" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900 uppercase text-[9px] font-bold py-1 min-w-[90px] justify-center text-center">PAID</Badge>;
+        return <Badge variant="success" className="bg-emerald-55 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-450 dark:border-emerald-900 font-bold uppercase text-[9px] py-1 min-w-22.5 justify-center text-center">PAID</Badge>;
       case "PENDING":
-        return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-200 dark:border-amber-900 uppercase text-[9px] font-bold py-1 min-w-[90px] justify-center text-center">PENDING</Badge>;
+        return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-200 dark:border-amber-900 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">PENDING</Badge>;
       case "CANCELLED":
-        return <Badge variant="default" className="bg-slate-100 text-slate-800 dark:bg-zinc-800 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 uppercase text-[9px] font-bold py-1 min-w-[90px] justify-center text-center">CANCELLED</Badge>;
+        return <Badge variant="default" className="bg-slate-100 text-slate-800 dark:bg-zinc-800 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">CANCELLED</Badge>;
       case "FAILED":
-        return <Badge variant="danger" className="bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-200 dark:border-rose-900 uppercase text-[9px] font-bold py-1 min-w-[90px] justify-center text-center">FAILED</Badge>;
+        return <Badge variant="danger" className="bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-200 dark:border-rose-900 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">FAILED</Badge>;
       case "EXPIRED":
-        return <Badge variant="default" className="bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 uppercase text-[9px] font-bold py-1 min-w-[90px] justify-center text-center">EXPIRED</Badge>;
+        return <Badge variant="default" className="bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">EXPIRED</Badge>;
       default:
         return <Badge>{status}</Badge>;
     }
@@ -468,7 +468,7 @@ export function DepositPaymentScreen() {
               </div>
             ) : (
               <>
-                <Table className="w-full table-fixed min-w-[1100px]">
+                <Table className="w-full table-fixed min-w-275">
                   <TableHeader className="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-100 dark:border-zinc-850">
                     <TableRow hoverable={false}>
                       <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-left! whitespace-nowrap">Booking Reference</TableHead>
@@ -493,7 +493,7 @@ export function DepositPaymentScreen() {
                               {p.bookingCode || "N/A"}
                             </span>
                           </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-[150px]" title={p.customerName || "N/A"}>
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-37.5" title={p.customerName || "N/A"}>
                             {p.customerName || "N/A"}
                           </TableCell>
                           <TableCell className="py-3.5! px-4! text-xs! text-slate-600! dark:text-zinc-400! text-left! whitespace-nowrap truncate">
@@ -589,7 +589,7 @@ export function DepositPaymentScreen() {
               </div>
             ) : (
               <>
-                <Table className="w-full table-fixed min-w-[1100px]">
+                <Table className="w-full table-fixed min-w-275">
                   <TableHeader className="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-100 dark:border-zinc-850">
                     <TableRow hoverable={false}>
                       <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-left! whitespace-nowrap">Booking Reference</TableHead>
@@ -611,14 +611,14 @@ export function DepositPaymentScreen() {
                           <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
                             {b.bookingCode}
                           </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-[150px]" title={b.customerName}>
+                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-37.5" title={b.customerName}>
                             {b.customerName}
                           </TableCell>
                           <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkInDate}</TableCell>
                           <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkOutDate}</TableCell>
                           <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
                             <div className="flex justify-center">
-                              <Badge variant="success" className="bg-emerald-55 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-450 dark:border-emerald-900 font-bold uppercase text-[9px] py-1 min-w-[90px] justify-center text-center">
+                              <Badge variant="success" className="bg-emerald-55 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-450 dark:border-emerald-900 font-bold uppercase text-[9px] py-1 min-w-22.5 justify-center text-center">
                                 {b.status}
                               </Badge>
                             </div>
@@ -897,7 +897,7 @@ export function DepositPaymentScreen() {
                   </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-500 dark:text-zinc-400 font-medium">Transaction reference link ID:</span>
-                    <span className="font-semibold text-slate-700 dark:text-zinc-300 text-right max-w-[200px] truncate select-all">{selectedPayment.gatewayTransactionId || "N/A"}</span>
+                    <span className="font-semibold text-slate-700 dark:text-zinc-300 text-right max-w-50 truncate select-all">{selectedPayment.gatewayTransactionId || "N/A"}</span>
                   </div>
                 </div>
               </div>
@@ -907,7 +907,7 @@ export function DepositPaymentScreen() {
                 <div className="border-t border-slate-100 dark:border-zinc-800 pt-4 flex flex-col items-center gap-4">
                   {/* VietQR for TRANSFER only */}
                   {selectedPayment.paymentMethod === "TRANSFER" && selectedPayment.qrCodeUrl && (
-                    <div className="flex flex-col items-center gap-2 bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 shadow-sm w-full max-w-[280px]">
+                    <div className="flex flex-col items-center gap-2 bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 shadow-sm w-full max-w-70">
                       <span className="text-[10px] font-bold text-slate-450 dark:text-zinc-400 uppercase tracking-wider mb-1">Dynamic VietQR</span>
                       <img
                         src={selectedPayment.qrCodeUrl}
@@ -1490,7 +1490,7 @@ function PrintableReceiptModal({
 
             </div>
           ) : payment.status === "PAID" ? (
-            <div className="flex flex-col items-center justify-center mx-auto border-2 border-dashed border-emerald-450 bg-emerald-50 rounded-xl p-4 w-full max-w-[280px] text-center gap-1 relative overflow-hidden">
+            <div className="flex flex-col items-center justify-center mx-auto border-2 border-dashed border-emerald-450 bg-emerald-50 rounded-xl p-4 w-full max-w-70 text-center gap-1 relative overflow-hidden">
               <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">Transaction Cleared</span>
               <span className="text-lg font-black text-emerald-800 uppercase tracking-wider">★ PAID ★</span>
               <span className="text-[8px] text-emerald-600 font-medium">Receipt authorized by Auto-Settlement Gateway</span>
