@@ -23,8 +23,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import com.novax.leadora.application.usecase.sla.SlaEntityResolver;
-
 @ExtendWith(MockitoExtension.class)
 class SlaIntegrationTest {
 
