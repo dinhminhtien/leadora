@@ -20,7 +20,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/reservation-status")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+@PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'MANAGER', 'ADMIN')")
 public class ReservationStatusController {
 
     private final GetReservationListUseCase getReservationListUseCase;
@@ -53,6 +53,7 @@ public class ReservationStatusController {
 
     /** UC-19.3 — Update Reservation Status */
     @PutMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('RESERVATION', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<ReservationResponse>> updateReservationStatus(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateStatusRequest request
@@ -63,6 +64,7 @@ public class ReservationStatusController {
 
     /** UC-19.4 — Cancel Reservation */
     @PutMapping("/{id}/cancel")
+    @PreAuthorize("hasAnyRole('RESERVATION', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<ReservationResponse>> cancelReservation(
             @PathVariable UUID id,
             @Valid @RequestBody CancelReservationRequest request
