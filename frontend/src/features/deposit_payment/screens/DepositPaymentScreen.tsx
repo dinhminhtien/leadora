@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,6 +19,7 @@ import {
   Calendar,
   FileText,
   Download,
+  Printer,
   Banknote
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
@@ -50,12 +52,22 @@ const generatePaymentSchema = z.object({
 type GeneratePaymentFormData = z.infer<typeof generatePaymentSchema>;
 
 export function DepositPaymentScreen() {
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams ? searchParams.get("search") || "" : "";
+
   const [activeTab, setActiveTab] = useState<"requests" | "bookings">("requests");
 
   // Tab 1: Payment Requests states
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
-  const [paymentsSearch, setPaymentsSearch] = useState("");
+  const [paymentsSearch, setPaymentsSearch] = useState(initialSearch);
+
+  useEffect(() => {
+    if (initialSearch) {
+      setPaymentsSearch(initialSearch);
+      setActiveTab("requests");
+    }
+  }, [initialSearch]);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [paymentsPage, setPaymentsPage] = useState(0);
@@ -74,6 +86,11 @@ export function DepositPaymentScreen() {
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [selectedBookingForRequest, setSelectedBookingForRequest] = useState<Booking | null>(null);
   const [selectedBookingForDetails, setSelectedBookingForDetails] = useState<Booking | null>(null);
+
+  // Printable Receipt states
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [receiptBooking, setReceiptBooking] = useState<Booking | null>(null);
+  const [loadingReceiptBooking, setLoadingReceiptBooking] = useState(false);
 
   // Action states
   const [submittingRequest, setSubmittingRequest] = useState(false);
@@ -207,6 +224,24 @@ export function DepositPaymentScreen() {
       toast.error(msg);
     } finally {
       setSubmittingRequest(false);
+    }
+  };
+
+  // Open print modal and fetch booking details on demand
+  const handleOpenPrintModal = async (payment: Payment) => {
+    setShowPrintModal(true);
+    setLoadingReceiptBooking(true);
+    setReceiptBooking(null);
+    try {
+      const res = await bookingConfirmationService.getById(payment.bookingId);
+      if (res.success && res.data) {
+        setReceiptBooking(res.data);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load booking details for receipt.");
+    } finally {
+      setLoadingReceiptBooking(false);
     }
   };
 
@@ -350,7 +385,7 @@ export function DepositPaymentScreen() {
         <button
           onClick={() => { setActiveTab("requests"); setPaymentsPage(0); }}
           className={`px-5 py-3 text-xs font-bold border-b-2 transition-all ${activeTab === "requests"
-            ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold"
+            ? "border-primary text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold"
             : "border-transparent text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-300"
             }`}
         >
@@ -359,7 +394,7 @@ export function DepositPaymentScreen() {
         <button
           onClick={() => { setActiveTab("bookings"); setBookingsPage(0); }}
           className={`px-5 py-3 text-xs font-bold border-b-2 transition-all ${activeTab === "bookings"
-            ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold"
+            ? "border-primary text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold"
             : "border-transparent text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-300"
             }`}
         >
@@ -757,7 +792,7 @@ export function DepositPaymentScreen() {
                   variant="success"
                   size="sm"
                   disabled={submittingRequest}
-                  className="text-xs font-bold px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5"
+                  className="text-xs font-bold px-5 py-2 bg-primary hover:bg-primary/90 text-white flex items-center gap-1.5"
                 >
                   {submittingRequest ? <RefreshCw className="size-3.5 animate-spin" /> : null}
                   Generate Payment Request
@@ -777,12 +812,21 @@ export function DepositPaymentScreen() {
                 <h3 className="font-extrabold text-sm text-slate-800 dark:text-zinc-100">Audit Payment Log Record</h3>
                 <p className="text-[10px] text-slate-400 dark:text-zinc-500">Verifying secure checksum signatures and payment logs references.</p>
               </div>
-              <button
-                onClick={() => { setShowDetailModal(false); }}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300 rounded p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 transition"
-              >
-                <X className="size-4" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => handleOpenPrintModal(selectedPayment)}
+                  className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 transition mr-0.5"
+                  title="Export QR Form / Print Receipt"
+                >
+                  <Printer className="size-4" />
+                </button>
+                <button
+                  onClick={() => { setShowDetailModal(false); }}
+                  className="text-slate-400 hover:text-slate-650 dark:hover:text-zinc-300 rounded p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 transition"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
             </div>
 
             <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
@@ -875,10 +919,23 @@ export function DepositPaymentScreen() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleDownloadQR(selectedPayment.qrCodeUrl!, selectedPayment.paymentId)}
-                        className="mt-1 w-full text-[10px] font-bold py-1.5 px-3 flex items-center justify-center gap-1 border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"
+                        className="mt-1 w-full border border-slate-200 dark:border-zinc-700 text-slate-650 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"
                       >
-                        <Download className="size-3" />
-                        Download QR Image
+                        <span className="flex items-center justify-center gap-1.5 w-full text-[10px] font-bold py-0.5">
+                          <Download className="size-3.5 shrink-0" />
+                          <span>Download QR Image</span>
+                        </span>
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleOpenPrintModal(selectedPayment)}
+                        className="mt-1.5 w-full bg-blue-650 hover:bg-blue-700 text-white"
+                      >
+                        <span className="flex items-center justify-center gap-1.5 w-full text-[10px] font-bold py-0.5">
+                          <FileText className="size-3.5 shrink-0" />
+                          <span>Export QR Form</span>
+                        </span>
                       </Button>
                     </div>
                   )}
@@ -1109,7 +1166,7 @@ export function DepositPaymentScreen() {
                   handleOpenGenerateModal(selectedBookingForDetails);
                   setSelectedBookingForDetails(null);
                 }}
-                className="bg-blue-650 hover:bg-blue-700 text-white font-bold"
+                className="bg-primary hover:bg-primary/90 text-white font-bold"
               >
                 Generate Payment Request
               </Button>
@@ -1117,6 +1174,340 @@ export function DepositPaymentScreen() {
           </div>
         </div>
       )}
+
+      {/* Printable Receipt Modal Overlay */}
+      {showPrintModal && selectedPayment && (
+        <PrintableReceiptModal
+          payment={selectedPayment}
+          booking={receiptBooking}
+          loading={loadingReceiptBooking}
+          onClose={() => setShowPrintModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface PrintableReceiptModalProps {
+  payment: Payment;
+  booking: Booking | null;
+  loading: boolean;
+  onClose: () => void;
+}
+
+function PrintableReceiptModal({
+  payment,
+  booking,
+  loading,
+  onClose
+}: PrintableReceiptModalProps) {
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const receiptId = `PAY-${payment.paymentId.substring(0, 8).toUpperCase()}`;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-center items-start overflow-y-auto p-4 sm:p-10 print-modal-overlay">
+      <style>{`
+        @media print {
+          @page {
+            size: portrait;
+            margin: 6mm 10mm 6mm 10mm;
+          }
+          body * {
+            visibility: hidden;
+            height: 0;
+            overflow: hidden;
+          }
+          .print-modal-overlay, .print-card, .print-card * {
+            visibility: visible;
+            height: auto !important;
+            overflow: visible !important;
+          }
+          .print-modal-overlay {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+          .print-card {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: white !important;
+            color: black !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            font-size: 10.5px !important;
+            line-height: 1.35 !important;
+          }
+          .print-card h2 {
+            font-size: 13px !important;
+            margin-top: 8px !important;
+            margin-bottom: 4px !important;
+          }
+          .print-card h4 {
+            font-size: 9px !important;
+            margin-top: 10px !important;
+            margin-bottom: 3px !important;
+          }
+          .print-card .border-t {
+            margin-top: 10px !important;
+            padding-top: 10px !important;
+          }
+          .print-card .grid {
+            gap: 6px !important;
+          }
+          .print-card table th, .print-card table td {
+            padding-top: 3px !important;
+            padding-bottom: 3px !important;
+          }
+          .print-card img.logo {
+            width: 32px !important;
+            height: 32px !important;
+          }
+          .print-card img.qr-code {
+            width: 135px !important;
+            height: 135px !important;
+          }
+          .no-print {
+            display: none !important;
+            height: 0 !important;
+            width: 0 !important;
+            overflow: hidden !important;
+          }
+        }
+      `}</style>
+
+      <div className="print-card bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-6 sm:p-8 max-w-2xl w-full mx-auto my-auto relative text-slate-800 dark:text-zinc-100 flex flex-col gap-5">
+
+        {/* Print Actions */}
+        <div className="flex justify-between items-center no-print border-b border-slate-100 dark:border-zinc-800 pb-4">
+          <h3 className="text-sm font-bold text-slate-700 dark:text-zinc-300">Payment Form / Receipt Preview</h3>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              className="text-slate-700 dark:text-zinc-300"
+            >
+              Close Preview
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handlePrint}
+              disabled={loading}
+              className="bg-blue-650 hover:bg-blue-700 text-white font-bold shadow-sm disabled:opacity-50"
+            >
+              <span className="flex items-center justify-center gap-1.5">
+                <Printer className="size-3.5 shrink-0" />
+                <span>Print / Save PDF</span>
+              </span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Brand Header with Logo */}
+        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <div className="flex items-center gap-3">
+            <img
+              src="/logo1.jpg"
+              alt="Leadora Logo"
+              className="logo h-10 w-10 object-cover rounded-lg border border-slate-100 print:border-slate-200"
+            />
+            <div className="flex flex-col text-left">
+              <span className="text-lg font-extrabold tracking-widest text-slate-900 dark:text-zinc-100 leading-none">LEADORA</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-1">Sales & Workflow Management System</span>
+              <span className="text-[7.5px] text-slate-400 dark:text-zinc-500 mt-0.5 print:text-black font-semibold">Contact: minhplnce180439@fpt.edu.vn | Hotline: +84 (0) 96 495 9652</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <h2 className="text-xs font-black text-slate-800 dark:text-zinc-200 uppercase tracking-wide">
+              {payment.status === "PAID" ? "PAYMENT RECEIPT" : "PAYMENT REQUEST"}
+            </h2>
+            <span className="text-[9px] font-semibold text-slate-455 dark:text-zinc-500 uppercase tracking-wider">System-Generated Invoice</span>
+          </div>
+        </div>
+
+        {/* Info Metadata Grid */}
+        <div className="grid grid-cols-2 gap-4 text-xs">
+          <div className="space-y-1">
+            <div>
+              <span className="text-slate-455 font-semibold block text-[10px]">Receipt ID:</span>
+              <span className="font-bold text-slate-800 dark:text-zinc-200 select-all">{receiptId}</span>
+            </div>
+            <div>
+              <span className="text-slate-455 font-semibold block text-[10px]">Date Created:</span>
+              <span className="font-medium text-slate-700 dark:text-zinc-300">{new Date(payment.createdAt).toLocaleString("en-US")}</span>
+            </div>
+            {payment.status === "PAID" && payment.paidAt && (
+              <div>
+                <span className="text-slate-455 font-semibold block text-[10px]">Date Settled:</span>
+                <span className="font-bold text-emerald-600">{new Date(payment.paidAt).toLocaleString("en-US")}</span>
+              </div>
+            )}
+          </div>
+          <div className="space-y-1 text-right">
+            <div>
+              <span className="text-slate-455 font-semibold block text-[10px]">Payment Type:</span>
+              <span className="font-bold text-slate-800 dark:text-zinc-200 uppercase">{payment.paymentType === "DEPOSIT" ? "Room Deposit" : "Full Payment"}</span>
+            </div>
+            <div>
+              <span className="text-slate-455 font-semibold block text-[10px]">Method:</span>
+              <span className="font-bold text-slate-800 dark:text-zinc-200 uppercase">{payment.paymentMethod || "TRANSFER"}</span>
+            </div>
+            <div>
+              <span className="text-slate-455 font-semibold block text-[10px]">Payment Status:</span>
+              <span className={`inline-block font-extrabold uppercase px-2 py-0.5 rounded text-[9px] mt-0.5 ${payment.status === "PAID"
+                ? "bg-emerald-100 text-emerald-800"
+                : payment.status === "PENDING"
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-red-100 text-red-800"
+                }`}>
+                {payment.status}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Billing Section */}
+        <div className="border-t border-slate-100 pt-3 space-y-2">
+          <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Billing & Booking Details</h4>
+          <div className="bg-slate-50 border border-slate-150 rounded-xl p-3 grid grid-cols-2 gap-y-2 gap-x-4 text-xs text-slate-700">
+            <div>
+              <span className="text-slate-400 block text-[10px] font-semibold">Guest Name:</span>
+              <span className="font-bold text-slate-900">{payment.customerName || booking?.customerName || "Walk-in Guest"}</span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[10px] font-semibold">Booking Ref Code:</span>
+              <span className="font-bold text-slate-900 select-all">{payment.bookingCode}</span>
+            </div>
+            {booking && (
+              <>
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-semibold">Check-In Date:</span>
+                  <span className="font-medium">{booking.checkInDate}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-semibold">Check-Out Date:</span>
+                  <span className="font-medium">{booking.checkOutDate}</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Room Allocation Pricing Table */}
+        <div className="border-t border-slate-100 pt-3 space-y-1.5">
+          <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Billing Item Breakdown</h4>
+          <table className="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200 text-slate-400 font-bold text-[10px]">
+                <th className="py-1.5">Description / Room Info</th>
+                <th className="py-1.5 text-center w-16">Nights</th>
+                <th className="py-1.5 text-right w-24">Price (VND)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={3} className="py-3 text-center text-slate-400 italic">Loading details...</td>
+                </tr>
+              ) : booking?.details && booking.details.length > 0 ? (
+                booking.details.map((d) => (
+                  <tr key={d.bookingDetailId} className="border-b border-slate-100 text-slate-700">
+                    <td className="py-1.5 font-semibold">
+                      {d.productName} {d.roomNumber ? `(Room ${d.roomNumber})` : ""}
+                    </td>
+                    <td className="py-1.5 text-center">{d.nights}</td>
+                    <td className="py-1.5 text-right font-medium">{d.unitPrice?.toLocaleString()} ₫</td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="border-b border-slate-100 text-slate-700">
+                  <td className="py-1.5 font-semibold">
+                    {payment.paymentType === "DEPOSIT" ? "Security Room Deposit" : "Room Rental Fee"} for Ref #{payment.bookingCode}
+                  </td>
+                  <td className="py-1.5 text-center">—</td>
+                  <td className="py-1.5 text-right font-medium">{payment.amount?.toLocaleString()} ₫</td>
+                </tr>
+              )}
+
+              {/* Final calculations */}
+              <tr className="text-slate-900 border-t border-slate-200">
+                <td colSpan={2} className="py-2 text-right font-black text-xs uppercase">Total Due/Settled:</td>
+                <td className="py-2 text-right font-black text-sm text-blue-650">
+                  {payment.amount?.toLocaleString("vi-VN")} ₫
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Payment Section / QR / PAID Stamp */}
+        <div className="border-t border-slate-100 pt-3 w-full">
+          {payment.status === "PENDING" && payment.paymentMethod === "TRANSFER" && payment.qrCodeUrl ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full items-stretch">
+
+              {/* Left Column: QR Code Card */}
+              <div className="flex flex-col items-center justify-center gap-1 border border-slate-200 rounded-xl p-3 bg-slate-50 w-full print:bg-slate-50">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Dynamic Payment VietQR</span>
+                <img
+                  src={payment.qrCodeUrl}
+                  alt="Napas VietQR"
+                  className="qr-code size-40 object-contain rounded-lg bg-white p-1 border border-slate-150"
+                />
+                <span className="text-[8px] text-slate-450 text-center font-medium">Scan QR code using any Mobile Banking App</span>
+              </div>
+
+              {/* Right Column: Bank Details Table */}
+              <div className="text-[9px] text-slate-500 bg-slate-50 rounded-xl p-3 flex flex-col justify-center border border-slate-150 w-full">
+                <p className="font-bold text-slate-600 text-center uppercase tracking-wider text-[8px] border-b border-slate-200 pb-1 mb-2">Bank Transfer Info</p>
+                <div className="grid grid-cols-3 gap-y-1.5 text-left text-slate-700 print:text-black">
+                  <span className="font-semibold text-slate-450">Account Holder:</span>
+                  <span className="col-span-2 font-bold text-slate-700 print:text-black">TRINH MINH NGOC</span>
+                  <span className="font-semibold text-slate-455">Account Number:</span>
+                  <span className="col-span-2 font-bold text-slate-800 print:text-black select-all">22224102004</span>
+                  <span className="font-semibold text-slate-455">Receiving Bank:</span>
+                  <span className="col-span-2 font-medium text-slate-750 print:text-black leading-tight">MB Bank</span>
+                  <span className="font-semibold text-slate-450">Transfer Content:</span>
+                  <span className="col-span-2 font-bold text-blue-600 print:text-black select-all break-all leading-tight">
+                    LEADORAPAY{payment.paymentId}
+                  </span>
+                </div>
+              </div>
+
+            </div>
+          ) : payment.status === "PAID" ? (
+            <div className="flex flex-col items-center justify-center mx-auto border-2 border-dashed border-emerald-450 bg-emerald-50 rounded-xl p-4 w-full max-w-[280px] text-center gap-1 relative overflow-hidden">
+              <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">Transaction Cleared</span>
+              <span className="text-lg font-black text-emerald-800 uppercase tracking-wider">★ PAID ★</span>
+              <span className="text-[8px] text-emerald-600 font-medium">Receipt authorized by Auto-Settlement Gateway</span>
+
+              {/* Stamp visual accent */}
+              <div className="absolute -right-4 -bottom-4 w-12 h-12 rounded-full border-4 border-emerald-200/40 rotate-12 flex items-center justify-center text-[10px] font-black text-emerald-250/20">
+                OK
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Footer Note */}
+        <div className="border-t border-slate-100 pt-3 text-center text-[8px] text-slate-400 font-medium italic">
+          Thank you for choosing our services! For immediate support, please contact the hotel front desk. Powered by Leadora – Follow-up & Sales Workflow Management System.
+        </div>
+      </div>
     </div>
   );
 }
