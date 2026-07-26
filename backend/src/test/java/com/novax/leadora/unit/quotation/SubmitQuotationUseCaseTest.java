@@ -31,6 +31,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.novax.leadora.application.usecase.quotation.QuotationAccessPolicy;
+
 @ExtendWith(MockitoExtension.class)
 class SubmitQuotationUseCaseTest {
 
@@ -52,14 +54,13 @@ class SubmitQuotationUseCaseTest {
     @InjectMocks
     private SubmitQuotationUseCase submitQuotationUseCase;
 
-    /**
-     * {@code @Value} fields are not populated by {@code @InjectMocks}, so the approval threshold
-     * would be null and every discount comparison would throw. Set it to the production default
-     * ({@code app.quotation.discount-threshold:10}) that the cases below are written against.
-     */
-    @BeforeEach
+    @org.junit.jupiter.api.BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(submitQuotationUseCase, "discountApprovalThreshold", BigDecimal.TEN);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+            submitQuotationUseCase,
+            "discountApprovalThreshold",
+            java.math.BigDecimal.valueOf(10)
+        );
     }
 
     @Test
@@ -72,6 +73,7 @@ class SubmitQuotationUseCaseTest {
                 .discountPercent(BigDecimal.valueOf(5)) // 5% discount <= 10% threshold
                 .build();
 
+        when(quotationAccessPolicy.currentUser()).thenReturn(new UserEntity());
         when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(draftQuotation));
         when(quotationRepository.save(any(QuotationEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(quotationDetailRepository.findByQuotation_QuotationId(quotationId)).thenReturn(Collections.emptyList());
@@ -96,6 +98,7 @@ class SubmitQuotationUseCaseTest {
 
         UserEntity manager = UserEntity.builder().userId(UUID.randomUUID()).email("manager@leadora.vn").build();
 
+        when(quotationAccessPolicy.currentUser()).thenReturn(new UserEntity());
         when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(draftQuotation));
         when(quotationRepository.save(any(QuotationEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(userRepository.findByRoleName("MANAGER")).thenReturn(List.of(manager));
@@ -117,6 +120,7 @@ class SubmitQuotationUseCaseTest {
                 .status(QuotationStatus.APPROVED)
                 .build();
 
+        when(quotationAccessPolicy.currentUser()).thenReturn(new UserEntity());
         when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(approvedQuotation));
 
         assertThrows(IllegalStateException.class, () -> submitQuotationUseCase.execute(quotationId, new SubmitQuotationRequest()));

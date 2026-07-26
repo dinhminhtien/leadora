@@ -25,6 +25,8 @@ import static org.mockito.ArgumentMatchers.eq;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.novax.leadora.application.usecase.deal.DealWorkflowResolver;
+
 class DealValidationTest {
 
         private DealValidation dealValidation;
@@ -39,8 +41,7 @@ class DealValidationTest {
                 currentUserProvider = mock(CurrentUserProvider.class);
                 auditLogService = mock(SystemAuditLogService.class);
                 dealWorkflowResolver = mock(DealWorkflowResolver.class);
-                dealValidation = new DealValidation(bookingRepository, currentUserProvider, auditLogService,
-                                dealWorkflowResolver);
+                dealValidation = new DealValidation(bookingRepository, currentUserProvider, auditLogService, dealWorkflowResolver);
         }
 
         @Test

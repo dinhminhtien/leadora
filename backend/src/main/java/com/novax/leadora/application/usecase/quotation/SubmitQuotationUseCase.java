@@ -13,6 +13,7 @@ import com.novax.leadora.infrastructure.persistence.repository.NotificationRepos
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -38,6 +39,7 @@ public class SubmitQuotationUseCase {
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
     private final QuotationAccessPolicy quotationAccessPolicy;
+    private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Transactional
     public QuotationResponse execute(UUID id, SubmitQuotationRequest request) {
@@ -77,6 +79,14 @@ public class SubmitQuotationUseCase {
         }
 
         QuotationEntity saved = quotationRepository.save(quotation);
+
+        if (newStatus == QuotationStatus.APPROVED) {
+            try {
+                startSlaTrackingUseCase.execute("QUOTATION_SENT", "QUOTATION", saved.getQuotationId());
+            } catch (Exception e) {
+                log.warn("SLA tracking failed for quotation {}: {}", saved.getQuotationId(), e.getMessage());
+            }
+        }
 
         // BR-21/BR-34: alert Sales Managers so a discount >10% quotation doesn't sit
         // unnoticed in the pending-approvals queue

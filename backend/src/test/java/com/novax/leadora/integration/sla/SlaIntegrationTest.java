@@ -23,6 +23,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.novax.leadora.application.usecase.sla.SlaEntityResolver;
+
 @ExtendWith(MockitoExtension.class)
 class SlaIntegrationTest {
 
@@ -161,8 +163,6 @@ class SlaIntegrationTest {
         when(slaTrackingRepository.findByStatusAndDeadlineAtBefore(eq(SlaStatus.ACTIVE), any()))
                 .thenReturn(List.of(tracking));
         when(userRepository.findAllWithRole()).thenReturn(List.of(manager));
-        // Looking the owning entity up per tracking type now lives in SlaEntityResolver, so the
-        // assigned user is stubbed there rather than on the individual repositories.
         when(slaEntityResolver.resolveAssignedUser(tracking)).thenReturn(assignedStaff);
 
         processSlaBreachUseCase.execute();

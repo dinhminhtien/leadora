@@ -32,6 +32,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.novax.leadora.common.security.CurrentUserProvider;
+
 @ExtendWith(MockitoExtension.class)
 class DealIntegrationTest {
 
@@ -78,10 +80,9 @@ class DealIntegrationTest {
         UserEntity defaultUser = UserEntity.builder().userId(UUID.randomUUID()).build();
 
         when(customerRepository.findById(customerId)).thenReturn(Optional.of(customer));
+        when(currentUserProvider.resolve(null)).thenReturn(defaultUser);
         when(dealMapper.mapStageToEnum("PROSPECTING")).thenReturn(DealPipelineStage.PROSPECTING);
         when(dealMapper.mapStatusToEnum(null)).thenReturn(DealStatus.OPEN);
-        // The owner now comes from the authenticated caller, not from "the first user in the table".
-        when(currentUserProvider.resolve(any())).thenReturn(defaultUser);
         when(dealRepository.save(any(DealEntity.class))).thenAnswer(inv -> {
             DealEntity d = inv.getArgument(0);
             d.setDealId(UUID.randomUUID());
