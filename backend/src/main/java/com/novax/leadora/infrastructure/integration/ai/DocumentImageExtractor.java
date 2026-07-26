@@ -45,11 +45,34 @@ import java.util.Set;
 public class DocumentImageExtractor {
 
     /**
-     * Images smaller than this on their shortest side are skipped. Logos, bullets, header rules and
-     * icons carry no useful prose, and every image sent to the vision model costs a request against
-     * the daily quota — so filtering them out is both cleaner (less OCR noise) and cheaper.
+     * Absolute floor on the shortest side. Below this nothing legible fits, whatever the aspect
+     * ratio, so the image is skipped even for an otherwise empty document.
+     *
+     * <p>This used to be a flat 200px shortest-side rule, which silently threw away the single most
+     * common way a policy ends up inside a Word file: one wide, short screenshot of a line of text
+     * (e.g. 632×100). Its short side was 100 → filtered out → no images → no OCR → zero chunks →
+     * the whole upload was deleted as "no extractable text". Judge by area instead: it is what
+     * actually separates a logo/icon from a strip of prose.
      */
-    private static final int MIN_DIMENSION_PX = 200;
+    @Value("${ai.rag.vision-ocr.image-filter.min-side-px:40}")
+    private int minSidePx;
+
+    /**
+     * Area floor applied to a document that already has a text layer. Logos, bullets, header rules
+     * and icons carry no useful prose, and every image sent to the vision model costs a request
+     * against the daily quota — so filtering them out is both cleaner (less OCR noise) and cheaper.
+     * 16 000 px² ≈ a 126×126 icon; a 632×100 text strip is 63 200 px² and passes.
+     */
+    @Value("${ai.rag.vision-ocr.image-filter.min-area-px:16000}")
+    private int minAreaPx;
+
+    /**
+     * Floor used when the document has (almost) no text layer. There the images <em>are</em> the
+     * document, so anything remotely readable is worth a vision call — the same reasoning that makes
+     * {@link #fromImageFile} unfiltered. Only the absolute floor below applies.
+     */
+    @Value("${ai.rag.vision-ocr.image-filter.lenient-min-side-px:16}")
+    private int lenientMinSidePx;
 
     /**
      * Longest side an image is downscaled to before being sent to the vision model. This is a
@@ -85,17 +108,20 @@ public class DocumentImageExtractor {
      * carry embedded raster images; a directly uploaded image file (.png/.jpg/.jpeg) IS the image
      * and is handed over whole. TXT/MD have none, and legacy binary DOC is not mined here (rare,
      * and its image model differs).
+     *
+     * @param textPoor the document's text layer is (near) empty, so its pictures carry the content
+     *                 and the size filter is relaxed to the absolute floor
      */
-    public List<byte[]> extractPngImages(String fileName, byte[] content, int max) {
+    public List<byte[]> extractPngImages(String fileName, byte[] content, int max, boolean textPoor) {
         String lower = fileName == null ? "" : fileName.toLowerCase();
         if (max <= 0) {
             return List.of();
         }
         if (lower.endsWith(".pdf")) {
-            return fromPdf(content, max);
+            return fromPdf(content, max, textPoor);
         }
         if (lower.endsWith(".docx")) {
-            return fromDocx(content, max);
+            return fromDocx(content, max, textPoor);
         }
         if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
             return fromImageFile(content);
@@ -104,9 +130,9 @@ public class DocumentImageExtractor {
     }
 
     /**
-     * The uploaded file is itself the image. No {@link #MIN_DIMENSION_PX} filter here: that guard
-     * exists to skip decorative logos/bullets mined out of documents, but a file the user picked
-     * explicitly is always intentional — reject nothing, just normalize and hand it over.
+     * The uploaded file is itself the image. No size filter here: that guard exists to skip
+     * decorative logos/bullets mined out of documents, but a file the user picked explicitly is
+     * always intentional — reject nothing, just normalize and hand it over.
      */
     private List<byte[]> fromImageFile(byte[] content) {
         try {
@@ -124,7 +150,7 @@ public class DocumentImageExtractor {
         }
     }
 
-    private List<byte[]> fromPdf(byte[] content, int max) {
+    private List<byte[]> fromPdf(byte[] content, int max, boolean textPoor) {
         List<byte[]> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         try (PDDocument doc = Loader.loadPDF(content)) {
@@ -134,11 +160,13 @@ public class DocumentImageExtractor {
             for (int i = 0; i < pages && out.size() < max; i++) {
                 try {
                     if (pageRenderEnabled && isSparsePage(stripper, doc, i)) {
-                        // Sparse (scanned / vector-heavy) page → render it whole so the model sees everything.
-                        addPng(renderer.renderImageWithDPI(i, pageRenderDpi, ImageType.RGB), out, seen);
+                        // Sparse (scanned / vector-heavy) page → render it whole so the model sees
+                        // everything. A rendered page is always content, never decoration, so it
+                        // bypasses the area filter regardless of the document-level flag.
+                        addPng(renderer.renderImageWithDPI(i, pageRenderDpi, ImageType.RGB), out, seen, true);
                     } else {
                         // Text-rich page → only lift its embedded raster figures; Tika already has the text.
-                        collectFromResources(doc.getPage(i).getResources(), out, seen, max, 0);
+                        collectFromResources(doc.getPage(i).getResources(), out, seen, max, 0, textPoor);
                     }
                 } catch (Exception pageEx) {
                     log.debug("Skipping PDF page {}: {}", i, pageEx.getMessage());
@@ -158,7 +186,8 @@ public class DocumentImageExtractor {
     }
 
     /** Walks a page's XObjects, recursing into form XObjects, collecting every image it finds. */
-    private void collectFromResources(PDResources res, List<byte[]> out, Set<String> seen, int max, int depth) {
+    private void collectFromResources(PDResources res, List<byte[]> out, Set<String> seen, int max,
+                                      int depth, boolean lenient) {
         if (res == null || depth > MAX_FORM_DEPTH) {
             return;
         }
@@ -169,9 +198,9 @@ public class DocumentImageExtractor {
             try {
                 PDXObject xobj = res.getXObject(name);
                 if (xobj instanceof PDImageXObject img) {
-                    addPng(img.getImage(), out, seen);
+                    addPng(img.getImage(), out, seen, lenient);
                 } else if (xobj instanceof PDFormXObject form) {
-                    collectFromResources(form.getResources(), out, seen, max, depth + 1);
+                    collectFromResources(form.getResources(), out, seen, max, depth + 1, lenient);
                 }
             } catch (Exception ex) {
                 log.debug("Skipping one PDF XObject: {}", ex.getMessage());
@@ -179,20 +208,36 @@ public class DocumentImageExtractor {
         }
     }
 
-    private List<byte[]> fromDocx(byte[] content, int max) {
+    private List<byte[]> fromDocx(byte[] content, int max, boolean lenient) {
         List<byte[]> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
+        int total = 0;
+        int undecodable = 0;
         try (XWPFDocument doc = new XWPFDocument(new ByteArrayInputStream(content))) {
             for (XWPFPictureData pic : doc.getAllPictures()) {
+                total++;
                 if (out.size() >= max) {
                     break;
                 }
                 // ImageIO decodes PNG/JPEG/GIF/BMP; EMF/WMF (vector) return null and are skipped.
                 BufferedImage img = ImageIO.read(new ByteArrayInputStream(pic.getData()));
-                addPng(img, out, seen);
+                if (img == null) {
+                    undecodable++;
+                    log.debug("DOCX picture {} is not a decodable raster image (type {}) — skipped",
+                            pic.getFileName(), pic.getPictureType());
+                    continue;
+                }
+                addPng(img, out, seen, lenient);
             }
         } catch (Exception ex) {
             log.warn("DOCX image extraction failed: {}", ex.getMessage());
+        }
+        // A DOCX whose pictures all get dropped ingests to zero chunks and looks like a mystery
+        // failure; say out loud that pictures were present but none survived.
+        if (total > 0 && out.isEmpty()) {
+            log.warn("DOCX has {} picture(s) but none was usable for OCR ({} undecodable, rest below "
+                    + "the size filter — min side {}px, min area {}px²)",
+                    total, undecodable, lenient ? lenientMinSidePx : minSidePx, lenient ? 0 : minAreaPx);
         }
         return out;
     }
@@ -203,8 +248,8 @@ public class DocumentImageExtractor {
      * every page of a PDF would otherwise be OCR'd once per page, each a request against the daily
      * quota — de-dup by content hash collapses those to a single vision call.
      */
-    private void addPng(BufferedImage img, List<byte[]> out, Set<String> seen) {
-        if (img == null || Math.min(img.getWidth(), img.getHeight()) < MIN_DIMENSION_PX) {
+    private void addPng(BufferedImage img, List<byte[]> out, Set<String> seen, boolean lenient) {
+        if (img == null || tooSmall(img, lenient)) {
             return;
         }
         try {
@@ -217,6 +262,27 @@ public class DocumentImageExtractor {
         } catch (Exception ex) {
             log.debug("Could not re-encode an image to PNG: {}", ex.getMessage());
         }
+    }
+
+    /**
+     * Decides whether an image is too small to hold readable prose.
+     *
+     * <p>Area, not shortest side, is the discriminator. A line of text screenshotted out of a
+     * document is wide and short (632×100, 900×60…) — a shortest-side rule reads that as an icon and
+     * throws away the only content the file has. Area separates the two cleanly: a 126×126 logo is
+     * ~16 000 px², a one-line text strip is several times that.
+     *
+     * @param lenient the document has no text layer worth speaking of, so its images are the
+     *                content: drop only what is physically too small to read
+     */
+    private boolean tooSmall(BufferedImage img, boolean lenient) {
+        int w = img.getWidth();
+        int h = img.getHeight();
+        int shortSide = Math.min(w, h);
+        if (lenient) {
+            return shortSide < lenientMinSidePx;
+        }
+        return shortSide < minSidePx || (long) w * h < minAreaPx;
     }
 
     /** Downscales to {@link #MAX_DIMENSION_PX} on the longest side and flattens to opaque RGB in one pass. */
