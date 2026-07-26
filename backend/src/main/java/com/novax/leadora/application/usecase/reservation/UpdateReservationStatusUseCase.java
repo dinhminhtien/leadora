@@ -103,7 +103,7 @@ public class UpdateReservationStatusUseCase {
 
                     salesFeedbackRepository.save(feedback);
 
-                    String feedbackLink = frontendUrl + "/feedback/public/" + token;
+                    String feedbackLink = frontendUrl + "/feedback/" + token;
                     try {
                         emailService.sendFeedbackInvitationEmail(
                                 booking.getCustomer().getEmail(),
