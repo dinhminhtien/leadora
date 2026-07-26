@@ -160,8 +160,7 @@ public class UpdateReservationStatusUseCase {
         }
 
         if ((totalBooked + requestQty) > capacity) {
-            throw new BusinessRuleException(String.format("Dates unavailable. Inventory conflict for room type '%s'. Available: %d, Requested: %d",
-                    productName, (capacity - totalBooked), requestQty));
+            throw new BusinessRuleException("Dates unavailable. Inventory conflict.");
         }
     }
 }
