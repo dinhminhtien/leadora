@@ -62,4 +62,7 @@ public class OpHandoverEntity extends BaseEntity {
 
     @Column(name = "acknowledged_at")
     private OffsetDateTime acknowledgedAt;
+
+    @Column(name = "assigned_fo_user_id")
+    private UUID assignedFoUserId;
 }

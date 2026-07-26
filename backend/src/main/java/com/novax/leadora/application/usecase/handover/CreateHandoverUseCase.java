@@ -105,6 +105,7 @@ public class CreateHandoverUseCase {
                 .vipNotes(request.getVipNotes())
                 .operationalNotes(request.getOperationalNotes())
                 .readinessStatus(ReadinessStatus.PENDING_REVIEW)
+                .assignedFoUserId(request.getAssignedFoUserId())
                 .build();
 
         if (status == HandoverStatus.SUBMITTED) {
