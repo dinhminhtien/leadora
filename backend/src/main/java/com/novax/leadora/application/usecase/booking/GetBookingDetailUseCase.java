@@ -26,7 +26,7 @@ public class GetBookingDetailUseCase {
     @Transactional(readOnly = true)
     public BookingResponse execute(UUID bookingId) {
         BookingEntity booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with ID: " + bookingId));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Request not found."));
 
         List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(bookingId);
         List<BookingDetailResponse> detailResponses = details.stream()

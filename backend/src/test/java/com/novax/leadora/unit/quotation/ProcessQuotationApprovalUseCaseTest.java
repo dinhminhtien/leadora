@@ -11,6 +11,7 @@ import com.novax.leadora.infrastructure.persistence.repository.QuotationApproval
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -44,6 +45,9 @@ class ProcessQuotationApprovalUseCaseTest {
 
     @Mock
     private SystemAuditLogService systemAuditLogService;
+
+    @Mock
+    private StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @InjectMocks
     private ProcessQuotationApprovalUseCase approvalUseCase;

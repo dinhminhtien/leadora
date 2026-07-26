@@ -36,7 +36,7 @@ public class OperationalHandoverController {
 
     /** UC-20.1 — Create Operational Handover. */
     @PostMapping
-    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN', 'MANAGER')")
     public ResponseEntity<ApiResponse<ArrivalHandoverResponse>> create(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @Valid @RequestBody CreateHandoverRequest request
@@ -48,7 +48,7 @@ public class OperationalHandoverController {
 
     /** UC-20.4 — Update Operational Handover. */
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN', 'MANAGER')")
     public ResponseEntity<ApiResponse<ArrivalHandoverResponse>> update(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @PathVariable UUID id,
@@ -61,7 +61,7 @@ public class OperationalHandoverController {
 
     /** UC-20.3 — View Handover Detail. */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'FO', 'FRONT_OFFICE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'FO', 'FRONT_OFFICE', 'ADMIN', 'MANAGER')")
     public ResponseEntity<ApiResponse<ArrivalHandoverResponse>> detail(@PathVariable UUID id) {
         ArrivalHandoverResponse response = getHandoverDetailUseCase.execute(id);
         return ResponseEntity.ok(ApiResponse.success(response));
@@ -69,7 +69,7 @@ public class OperationalHandoverController {
 
     /** UC-20.2 — View Handover List. */
     @GetMapping
-    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'FO', 'FRONT_OFFICE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'FO', 'FRONT_OFFICE', 'ADMIN', 'MANAGER')")
     public ResponseEntity<ApiResponse<Page<ArrivalHandoverResponse>>> list(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
