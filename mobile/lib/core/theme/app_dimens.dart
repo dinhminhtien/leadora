@@ -24,13 +24,16 @@ class AppSpacing {
 }
 
 /// Corner radii. The app reads as a set of soft, consistent surfaces.
+/// Aligned to the web v2 design-system radius scale (8/12/16/20) so cards,
+/// inputs and sheets read the same on both platforms — `lg` (16) matches the
+/// web card radius exactly.
 class AppRadii {
   const AppRadii._();
 
-  static const double sm = 10;
-  static const double md = 14;
-  static const double lg = 18;
-  static const double xl = 22;
+  static const double sm = 8;
+  static const double md = 12;
+  static const double lg = 16;
+  static const double xl = 20;
   static const double pill = 999;
 }
 

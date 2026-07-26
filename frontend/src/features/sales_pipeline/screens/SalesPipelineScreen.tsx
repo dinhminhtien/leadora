@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { UserSelect } from "@/components/ui/UserSelect";
+import { useMyProfile } from "@/features/profile/hooks/use_profile";
 import {
   Briefcase,
   DollarSign,
@@ -21,25 +23,10 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { dealService } from "@/services/deal_service";
+import { dealService, type PipelineDealCardResponse, type Deal } from "@/services/deal_service";
 import { userService as taskUserService, type UserSummary } from "@/services/follow_up_task_service";
 import { useQueryClient } from "@tanstack/react-query";
-
-export type Deal = {
-  id: string;
-  title: string;
-  contactName: string;
-  email?: string;
-  phone?: string;
-  value: number;
-  probability: number;
-  stage: "Inquiry" | "Site Visit" | "Proposal" | "Negotiation" | "Contract" | "Confirmed";
-  owner: string;
-  status: "active" | "won" | "lost";
-  expectedClose?: string;
-  notes?: string;
-  createdAt?: string;
-};
+import { DealWorkflowStepper } from "@/features/deal/components/DealWorkflowStepper";
 
 const getStageStyles = (stage: Deal["stage"]) => {
   switch (stage) {
@@ -90,7 +77,13 @@ const getStageStyles = (stage: Deal["stage"]) => {
 
 export function SalesPipelineScreen() {
   const queryClient = useQueryClient();
-  const [deals, setDeals] = useState<Deal[]>([]);
+  const { data: profile } = useMyProfile();
+  const isManager = useMemo(() => {
+    const role = (profile?.roleName || "").toUpperCase();
+    return role === "MANAGER" || role === "ADMIN";
+  }, [profile]);
+
+  const [deals, setDeals] = useState<PipelineDealCardResponse[]>([]);
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
@@ -105,8 +98,8 @@ export function SalesPipelineScreen() {
 
   const isAlreadyClosed = useMemo(() => {
     if (!editingDeal) return false;
-    const orig = deals.find(d => d.id === editingDeal.id);
-    return orig ? orig.status !== "active" : false;
+    const orig = deals.find(d => d.deal.id === editingDeal.id);
+    return orig ? orig.deal.status !== "active" : false;
   }, [editingDeal, deals]);
 
   const showError = (msg: string) => {
@@ -146,9 +139,9 @@ export function SalesPipelineScreen() {
       if (ownerVal && ownerVal !== "all") {
         params.ownerId = ownerVal;
       }
-      const response = await dealService.getList(params);
+      const response = await dealService.getPipeline(params);
       if (response && response.success && response.data) {
-        setDeals(response.data as Deal[]);
+        setDeals(response.data as PipelineDealCardResponse[]);
       }
     } catch (err) {
       console.error("Failed to fetch deals", err);
@@ -238,7 +231,7 @@ export function SalesPipelineScreen() {
       stage: editingDeal.stage,
       expectedClose: editingDeal.expectedClose || new Date().toISOString().split("T")[0],
       status: editingDeal.status,
-      owner: editingDeal.owner,
+      owner: editingDeal.ownerEmail || editingDeal.owner,
       notes: editingDeal.notes || ""
     };
 
@@ -246,8 +239,8 @@ export function SalesPipelineScreen() {
       const response = await dealService.update(editingDeal.id, payload);
       if (response && response.success && response.data) {
         setDeals(prev =>
-          prev.map(deal =>
-            deal.id === editingDeal.id ? (response.data as Deal) : deal
+          prev.map(card =>
+            card.deal.id === editingDeal.id ? { ...card, deal: response.data as Deal } : card
           )
         );
         setIsEditDealDrawerOpen(false);
@@ -268,8 +261,9 @@ export function SalesPipelineScreen() {
 
   // Shift deal stage helper — frontend only sends the new stage, backend decides status
   const handleShiftStage = async (dealId: string, direction: "left" | "right") => {
-    const deal = deals.find(d => d.id === dealId);
-    if (!deal) return;
+    const card = deals.find(c => c.deal.id === dealId);
+    if (!card) return;
+    const deal = card.deal;
 
     const currentIdx = stages.indexOf(deal.stage);
     const nextIdx = currentIdx + (direction === "right" ? 1 : -1);
@@ -285,7 +279,7 @@ export function SalesPipelineScreen() {
       value: deal.value,
       stage: nextStage,
       expectedClose: deal.expectedClose || new Date().toISOString().split("T")[0],
-      owner: deal.owner,
+      owner: deal.ownerEmail || deal.owner,
       notes: deal.notes || ""
     };
 
@@ -294,7 +288,7 @@ export function SalesPipelineScreen() {
       if (response && response.success && response.data) {
         // Update local state with the backend-determined result
         setDeals(prev =>
-          prev.map(d => (d.id === dealId ? (response.data as Deal) : d))
+          prev.map(c => (c.deal.id === dealId ? { ...c, deal: response.data as Deal } : c))
         );
         // Invalidate dashboard summary cache so it updates in real-time
         queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
@@ -313,8 +307,9 @@ export function SalesPipelineScreen() {
 
   // Move deal to specific stage directly — backend handles status transitions
   const handleMoveToStage = async (dealId: string, targetStage: Deal["stage"]) => {
-    const deal = deals.find(d => d.id === dealId);
-    if (!deal) return;
+    const card = deals.find(c => c.deal.id === dealId);
+    if (!card) return;
+    const deal = card.deal;
 
     const payload = {
       title: deal.title,
@@ -324,7 +319,7 @@ export function SalesPipelineScreen() {
       value: deal.value,
       stage: targetStage,
       expectedClose: deal.expectedClose || new Date().toISOString().split("T")[0],
-      owner: deal.owner,
+      owner: deal.ownerEmail || deal.owner,
       notes: deal.notes || ""
     };
 
@@ -332,7 +327,7 @@ export function SalesPipelineScreen() {
       const response = await dealService.update(dealId, payload);
       if (response && response.success && response.data) {
         setDeals(prev =>
-          prev.map(d => (d.id === dealId ? (response.data as Deal) : d))
+          prev.map(c => (c.deal.id === dealId ? { ...c, deal: response.data as Deal } : c))
         );
         // Invalidate dashboard summary cache so it updates in real-time
         queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
@@ -351,8 +346,9 @@ export function SalesPipelineScreen() {
 
   // Mark deal status (won/lost) - UC-12.8 Close Deal
   const handleUpdateStatus = async (dealId: string, newStatus: Deal["status"]) => {
-    const dealToUpdate = deals.find(d => d.id === dealId);
-    if (!dealToUpdate) return;
+    const card = deals.find(c => c.deal.id === dealId);
+    if (!card) return;
+    const dealToUpdate = card.deal;
 
     const updatedStage = newStatus === "won" ? "Confirmed" : dealToUpdate.stage;
     const payload = {
@@ -364,7 +360,7 @@ export function SalesPipelineScreen() {
       stage: updatedStage,
       status: newStatus,
       expectedClose: dealToUpdate.expectedClose || new Date().toISOString().split("T")[0],
-      owner: dealToUpdate.owner,
+      owner: dealToUpdate.ownerEmail || dealToUpdate.owner,
       notes: dealToUpdate.notes || ""
     };
 
@@ -372,8 +368,8 @@ export function SalesPipelineScreen() {
       const response = await dealService.update(dealId, payload);
       if (response && response.success && response.data) {
         setDeals(prev =>
-          prev.map(deal =>
-            deal.id === dealId ? (response.data as Deal) : deal
+          prev.map(c =>
+            c.deal.id === dealId ? { ...c, deal: response.data as Deal } : c
           )
         );
         queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
@@ -396,10 +392,10 @@ export function SalesPipelineScreen() {
   // Statistics
   const pipelineStats = useMemo(() => {
     const totalCount = filteredDeals.length;
-    const totalValue = filteredDeals.reduce((sum, d) => sum + d.value, 0);
+    const totalValue = filteredDeals.reduce((sum, c) => sum + (c.deal.value || 0), 0);
     // Weighted value = value * probability %
     const weightedValue = filteredDeals.reduce(
-      (sum, d) => sum + d.value * (d.probability / 100),
+      (sum, c) => sum + (c.deal.value || 0) * ((c.deal.probability || 0) / 100),
       0
     );
 
@@ -412,7 +408,7 @@ export function SalesPipelineScreen() {
 
   // Group deals by stage
   const dealsByStage = useMemo(() => {
-    const groups: Record<Deal["stage"], Deal[]> = {
+    const groups: Record<Deal["stage"], PipelineDealCardResponse[]> = {
       Inquiry: [],
       "Site Visit": [],
       Proposal: [],
@@ -420,9 +416,9 @@ export function SalesPipelineScreen() {
       Contract: [],
       Confirmed: []
     };
-    filteredDeals.forEach(deal => {
-      if (groups[deal.stage]) {
-        groups[deal.stage].push(deal);
+    filteredDeals.forEach(card => {
+      if (card.deal && groups[card.deal.stage]) {
+        groups[card.deal.stage].push(card);
       }
     });
     return groups;
@@ -524,7 +520,7 @@ export function SalesPipelineScreen() {
       <div className="flex lg:grid lg:grid-cols-6 gap-2 lg:gap-3 overflow-x-auto lg:overflow-x-hidden pb-4 custom-scrollbar select-none min-h-120">
         {stages.map(stage => {
           const stageDeals = dealsByStage[stage] || [];
-          const stageTotalVal = stageDeals.reduce((sum, d) => sum + d.value, 0);
+          const stageTotalVal = stageDeals.reduce((sum, c) => sum + (c.deal.value || 0), 0);
           const styles = getStageStyles(stage);
 
           return (
@@ -571,9 +567,11 @@ export function SalesPipelineScreen() {
               {/* Deal Cards Container */}
               <div className="flex-1 space-y-3 overflow-y-auto max-h-110 pr-1 custom-scrollbar">
                 {stageDeals.length > 0 ? (
-                  stageDeals.map(deal => (
-                    <Card
-                      key={deal.id}
+                  stageDeals.map(card => {
+                    const deal = card.deal;
+                    return (
+                      <Card
+                        key={deal.id}
                       draggable={deal.status === "active"}
                       onDragStart={(e) => {
                         e.dataTransfer.setData("text/plain", deal.id);
@@ -613,6 +611,53 @@ export function SalesPipelineScreen() {
                         >
                           <User className="size-3 text-slate-400" />
                           <span className="truncate">{deal.contactName}</span>
+                        </div>
+
+                        {/* Mini Workflow Progress Stepper */}
+                        <div className="flex items-center gap-1 mt-1 border-t border-slate-100/60 pt-2 pb-1">
+                          <div className="flex items-center gap-1 w-full justify-between">
+                            {/* Q: Quotation */}
+                            <span 
+                              className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
+                                card.hasActiveQuotation 
+                                  ? "bg-blue-50 text-blue-700 border border-blue-200" 
+                                  : "bg-slate-50 text-slate-400 border border-slate-100"
+                              }`}
+                              title={card.hasActiveQuotation ? `Quotation: ${card.activeQuotationStatus}` : "No Active Quotation"}
+                            >
+                              Q: {card.hasActiveQuotation ? card.activeQuotationStatus : "None"}
+                            </span>
+                            
+                            <ChevronRight className="size-2 text-slate-300" />
+                            
+                            {/* B: Booking */}
+                            <span 
+                              className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
+                                card.hasActiveBooking 
+                                  ? "bg-indigo-50 text-indigo-700 border border-indigo-200" 
+                                  : "bg-slate-50 text-slate-400 border border-slate-100"
+                              }`}
+                              title={card.hasActiveBooking ? `Booking: ${card.activeBookingStatus}` : "No Active Booking"}
+                            >
+                              B: {card.hasActiveBooking ? card.activeBookingStatus : "None"}
+                            </span>
+                            
+                            <ChevronRight className="size-2 text-slate-300" />
+                            
+                            {/* P: Payment */}
+                            <span 
+                              className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
+                                card.paymentStatus === "PAID" 
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : card.paymentStatus === "PENDING"
+                                  ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                  : "bg-slate-50 text-slate-400 border border-slate-100"
+                              }`}
+                              title={card.paymentStatus ? `Payment Status: ${card.paymentStatus}` : "No Payment"}
+                            >
+                              P: {card.paymentStatus || "None"}
+                            </span>
+                          </div>
                         </div>
 
                         {/* Stage Slider Controller */}
@@ -670,7 +715,8 @@ export function SalesPipelineScreen() {
                         </div>
                       </CardContent>
                     </Card>
-                  ))
+                  );
+                })
                 ) : (
                   <div className="py-8 text-center text-slate-400 text-[10px] italic border-2 border-dashed border-slate-200 rounded-xl bg-slate-50">
                     No deals in this stage.
@@ -723,6 +769,9 @@ export function SalesPipelineScreen() {
                   <span>This deal is closed and cannot be modified.</span>
                 </div>
               )}
+
+              {/* Deal Workflow Stepper Progress Indicator */}
+              <DealWorkflowStepper dealId={editingDeal.id} />
 
               {/* Stage Tracker Stepper */}
               <div className="space-y-2 border-b border-slate-100 pb-4 mb-4">
@@ -883,19 +932,16 @@ export function SalesPipelineScreen() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Owner</label>
-                  <Select
-                    value={editingDeal.owner || ""}
-                    disabled={isAlreadyClosed}
-                    onChange={e => setEditingDeal({ ...editingDeal, owner: e.target.value })}
-                    className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
-                  >
-                    <option value="">Select Deal Owner...</option>
-                    {users.map(u => (
-                      <option key={u.userId} value={u.fullName}>
-                        {u.fullName} ({u.roleName || "Staff"})
-                      </option>
-                    ))}
-                  </Select>
+                  <UserSelect
+                    users={users}
+                    value={editingDeal.ownerEmail || ""}
+                    disabled={isAlreadyClosed || !isManager}
+                    onChange={(email, fullName) => setEditingDeal({
+                      ...editingDeal,
+                      ownerEmail: email,
+                      owner: fullName
+                    })}
+                  />
                 </div>
               </div>
 

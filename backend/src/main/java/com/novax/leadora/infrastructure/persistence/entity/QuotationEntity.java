@@ -44,6 +44,13 @@ public class QuotationEntity extends BaseEntity {
     @Column(name = "version", nullable = false)
     private Integer version;
 
+    // Optimistic lock (E3: two managers approving concurrently) — distinct from
+    // "version" above, which is the quotation's own revision number (BR-22).
+    @Version
+    @Column(name = "version_lock", nullable = false)
+    @Builder.Default
+    private Integer versionLock = 0;
+
     @Column(name = "room_type", length = 255)
     private String roomType;
 

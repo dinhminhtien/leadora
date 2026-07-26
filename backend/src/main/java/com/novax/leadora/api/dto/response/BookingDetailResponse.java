@@ -17,6 +17,7 @@ public class BookingDetailResponse {
     private UUID bookingDetailId;
     private UUID productId;
     private String productName;
+    private String description;
     private String roomNumber;
     private Integer quantity;
     private BigDecimal unitPrice;
@@ -28,7 +29,9 @@ public class BookingDetailResponse {
         return BookingDetailResponse.builder()
                 .bookingDetailId(entity.getBookingDetailId())
                 .productId(entity.getProductService() != null ? entity.getProductService().getProductId() : null)
-                .productName(entity.getProductService() != null ? entity.getProductService().getName() : null)
+                .productName(entity.getProductService() != null
+                        ? entity.getProductService().getName() : entity.getDescription())
+                .description(entity.getDescription())
                 .roomNumber(entity.getRoomNumber())
                 .quantity(entity.getQuantity())
                 .unitPrice(entity.getUnitPrice())

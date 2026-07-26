@@ -52,6 +52,10 @@ public class SlaTrackingEntity extends BaseEntity {
     @Builder.Default
     private boolean warningNotified = false;
 
+    @Column(name = "escalation_notified", nullable = false)
+    @Builder.Default
+    private boolean escalationNotified = false;
+
     @Column(name = "resolved_at")
     private OffsetDateTime resolvedAt;
 }

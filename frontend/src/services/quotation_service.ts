@@ -46,8 +46,6 @@ export type Quotation = {
 export type CloseQuotationPayload = {
   reason: string;
   notes?: string;
-  closedByName?: string;
-  closedByRole?: string;
 };
 
 export type ExpireOverduePayload = {
@@ -87,8 +85,6 @@ export type TrackCustomerResponsePayload = {
   customerResponse: "ACCEPTED" | "REJECTED" | "INTERESTED" | "NEED_REVISION";
   lostReason?: string;
   notes?: string;
-  recordedByName?: string;
-  recordedByRole?: string;
 };
 
 export type ReviseQuotationPayload = {
@@ -126,8 +122,6 @@ export type SubmitQuotationPayload = {
 
 export type ProcessApprovalPayload = {
   action: "APPROVE" | "REJECT" | "REQUEST_CHANGES";
-  managerName: string;
-  managerRole?: string;
   notes?: string;
 };
 
@@ -136,8 +130,6 @@ export type SendQuotationPayload = {
   recipientName: string;
   recipientEmail?: string;
   recipientPhone?: string;
-  sentByName?: string;
-  sentByRole?: string;
   personalMessage?: string;
 };
 

@@ -632,13 +632,13 @@ public class CrmSnapshotService {
 
     private static long repCount(List<RepDealStat> stats, DealStatus status) {
         return stats.stream().filter(s -> s.status() == status)
-                .mapToLong(RepDealStat::count).sum();
+                .mapToLong(s -> s.count()).sum();
     }
 
     private static BigDecimal repValue(List<RepDealStat> stats, DealStatus status) {
         return stats.stream().filter(s -> s.status() == status)
-                .map(RepDealStat::revenueOrZero)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(s -> s.revenueOrZero())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
     }
 
     private static String dash(String s) {

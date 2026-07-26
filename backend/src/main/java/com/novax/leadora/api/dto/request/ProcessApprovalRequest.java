@@ -9,10 +9,8 @@ public class ProcessApprovalRequest {
     @NotBlank(message = "action is required")
     private String action; // APPROVE | REJECT | REQUEST_CHANGES
 
-    @NotBlank(message = "managerName is required")
-    private String managerName;
-
-    private String managerRole;
+    // managerName/managerRole intentionally removed — actor is resolved server-side
+    // from the authenticated session (BR-37), never trusted from the client.
 
     private String notes;
 }

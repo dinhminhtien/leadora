@@ -13,18 +13,19 @@ import 'package:flutter/material.dart';
 class AppColors {
   const AppColors._();
 
-  static const Color brandSeed = Color(0xFF2563EB); // indigo-600
+  static const Color brandSeed = Color(0xFF185FA5); // Leadora Blue (web v2)
 
   // Semantic status colors (used by status chips across booking/payment).
-  static const Color success = Color(0xFF16A34A);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color danger = Color(0xFFDC2626);
-  static const Color info = Color(0xFF0EA5E9);
-  static const Color neutral = Color(0xFF64748B);
+  // Synced to the web v2 design-system token values.
+  static const Color success = Color(0xFF2E7D32); // web --success
+  static const Color warning = Color(0xFFF59E0B); // web --warning (amber)
+  static const Color danger = Color(0xFFDC2626); // web --destructive
+  static const Color info = Color(0xFF534AB7); // web --info (System/AI purple)
+  static const Color neutral = Color(0xFF64748B); // web --muted-foreground
 
   // Categorical accents. Only for distinguishing peer categories (task activity
   // types) where the semantic colors above would imply a state they don't have.
-  static const Color accentPurple = Color(0xFF9333EA);
+  static const Color accentPurple = Color(0xFF7F77DD); // Leadora purple-400
   static const Color accentOrange = Color(0xFFEA580C);
-  static const Color accentTeal = Color(0xFF0D9488);
+  static const Color accentTeal = Color(0xFF1D9E75); // Leadora reservation teal
 }

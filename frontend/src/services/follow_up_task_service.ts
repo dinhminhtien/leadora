@@ -165,8 +165,8 @@ export const taskService = {
     return data;
   },
 
-  async resolve(taskId: string): Promise<ApiResponse<Task>> {
-    const { data } = await apiClient.patch<ApiResponse<Task>>(`${ENDPOINT}/${taskId}/resolve`);
+  async resolve(taskId: string, resultNote: string): Promise<ApiResponse<Task>> {
+    const { data } = await apiClient.patch<ApiResponse<Task>>(`${ENDPOINT}/${taskId}/resolve`, { resultNote });
     return data;
   },
 };

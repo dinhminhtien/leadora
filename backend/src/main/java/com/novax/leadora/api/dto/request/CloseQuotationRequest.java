@@ -12,6 +12,7 @@ public class CloseQuotationRequest {
     private String reason;
 
     private String notes;
-    private String closedByName;
-    private String closedByRole;
+
+    // closedByName/closedByRole intentionally removed — actor is resolved server-side
+    // from the authenticated session (BR-37), never trusted from the client.
 }

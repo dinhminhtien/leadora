@@ -24,7 +24,7 @@ public class QuotationEmailService {
     @Value("${spring.mail.username:noreply@leadora.com}")
     private String fromAddress;
 
-    public void sendQuotationEmail(QuotationEntity quotation, SendQuotationRequest request) {
+    public void sendQuotationEmail(QuotationEntity quotation, SendQuotationRequest request, String senderName) {
         if (mailSender == null) {
             log.warn("JavaMailSender not configured (set MAIL_HOST/USERNAME/PASSWORD in .env) — email skipped for quotation {}",
                     quotation.getQuotationId());
@@ -42,7 +42,7 @@ public class QuotationEmailService {
             helper.setTo(recipientEmail);
             String quoteNo = "QT-" + quotation.getQuotationId().toString().substring(0, 8).toUpperCase();
             helper.setSubject("Room Quotation " + quoteNo + " — Leadora Hotel");
-            helper.setText(buildEmailBody(quotation, quoteNo, request), true);
+            helper.setText(buildEmailBody(quotation, quoteNo, request, senderName), true);
             mailSender.send(message);
             log.info("Quotation email sent: {} → {}", quoteNo, recipientEmail);
         } catch (Exception e) {
@@ -51,7 +51,7 @@ public class QuotationEmailService {
         }
     }
 
-    private String buildEmailBody(QuotationEntity q, String quoteNo, SendQuotationRequest req) {
+    private String buildEmailBody(QuotationEntity q, String quoteNo, SendQuotationRequest req, String senderNameOverride) {
         String customerName = (q.getCustomer() != null && q.getCustomer().getFullName() != null)
                 ? q.getCustomer().getFullName() : req.getRecipientName();
         String roomType   = q.getRoomType()     != null ? escapeHtml(q.getRoomType())     : "—";
@@ -64,7 +64,7 @@ public class QuotationEmailService {
                 ? "<p style=\"color:#374151;margin:16px 0;font-size:14px;font-style:italic;border-left:3px solid #3b82f6;padding-left:12px;\">"
                   + escapeHtml(req.getPersonalMessage()) + "</p>"
                 : "";
-        String senderName = req.getSentByName() != null ? escapeHtml(req.getSentByName()) : "Leadora Sales Team";
+        String senderName = senderNameOverride != null ? escapeHtml(senderNameOverride) : "Leadora Sales Team";
 
         return "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head>"
                 + "<body style=\"margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;\">"

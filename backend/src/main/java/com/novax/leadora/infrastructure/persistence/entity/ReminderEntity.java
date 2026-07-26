@@ -54,4 +54,9 @@ public class ReminderEntity extends BaseEntity {
 
     @Column(name = "related_id")
     private UUID relatedId;
+
+    /** BR-34: has the "due soon" heads-up notification already been sent? */
+    @Column(name = "pre_due_notified", nullable = false)
+    @Builder.Default
+    private boolean preDueNotified = false;
 }

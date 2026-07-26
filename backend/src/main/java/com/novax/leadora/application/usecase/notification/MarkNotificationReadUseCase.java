@@ -1,6 +1,7 @@
 package com.novax.leadora.application.usecase.notification;
 
 import com.novax.leadora.api.dto.response.NotificationResponse;
+import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
@@ -22,7 +23,7 @@ public class MarkNotificationReadUseCase {
     @Transactional
     public NotificationResponse execute(UUID notificationId, boolean markAsRead) {
         NotificationEntity entity = notificationRepository.findById(notificationId)
-                .orElseThrow(() -> new RuntimeException("Notification not found: " + notificationId));
+                .orElseThrow(() -> new ResourceNotFoundException("Notification", notificationId));
 
         // Only the recipient may toggle their own read state — Manager/Admin viewing the
         // aggregate feed (GET /notifications?allUsers=true) can see other users' rows but

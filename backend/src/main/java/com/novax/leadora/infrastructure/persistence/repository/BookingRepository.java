@@ -21,6 +21,12 @@ import java.util.UUID;
 public interface BookingRepository extends JpaRepository<BookingEntity, UUID>, JpaSpecificationExecutor<BookingEntity> {
     Optional<BookingEntity> findByBookingCode(String bookingCode);
 
+    boolean existsByQuotation_Deal_DealIdAndStatus(UUID dealId, BookingStatus status);
+
+    List<BookingEntity> findByQuotation_QuotationId(UUID quotationId);
+
+    List<BookingEntity> findByQuotation_QuotationIdIn(List<UUID> quotationIds);
+
     @EntityGraph(attributePaths = {"customer", "assignedUser", "quotation"})
     List<BookingEntity> findByCustomer_CustomerId(UUID customerId);
 

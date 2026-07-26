@@ -5,6 +5,7 @@ import com.novax.leadora.common.exception.BusinessRuleException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -67,6 +68,18 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.businessError("ACCESS_DENIED",
                         ex.getMessage() != null ? ex.getMessage()
                                 : "You do not have permission to access this resource.", null));
+    }
+
+    /**
+     * Two managers approving the same quotation concurrently (E3, UC-14.3) — JPA's
+     * @Version check fails the second writer instead of silently overwriting the first.
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLock(OptimisticLockingFailureException ex) {
+        log.warn("Optimistic lock conflict: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.businessError("ALREADY_PROCESSED",
+                        "This record was just modified by someone else. Please refresh and try again.", null));
     }
 
     @ExceptionHandler(BusinessException.class)
