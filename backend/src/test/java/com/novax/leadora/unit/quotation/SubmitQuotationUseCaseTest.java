@@ -31,8 +31,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import com.novax.leadora.application.usecase.quotation.QuotationAccessPolicy;
-
 @ExtendWith(MockitoExtension.class)
 class SubmitQuotationUseCaseTest {
 
@@ -54,9 +52,9 @@ class SubmitQuotationUseCaseTest {
     @InjectMocks
     private SubmitQuotationUseCase submitQuotationUseCase;
 
-    @org.junit.jupiter.api.BeforeEach
+    @BeforeEach
     void setUp() {
-        org.springframework.test.util.ReflectionTestUtils.setField(
+        ReflectionTestUtils.setField(
             submitQuotationUseCase,
             "discountApprovalThreshold",
             java.math.BigDecimal.valueOf(10)
