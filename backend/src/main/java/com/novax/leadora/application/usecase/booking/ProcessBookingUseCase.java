@@ -31,13 +31,14 @@ public class ProcessBookingUseCase {
     private final BookingDetailRepository bookingDetailRepository;
     private final NotificationRepository notificationRepository;
     private final EmailService emailService;
+    private final BookingStatusTransitionService bookingStatusTransitionService;
 
     @Transactional
     public BookingResponse execute(UUID bookingId, ProcessBookingRequest request) {
         BookingEntity booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with ID: " + bookingId));
-
         BookingStatus oldStatus = booking.getStatus();
+
         BookingStatus newStatus;
         try {
             newStatus = BookingStatus.valueOf(request.getStatus().toUpperCase());
@@ -45,20 +46,18 @@ public class ProcessBookingUseCase {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + request.getStatus());
         }
 
-        booking.setStatus(newStatus);
+        BookingEntity saved = bookingStatusTransitionService.transition(bookingId, newStatus, false, request.getStatusReason());
 
-        if (newStatus == BookingStatus.REJECTED && request.getRejectionReason() != null) {
-            String currentReqs = booking.getSpecialRequests();
-            String reasonTag = "[Rejection Reason: " + request.getRejectionReason() + "]";
+        if (newStatus == BookingStatus.REJECTED && request.getStatusReason() != null) {
+            String currentReqs = saved.getSpecialRequests();
+            String reasonTag = "[Rejection Reason: " + request.getStatusReason() + "]";
             if (currentReqs == null || currentReqs.isEmpty()) {
-                booking.setSpecialRequests(reasonTag);
+                saved.setSpecialRequests(reasonTag);
             } else {
-                booking.setSpecialRequests(currentReqs + "\n" + reasonTag);
+                saved.setSpecialRequests(currentReqs + "\n" + reasonTag);
             }
-            booking.setRejectionReason(request.getRejectionReason());
+            saved = bookingRepository.save(saved);
         }
-
-        BookingEntity saved = bookingRepository.save(booking);
 
         // UC-15.1: notify the assigned staff of the booking status decision
         if (saved.getAssignedUser() != null) {

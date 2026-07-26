@@ -6,7 +6,7 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.poi.util.Units;
-import org.apache.poi.xwpf.usermodel.Document;
+import org.apache.poi.common.usermodel.PictureType;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
@@ -25,8 +25,10 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Exercises the real image-extraction path (no model calls): a DOCX/PDF is built in-memory with an
- * embedded picture and the extractor must recover exactly that picture, while filtering out
+ * Exercises the real image-extraction path (no model calls): a DOCX/PDF is
+ * built in-memory with an
+ * embedded picture and the extractor must recover exactly that picture, while
+ * filtering out
  * icon-sized images and formats that carry none.
  */
 class DocumentImageExtractorTest {
@@ -62,7 +64,7 @@ class DocumentImageExtractorTest {
         try (XWPFDocument doc = new XWPFDocument()) {
             XWPFParagraph p = doc.createParagraph();
             XWPFRun run = p.createRun();
-            run.addPicture(new ByteArrayInputStream(png(w, h)), Document.PICTURE_TYPE_PNG,
+            run.addPicture(new ByteArrayInputStream(png(w, h)), PictureType.PNG,
                     "img.png", Units.toEMU(w), Units.toEMU(h));
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             doc.write(out);
@@ -74,7 +76,10 @@ class DocumentImageExtractorTest {
         return pdfWithSameImageOnPages(1, w, h);
     }
 
-    /** One image object drawn on {@code pages} pages — mimics a header/logo repeated across a scan. */
+    /**
+     * One image object drawn on {@code pages} pages — mimics a header/logo repeated
+     * across a scan.
+     */
     private static byte[] pdfWithSameImageOnPages(int pages, int w, int h) throws Exception {
         try (PDDocument doc = new PDDocument()) {
             PDImageXObject image = LosslessFactory.createFromImage(doc,
@@ -157,7 +162,10 @@ class DocumentImageExtractorTest {
         assertThat(images).hasSize(1);
     }
 
-    /** Extractor with page rendering switched on (production default; off in a bare unit-test instance). */
+    /**
+     * Extractor with page rendering switched on (production default; off in a bare
+     * unit-test instance).
+     */
     private static DocumentImageExtractor withPageRender() {
         DocumentImageExtractor e = newExtractor();
         ReflectionTestUtils.setField(e, "pageRenderEnabled", true);
@@ -173,7 +181,8 @@ class DocumentImageExtractorTest {
 
         assertThat(images).hasSize(1);
         BufferedImage got = ImageIO.read(new ByteArrayInputStream(images.get(0)));
-        // A US-Letter page at 150 DPI is ~1275px wide — far larger than the 400px embedded image,
+        // A US-Letter page at 150 DPI is ~1275px wide — far larger than the 400px
+        // embedded image,
         // proving the page was rendered rather than the raster image merely lifted.
         assertThat(got.getWidth()).isGreaterThan(600);
     }

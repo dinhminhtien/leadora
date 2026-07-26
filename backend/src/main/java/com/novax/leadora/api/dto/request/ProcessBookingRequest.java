@@ -15,5 +15,5 @@ public class ProcessBookingRequest {
     @NotBlank(message = "Status is required")
     private String status;
 
-    private String rejectionReason;
+    private String statusReason;
 }

@@ -296,7 +296,7 @@ public class CrmSnapshotService {
      */
     private void appendPerRepDealStats(StringBuilder sb) {
         List<RepDealStat> stats = dealRepository.statsPerAssignee();
-        List<String> reps = stats.stream().map(RepDealStat::repName).distinct().limit(MAX_REPS).toList();
+        List<String> reps = stats.stream().map(s -> s.repName()).distinct().limit(MAX_REPS).toList();
         if (reps.isEmpty()) {
             return;
         }

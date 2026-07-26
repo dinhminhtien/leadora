@@ -28,7 +28,7 @@ public class BookingResponse {
     private LocalDate checkOutDate;
     private BookingStatus status;
     private String specialRequests;
-    private String rejectionReason;
+    private String statusReason;
     private BigDecimal totalAmount;
     private List<BookingDetailResponse> details;
     private OffsetDateTime createdAt;
@@ -47,7 +47,7 @@ public class BookingResponse {
                 .checkOutDate(entity.getCheckOutDate())
                 .status(entity.getStatus())
                 .specialRequests(entity.getSpecialRequests())
-                .rejectionReason(entity.getRejectionReason())
+                .statusReason(entity.getStatusReason())
                 .totalAmount(entity.getTotalAmount())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
@@ -67,7 +67,7 @@ public class BookingResponse {
                 .checkOutDate(entity.getCheckOutDate())
                 .status(entity.getStatus())
                 .specialRequests(entity.getSpecialRequests())
-                .rejectionReason(entity.getRejectionReason())
+                .statusReason(entity.getStatusReason())
                 .totalAmount(entity.getTotalAmount())
                 .details(details)
                 .createdAt(entity.getCreatedAt())

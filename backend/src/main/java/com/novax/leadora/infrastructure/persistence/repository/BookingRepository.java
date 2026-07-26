@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.time.OffsetDateTime;
@@ -19,6 +21,11 @@ import java.util.UUID;
 
 @Repository
 public interface BookingRepository extends JpaRepository<BookingEntity, UUID>, JpaSpecificationExecutor<BookingEntity> {
+    
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM BookingEntity b WHERE b.bookingId = :id")
+    Optional<BookingEntity> findByIdForUpdate(@Param("id") UUID id);
+
     Optional<BookingEntity> findByBookingCode(String bookingCode);
 
     boolean existsByQuotation_Deal_DealIdAndStatus(UUID dealId, BookingStatus status);
