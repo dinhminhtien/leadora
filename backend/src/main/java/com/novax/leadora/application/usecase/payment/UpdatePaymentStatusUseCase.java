@@ -11,6 +11,8 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingRepository
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
 import com.novax.leadora.application.usecase.deal.DealWorkflowResolver;
 import com.novax.leadora.application.usecase.deal.AutoWinDealByPaymentUseCase;
+import com.novax.leadora.application.usecase.roomrequest.RoomConfirmationReader;
+import com.novax.leadora.application.usecase.roomrequest.RoomRequestNotifier;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
@@ -42,6 +44,8 @@ public class UpdatePaymentStatusUseCase {
     private final DealRepository dealRepository;
     private final DealWorkflowResolver dealWorkflowResolver;
     private final AutoWinDealByPaymentUseCase autoWinDealByPaymentUseCase;
+    private final RoomConfirmationReader roomConfirmationReader;
+    private final RoomRequestNotifier roomRequestNotifier;
 
     @Transactional
     public PaymentResponse execute(UUID paymentId, UpdatePaymentStatusRequest request, UserEntity actor) {
@@ -118,11 +122,18 @@ public class UpdatePaymentStatusUseCase {
                     ? request.getVerificationNote() 
                     : "Confirmed automatically by System.");
 
-            // POST-2: Update booking status to CONFIRMED if it was PENDING
+            // POST-2: a paid deposit confirms the booking. Room confirmation is advisory, so
+            // it does not hold the booking back — but when the Reservation team has not
+            // confirmed the rooms, they are told money has landed on it.
             if (booking.getStatus() == BookingStatus.PENDING) {
                 booking.setStatus(BookingStatus.CONFIRMED);
                 bookingRepository.save(booking);
-                log.info("Booking status updated to CONFIRMED for Booking: {} after payment success", booking.getBookingId());
+                log.info("Booking status updated to CONFIRMED for Booking: {} after payment success",
+                        booking.getBookingId());
+
+                if (!roomConfirmationReader.isRoomConfirmed(booking.getQuotation())) {
+                    roomRequestNotifier.paymentReceivedWithoutRoomConfirmation(booking);
+                }
             }
         }
 

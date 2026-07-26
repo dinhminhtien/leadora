@@ -537,29 +537,21 @@ export function BookingConfirmationScreen() {
                       <TableRow hoverable={false}>
                         <TableHead className="font-bold text-xs uppercase min-w-37.5 whitespace-nowrap">Room Category Name</TableHead>
                         <TableHead className="font-bold text-xs uppercase min-w-25 whitespace-nowrap">Base Rate</TableHead>
-                        <TableHead className="font-bold text-xs uppercase min-w-37.5 whitespace-nowrap">Occupied (Booked)</TableHead>
-                        <TableHead className="font-bold text-xs uppercase min-w-37.5 whitespace-nowrap">Available Capacity</TableHead>
-                        <TableHead className="font-bold text-xs uppercase min-w-27.5 whitespace-nowrap">Status</TableHead>
+                        <TableHead className="font-bold text-xs uppercase min-w-37.5 whitespace-nowrap">Committed in CRM</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {availabilities.map(av => {
-                        const capacity = 20; // Default capacity limit on backend
-                        const remaining = Math.max(0, capacity - av.totalBooked);
-                        return (
+                      {/* Only what this CRM actually owns is shown. The former "Available
+                          Capacity" and Available/Fully-Booked columns were derived from a
+                          hardcoded capacity of 20 that had nothing to do with the hotel —
+                          reconcile these numbers against the PMS instead. */}
+                      {availabilities.map(av => (
                           <TableRow key={av.productId}>
                             <TableCell className="font-bold text-xs text-foreground min-w-37.5 whitespace-nowrap">{av.name}</TableCell>
                             <TableCell className="text-xs text-muted-foreground min-w-25 whitespace-nowrap">{av.unitPrice.toLocaleString('vi-VN')} ₫/{av.unit || "night"}</TableCell>
-                            <TableCell className="text-xs font-semibold text-foreground min-w-37.5 whitespace-nowrap">{av.totalBooked} / {capacity} Rooms</TableCell>
-                            <TableCell className="text-xs font-bold text-primary min-w-37.5 whitespace-nowrap">{remaining} rooms remaining</TableCell>
-                            <TableCell className="min-w-27.5">
-                              <Badge variant={av.isAvailable ? "success" : "danger"} className="uppercase font-bold text-[9px] min-w-22.5 justify-center text-center py-1">
-                                {av.isAvailable ? "Available" : "Fully Booked"}
-                              </Badge>
-                            </TableCell>
+                            <TableCell className="text-xs font-semibold text-foreground min-w-37.5 whitespace-nowrap">{av.totalBooked} {av.totalBooked === 1 ? "room" : "rooms"}</TableCell>
                           </TableRow>
-                        );
-                      })}
+                      ))}
                     </TableBody>
                   </Table>
                 </div>

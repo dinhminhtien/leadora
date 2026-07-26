@@ -26,6 +26,7 @@ import 'package:leadora_mobile/features/customer/presentation/screens/customer_f
 import 'package:leadora_mobile/features/customer/presentation/screens/customer_list_screen.dart';
 import 'package:leadora_mobile/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:leadora_mobile/features/dashboard/presentation/screens/more_screen.dart';
+import 'package:leadora_mobile/features/deal/data/deal_models.dart';
 import 'package:leadora_mobile/features/deal/presentation/screens/create_deal_screen.dart';
 import 'package:leadora_mobile/features/deal/presentation/screens/deal_detail_screen.dart';
 import 'package:leadora_mobile/features/deal/presentation/screens/deal_list_screen.dart';
@@ -39,6 +40,9 @@ import 'package:leadora_mobile/features/notification/presentation/screens/notifi
 import 'package:leadora_mobile/features/profile/presentation/screens/change_password_screen.dart';
 import 'package:leadora_mobile/features/profile/presentation/screens/edit_profile_screen.dart';
 import 'package:leadora_mobile/features/profile/presentation/screens/profile_screen.dart';
+import 'package:leadora_mobile/features/handover/presentation/screens/handover_detail_screen.dart';
+import 'package:leadora_mobile/features/handover/presentation/screens/handover_list_screen.dart';
+import 'package:leadora_mobile/features/quotation/presentation/screens/quotation_form_screen.dart';
 import 'package:leadora_mobile/features/quotation/presentation/screens/quotation_detail_screen.dart';
 import 'package:leadora_mobile/features/quotation/presentation/screens/quotation_list_screen.dart';
 import 'package:leadora_mobile/features/reminder/presentation/screens/reminder_list_screen.dart';
@@ -47,7 +51,6 @@ import 'package:leadora_mobile/features/task/presentation/screens/task_detail_sc
 import 'package:leadora_mobile/features/task/presentation/screens/task_form_screen.dart';
 import 'package:leadora_mobile/features/booking/presentation/screens/booking_detail_screen.dart';
 import 'package:leadora_mobile/features/booking/presentation/screens/booking_list_screen.dart';
-import 'package:leadora_mobile/features/deal/presentation/screens/pipeline_screen.dart';
 import 'package:leadora_mobile/features/payment/presentation/screens/generate_payment_screen.dart';
 import 'package:leadora_mobile/features/payment/presentation/screens/payment_detail_screen.dart';
 import 'package:leadora_mobile/features/payment/presentation/screens/payment_list_screen.dart';
@@ -173,6 +176,59 @@ final Map<String, dynamic> _quotation = {
   'createdAt': _iso(const Duration(days: -1)),
 };
 
+/// Mirrors `RoomRequestResponse` — enum serialized UPPERCASE, unlike `QuotationResponse`.
+/// CONFIRMED with a live `heldUntil` so `RoomConfirmationCard` renders its answered state.
+final Map<String, dynamic> _roomRequest = {
+  'requestId': 'rr1',
+  'quotationId': 'q1',
+  'quoteNo': 'Q-2026-0142',
+  'customerName': 'Pham Thi Thu Huong',
+  'roomTypeRequested': 'Deluxe River View',
+  'checkInDate': '2026-08-14',
+  'checkOutDate': '2026-08-17',
+  'quantity': 40,
+  'status': 'CONFIRMED',
+  'reservationNote': '40 Deluxe River View held in the PMS.',
+  'heldUntil': _iso(const Duration(hours: 20)),
+  'requestedByName': 'Minh Nguyen',
+  'respondedByName': 'Thao Le',
+  'respondedAt': _iso(const Duration(hours: -2)),
+  'createdAt': _iso(const Duration(hours: -4)),
+};
+
+/// Mirrors `ArrivalHandoverResponse`. `NEED_CLARIFICATION` is the one readiness Sales must
+/// act on, so it is the fixture — it exercises the callout branch in both list and detail.
+final Map<String, dynamic> _handover = {
+  'handoverId': 'h1',
+  'bookingId': 'b1',
+  'bookingCode': 'BK-2026-0091',
+  'customerName': 'Saigon Riverside Hotel',
+  'customerPhone': '+84 28 3822 9999',
+  'checkInDate': '2026-08-14',
+  'checkOutDate': '2026-08-17',
+  'roomSummary': '40 x Deluxe River View',
+  'rooms': [
+    {
+      'productName': 'Deluxe River View',
+      'roomNumber': '812',
+      'quantity': 40,
+      'nights': 3,
+    },
+  ],
+  'specialRequests': 'Late check-in, two adjoining rooms.',
+  'roomPreferences': 'High floor, river side.',
+  'vipNotes': 'Managing director travelling with the group.',
+  'operationalNotes': 'Coach arrives at the side entrance.',
+  'paymentReference': 'PAY-2026-0044',
+  'status': 'ACKNOWLEDGED',
+  'readinessStatus': 'NEED_CLARIFICATION',
+  'clarificationNote': 'Adjoining rooms unavailable on the high floor — confirm a swap.',
+  'submittedAt': _iso(const Duration(days: -2)),
+  'acknowledgedAt': _iso(const Duration(days: -1)),
+  'updatedByName': 'Thao Le',
+  'createdAt': _iso(const Duration(days: -2)),
+};
+
 final Map<String, Object?> _cannedByPath = {
   '/reporting/dashboard-summary': {
     'activeLeadsCount': 24,
@@ -275,8 +331,24 @@ final Map<String, Object?> _cannedByPath = {
   ],
   '/quotations': [_quotation],
   '/quotations/q1': _quotation,
+  '/room-requests/by-quotation/q1': [_roomRequest],
+  '/operational-handovers': _paged([_handover]),
+  '/operational-handovers/h1': _handover,
   '/deals': [_deal],
   '/deals/d1': _deal,
+  // `DealWorkflowSummaryResponse` sends raw enum names, unlike `DealResponse.status`.
+  // A mid-funnel deal so the stepper renders done, active and pending steps at once.
+  '/deals/d1/workflow': {
+    'dealId': 'd1',
+    'dealStatus': 'OPEN',
+    'pipelineStage': 'NEGOTIATION',
+    'activeQuotationId': 'q1000000-0000-0000-0000-000000000000',
+    'activeQuotationStatus': 'APPROVED',
+    'activeBookingId': 'b1000000-0000-0000-0000-000000000000',
+    'activeBookingStatus': 'PENDING',
+    'currentPaymentStatus': 'PENDING',
+    'hasPaidPayment': false,
+  },
   '/payments': _paged([_payment]),
   '/payments/p1': _payment,
   '/bookings': _paged([_booking]),
@@ -707,6 +779,18 @@ void main() {
     expectText: 'Q-2026-0142',
   );
   smokeTest(
+    'QuotationFormScreen (create)',
+    () => const QuotationFormScreen(
+      mode: QuotationFormMode.create,
+      initialDealId: 'd1',
+    ),
+  );
+  smokeTest(
+    'ReviseQuotationLoader',
+    () => const ReviseQuotationLoader(quotationId: 'q1'),
+    expectText: 'Q-2026-0142',
+  );
+  smokeTest(
     'DealDetailScreen',
     () => const DealDetailScreen(dealId: 'd1'),
     expectText: 'Annual corporate room block',
@@ -718,8 +802,8 @@ void main() {
   );
   smokeTest('CreateDealScreen', () => const CreateDealScreen());
   smokeTest(
-    'PipelineScreen',
-    () => const PipelineScreen(),
+    'CreateDealScreen (edit)',
+    () => CreateDealScreen(deal: Deal.fromJson(_deal)),
     expectText: 'Annual corporate room block',
   );
 
@@ -745,6 +829,18 @@ void main() {
     // ListView never builds them, so assert on the header instead.
     'BookingDetailScreen',
     () => const BookingDetailScreen(bookingId: 'b1'),
+    expectText: 'BK-2026-0091',
+  );
+
+  // Handovers (read-only for Sales — the desk sets readiness on the web app)
+  smokeTest(
+    'HandoverListScreen',
+    () => const HandoverListScreen(),
+    expectText: 'BK-2026-0091',
+  );
+  smokeTest(
+    'HandoverDetailScreen',
+    () => const HandoverDetailScreen(handoverId: 'h1'),
     expectText: 'BK-2026-0091',
   );
 

@@ -47,9 +47,15 @@ class Routes {
   static String customerEditPath(String id) => '/customers/edit/$id';
 
   // Full-screen routes reached only via notification deep-link (no list/tab yet).
+  static const String quotationCreateSub = 'new';
+  static const String quotationCreate = '/quotations/new';
+  static const String quotationReviseSub = 'revise';
   static const String quotationDetail = '/quotations/:id';
+  static const String quotationRevise = '/quotations/:id/revise';
 
   static String quotationDetailPath(String id) => '/quotations/$id';
+
+  static String quotationRevisePath(String id) => '/quotations/$id/revise';
 
   /// `detail/` segment (rather than `/deals/:id`) keeps the create route from
   /// being swallowed as a deal whose id is literally "new".
@@ -67,8 +73,9 @@ class Routes {
   static const String bookingDetailSub = 'detail/:id';
   static String bookingDetailPath(String id) => '/bookings/detail/$id';
 
-  // Sales pipeline (Kanban) — reached from the More hub.
-  static const String pipeline = '/pipeline';
+  /// Reservation team's queue of rooms Sales is waiting on.
+  /// Handovers Sales submitted to the Front Office — read-only on mobile.
+  static const String handovers = '/handovers';
 
   // Full-screen browse entry points, reached from the Dashboard quick actions
   // and from the header notification bell.
@@ -144,12 +151,12 @@ class RouteNames {
   static const String more = 'more';
   static const String deals = 'deals';
   static const String dealCreate = 'dealCreate';
-  static const String pipeline = 'pipeline';
   static const String payments = 'payments';
   static const String paymentCreate = 'paymentCreate';
   static const String paymentDetail = 'paymentDetail';
   static const String bookings = 'bookings';
   static const String bookingDetail = 'bookingDetail';
+  static const String handovers = 'handovers';
   static const String leads = 'leads';
   static const String leadCreate = 'leadCreate';
   static const String leadDetail = 'leadDetail';
@@ -167,6 +174,8 @@ class RouteNames {
   static const String profileEdit = 'profileEdit';
   static const String changePassword = 'changePassword';
   static const String quotationDetail = 'quotationDetail';
+  static const String quotationCreate = 'quotationCreate';
+  static const String quotationRevise = 'quotationRevise';
   static const String dealDetail = 'dealDetail';
   static const String quotations = 'quotations';
   static const String sla = 'sla';

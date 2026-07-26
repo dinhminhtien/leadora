@@ -53,8 +53,13 @@ export type RoomAvailability = {
   category: "ROOM" | "EVENT_SPACE" | "SERVICE";
   unitPrice: number;
   unit?: string;
+  /**
+   * Units this CRM has already committed for the range. NOT remaining availability — the
+   * CRM does not know the hotel's capacity, so `isAvailable` was removed along with the
+   * invented per-name capacity table it came from. Real availability is answered by the
+   * Reservation team through a room request.
+   */
   totalBooked: number;
-  isAvailable: boolean;
 };
 
 const ENDPOINT = "/bookings";
