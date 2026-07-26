@@ -1,14 +1,11 @@
 package com.novax.leadora.application.usecase.booking;
 
 import com.novax.leadora.api.dto.response.RoomAvailabilityResponse;
-import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
-import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.ProductServiceEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ProductCategory;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ProductStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
-import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.ProductServiceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,14 +14,33 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
+/**
+ * UC-18.1 — how much this CRM has already committed per room/service in a date range.
+ *
+ * <p>Deliberately NOT an availability calculator. This is a Sales CRM, not a PMS: it does
+ * not know how many rooms the hotel has, so it cannot say whether a room is free. It
+ * reports only what it genuinely owns — the bookings recorded in it — which the
+ * Reservation team reconciles against the real PMS.
+ *
+ * <p>The earlier version invented capacity by pattern-matching product names ("Suite" → 5,
+ * "Deluxe" → 10) and derived an {@code isAvailable} flag from it. Those numbers were
+ * fiction and could block legitimate quotations, so they are gone. Whether rooms exist is
+ * answered by the Reservation team through a room request, and enforced by
+ * {@code RoomConfirmationReader}, which is advisory only.
+ */
 @Service
 @RequiredArgsConstructor
 public class CheckRoomAvailabilityUseCase {
 
+    /** Bookings that still hold a room. */
+    private static final List<BookingStatus> ACTIVE_STATUSES =
+            List.of(BookingStatus.PENDING, BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN);
+
     private final ProductServiceRepository productServiceRepository;
-    private final BookingRepository bookingRepository;
     private final BookingDetailRepository bookingDetailRepository;
 
     @Transactional(readOnly = true)
@@ -38,61 +54,30 @@ public class CheckRoomAvailabilityUseCase {
             products = productServiceRepository.findByCategory(ProductCategory.ROOM);
         }
 
-        List<BookingStatus> activeStatuses = List.of(BookingStatus.PENDING, BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN);
-        
-        List<BookingEntity> allBookings = bookingRepository.findAll();
-        List<BookingEntity> overlappingBookings = new ArrayList<>();
-        
-        for (BookingEntity booking : allBookings) {
-            if (activeStatuses.contains(booking.getStatus())) {
-                if (booking.getCheckInDate().isBefore(checkOutDate) && booking.getCheckOutDate().isAfter(checkInDate)) {
-                    overlappingBookings.add(booking);
-                }
-            }
-        }
+        // Aggregated in SQL: the previous in-memory scan loaded every booking and then
+        // issued one detail query per booking.
+        Map<UUID, Long> committedByProduct = bookingDetailRepository
+                .sumCommittedByProduct(ACTIVE_STATUSES, checkInDate, checkOutDate)
+                .stream()
+                .collect(Collectors.toMap(
+                        BookingDetailRepository.ProductCommitment::getProductId,
+                        row -> row.getCommitted() != null ? row.getCommitted() : 0L,
+                        (a, b) -> a));
 
         List<RoomAvailabilityResponse> results = new ArrayList<>();
-
         for (ProductServiceEntity product : products) {
             if (product.getStatus() != ProductStatus.ACTIVE) {
                 continue;
             }
-
-            int totalBooked = 0;
-            for (BookingEntity booking : overlappingBookings) {
-                List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(booking.getBookingId());
-                for (BookingDetailEntity detail : details) {
-                    if (detail.getProductService() != null && detail.getProductService().getProductId().equals(product.getProductId())) {
-                        totalBooked += detail.getQuantity();
-                    }
-                }
-            }
-
-            String name = product.getName();
-            int capacity = 10;
-            if (name != null) {
-                if (name.contains("Suite")) {
-                    capacity = 5;
-                } else if (name.contains("Deluxe")) {
-                    capacity = 10;
-                } else if (name.contains("Standard")) {
-                    capacity = 15;
-                }
-            }
-
-            boolean isAvailable = (capacity - totalBooked) > 0;
-
             results.add(RoomAvailabilityResponse.builder()
                     .productId(product.getProductId())
                     .name(product.getName())
                     .category(product.getCategory())
                     .unitPrice(product.getUnitPrice())
                     .unit(product.getUnit())
-                    .totalBooked(totalBooked)
-                    .isAvailable(isAvailable)
+                    .totalBooked(committedByProduct.getOrDefault(product.getProductId(), 0L).intValue())
                     .build());
         }
-
         return results;
     }
 }

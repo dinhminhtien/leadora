@@ -2,6 +2,9 @@ package com.novax.leadora.application.usecase.booking;
 
 import com.novax.leadora.api.dto.request.ProcessBookingRequest;
 import com.novax.leadora.api.dto.response.BookingResponse;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
+import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.integration.email.EmailService;
 import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
@@ -52,6 +55,15 @@ class ProcessBookingUseCaseTest {
     @Mock
     private BookingStatusTransitionService bookingStatusTransitionService;
 
+    @Mock
+    private CurrentUserProvider currentUserProvider;
+
+    @Mock
+    private ResolveSlaBreachUseCase resolveSlaBreachUseCase;
+
+    @Mock
+    private SystemAuditLogService systemAuditLogService;
+
     @InjectMocks
     private ProcessBookingUseCase processBookingUseCase;
 
@@ -101,7 +113,8 @@ class ProcessBookingUseCaseTest {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(bookingEntity));
         when(bookingRepository.save(any(BookingEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(bookingDetailRepository.findByBooking_BookingId(bookingId)).thenReturn(bookingDetails);
-        when(bookingStatusTransitionService.transition(any(UUID.class), any(BookingStatus.class), anyBoolean(), any()))
+        when(bookingStatusTransitionService.transition(any(UUID.class), any(BookingStatus.class),
+                any(TransitionActor.class), any()))
                 .thenAnswer(invocation -> {
                     BookingStatus newStatus = invocation.getArgument(1);
                     String reason = invocation.getArgument(3);

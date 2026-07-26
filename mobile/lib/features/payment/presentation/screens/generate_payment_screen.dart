@@ -148,6 +148,10 @@ class _GeneratePaymentScreenState extends ConsumerState<GeneratePaymentScreen> {
                   decoration: InputDecoration(
                     labelText: 'Booking *',
                     prefixIcon: const Icon(Icons.hotel_outlined),
+                    helperText: booking == null
+                        ? 'Confirmed bookings with no live payment request'
+                        : null,
+                    helperMaxLines: 2,
                     errorText: _autovalidate && booking == null
                         ? 'Pick a booking'
                         : null,
@@ -268,6 +272,9 @@ class _GeneratePaymentScreenState extends ConsumerState<GeneratePaymentScreen> {
 }
 
 /// Searchable booking picker. Returns the chosen [Booking] via `Navigator.pop`.
+/// Confirmed bookings with no live payment request, the same shortlist the web
+/// `DepositPaymentScreen` shows on its Bookings tab. Filtering here rather than listing
+/// every booking means the rep cannot pick one the server will refuse.
 class _BookingPickerSheet extends ConsumerWidget {
   const _BookingPickerSheet();
 
@@ -282,7 +289,7 @@ class _BookingPickerSheet extends ConsumerWidget {
         child: Column(
           children: [
             AppSearchField(
-              hintText: 'Search booking code, customer…',
+              hintText: 'Search eligible bookings…',
               onChanged: (term) =>
                   ref.read(bookingPickerSearchProvider.notifier).state = term,
             ),
@@ -293,8 +300,10 @@ class _BookingPickerSheet extends ConsumerWidget {
                 isEmpty: (items) => items.isEmpty,
                 empty: const EmptyState(
                   icon: Icons.hotel_outlined,
-                  title: 'No bookings found',
-                  message: 'Try a different search term.',
+                  title: 'No eligible bookings',
+                  message:
+                      'Only confirmed bookings without a pending or paid request can '
+                      'take a new one.',
                 ),
                 data: (items) => ListView.separated(
                   padding: const EdgeInsets.only(bottom: AppSpacing.lg),

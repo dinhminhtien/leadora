@@ -9,13 +9,16 @@ import { ROUTE_PATHS } from "@/app/routes/route_paths";
  *   Roles & Permissions). A screen is reachable only if the user holds its VIEW permission,
  *   so hiding a permission also blocks the route — sidebar item AND direct URL.
  */
-export type AppRole = "SALES" | "MANAGER" | "ADMIN" | "FO";
+export type AppRole = "SALES" | "MANAGER" | "ADMIN" | "FO" | "RESERVATION";
 
 export function getUserRole(user?: { roles?: string[] } | null): AppRole {
   const raw = (user?.roles?.[0] ?? "").toUpperCase();
   if (raw === "ADMIN") return "ADMIN";
   if (raw === "MANAGER") return "MANAGER";
   if (raw === "FO" || raw === "FRONT_OFFICE") return "FO";
+  // Must be matched before the SALES fallback: a Reservation user treated as Sales
+  // would land on the sales dashboard and never see their room-request inbox.
+  if (raw === "RESERVATION") return "RESERVATION";
   return "SALES";
 }
 
@@ -38,6 +41,8 @@ export const DASHBOARD_PATHS: Record<AppRole, string> = {
   MANAGER: "/dashboard/manager",
   ADMIN: "/dashboard/admin",
   FO: ROUTE_PATHS.frontOfficeHandover,
+  // Reservation lands on the queue that is their whole job: rooms Sales is waiting on.
+  RESERVATION: ROUTE_PATHS.roomRequests,
 };
 
 export function dashboardPathForRole(role: AppRole): string {
@@ -57,6 +62,16 @@ const FO_ROUTES: string[] = [
   ROUTE_PATHS.notifications,
 ];
 
+// Reservation (role-based): answer room requests, then confirm/reject the bookings that
+// follow. A narrow desk like Front Office, so it is gated by role rather than by the
+// permission matrix Sales/Manager screens use.
+const RESERVATION_ROUTES: string[] = [
+  ROUTE_PATHS.roomRequests,
+  ROUTE_PATHS.bookingConfirmation,
+  ROUTE_PATHS.depositPayment,
+  ROUTE_PATHS.notifications,
+];
+
 // Maps each protected route to the permission code that gates it (the screen's VIEW
 // permission; the quotation approvals queue needs the dedicated APPROVE permission).
 // Longest match wins, so /quotations/pending-approvals resolves to QUOTATION_APPROVE
@@ -72,6 +87,7 @@ const ROUTE_PERMISSION: Record<string, string> = {
   [ROUTE_PATHS.quotations]: "QUOTATION_VIEW",
   [ROUTE_PATHS.interactionTimeline]: "INTERACTION_VIEW",
   [ROUTE_PATHS.bookingConfirmation]: "BOOKING_VIEW",
+  [ROUTE_PATHS.roomRequests]: "ROOM_REQUEST_VIEW",
   [ROUTE_PATHS.reservationStatus]: "RESERVATION_VIEW",
   [ROUTE_PATHS.operationalHandover]: "HANDOVER_VIEW",
   [ROUTE_PATHS.frontOfficeHandover]: "HANDOVER_VIEW",
@@ -123,6 +139,10 @@ export function canAccessPath(
     return matchesAny(FO_ROUTES, pathname);
   }
 
+  if (role === "RESERVATION") {
+    return matchesAny(RESERVATION_ROUTES, pathname);
+  }
+
   // SALES / MANAGER — permission driven.
   const required = requiredPermissionFor(pathname);
   if (required === "HANDOVER_VIEW") return true; // Allowed by default for handover pages
@@ -135,5 +155,10 @@ export function canAccessPath(
   // — enforce that here too, so a stray QUOTATION_APPROVE grant to a non-manager role
   // can't surface a nav link / route whose API calls would just 403 anyway.
   if (required === "QUOTATION_APPROVE" && role !== "MANAGER") return false;
+  // The Room Requests queue belongs to the Reservation team (handled by RESERVATION_ROUTES
+  // above). Neither Manager nor Sales staff can answer one — they have no PMS access — so
+  // the page stays hidden for them even if someone grants ROOM_REQUEST_VIEW. Sales still
+  // sees a quotation's own room state through the panel inside the quotation.
+  if (required === "ROOM_REQUEST_VIEW") return false;
   return required != null && permissions.includes(required);
 }

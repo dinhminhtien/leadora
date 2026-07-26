@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/booking_models.dart';
+import '../../../payment/data/payment_models.dart';
+import '../../../payment/data/payment_repository.dart';
 import '../../data/booking_repository.dart';
 
 /// Accumulated, filterable state for the booking list (infinite scroll).
@@ -118,14 +120,38 @@ final bookingDetailProvider = AutoDisposeFutureProvider.family<Booking, String>(
 /// own filters so opening the picker does not disturb the list behind it.
 final bookingPickerSearchProvider = StateProvider.autoDispose<String>((_) => '');
 
-/// First page of bookings matching the picker's search. Payment generation
-/// targets a booking, so the picker is the only way to obtain a bookingId.
+/// Bookings a payment request can actually be raised against, matching the picker's
+/// search. Payment generation targets a booking, so the picker is the only way to obtain a
+/// bookingId — and offering an ineligible one just produces a server-side rejection.
+///
+/// Eligibility mirrors the web `DepositPaymentScreen`: CONFIRMED bookings that do not
+/// already carry a live payment. `PENDING` and `PAID` count as live; a FAILED, CANCELLED or
+/// EXPIRED attempt leaves the booking open to a fresh request. Matching is by
+/// `bookingCode` because that is the only booking field `PaymentResponse` carries.
 final bookingPickerResultsProvider = AutoDisposeFutureProvider<List<Booking>>((
   ref,
 ) async {
   final search = ref.watch(bookingPickerSearchProvider);
-  final page = await ref
-      .watch(bookingRepositoryProvider)
-      .getBookings(filters: BookingFilters(search: search), size: 20);
-  return page.items;
+
+  final confirmed = await ref.watch(bookingRepositoryProvider).getBookings(
+    filters: BookingFilters(search: search, status: BookingStatus.confirmed),
+    size: 20,
+  );
+
+  // One wide page rather than paging: the filter has to see every live payment, and a
+  // booking missed here would be offered and then rejected on submit.
+  final payments = await ref
+      .watch(paymentRepositoryProvider)
+      .getPayments(size: 500);
+
+  final taken = {
+    for (final p in payments.items)
+      if (p.status == PaymentStatus.pending || p.status == PaymentStatus.paid)
+        if (p.bookingCode != null) p.bookingCode,
+  };
+
+  return confirmed.items
+      .where((b) => !taken.contains(b.bookingCode))
+      .toList(growable: false);
 });
+
