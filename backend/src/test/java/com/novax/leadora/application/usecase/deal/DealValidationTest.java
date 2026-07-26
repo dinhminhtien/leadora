@@ -35,11 +35,15 @@ public class DealValidationTest {
         @Mock
         private SystemAuditLogService auditLogService;
 
+        @Mock
+        private DealWorkflowResolver dealWorkflowResolver;
+
         private DealValidation dealValidation;
 
         @BeforeEach
         void setUp() {
-                dealValidation = new DealValidation(bookingRepository, currentUserProvider, auditLogService);
+                dealValidation = new DealValidation(bookingRepository, currentUserProvider, auditLogService,
+                                dealWorkflowResolver);
         }
 
         @Test

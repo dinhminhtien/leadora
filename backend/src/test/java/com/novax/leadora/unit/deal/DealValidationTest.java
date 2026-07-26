@@ -2,6 +2,7 @@ package com.novax.leadora.unit.deal;
 
 import com.novax.leadora.api.dto.request.DealRequest;
 import com.novax.leadora.application.usecase.deal.DealValidation;
+import com.novax.leadora.application.usecase.deal.DealWorkflowResolver;
 import com.novax.leadora.common.exception.BusinessRuleException;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
@@ -30,13 +31,16 @@ class DealValidationTest {
         private BookingRepository bookingRepository;
         private CurrentUserProvider currentUserProvider;
         private SystemAuditLogService auditLogService;
+        private DealWorkflowResolver dealWorkflowResolver;
 
         @BeforeEach
         void setUp() {
                 bookingRepository = mock(BookingRepository.class);
                 currentUserProvider = mock(CurrentUserProvider.class);
                 auditLogService = mock(SystemAuditLogService.class);
-                dealValidation = new DealValidation(bookingRepository, currentUserProvider, auditLogService);
+                dealWorkflowResolver = mock(DealWorkflowResolver.class);
+                dealValidation = new DealValidation(bookingRepository, currentUserProvider, auditLogService,
+                                dealWorkflowResolver);
         }
 
         @Test
