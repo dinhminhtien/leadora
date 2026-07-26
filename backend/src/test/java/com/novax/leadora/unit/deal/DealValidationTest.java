@@ -2,6 +2,7 @@ package com.novax.leadora.unit.deal;
 
 import com.novax.leadora.api.dto.request.DealRequest;
 import com.novax.leadora.application.usecase.deal.DealValidation;
+import com.novax.leadora.application.usecase.deal.DealWorkflowResolver;
 import com.novax.leadora.common.exception.BusinessRuleException;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;

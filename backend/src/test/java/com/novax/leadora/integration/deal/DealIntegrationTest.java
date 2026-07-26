@@ -6,6 +6,7 @@ import com.novax.leadora.application.usecase.deal.CreateDealUseCase;
 import com.novax.leadora.application.usecase.deal.DealMapper;
 import com.novax.leadora.application.usecase.deal.DealValidation;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;

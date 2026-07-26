@@ -1,6 +1,7 @@
 package com.novax.leadora.integration.sla;
 
 import com.novax.leadora.application.usecase.sla.ProcessSlaBreachUseCase;
+import com.novax.leadora.application.usecase.sla.SlaEntityResolver;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.SlaTrackingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
