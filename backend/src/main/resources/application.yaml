@@ -191,6 +191,16 @@ ai:
       # Model for OCR only. Blank = reuse the chat model (gemini-2.5-flash). Set gemini-2.5-pro for
       # markedly better reading of dense scans / complex tables / figures, at higher quota cost.
       model: ${AI_VISION_OCR_MODEL:}
+      # Which embedded images are worth a vision call. Judged by AREA, not shortest side: a policy
+      # pasted into a Word file as one wide, short screenshot (e.g. 632x100) is real content, but a
+      # shortest-side rule reads it as an icon and drops it — the document then ingests to 0 chunks
+      # and the upload is rejected as "no extractable text". Raise min-area to spend less on logos.
+      image-filter:
+        min-side-px: ${AI_VISION_OCR_MIN_SIDE:40}
+        min-area-px: ${AI_VISION_OCR_MIN_AREA:16000}
+        # Applied instead of the above when the document has (almost) no text layer: there the
+        # images ARE the document, so only physically unreadable ones are dropped.
+        lenient-min-side-px: ${AI_VISION_OCR_LENIENT_MIN_SIDE:16}
       # Page rendering: for a PDF page whose text layer is sparse (scanned or drawn as vector
       # graphics — charts/diagrams/complex tables), render the WHOLE page and OCR it, instead of only
       # lifting embedded raster images (which cannot see vector content). Text-rich pages are left to

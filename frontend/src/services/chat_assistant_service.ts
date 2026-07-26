@@ -40,6 +40,11 @@ export type CompanyDocument = {
   chunkCount: number;
   /** True while the doc is still being parsed/embedded in the background (chunkCount === 0). */
   processing?: boolean;
+  /**
+   * True when background ingestion failed and the document holds no searchable chunks. The row is
+   * kept (rather than deleted) so the failure is visible instead of the upload silently vanishing.
+   */
+  failed?: boolean;
   createdAt?: string;
   uploadedById?: string;
   uploadedByName?: string;
