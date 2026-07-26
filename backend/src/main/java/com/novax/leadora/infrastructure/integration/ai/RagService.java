@@ -75,7 +75,7 @@ public class RagService {
         List<Document> rawDocs = reader.get();
 
         String tikaText = rawDocs.stream()
-                .map(Document::getText)
+                .map(d -> d.getText())
                 .filter(Objects::nonNull)
                 .collect(Collectors.joining("\n"));
 
@@ -101,7 +101,7 @@ public class RagService {
         // Joining also lets the semantic splitter see the run of meaning across the two sources.
         String fullText = Stream.of(tikaText, ocrText)
                 .filter(StringUtils::hasText)
-                .map(String::strip)
+                .map(s -> s.strip())
                 .collect(Collectors.joining("\n\n"));
         if (!StringUtils.hasText(fullText)) {
             log.warn("Document {} ({}) produced no extractable text", documentId, fileName);

@@ -25,8 +25,6 @@ import static org.mockito.ArgumentMatchers.eq;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.novax.leadora.application.usecase.deal.DealWorkflowResolver;
-
 class DealValidationTest {
 
         private DealValidation dealValidation;

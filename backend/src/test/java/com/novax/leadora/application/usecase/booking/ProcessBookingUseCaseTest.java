@@ -49,6 +49,9 @@ class ProcessBookingUseCaseTest {
     @Mock
     private EmailService emailService;
 
+    @Mock
+    private BookingStatusTransitionService bookingStatusTransitionService;
+
     @InjectMocks
     private ProcessBookingUseCase processBookingUseCase;
 
@@ -98,6 +101,14 @@ class ProcessBookingUseCaseTest {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(bookingEntity));
         when(bookingRepository.save(any(BookingEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(bookingDetailRepository.findByBooking_BookingId(bookingId)).thenReturn(bookingDetails);
+        when(bookingStatusTransitionService.transition(any(UUID.class), any(BookingStatus.class), anyBoolean(), any()))
+                .thenAnswer(invocation -> {
+                    BookingStatus newStatus = invocation.getArgument(1);
+                    String reason = invocation.getArgument(3);
+                    bookingEntity.setStatus(newStatus);
+                    bookingEntity.setStatusReason(reason);
+                    return bookingEntity;
+                });
     }
 
     @Test
@@ -127,7 +138,7 @@ class ProcessBookingUseCaseTest {
     void shouldNotSendEmailWhenBookingIsRejected() {
         ProcessBookingRequest request = new ProcessBookingRequest();
         request.setStatus("REJECTED");
-        request.setRejectionReason("Invalid documents");
+        request.setStatusReason("Invalid documents");
 
         BookingResponse response = processBookingUseCase.execute(bookingId, request);
 
@@ -147,8 +158,6 @@ class ProcessBookingUseCaseTest {
 
         assertThat(response.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
         verify(emailService, times(1)).sendBookingConfirmationEmail(any(BookingEntity.class), eq(bookingDetails));
-        // Verify that the repository save was called and execution finished successfully without exception
-        verify(bookingRepository, times(1)).save(bookingEntity);
     }
 
     @Test

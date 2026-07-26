@@ -224,7 +224,7 @@ public class DocumentImageExtractor {
                 if (img == null) {
                     undecodable++;
                     log.debug("DOCX picture {} is not a decodable raster image (type {}) — skipped",
-                            pic.getFileName(), pic.getPictureType());
+                            pic.getFileName(), pic.suggestFileExtension());
                     continue;
                 }
                 addPng(img, out, seen, lenient);
