@@ -3,7 +3,9 @@ package com.novax.leadora.integration.lead;
 import com.novax.leadora.api.dto.request.ConvertLeadRequest;
 import com.novax.leadora.api.dto.response.ConvertLeadResponse;
 import com.novax.leadora.application.usecase.lead.ConvertLeadUseCase;
+import com.novax.leadora.application.usecase.customer.CustomerDuplicatePolicy;
 import com.novax.leadora.application.usecase.lead.LeadAccessPolicy;
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
@@ -36,6 +38,9 @@ class ConvertLeadIntegrationTest {
 
     @Mock
     private LeadAccessPolicy leadAccessPolicy;
+
+    @Mock
+    private CustomerDuplicatePolicy customerDuplicatePolicy;
 
     @InjectMocks
     private ConvertLeadUseCase convertLeadUseCase;
@@ -95,7 +100,7 @@ class ConvertLeadIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT-CONVERT-02: Convert non-QUALIFIED lead without reason → throws IllegalStateException")
+    @DisplayName("IT-CONVERT-02: Convert non-QUALIFIED lead without reason → throws BusinessException")
     void testConvertNonQualifiedWithoutReasonThrows() {
         UUID leadId = UUID.randomUUID();
         LeadEntity lead = buildQualifiedLead();
@@ -110,12 +115,12 @@ class ConvertLeadIntegrationTest {
         ConvertLeadRequest request = buildConvertRequest();
         request.setReason(null);
 
-        assertThrows(IllegalStateException.class,
+        assertThrows(BusinessException.class,
                 () -> convertLeadUseCase.execute(leadId, request));
     }
 
     @Test
-    @DisplayName("IT-CONVERT-03: Convert already CONVERTED lead → throws IllegalStateException")
+    @DisplayName("IT-CONVERT-03: Convert already CONVERTED lead → throws BusinessException")
     void testConvertAlreadyConvertedThrows() {
         UUID leadId = UUID.randomUUID();
         LeadEntity lead = buildQualifiedLead();
@@ -127,12 +132,12 @@ class ConvertLeadIntegrationTest {
         when(leadAccessPolicy.currentUser()).thenReturn(currentUser);
         doNothing().when(leadAccessPolicy).assertCanView(currentUser, lead);
 
-        assertThrows(IllegalStateException.class,
+        assertThrows(BusinessException.class,
                 () -> convertLeadUseCase.execute(leadId, buildConvertRequest()));
     }
 
     @Test
-    @DisplayName("IT-CONVERT-04: Convert unassigned lead → throws IllegalStateException")
+    @DisplayName("IT-CONVERT-04: Convert unassigned lead → throws BusinessException")
     void testConvertUnassignedLeadThrows() {
         UUID leadId = UUID.randomUUID();
         LeadEntity lead = buildQualifiedLead();
@@ -144,7 +149,7 @@ class ConvertLeadIntegrationTest {
         when(leadAccessPolicy.currentUser()).thenReturn(currentUser);
         doNothing().when(leadAccessPolicy).assertCanView(currentUser, lead);
 
-        assertThrows(IllegalStateException.class,
+        assertThrows(BusinessException.class,
                 () -> convertLeadUseCase.execute(leadId, buildConvertRequest()));
     }
 
