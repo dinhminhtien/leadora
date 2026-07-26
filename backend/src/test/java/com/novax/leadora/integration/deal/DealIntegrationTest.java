@@ -31,6 +31,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.novax.leadora.common.security.CurrentUserProvider;
+
 @ExtendWith(MockitoExtension.class)
 class DealIntegrationTest {
 
@@ -48,6 +50,9 @@ class DealIntegrationTest {
 
     @Mock
     private DealValidation dealValidation;
+
+    @Mock
+    private CurrentUserProvider currentUserProvider;
 
     @InjectMocks
     private CreateDealUseCase createDealUseCase;
@@ -74,9 +79,9 @@ class DealIntegrationTest {
         UserEntity defaultUser = UserEntity.builder().userId(UUID.randomUUID()).build();
 
         when(customerRepository.findById(customerId)).thenReturn(Optional.of(customer));
+        when(currentUserProvider.resolve(null)).thenReturn(defaultUser);
         when(dealMapper.mapStageToEnum("PROSPECTING")).thenReturn(DealPipelineStage.PROSPECTING);
         when(dealMapper.mapStatusToEnum(null)).thenReturn(DealStatus.OPEN);
-        when(userRepository.findAll()).thenReturn(List.of(defaultUser));
         when(dealRepository.save(any(DealEntity.class))).thenAnswer(inv -> {
             DealEntity d = inv.getArgument(0);
             d.setDealId(UUID.randomUUID());

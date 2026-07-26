@@ -22,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.novax.leadora.application.usecase.sla.SlaEntityResolver;
+
 @ExtendWith(MockitoExtension.class)
 class SlaIntegrationTest {
 
@@ -48,6 +50,9 @@ class SlaIntegrationTest {
 
     @Mock
     private OpHandoverRepository opHandoverRepository;
+
+    @Mock
+    private SlaEntityResolver slaEntityResolver;
 
     @InjectMocks
     private ProcessSlaBreachUseCase processSlaBreachUseCase;
@@ -157,10 +162,7 @@ class SlaIntegrationTest {
         when(slaTrackingRepository.findByStatusAndDeadlineAtBefore(eq(SlaStatus.ACTIVE), any()))
                 .thenReturn(List.of(tracking));
         when(userRepository.findAllWithRole()).thenReturn(List.of(manager));
-        when(leadRepository.findById(leadEntityId)).thenReturn(java.util.Optional.of(
-                com.novax.leadora.infrastructure.persistence.entity.LeadEntity.builder()
-                        .assignedUser(assignedStaff)
-                        .build()));
+        when(slaEntityResolver.resolveAssignedUser(tracking)).thenReturn(assignedStaff);
 
         processSlaBreachUseCase.execute();
 

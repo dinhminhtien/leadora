@@ -1,190 +1,132 @@
 package com.novax.leadora.application.usecase.deal;
 
 import com.novax.leadora.api.dto.request.DealRequest;
-import com.novax.leadora.common.exception.BusinessRuleException;
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
-import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
-import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
-import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 
-import java.time.LocalDate;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-public class DealValidationTest {
+class DealValidationTest {
 
-        @Mock
-        private BookingRepository bookingRepository;
+    @Mock
+    private BookingRepository bookingRepository;
 
-        @Mock
-        private CurrentUserProvider currentUserProvider;
+    @Mock
+    private CurrentUserProvider currentUserProvider;
 
-        @Mock
-        private SystemAuditLogService auditLogService;
+    @Mock
+    private SystemAuditLogService auditLogService;
 
-        private DealValidation dealValidation;
+    @Mock
+    private DealWorkflowResolver dealWorkflowResolver;
 
-        @BeforeEach
-        void setUp() {
-                dealValidation = new DealValidation(bookingRepository, currentUserProvider, auditLogService);
-        }
+    @InjectMocks
+    private DealValidation dealValidation;
 
-        @Test
-        void validateStageTransition_closedWonWithConfirmedBooking_shouldPass() {
-                UUID dealId = UUID.randomUUID();
-                DealEntity deal = DealEntity.builder()
-                                .dealId(dealId)
-                                .pipelineStage(DealPipelineStage.NEGOTIATION)
-                                .status(DealStatus.OPEN)
-                                .build();
+    @Test
+    void validateStageTransition_fromClosedWon_throwsStateConflictException() {
+        // Arrange
+        DealEntity deal = new DealEntity();
+        deal.setDealId(UUID.randomUUID());
+        DealRequest request = new DealRequest();
 
-                DealRequest request = new DealRequest();
-                request.setStage("CLOSED_WON");
-                request.setExpectedClose(LocalDate.now());
+        // Act & Assert
+        assertThatThrownBy(() -> dealValidation.validateStageTransition(
+                DealPipelineStage.CLOSED_WON,
+                DealPipelineStage.NEGOTIATION,
+                deal,
+                request
+        ))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(ex -> {
+            BusinessException be = (BusinessException) ex;
+            assertThat(be.getErrorCode()).isEqualTo("DEAL_STATE_CONFLICT");
+            assertThat(be.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
+        });
+    }
 
-                when(bookingRepository.existsByQuotation_Deal_DealIdAndStatus(dealId, BookingStatus.CONFIRMED))
-                                .thenReturn(true);
+    @Test
+    void validateStageTransition_toClosedLost_withPaidPayments_throwsConflictException() {
+        // Arrange
+        DealEntity deal = new DealEntity();
+        deal.setDealId(UUID.randomUUID());
+        DealRequest request = new DealRequest();
+        request.setNotes("Customer cancelled");
 
-                dealValidation.validateStageTransition(DealPipelineStage.NEGOTIATION, DealPipelineStage.CLOSED_WON,
-                                deal, request);
+        when(dealWorkflowResolver.hasPaidPaymentForActiveBooking(deal.getDealId())).thenReturn(true);
 
-                verify(bookingRepository).existsByQuotation_Deal_DealIdAndStatus(dealId, BookingStatus.CONFIRMED);
-        }
+        // Act & Assert
+        assertThatThrownBy(() -> dealValidation.validateStageTransition(
+                DealPipelineStage.NEGOTIATION,
+                DealPipelineStage.CLOSED_LOST,
+                deal,
+                request
+        ))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(ex -> {
+            BusinessException be = (BusinessException) ex;
+            assertThat(be.getErrorCode()).isEqualTo("WORKFLOW_CONSTRAINT_VIOLATION");
+            assertThat(be.getHttpStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        });
+    }
 
-        @Test
-        void validateStageTransition_closedWonNoBookingSalesRole_shouldThrowException() {
-                UUID dealId = UUID.randomUUID();
-                DealEntity deal = DealEntity.builder()
-                                .dealId(dealId)
-                                .pipelineStage(DealPipelineStage.NEGOTIATION)
-                                .status(DealStatus.OPEN)
-                                .build();
+    @Test
+    void validateStatusTransition_fromWon_throwsStateConflictException() {
+        // Arrange
+        DealEntity deal = new DealEntity();
+        deal.setDealId(UUID.randomUUID());
 
-                DealRequest request = new DealRequest();
-                request.setStage("CLOSED_WON");
-                request.setExpectedClose(LocalDate.now());
+        // Act & Assert
+        assertThatThrownBy(() -> dealValidation.validateStatusTransition(
+                DealStatus.WON,
+                DealStatus.LOST,
+                deal,
+                "Reason"
+        ))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(ex -> {
+            BusinessException be = (BusinessException) ex;
+            assertThat(be.getErrorCode()).isEqualTo("DEAL_STATE_CONFLICT");
+            assertThat(be.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
+        });
+    }
 
-                when(bookingRepository.existsByQuotation_Deal_DealIdAndStatus(dealId, BookingStatus.CONFIRMED))
-                                .thenReturn(false);
+    @Test
+    void validateStatusTransition_toLost_withPaidPayments_throwsConflictException() {
+        // Arrange
+        DealEntity deal = new DealEntity();
+        deal.setDealId(UUID.randomUUID());
 
-                UserEntity currentUser = UserEntity.builder()
-                                .role(RoleEntity.builder().roleName("SALES").build())
-                                .fullName("Sales Agent")
-                                .build();
-                when(currentUserProvider.resolve(null)).thenReturn(currentUser);
+        when(dealWorkflowResolver.hasPaidPaymentForActiveBooking(deal.getDealId())).thenReturn(true);
 
-                assertThatThrownBy(() -> dealValidation.validateStageTransition(DealPipelineStage.NEGOTIATION,
-                                DealPipelineStage.CLOSED_WON, deal, request))
-                                .isInstanceOf(BusinessRuleException.class)
-                                .hasMessageContaining("A confirmed booking is required to mark a deal as Closed Won.");
-        }
-
-        @Test
-        void validateStageTransition_closedWonNoBookingManagerRoleNoReason_shouldThrowException() {
-                UUID dealId = UUID.randomUUID();
-                DealEntity deal = DealEntity.builder()
-                                .dealId(dealId)
-                                .pipelineStage(DealPipelineStage.NEGOTIATION)
-                                .status(DealStatus.OPEN)
-                                .build();
-
-                DealRequest request = new DealRequest();
-                request.setStage("CLOSED_WON");
-                request.setExpectedClose(LocalDate.now());
-
-                when(bookingRepository.existsByQuotation_Deal_DealIdAndStatus(dealId, BookingStatus.CONFIRMED))
-                                .thenReturn(false);
-
-                UserEntity currentUser = UserEntity.builder()
-                                .role(RoleEntity.builder().roleName("MANAGER").build())
-                                .fullName("Manager User")
-                                .build();
-                when(currentUserProvider.resolve(null)).thenReturn(currentUser);
-
-                assertThatThrownBy(() -> dealValidation.validateStageTransition(DealPipelineStage.NEGOTIATION,
-                                DealPipelineStage.CLOSED_WON, deal, request))
-                                .isInstanceOf(BusinessRuleException.class)
-                                .hasMessageContaining(
-                                                "A manager exception reason (at least 5 characters) must be provided in the Notes");
-        }
-
-        @Test
-        void validateStageTransition_closedWonNoBookingManagerRoleWithReason_shouldPassAndAudit() {
-                UUID dealId = UUID.randomUUID();
-                DealEntity deal = DealEntity.builder()
-                                .dealId(dealId)
-                                .pipelineStage(DealPipelineStage.NEGOTIATION)
-                                .status(DealStatus.OPEN)
-                                .build();
-
-                DealRequest request = new DealRequest();
-                request.setStage("CLOSED_WON");
-                request.setExpectedClose(LocalDate.now());
-                request.setNotes("Bypassing because of client exception");
-
-                when(bookingRepository.existsByQuotation_Deal_DealIdAndStatus(dealId, BookingStatus.CONFIRMED))
-                                .thenReturn(false);
-
-                UserEntity currentUser = UserEntity.builder()
-                                .userId(UUID.randomUUID())
-                                .role(RoleEntity.builder().roleName("MANAGER").build())
-                                .fullName("Manager User")
-                                .build();
-                when(currentUserProvider.resolve(null)).thenReturn(currentUser);
-
-                dealValidation.validateStageTransition(DealPipelineStage.NEGOTIATION, DealPipelineStage.CLOSED_WON,
-                                deal, request);
-
-                verify(auditLogService).log(eq("DEAL"), eq("Deal"), eq(dealId), eq("CLOSED_WON_EXCEPTION"),
-                                eq(currentUser), any(), eq("WON"), anyString());
-        }
-
-        @Test
-        void validateStageTransition_closedLostNoReason_shouldThrowException() {
-                UUID dealId = UUID.randomUUID();
-                DealEntity deal = DealEntity.builder()
-                                .dealId(dealId)
-                                .pipelineStage(DealPipelineStage.NEGOTIATION)
-                                .status(DealStatus.OPEN)
-                                .build();
-
-                DealRequest request = new DealRequest();
-                request.setStage("CLOSED_LOST");
-
-                assertThatThrownBy(() -> dealValidation.validateStageTransition(DealPipelineStage.NEGOTIATION,
-                                DealPipelineStage.CLOSED_LOST, deal, request))
-                                .isInstanceOf(BusinessRuleException.class)
-                                .hasMessageContaining(
-                                                "A closed-lost reason must be provided in the Notes/Reason field to mark a deal as Closed Lost.");
-        }
-
-        @Test
-        void validateStageTransition_closedLostWithReason_shouldPass() {
-                UUID dealId = UUID.randomUUID();
-                DealEntity deal = DealEntity.builder()
-                                .dealId(dealId)
-                                .pipelineStage(DealPipelineStage.NEGOTIATION)
-                                .status(DealStatus.OPEN)
-                                .build();
-
-                DealRequest request = new DealRequest();
-                request.setStage("CLOSED_LOST");
-                request.setNotes("Client went with competitor");
-
-                dealValidation.validateStageTransition(DealPipelineStage.NEGOTIATION, DealPipelineStage.CLOSED_LOST,
-                                deal, request);
-        }
+        // Act & Assert
+        assertThatThrownBy(() -> dealValidation.validateStatusTransition(
+                DealStatus.OPEN,
+                DealStatus.LOST,
+                deal,
+                "Reason"
+        ))
+        .isInstanceOf(BusinessException.class)
+        .satisfies(ex -> {
+            BusinessException be = (BusinessException) ex;
+            assertThat(be.getErrorCode()).isEqualTo("WORKFLOW_CONSTRAINT_VIOLATION");
+            assertThat(be.getHttpStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        });
+    }
 }
