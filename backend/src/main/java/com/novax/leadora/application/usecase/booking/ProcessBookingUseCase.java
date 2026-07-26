@@ -20,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import com.novax.leadora.infrastructure.integration.email.EmailService;
 
 @Slf4j
 @Service
@@ -29,12 +30,14 @@ public class ProcessBookingUseCase {
     private final BookingRepository bookingRepository;
     private final BookingDetailRepository bookingDetailRepository;
     private final NotificationRepository notificationRepository;
+    private final EmailService emailService;
 
     @Transactional
     public BookingResponse execute(UUID bookingId, ProcessBookingRequest request) {
         BookingEntity booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found with ID: " + bookingId));
 
+        BookingStatus oldStatus = booking.getStatus();
         BookingStatus newStatus;
         try {
             newStatus = BookingStatus.valueOf(request.getStatus().toUpperCase());
@@ -75,6 +78,15 @@ public class ProcessBookingUseCase {
         }
 
         List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(bookingId);
+
+        if (oldStatus != BookingStatus.CONFIRMED && newStatus == BookingStatus.CONFIRMED) {
+            try {
+                emailService.sendBookingConfirmationEmail(saved, details);
+            } catch (Exception e) {
+                log.warn("Booking confirmation email failed for booking code {}: {}", saved.getBookingCode(), e.getMessage());
+            }
+        }
+
         List<BookingDetailResponse> detailResponses = details.stream()
                 .map(BookingDetailResponse::from)
                 .collect(Collectors.toList());
