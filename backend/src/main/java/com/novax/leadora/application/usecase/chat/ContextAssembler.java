@@ -3,11 +3,13 @@ package com.novax.leadora.application.usecase.chat;
 import com.novax.leadora.application.usecase.chat.intent.ChatIntent;
 import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.infrastructure.integration.ai.RagService;
+import com.novax.leadora.infrastructure.persistence.repository.AiDocumentRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -39,12 +41,15 @@ public class ContextAssembler {
 
     private final CrmSnapshotService crmSnapshotService;
     private final RagService ragService;
+    private final AiDocumentRepository documentRepository;
     private final Executor executor;
 
     public ContextAssembler(CrmSnapshotService crmSnapshotService, RagService ragService,
+                            AiDocumentRepository documentRepository,
                             @Qualifier("taskExecutor") Executor executor) {
         this.crmSnapshotService = crmSnapshotService;
         this.ragService = ragService;
+        this.documentRepository = documentRepository;
         this.executor = executor;
     }
 
@@ -75,10 +80,55 @@ public class ContextAssembler {
             case TEAM_SUMMARY -> crmSnapshotService.canSeeAllData(actor)
                     ? mentionedStaffOr(actor, areas, query, crmSnapshotService::teamSummary)
                     : crmSnapshotService.scopedSnapshot(actor, areas);
-            case DOC_QUERY -> ragService.retrieveContext(query);
+            case DOC_QUERY -> documentContext(query);
             case GENERAL_BUSINESS -> blend(actor, areas, query);
             default -> "";
         };
+    }
+
+    /**
+     * Retrieved document excerpts, always preceded by an inventory of the knowledge base.
+     *
+     * <p>Retrieval alone is not enough to answer a document question honestly. When it comes back
+     * empty the model was handed nothing at all, and — having been told it may only use the
+     * reference data — concluded it had "no access to company policy documents". That is the wrong
+     * answer twice over: it is not a permission problem, and it hides whether the document is
+     * missing, still processing, or simply worded differently from the question.
+     *
+     * <p>The inventory is a handful of titles, so it costs almost nothing and turns that dead end
+     * into a useful reply: either "nothing in <i>Employee Handbook</i> or <i>Refund Policy</i>
+     * covers this" or "the knowledge base is empty — upload the document first".
+     */
+    private String documentContext(String query) {
+        String excerpts = ragService.retrieveContext(query);
+        StringBuilder sb = new StringBuilder();
+        List<String> titles = searchableTitles();
+        if (titles.isEmpty()) {
+            sb.append("== Company knowledge base ==\nNo company document has been ingested yet, "
+                    + "so there is nothing to search. Uploading one is done on the assistant's "
+                    + "Company documents panel.\n");
+        } else {
+            sb.append("== Company knowledge base: ").append(titles.size())
+                    .append(" searchable document(s) ==\n");
+            titles.forEach(t -> sb.append("- ").append(t).append('\n'));
+            if (!StringUtils.hasText(excerpts)) {
+                sb.append("No excerpt from these documents matched this question.\n");
+            }
+        }
+        if (StringUtils.hasText(excerpts)) {
+            sb.append('\n').append(excerpts);
+        }
+        return sb.toString();
+    }
+
+    /** Never fails the turn: an unreachable database degrades the answer, it does not break it. */
+    private List<String> searchableTitles() {
+        try {
+            return documentRepository.findSearchableTitles();
+        } catch (Exception ex) {
+            log.warn("Could not list knowledge-base documents: {}", ex.getMessage());
+            return List.of();
+        }
     }
 
     /** The named colleague's snapshot when the question mentions one, else the given fallback. */

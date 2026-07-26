@@ -79,6 +79,14 @@ public class UploadDocumentUseCase {
 
         String resolvedTitle = StringUtils.hasText(title) ? title.trim() : fileName;
 
+        // Drop any earlier FAILED attempt at the same title. Those rows carry no chunks, so nothing
+        // is lost, and clearing them here keeps a retry from stacking up one dead row per attempt.
+        // Successful versions are NOT touched — the worker replaces them only once the new version
+        // is fully ingested, so a failed retry can never destroy a good document.
+        documentRepository.findByTitleIgnoreCase(resolvedTitle).stream()
+                .filter(existing -> existing.getChunkCount() < 0)
+                .forEach(documentRepository::delete);
+
         // Read the bytes NOW: the multipart stream is tied to this request and is closed once we
         // return, so the background worker must receive an in-memory copy (safe — capped at 5 MB).
         byte[] bytes;

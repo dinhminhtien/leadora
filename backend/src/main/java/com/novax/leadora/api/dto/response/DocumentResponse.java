@@ -18,6 +18,12 @@ public class DocumentResponse {
     private int chunkCount;
     /** True while the document is still being parsed/embedded in the background (chunkCount == 0). */
     private boolean processing;
+    /**
+     * True when background ingestion failed and the document holds no searchable chunks
+     * ({@code chunkCount < 0}). The row is kept so the UI can report the failure rather than
+     * letting the upload vanish; see {@code DocumentIngestService.CHUNK_COUNT_FAILED}.
+     */
+    private boolean failed;
     private OffsetDateTime createdAt;
     private UUID uploadedById;
     private String uploadedByName;
@@ -28,8 +34,9 @@ public class DocumentResponse {
                 .title(doc.getTitle())
                 .fileName(doc.getFileName())
                 .contentType(doc.getContentType())
-                .chunkCount(doc.getChunkCount())
+                .chunkCount(Math.max(0, doc.getChunkCount())) // hide the -1 sentinel from the client
                 .processing(doc.getChunkCount() == 0)
+                .failed(doc.getChunkCount() < 0)
                 .createdAt(doc.getCreatedAt())
                 .uploadedById(doc.getUploadedBy() != null ? doc.getUploadedBy().getUserId() : null)
                 .uploadedByName(doc.getUploadedBy() != null ? doc.getUploadedBy().getFullName() : null)

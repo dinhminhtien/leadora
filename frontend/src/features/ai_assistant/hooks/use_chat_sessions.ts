@@ -208,11 +208,13 @@ export function useCompanyDocuments(enabled: boolean = true) {
     enabled,
     // Ingestion is async on the backend: a freshly uploaded doc starts at chunkCount 0
     // ("processing"). Poll every 4s while any doc is still processing so the row flips to
-    // "ready" (or disappears on failure) without the user having to reopen the panel.
+    // "ready" (or to "indexing failed") without the user having to reopen the panel.
+    // `failed` must be excluded explicitly: a failed row also reports chunkCount 0, so without
+    // it the panel would poll for ever on a document that will never change again.
     refetchInterval: (query) => {
       const docs = query.state.data?.data ?? [];
       const stillProcessing = docs.some(
-        (d) => d.processing || (d.chunkCount ?? 0) === 0,
+        (d) => !d.failed && (d.processing || (d.chunkCount ?? 0) === 0),
       );
       return stillProcessing ? 4000 : false;
     },
