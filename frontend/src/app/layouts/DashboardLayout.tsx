@@ -11,6 +11,7 @@ import {
 import type { Notification } from "@/services/notification_service";
 import { getUserRole, canAccessPath, dashboardPathForRole } from "@/shared/auth/access";
 import {
+  BedDouble,
   Bell,
   BellOff,
   BriefcaseBusiness,
@@ -94,6 +95,7 @@ const navigationGroups: NavGroup[] = [
     title: "Hotel Operations",
     items: [
       { href: ROUTE_PATHS.customerProfiles, label: "Customer Profiles", Icon: Users },
+      { href: ROUTE_PATHS.roomRequests, label: "Room Requests", Icon: BedDouble },
       { href: ROUTE_PATHS.bookingConfirmation, label: "Bookings", Icon: FileText },
       { href: ROUTE_PATHS.reservationStatus, label: "Reservations", Icon: Hotel },
       { href: ROUTE_PATHS.operationalHandover, label: "Handovers", Icon: Workflow },

@@ -168,3 +168,208 @@ class TrackCustomerResponsePayload {
     return map;
   }
 }
+
+/// Shared helper for the payloads below: the backend treats an absent field and a
+/// blank string differently on some endpoints, so blanks are dropped rather than sent.
+void _putIfPresent(Map<String, dynamic> map, String key, Object? value) {
+  if (value == null) return;
+  if (value is String && value.trim().isEmpty) return;
+  map[key] = value is String ? value.trim() : value;
+}
+
+/// `yyyy-MM-dd` — the wire shape for every LocalDate field on the quotation endpoints.
+String _isoDate(DateTime value) =>
+    '${value.year.toString().padLeft(4, '0')}-'
+    '${value.month.toString().padLeft(2, '0')}-'
+    '${value.day.toString().padLeft(2, '0')}';
+
+/// UC-14.1 — create a quotation against a deal. Mirrors web `CreateQuotationPayload`.
+///
+/// Always lands as DRAFT: the status is resolved later by an explicit Submit, which
+/// routes to APPROVED or PENDING_APPROVAL depending on the discount threshold.
+class CreateQuotationPayload {
+  const CreateQuotationPayload({
+    required this.dealId,
+    required this.roomType,
+    required this.checkInDate,
+    required this.checkOutDate,
+    required this.numberOfRooms,
+    required this.pricePerNight,
+    required this.discountPercent,
+    required this.paymentPolicy,
+    required this.validUntil,
+    this.notes,
+  });
+
+  final String dealId;
+  final String roomType;
+  final DateTime checkInDate;
+  final DateTime checkOutDate;
+  final int numberOfRooms;
+  final num pricePerNight;
+  final num discountPercent;
+  final String paymentPolicy;
+  final DateTime validUntil;
+  final String? notes;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'dealId': dealId,
+      'roomType': roomType.trim(),
+      'checkInDate': _isoDate(checkInDate),
+      'checkOutDate': _isoDate(checkOutDate),
+      'numberOfRooms': numberOfRooms,
+      'pricePerNight': pricePerNight,
+      'discountPercent': discountPercent,
+      'paymentPolicy': paymentPolicy,
+      'validUntil': _isoDate(validUntil),
+    };
+    _putIfPresent(map, 'notes', notes);
+    return map;
+  }
+}
+
+/// UC-14.2 — submit a DRAFT for approval. Discount over the configured threshold goes
+/// to PENDING_APPROVAL, otherwise straight to APPROVED.
+class SubmitQuotationPayload {
+  const SubmitQuotationPayload({this.submittedByName, this.submittedByRole});
+
+  final String? submittedByName;
+  final String? submittedByRole;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{};
+    _putIfPresent(map, 'submittedByName', submittedByName);
+    _putIfPresent(map, 'submittedByRole', submittedByRole);
+    return map;
+  }
+}
+
+/// UC-14.4 — send an APPROVED quotation to the customer.
+///
+/// Blocked server-side unless the Reservation team has confirmed the rooms
+/// (`RoomConfirmationGate`): a 409 here carries a `ROOM_*` error code.
+class SendQuotationPayload {
+  const SendQuotationPayload({
+    required this.sendMethod,
+    required this.recipientName,
+    this.recipientEmail,
+    this.recipientPhone,
+    this.personalMessage,
+  });
+
+  /// `EMAIL` | `WHATSAPP` | `PDF`. EMAIL requires [recipientEmail].
+  final String sendMethod;
+  final String recipientName;
+  final String? recipientEmail;
+  final String? recipientPhone;
+  final String? personalMessage;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'sendMethod': sendMethod,
+      'recipientName': recipientName.trim(),
+    };
+    _putIfPresent(map, 'recipientEmail', recipientEmail);
+    _putIfPresent(map, 'recipientPhone', recipientPhone);
+    _putIfPresent(map, 'personalMessage', personalMessage);
+    return map;
+  }
+}
+
+/// UC-14.5 — a new version of an existing quotation; the parent becomes SUPERSEDED.
+class ReviseQuotationPayload {
+  const ReviseQuotationPayload({
+    required this.roomType,
+    required this.checkInDate,
+    required this.checkOutDate,
+    required this.numberOfRooms,
+    required this.pricePerNight,
+    required this.discountPercent,
+    required this.paymentPolicy,
+    required this.validUntil,
+    required this.changeReason,
+    this.notes,
+  });
+
+  final String roomType;
+  final DateTime checkInDate;
+  final DateTime checkOutDate;
+  final int numberOfRooms;
+  final num pricePerNight;
+  final num discountPercent;
+  final String paymentPolicy;
+  final DateTime validUntil;
+
+  /// Required by the backend — the audit trail for why the price/dates changed.
+  final String changeReason;
+  final String? notes;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'roomType': roomType.trim(),
+      'checkInDate': _isoDate(checkInDate),
+      'checkOutDate': _isoDate(checkOutDate),
+      'numberOfRooms': numberOfRooms,
+      'pricePerNight': pricePerNight,
+      'discountPercent': discountPercent,
+      'paymentPolicy': paymentPolicy,
+      'validUntil': _isoDate(validUntil),
+      'changeReason': changeReason.trim(),
+    };
+    _putIfPresent(map, 'notes', notes);
+    return map;
+  }
+}
+
+/// UC-14.7 — turn an ACCEPTED quotation into a PENDING booking.
+///
+/// Also gated on a confirmed room, checked against the dates actually being booked.
+class ConvertToBookingPayload {
+  const ConvertToBookingPayload({
+    required this.contactName,
+    required this.email,
+    required this.phone,
+    required this.roomType,
+    required this.checkInDate,
+    required this.checkOutDate,
+    this.specialRequests,
+  });
+
+  final String contactName;
+  final String email;
+  final String phone;
+  final String roomType;
+  final DateTime checkInDate;
+  final DateTime checkOutDate;
+  final String? specialRequests;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'contactName': contactName.trim(),
+      'email': email.trim(),
+      'phone': phone.trim(),
+      'roomType': roomType.trim(),
+      'checkInDate': _isoDate(checkInDate),
+      'checkOutDate': _isoDate(checkOutDate),
+    };
+    _putIfPresent(map, 'specialRequests', specialRequests);
+    return map;
+  }
+}
+
+/// UC-14.8 — close a quotation that will not proceed. [reason] is the audit trail.
+class CloseQuotationPayload {
+  const CloseQuotationPayload({required this.reason, this.closedByName, this.closedByRole});
+
+  final String reason;
+  final String? closedByName;
+  final String? closedByRole;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{'reason': reason.trim()};
+    _putIfPresent(map, 'closedByName', closedByName);
+    _putIfPresent(map, 'closedByRole', closedByRole);
+    return map;
+  }
+}

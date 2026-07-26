@@ -14,6 +14,7 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingRepository
 import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepository;
 import com.novax.leadora.infrastructure.integration.email.EmailService;
 import com.novax.leadora.application.usecase.booking.BookingStatusTransitionService;
+import com.novax.leadora.application.usecase.booking.TransitionActor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -63,17 +64,14 @@ public class UpdateReservationStatusUseCase {
             if (!newCheckOut.isAfter(newCheckIn)) {
                 throw new BusinessRuleException("Check-out date must be after the check-in date");
             }
-
-            List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(id);
-            for (BookingDetailEntity detail : details) {
-                if (detail.getProductService() != null) {
-                    validateRoomAvailability(detail.getProductService().getProductId(), detail.getProductService().getName(), newCheckIn, newCheckOut, detail.getQuantity(), id);
-                }
-            }
+            // No capacity check on the new dates: this CRM owns no room inventory, and the
+            // previous check invented capacity from the product name. The Front Office user
+            // moving the dates is reading the real PMS as they do it.
         }
 
         // Call the centralized transition service
-        BookingEntity booking = bookingStatusTransitionService.transition(id, newStatus, true, request.getReason());
+        BookingEntity booking = bookingStatusTransitionService.transition(
+                id, newStatus, TransitionActor.FRONT_OFFICE, request.getReason());
 
         if (datesChanged) {
             booking.setCheckInDate(newCheckIn);
@@ -123,44 +121,5 @@ public class UpdateReservationStatusUseCase {
                 id, oldStatus, newStatus, oldCheckIn, newCheckIn, oldCheckOut, newCheckOut, request.getReason(), OffsetDateTime.now());
 
         return ReservationResponse.from(booking, details);
-    }
-
-    private void validateRoomAvailability(UUID productId, String productName, LocalDate checkInDate, LocalDate checkOutDate, int requestQty, UUID currentBookingId) {
-        List<BookingStatus> activeStatuses = List.of(BookingStatus.PENDING, BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN);
-        List<BookingEntity> allBookings = bookingRepository.findAll();
-        
-        int totalBooked = 0;
-        for (BookingEntity booking : allBookings) {
-            // Skip the current booking being updated to avoid self-overlap conflict
-            if (booking.getBookingId().equals(currentBookingId)) {
-                continue;
-            }
-
-            if (activeStatuses.contains(booking.getStatus())) {
-                if (booking.getCheckInDate().isBefore(checkOutDate) && booking.getCheckOutDate().isAfter(checkInDate)) {
-                    List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(booking.getBookingId());
-                    for (BookingDetailEntity detail : details) {
-                        if (detail.getProductService() != null && detail.getProductService().getProductId().equals(productId)) {
-                            totalBooked += detail.getQuantity();
-                        }
-                    }
-                }
-            }
-        }
-
-        int capacity = 10;
-        if (productName != null) {
-            if (productName.contains("Suite")) {
-                capacity = 5;
-            } else if (productName.contains("Deluxe")) {
-                capacity = 10;
-            } else if (productName.contains("Standard")) {
-                capacity = 15;
-            }
-        }
-
-        if ((totalBooked + requestQty) > capacity) {
-            throw new BusinessRuleException("Dates unavailable. Inventory conflict.");
-        }
     }
 }

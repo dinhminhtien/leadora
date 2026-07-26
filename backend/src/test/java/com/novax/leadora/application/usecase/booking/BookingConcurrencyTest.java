@@ -4,6 +4,8 @@ import com.novax.leadora.api.dto.request.UpdatePaymentStatusRequest;
 import com.novax.leadora.application.usecase.deal.AutoWinDealByPaymentUseCase;
 import com.novax.leadora.application.usecase.deal.DealWorkflowResolver;
 import com.novax.leadora.application.usecase.payment.UpdatePaymentStatusUseCase;
+import com.novax.leadora.application.usecase.roomrequest.RoomConfirmationReader;
+import com.novax.leadora.application.usecase.roomrequest.RoomRequestNotifier;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.PaymentEntity;
@@ -54,6 +56,12 @@ class BookingConcurrencyTest {
         @Mock
         private AutoWinDealByPaymentUseCase autoWinDealByPaymentUseCase;
 
+        @Mock
+        private RoomConfirmationReader roomConfirmationReader;
+
+        @Mock
+        private RoomRequestNotifier roomRequestNotifier;
+
         private BookingStatusTransitionService bookingStatusTransitionService;
         private UpdatePaymentStatusUseCase updatePaymentStatusUseCase;
 
@@ -74,7 +82,9 @@ class BookingConcurrencyTest {
                                 bookingRepository,
                                 dealRepository,
                                 dealWorkflowResolver,
-                                autoWinDealByPaymentUseCase);
+                                autoWinDealByPaymentUseCase,
+                                roomConfirmationReader,
+                                roomRequestNotifier);
 
                 bookingId = UUID.randomUUID();
                 paymentId = UUID.randomUUID();
@@ -125,7 +135,7 @@ class BookingConcurrencyTest {
                 // Let's run Thread 2 (Cancel Booking Transition)
                 ExecutorService executor = Executors.newFixedThreadPool(2);
                 Future<BookingEntity> cancelFuture = executor.submit(() -> bookingStatusTransitionService
-                                .transition(bookingId, BookingStatus.CANCELLED, false, "Reason"));
+                                .transition(bookingId, BookingStatus.CANCELLED, TransitionActor.SALES, "Reason"));
 
                 // Wait for Thread 2 to acquire the simulated lock
                 bookingLockedLatch.await(5, TimeUnit.SECONDS);

@@ -54,11 +54,6 @@ class MoreScreen extends ConsumerWidget {
             child: Column(
               children: [
                 _MoreTile(
-                  icon: Icons.view_kanban_outlined,
-                  label: 'Pipeline',
-                  onTap: () => context.pushNamed(RouteNames.pipeline),
-                ),
-                _MoreTile(
                   icon: Icons.request_quote_outlined,
                   label: 'Quotations',
                   onTap: () => context.pushNamed(RouteNames.quotations),
@@ -88,6 +83,13 @@ class MoreScreen extends ConsumerWidget {
                   icon: Icons.payments_outlined,
                   label: 'Payments',
                   onTap: () => context.pushNamed(RouteNames.payments),
+                ),
+                // What Sales handed to the Front Office. Read-only: preparing the arrival
+                // is a Front Office job and lives on the web app.
+                _MoreTile(
+                  icon: Icons.assignment_turned_in_outlined,
+                  label: 'Handovers',
+                  onTap: () => context.pushNamed(RouteNames.handovers),
                 ),
               ],
             ),

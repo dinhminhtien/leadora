@@ -50,6 +50,11 @@ class _QuotationListScreenState extends ConsumerState<QuotationListScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Quotations')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => context.pushNamed(RouteNames.quotationCreate),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('New quotation'),
+      ),
       body: Column(
         children: [
           AppFilterChipBar(
