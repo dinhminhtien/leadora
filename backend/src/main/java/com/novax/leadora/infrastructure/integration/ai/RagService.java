@@ -9,12 +9,17 @@ import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * RAG over company documents (policies, handbooks...) backed by the pgvector store.
@@ -36,11 +41,23 @@ public class RagService {
     /** Cache of finished retrieval blocks, keyed by the normalised query. */
     static final String CONTEXT_CACHE = "rag-context";
 
-    private static final int TOP_K = 4;
-    private static final double SIMILARITY_THRESHOLD = 0.5;
+    /**
+     * How many chunks to feed the LLM as context. Higher = richer grounding (better recall on broad
+     * questions) at the cost of a longer prompt and more chance of an off-topic chunk sneaking in.
+     */
+    @Value("${ai.rag.retrieval.top-k:6}")
+    private int topK;
+
+    /**
+     * Minimum cosine similarity for a chunk to count as relevant (0..1). Lower = more permissive:
+     * recovers loosely-worded matches but admits more noise. 0.4 favours recall for a Q&A assistant.
+     */
+    @Value("${ai.rag.retrieval.similarity-threshold:0.4}")
+    private double similarityThreshold;
 
     private final VectorStore vectorStore;
     private final SemanticChunker semanticChunker;
+    private final VisionOcrService visionOcrService;
 
     /**
      * Parses, chunks, embeds and stores a document. Returns the number of chunks ingested.
@@ -54,7 +71,24 @@ public class RagService {
         };
 
         TikaDocumentReader reader = new TikaDocumentReader(resource);
-        List<Document> rawDocs = reader.get();
+        List<Document> rawDocs = new ArrayList<>(reader.get());
+
+        // Text-first, vision-second: Tika read the text layer above; if enabled, transcribe the text
+        // trapped inside images (scanned pages, charts, screenshots) and fold it into the same
+        // chunking/embedding pipeline. Best-effort — an empty result just means "text only".
+        if (visionOcrService.isEnabled()) {
+            String tikaText = rawDocs.stream()
+                    .map(Document::getText)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.joining("\n"));
+            String ocrText = visionOcrService.ocr(fileName, content, tikaText);
+            if (StringUtils.hasText(ocrText)) {
+                rawDocs.add(Document.builder()
+                        .text(ocrText)
+                        .metadata(Map.of("source", "vision-ocr"))
+                        .build());
+            }
+        }
 
         // Semantic chunking: each chunk is stamped with its parent documentId/title/file so a
         // document can be retrieved as labelled context and deleted as a unit.
@@ -111,8 +145,8 @@ public class RagService {
         try {
             SearchRequest request = SearchRequest.builder()
                     .query(query)
-                    .topK(TOP_K)
-                    .similarityThreshold(SIMILARITY_THRESHOLD)
+                    .topK(topK)
+                    .similarityThreshold(similarityThreshold)
                     .build();
             List<Document> hits = vectorStore.similaritySearch(request);
             if (hits == null || hits.isEmpty()) {
