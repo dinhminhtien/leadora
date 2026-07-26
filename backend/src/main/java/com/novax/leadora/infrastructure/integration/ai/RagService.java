@@ -78,7 +78,7 @@ public class RagService {
         // chunking/embedding pipeline. Best-effort — an empty result just means "text only".
         if (visionOcrService.isEnabled()) {
             String tikaText = rawDocs.stream()
-                    .map(Document::getText)
+                    .map(d -> d.getText())
                     .filter(Objects::nonNull)
                     .collect(Collectors.joining("\n"));
             String ocrText = visionOcrService.ocr(fileName, content, tikaText);

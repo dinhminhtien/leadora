@@ -13,6 +13,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationApprovalHistoryRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ public class ProcessQuotationApprovalUseCase {
     private final NotificationRepository notificationRepository;
     private final CurrentUserProvider currentUserProvider;
     private final SystemAuditLogService systemAuditLogService;
+    private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, ProcessApprovalRequest request) {
@@ -76,6 +78,14 @@ public class ProcessQuotationApprovalUseCase {
         // Optimistic lock (versionLock) is checked on this save — a concurrent approval
         // by another manager since findById() above throws OptimisticLockingFailureException (E3).
         QuotationEntity saved = quotationRepository.save(quotation);
+
+        if (newStatus == QuotationStatus.APPROVED) {
+            try {
+                startSlaTrackingUseCase.execute("QUOTATION_SENT", "QUOTATION", saved.getQuotationId());
+            } catch (Exception e) {
+                log.warn("SLA tracking failed for quotation {}: {}", saved.getQuotationId(), e.getMessage());
+            }
+        }
 
         // BR-37: Record approval decision in audit history
         QuotationApprovalHistoryEntity historyEntry = QuotationApprovalHistoryEntity.builder()

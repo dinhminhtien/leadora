@@ -55,6 +55,11 @@ public class BookingEntity extends BaseEntity {
     @Column(name = "total_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
-    @Transient
-    private String rejectionReason;
+    @Column(name = "status_reason", columnDefinition = "TEXT")
+    private String statusReason;
+
+    @Version
+    @Column(name = "version_lock", nullable = false)
+    @Builder.Default
+    private Integer versionLock = 0;
 }

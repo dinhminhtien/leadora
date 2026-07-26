@@ -179,7 +179,7 @@ export function BookingConfirmationScreen() {
     try {
       const res = await bookingConfirmationService.processRequest(selectedBooking.bookingId, {
         status: "REJECTED",
-        rejectionReason: rejectionReason.trim()
+        statusReason: rejectionReason.trim()
       });
       if (res.success) {
         toast.success("Booking request rejected.");
@@ -406,7 +406,7 @@ export function BookingConfirmationScreen() {
 
           <div className="bg-background rounded-xl border border-border shadow-sm overflow-hidden">
             <div className="w-full overflow-x-auto">
-              <Table className="w-full table-fixed min-w-[1100px]">
+              <Table className="w-full table-fixed min-w-275">
                 <TableHeader>
                   <TableRow hoverable={false}>
                     <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[12%] text-left! whitespace-nowrap">Booking Number</TableHead>
@@ -442,8 +442,8 @@ export function BookingConfirmationScreen() {
                             {b.bookingCode}
                           </span>
                         </TableCell>
-                        <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-[150px]" title={b.customerName}>{b.customerName}</TableCell>
-                        <TableCell className="py-3.5! px-4! text-xs! text-slate-600! dark:text-zinc-400! text-left! whitespace-nowrap truncate max-w-[160px]" title={b.details && b.details.length > 0 ? b.details[0].productName : "N/A"}>
+                        <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-37.5" title={b.customerName}>{b.customerName}</TableCell>
+                        <TableCell className="py-3.5! px-4! text-xs! text-slate-600! dark:text-zinc-400! text-left! whitespace-nowrap truncate max-w-40" title={b.details && b.details.length > 0 ? b.details[0].productName : "N/A"}>
                           {b.details && b.details.length > 0 ? b.details[0].productName : "N/A"}
                         </TableCell>
                         <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkInDate}</TableCell>
@@ -453,7 +453,7 @@ export function BookingConfirmationScreen() {
                         </TableCell>
                         <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
                           <div className="flex justify-center">
-                            <Badge variant={getBadgeVariant(b.status)} className="font-bold text-[9px] uppercase min-w-[90px] justify-center text-center py-1">
+                            <Badge variant={getBadgeVariant(b.status)} className="font-bold text-[9px] uppercase min-w-22.5 justify-center text-center py-1">
                               {b.status}
                             </Badge>
                           </div>
@@ -518,7 +518,7 @@ export function BookingConfirmationScreen() {
                   </Select>
                 </div>
                 <div className="w-full">
-                  <Button type="submit" isLoading={loadingAvail} className="w-full h-[38px]">
+                  <Button type="submit" isLoading={loadingAvail} className="w-full h-9.5">
                     Check Room Availability
                   </Button>
                 </div>
@@ -535,11 +535,11 @@ export function BookingConfirmationScreen() {
                   <Table>
                     <TableHeader>
                       <TableRow hoverable={false}>
-                        <TableHead className="font-bold text-xs uppercase min-w-[150px] whitespace-nowrap">Room Category Name</TableHead>
-                        <TableHead className="font-bold text-xs uppercase min-w-[100px] whitespace-nowrap">Base Rate</TableHead>
-                        <TableHead className="font-bold text-xs uppercase min-w-[150px] whitespace-nowrap">Occupied (Booked)</TableHead>
-                        <TableHead className="font-bold text-xs uppercase min-w-[150px] whitespace-nowrap">Available Capacity</TableHead>
-                        <TableHead className="font-bold text-xs uppercase min-w-[110px] whitespace-nowrap">Status</TableHead>
+                        <TableHead className="font-bold text-xs uppercase min-w-37.5 whitespace-nowrap">Room Category Name</TableHead>
+                        <TableHead className="font-bold text-xs uppercase min-w-25 whitespace-nowrap">Base Rate</TableHead>
+                        <TableHead className="font-bold text-xs uppercase min-w-37.5 whitespace-nowrap">Occupied (Booked)</TableHead>
+                        <TableHead className="font-bold text-xs uppercase min-w-37.5 whitespace-nowrap">Available Capacity</TableHead>
+                        <TableHead className="font-bold text-xs uppercase min-w-27.5 whitespace-nowrap">Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -548,12 +548,12 @@ export function BookingConfirmationScreen() {
                         const remaining = Math.max(0, capacity - av.totalBooked);
                         return (
                           <TableRow key={av.productId}>
-                            <TableCell className="font-bold text-xs text-foreground min-w-[150px] whitespace-nowrap">{av.name}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground min-w-[100px] whitespace-nowrap">{av.unitPrice.toLocaleString('vi-VN')} ₫/{av.unit || "night"}</TableCell>
-                            <TableCell className="text-xs font-semibold text-foreground min-w-[150px] whitespace-nowrap">{av.totalBooked} / {capacity} Rooms</TableCell>
-                            <TableCell className="text-xs font-bold text-primary min-w-[150px] whitespace-nowrap">{remaining} rooms remaining</TableCell>
-                            <TableCell className="min-w-[110px]">
-                              <Badge variant={av.isAvailable ? "success" : "danger"} className="uppercase font-bold text-[9px] min-w-[90px] justify-center text-center py-1">
+                            <TableCell className="font-bold text-xs text-foreground min-w-37.5 whitespace-nowrap">{av.name}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground min-w-25 whitespace-nowrap">{av.unitPrice.toLocaleString('vi-VN')} ₫/{av.unit || "night"}</TableCell>
+                            <TableCell className="text-xs font-semibold text-foreground min-w-37.5 whitespace-nowrap">{av.totalBooked} / {capacity} Rooms</TableCell>
+                            <TableCell className="text-xs font-bold text-primary min-w-37.5 whitespace-nowrap">{remaining} rooms remaining</TableCell>
+                            <TableCell className="min-w-27.5">
+                              <Badge variant={av.isAvailable ? "success" : "danger"} className="uppercase font-bold text-[9px] min-w-22.5 justify-center text-center py-1">
                                 {av.isAvailable ? "Available" : "Fully Booked"}
                               </Badge>
                             </TableCell>
@@ -801,11 +801,11 @@ export function BookingConfirmationScreen() {
                 </div>
               )}
 
-              {selectedBooking.status === "REJECTED" && selectedBooking.rejectionReason && (
+              {selectedBooking.status === "REJECTED" && selectedBooking.statusReason && (
                 <div className="border-t border-border pt-4">
                   <span className="text-[10px] uppercase font-bold text-danger block tracking-wider mb-1">Rejection Reason</span>
                   <p className="bg-red-50 dark:bg-red-950/20 p-3 rounded-xl border border-red-200 dark:border-red-900 text-xs text-danger font-semibold">
-                    {selectedBooking.rejectionReason}
+                    {selectedBooking.statusReason}
                   </p>
                 </div>
               )}
@@ -816,23 +816,23 @@ export function BookingConfirmationScreen() {
                   <Table>
                     <TableHeader className="bg-muted/60">
                       <TableRow hoverable={false}>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-[130px] whitespace-nowrap">Room Type</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-[110px] whitespace-nowrap">Room #</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-[50px] whitespace-nowrap">Qty</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-[60px] whitespace-nowrap">Nights</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-[80px] whitespace-nowrap">Rate</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 text-right min-w-[100px] whitespace-nowrap">Line Total</TableHead>
+                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-32.5 whitespace-nowrap">Room Type</TableHead>
+                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-27.5 whitespace-nowrap">Room #</TableHead>
+                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-12.5 whitespace-nowrap">Qty</TableHead>
+                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-15 whitespace-nowrap">Nights</TableHead>
+                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-20 whitespace-nowrap">Rate</TableHead>
+                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 text-right min-w-25 whitespace-nowrap">Line Total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {selectedBooking.details && selectedBooking.details.map((d, index) => (
                         <TableRow key={index} hoverable={false}>
-                          <TableCell className="py-2.5 px-3 font-semibold text-xs text-foreground min-w-[130px] whitespace-nowrap">{d.productName}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs text-primary font-bold min-w-[110px] whitespace-nowrap">{d.roomNumber || "Pending Assignment"}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs min-w-[50px]">{d.quantity}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs min-w-[60px]">{d.nights}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs min-w-[80px]">{d.unitPrice.toLocaleString('vi-VN')} ₫</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs font-black text-right min-w-[100px] whitespace-nowrap">{d.lineTotal.toLocaleString("vi-VN")} ₫</TableCell>
+                          <TableCell className="py-2.5 px-3 font-semibold text-xs text-foreground min-w-32.5 whitespace-nowrap">{d.productName}</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs text-primary font-bold min-w-27.5 whitespace-nowrap">{d.roomNumber || "Pending Assignment"}</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs min-w-12.5">{d.quantity}</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs min-w-15">{d.nights}</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs min-w-20">{d.unitPrice.toLocaleString('vi-VN')} ₫</TableCell>
+                          <TableCell className="py-2.5 px-3 text-xs font-black text-right min-w-25 whitespace-nowrap">{d.lineTotal.toLocaleString("vi-VN")} ₫</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

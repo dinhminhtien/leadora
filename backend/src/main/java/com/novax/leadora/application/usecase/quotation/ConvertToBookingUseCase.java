@@ -8,6 +8,7 @@ import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
+import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.InventoryStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
@@ -15,8 +16,11 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepo
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
+import com.novax.leadora.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +39,7 @@ public class ConvertToBookingUseCase {
     private final BookingDetailRepository bookingDetailRepository;
     private final QuotationAccessPolicy quotationAccessPolicy;
     private final QuotationAvailabilityChecker availabilityChecker;
+    private final DealRepository dealRepository;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Transactional
@@ -44,11 +49,20 @@ public class ConvertToBookingUseCase {
 
         quotationAccessPolicy.assertCanView(quotationAccessPolicy.currentUser(), quotation);
 
+        // Lock Deal first to prevent race conditions (Lock ordering: Deal -> Quotation/Booking)
+        DealEntity deal = quotation.getDeal();
+        if (deal != null) {
+            final UUID dealId = deal.getDealId();
+            deal = dealRepository.findByIdForUpdate(dealId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Deal", dealId));
+        }
+
         // PRE-1: Only ACCEPTED quotations can be converted
         if (quotation.getStatus() != QuotationStatus.ACCEPTED) {
-            throw new IllegalStateException(
+            throw new BusinessException("QUOTATION_INVALID_STATUS",
                     "Only ACCEPTED quotations can be converted to a booking. Current status: "
-                            + quotation.getStatus().name());
+                            + quotation.getStatus().name(),
+                    HttpStatus.CONFLICT);
         }
 
         // BR-23: Resolve dates — request values take precedence, fall back to quotation
@@ -56,16 +70,17 @@ public class ConvertToBookingUseCase {
         LocalDate checkOutDate = request.getCheckOutDate() != null ? request.getCheckOutDate() : quotation.getCheckOutDate();
 
         if (checkInDate == null || checkOutDate == null) {
-            throw new IllegalArgumentException(
-                    "Check-in and check-out dates are required for booking conversion (BR-23)");
+            throw new BusinessException("INVALID_DATES",
+                    "Check-in and check-out dates are required for booking conversion (BR-23)",
+                    HttpStatus.BAD_REQUEST);
         }
         if (!checkOutDate.isAfter(checkInDate)) {
-            throw new IllegalArgumentException("Check-out date must be after check-in date");
+            throw new BusinessException("INVALID_DATES", "Check-out date must be after check-in date", HttpStatus.BAD_REQUEST);
         }
 
         // BR-23: Customer identity required
         if (quotation.getCustomer() == null) {
-            throw new IllegalArgumentException("Customer information is missing (BR-23)");
+            throw new BusinessException("CUSTOMER_MISSING", "Customer information is missing (BR-23)", HttpStatus.UNPROCESSABLE_ENTITY);
         }
 
         // E3: room must still be available for the (possibly re-confirmed) dates — BR-24
