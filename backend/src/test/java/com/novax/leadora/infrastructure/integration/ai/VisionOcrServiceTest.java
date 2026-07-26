@@ -7,6 +7,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -54,8 +55,22 @@ class VisionOcrServiceTest {
     @DisplayName("no images extracted: returns empty, never calls the model")
     void noImagesReturnsEmpty() {
         VisionOcrService svc = service(VisionOcrService.Mode.ALL_IMAGES, 200);
-        when(extractor.extractPngImages("doc.pdf", new byte[]{1}, 5)).thenReturn(java.util.List.of());
+        when(extractor.extractPngImages("doc.pdf", new byte[]{1}, 5, true))
+                .thenReturn(java.util.List.of());
 
         assertThat(svc.ocr("doc.pdf", new byte[]{1}, "anything")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a text-poor document relaxes the extractor's size filter; a text-rich one does not")
+    void passesTextPoorFlagToExtractor() {
+        VisionOcrService svc = service(VisionOcrService.Mode.ALL_IMAGES, 200);
+        byte[] bytes = {1};
+
+        svc.ocr("doc.docx", bytes, "");                     // no text layer → images are the content
+        svc.ocr("doc.docx", bytes, "x".repeat(500));        // text-rich → keep filtering decoration
+
+        verify(extractor).extractPngImages("doc.docx", bytes, 5, true);
+        verify(extractor).extractPngImages("doc.docx", bytes, 5, false);
     }
 }

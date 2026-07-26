@@ -24,6 +24,7 @@ import {
   Maximize2,
   Minimize2,
   ShieldAlert,
+  AlertTriangle,
   Bot,
 } from "lucide-react";
 import Link from "next/link";
@@ -796,6 +797,7 @@ function DocsView({
     title: string;
     chunkCount: number;
     processing?: boolean;
+    failed?: boolean;
   }[];
   uploading: boolean;
   upload: UploadState | null;
@@ -875,15 +877,28 @@ function DocsView({
         <p className="pt-2 text-center text-[10px] text-muted-foreground">No documents yet.</p>
       )}
       {documents.map((doc) => {
-        const processing = doc.processing || doc.chunkCount === 0;
+        // A failed row is kept by the backend precisely so it can be reported here — it holds no
+        // chunks, so it must not be shown as ready, and it must stay deletable (unlike a row that
+        // is still processing, where deleting would race the background worker).
+        const failed = doc.failed === true;
+        const processing = !failed && (doc.processing || doc.chunkCount === 0);
         return (
           <div
             key={doc.documentId}
-            className="flex items-center justify-between rounded-xl border border-border bg-white px-2.5 py-2 text-[10px] text-muted-foreground"
+            className={`flex items-center justify-between rounded-xl border bg-white px-2.5 py-2 text-[10px] text-muted-foreground ${
+              failed ? "border-danger/40" : "border-border"
+            }`}
           >
             <span className="flex min-w-0 items-center gap-1.5" title={doc.title}>
               <span className="truncate">{doc.title}</span>
-              {processing ? (
+              {failed ? (
+                <span
+                  className="flex shrink-0 items-center gap-1 text-danger"
+                  title="No text could be extracted from this file. If it is a scan or screenshot, check that vision OCR is enabled; otherwise try a version with a real text layer."
+                >
+                  <AlertTriangle className="size-3" /> Indexing failed
+                </span>
+              ) : processing ? (
                 <span className="flex shrink-0 items-center gap-1 text-amber-500">
                   <Loader2 className="size-3 animate-spin" /> Processing…
                 </span>

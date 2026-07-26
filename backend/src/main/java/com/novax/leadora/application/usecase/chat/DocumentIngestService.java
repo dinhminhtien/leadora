@@ -19,14 +19,20 @@ import java.util.UUID;
  * {@link UploadDocumentUseCase} only persists the metadata row and returns; this worker does
  * the heavy lifting on the single-threaded {@code documentIngestExecutor}.
  *
- * <p><b>Status protocol (no schema change):</b> {@code chunk_count == 0} means "processing".
- * On success the real chunk count is written; on failure the metadata row and any partial
- * chunks are removed, so a document row that disappears means the ingest failed.
+ * <p><b>Status protocol (no schema change):</b> {@code chunk_count} doubles as the status field —
+ * {@code 0} means "processing", a positive number is the real chunk count, and
+ * {@link #CHUNK_COUNT_FAILED} means the ingest failed. The row is <em>kept</em> in the failed case:
+ * deleting it (the previous behaviour) made a failed upload indistinguishable from one that was
+ * never submitted — the file simply vanished from the list with no error anywhere in the UI, which
+ * is exactly how a broken image-only document could look like "the assistant just won't answer".
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DocumentIngestService {
+
+    /** Sentinel written to {@code chunk_count} when ingestion failed. See the status protocol above. */
+    public static final int CHUNK_COUNT_FAILED = -1;
 
     private final AiDocumentRepository documentRepository;
     private final RagService ragService;
@@ -65,17 +71,21 @@ public class DocumentIngestService {
             // Throwable, not Exception: a huge PDF can OOM the parser (an Error) — with a
             // narrower catch the row would be left stuck at 0 chunks with no cleanup.
             log.error("Background ingest FAILED for document {} ({}): {}", documentId, fileName, ex.getMessage(), ex);
-            // Clean up so no orphan chunks pollute retrieval and the row's disappearance
-            // signals the failure to the client.
+            // Drop any partial chunks so nothing half-ingested pollutes retrieval...
             try {
                 ragService.deleteDocument(documentId);
             } catch (Exception cleanupEx) {
                 log.warn("Could not clean vector chunks of failed document {}: {}", documentId, cleanupEx.getMessage());
             }
+            // ...but KEEP the metadata row, flagged as failed, so the UI can show the failure and
+            // offer a delete instead of letting the document silently disappear.
             try {
-                documentRepository.deleteById(documentId);
+                documentRepository.findById(documentId).ifPresent(doc -> {
+                    doc.setChunkCount(CHUNK_COUNT_FAILED);
+                    documentRepository.save(doc);
+                });
             } catch (Exception cleanupEx) {
-                log.warn("Could not delete metadata row of failed document {}: {}", documentId, cleanupEx.getMessage());
+                log.warn("Could not flag document {} as failed: {}", documentId, cleanupEx.getMessage());
             }
         }
     }

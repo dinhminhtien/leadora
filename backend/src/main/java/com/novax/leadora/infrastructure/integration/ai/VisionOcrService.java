@@ -116,8 +116,16 @@ public class VisionOcrService {
             return ""; // already has ample text — don't spend vision quota on a digital document
         }
         try {
-            List<byte[]> images = imageExtractor.extractPngImages(fileName, content, maxImages);
+            // A document with no usable text layer is carried by its pictures, so the extractor
+            // relaxes its size filter for it — otherwise a policy pasted in as one wide, short
+            // screenshot is discarded as decoration and the whole upload ingests to zero chunks.
+            boolean textPoor = tikaLen < scannedTextThreshold;
+            List<byte[]> images = imageExtractor.extractPngImages(fileName, content, maxImages, textPoor);
             if (images.isEmpty()) {
+                if (textPoor) {
+                    log.warn("No OCR-able image found in {} and its text layer is near-empty ({} chars) "
+                            + "— this document will ingest to 0 chunks", fileName, tikaLen);
+                }
                 return "";
             }
             StringBuilder sb = new StringBuilder();

@@ -31,7 +31,19 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class DocumentImageExtractorTest {
 
-    private final DocumentImageExtractor extractor = new DocumentImageExtractor();
+    /**
+     * A bare {@code new} leaves the {@code @Value} fields at 0, which disables the size filter
+     * entirely — so every instance under test must be given the production defaults explicitly.
+     */
+    private static DocumentImageExtractor newExtractor() {
+        DocumentImageExtractor e = new DocumentImageExtractor();
+        ReflectionTestUtils.setField(e, "minSidePx", 40);
+        ReflectionTestUtils.setField(e, "minAreaPx", 16000);
+        ReflectionTestUtils.setField(e, "lenientMinSidePx", 16);
+        return e;
+    }
+
+    private final DocumentImageExtractor extractor = newExtractor();
 
     private static byte[] png(int w, int h) throws Exception {
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
@@ -83,7 +95,7 @@ class DocumentImageExtractorTest {
     @Test
     @DisplayName("extracts an embedded image from a DOCX")
     void extractsFromDocx() throws Exception {
-        List<byte[]> images = extractor.extractPngImages("doc.docx", docxWithImage(400, 300), 5);
+        List<byte[]> images = extractor.extractPngImages("doc.docx", docxWithImage(400, 300), 5, false);
 
         assertThat(images).hasSize(1);
         assertThat(ImageIO.read(new ByteArrayInputStream(images.get(0)))).isNotNull();
@@ -92,42 +104,62 @@ class DocumentImageExtractorTest {
     @Test
     @DisplayName("extracts an embedded image from a PDF")
     void extractsFromPdf() throws Exception {
-        List<byte[]> images = extractor.extractPngImages("doc.pdf", pdfWithImage(400, 300), 5);
+        List<byte[]> images = extractor.extractPngImages("doc.pdf", pdfWithImage(400, 300), 5, false);
 
         assertThat(images).hasSize(1);
         assertThat(ImageIO.read(new ByteArrayInputStream(images.get(0)))).isNotNull();
     }
 
     @Test
-    @DisplayName("skips icon-sized images (below the minimum dimension)")
+    @DisplayName("skips icon-sized images (below the minimum area)")
     void skipsTinyImages() throws Exception {
-        assertThat(extractor.extractPngImages("doc.docx", docxWithImage(120, 90), 5)).isEmpty();
+        assertThat(extractor.extractPngImages("doc.docx", docxWithImage(120, 90), 5, false)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("keeps a wide, short text strip — the shape a pasted-in policy screenshot has")
+    void keepsWideShortTextStrip() throws Exception {
+        // Regression: the filter used to reject anything under 200px on its SHORTEST side, so a
+        // 632x100 screenshot of a line of text was discarded as decoration. For a Word file whose
+        // only content is that picture it meant no images → no OCR → zero chunks → the upload was
+        // deleted as "no extractable text", and the assistant then answered questions about the
+        // policy with "I don't have access to that document".
+        assertThat(extractor.extractPngImages("doc.docx", docxWithImage(632, 100), 5, false)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("in a document with no text layer, even a small picture is kept — it IS the content")
+    void lenientModeKeepsSmallPictures() throws Exception {
+        byte[] docx = docxWithImage(120, 90);
+
+        assertThat(extractor.extractPngImages("doc.docx", docx, 5, false)).isEmpty();
+        assertThat(extractor.extractPngImages("doc.docx", docx, 5, true)).hasSize(1);
     }
 
     @Test
     @DisplayName("honours the max-images cap")
     void honoursMaxCap() throws Exception {
-        assertThat(extractor.extractPngImages("doc.pdf", pdfWithImage(400, 300), 0)).isEmpty();
+        assertThat(extractor.extractPngImages("doc.pdf", pdfWithImage(400, 300), 0, false)).isEmpty();
     }
 
     @Test
     @DisplayName("returns nothing for formats with no embedded raster images (txt/md)")
     void ignoresTextFormats() {
-        assertThat(extractor.extractPngImages("note.txt", "hello".getBytes(), 5)).isEmpty();
-        assertThat(extractor.extractPngImages("readme.md", "# hi".getBytes(), 5)).isEmpty();
+        assertThat(extractor.extractPngImages("note.txt", "hello".getBytes(), 5, false)).isEmpty();
+        assertThat(extractor.extractPngImages("readme.md", "# hi".getBytes(), 5, false)).isEmpty();
     }
 
     @Test
     @DisplayName("de-duplicates the same image repeated across pages (one OCR, not one per page)")
     void deduplicatesRepeatedImage() throws Exception {
-        List<byte[]> images = extractor.extractPngImages("scan.pdf", pdfWithSameImageOnPages(4, 400, 300), 5);
+        List<byte[]> images = extractor.extractPngImages("scan.pdf", pdfWithSameImageOnPages(4, 400, 300), 5, false);
 
         assertThat(images).hasSize(1);
     }
 
     /** Extractor with page rendering switched on (production default; off in a bare unit-test instance). */
     private static DocumentImageExtractor withPageRender() {
-        DocumentImageExtractor e = new DocumentImageExtractor();
+        DocumentImageExtractor e = newExtractor();
         ReflectionTestUtils.setField(e, "pageRenderEnabled", true);
         ReflectionTestUtils.setField(e, "pageRenderThreshold", 100);
         ReflectionTestUtils.setField(e, "pageRenderDpi", 150);
@@ -137,7 +169,7 @@ class DocumentImageExtractorTest {
     @Test
     @DisplayName("renders the whole page (not just the embedded image) for a text-sparse PDF page")
     void rendersSparsePage() throws Exception {
-        List<byte[]> images = withPageRender().extractPngImages("scan.pdf", pdfWithImage(400, 300), 5);
+        List<byte[]> images = withPageRender().extractPngImages("scan.pdf", pdfWithImage(400, 300), 5, false);
 
         assertThat(images).hasSize(1);
         BufferedImage got = ImageIO.read(new ByteArrayInputStream(images.get(0)));
@@ -149,7 +181,7 @@ class DocumentImageExtractorTest {
     @Test
     @DisplayName("downscales an oversized image below the max dimension before returning it")
     void downscalesOversizedImage() throws Exception {
-        List<byte[]> images = extractor.extractPngImages("big.pdf", pdfWithImage(4200, 2800), 5);
+        List<byte[]> images = extractor.extractPngImages("big.pdf", pdfWithImage(4200, 2800), 5, false);
 
         assertThat(images).hasSize(1);
         BufferedImage got = ImageIO.read(new ByteArrayInputStream(images.get(0)));
