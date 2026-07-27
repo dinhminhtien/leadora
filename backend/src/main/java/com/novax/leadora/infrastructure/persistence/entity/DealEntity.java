@@ -56,4 +56,36 @@ public class DealEntity extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
     private UserEntity createdBy;
+
+    public void setPipelineStage(DealPipelineStage pipelineStage) {
+        this.pipelineStage = pipelineStage;
+        if (pipelineStage == DealPipelineStage.CLOSED_WON) {
+            this.status = DealStatus.WON;
+        } else if (pipelineStage == DealPipelineStage.CLOSED_LOST) {
+            this.status = DealStatus.LOST;
+        } else {
+            this.status = DealStatus.OPEN;
+        }
+    }
+
+    public void setStatus(DealStatus status) {
+        this.status = status;
+        if (status == DealStatus.WON) {
+            this.pipelineStage = DealPipelineStage.CLOSED_WON;
+        } else if (status == DealStatus.LOST) {
+            this.pipelineStage = DealPipelineStage.CLOSED_LOST;
+        }
+    }
+
+    @PrePersist
+    @PreUpdate
+    public void syncStatusWithPipelineStage() {
+        if (this.pipelineStage == DealPipelineStage.CLOSED_WON) {
+            this.status = DealStatus.WON;
+        } else if (this.pipelineStage == DealPipelineStage.CLOSED_LOST) {
+            this.status = DealStatus.LOST;
+        } else {
+            this.status = DealStatus.OPEN;
+        }
+    }
 }

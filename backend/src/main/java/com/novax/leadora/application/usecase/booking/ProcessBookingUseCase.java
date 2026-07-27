@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import com.novax.leadora.infrastructure.integration.email.EmailService;
+import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 
 @Slf4j
 @Service
@@ -39,6 +40,7 @@ public class ProcessBookingUseCase {
     private final CurrentUserProvider currentUserProvider;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     private final SystemAuditLogService systemAuditLogService;
+    private final DealWorkflowSyncService dealWorkflowSyncService;
 
     @Transactional
     public BookingResponse execute(UUID bookingId, ProcessBookingRequest request) {
@@ -60,6 +62,10 @@ public class ProcessBookingUseCase {
 
         BookingEntity saved = bookingStatusTransitionService.transition(
                 bookingId, newStatus, TransitionActor.fromUser(actor), request.getStatusReason());
+
+        if (saved.getQuotation() != null && saved.getQuotation().getDeal() != null) {
+            dealWorkflowSyncService.syncPipelineStage(saved.getQuotation().getDeal().getDealId());
+        }
 
         // The rejection reason is already persisted structurally as booking.statusReason by
         // the transition service (and read back from there by the UI), so it is no longer

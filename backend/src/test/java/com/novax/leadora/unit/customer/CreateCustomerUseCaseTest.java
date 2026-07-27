@@ -12,7 +12,6 @@ import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -32,9 +31,11 @@ class CreateCustomerUseCaseTest {
     @Mock
     private UserRepository userRepository;
 
-    /** Built by hand so the real CustomerDuplicatePolicy runs over the mocked
-     *  repository — the duplicate rule moved there, and mocking it out would
-     *  leave these cases asserting nothing. */
+    /**
+     * Built by hand so the real CustomerDuplicatePolicy runs over the mocked
+     * repository — the duplicate rule moved there, and mocking it out would
+     * leave these cases asserting nothing.
+     */
     private CreateCustomerUseCase createCustomerUseCase;
 
     @org.junit.jupiter.api.BeforeEach

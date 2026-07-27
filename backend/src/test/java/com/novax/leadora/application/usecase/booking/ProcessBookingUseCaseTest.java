@@ -3,6 +3,7 @@ package com.novax.leadora.application.usecase.booking;
 import com.novax.leadora.api.dto.request.ProcessBookingRequest;
 import com.novax.leadora.api.dto.response.BookingResponse;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
+import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.integration.email.EmailService;
@@ -64,6 +65,9 @@ class ProcessBookingUseCaseTest {
     @Mock
     private SystemAuditLogService systemAuditLogService;
 
+    @Mock
+    private DealWorkflowSyncService dealWorkflowSyncService;
+
     @InjectMocks
     private ProcessBookingUseCase processBookingUseCase;
 
@@ -107,8 +111,7 @@ class ProcessBookingUseCaseTest {
                         .nights(3)
                         .unitPrice(new BigDecimal("500000.00"))
                         .lineTotal(new BigDecimal("1500000.00"))
-                        .build()
-        );
+                        .build());
 
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(bookingEntity));
         when(bookingRepository.save(any(BookingEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
