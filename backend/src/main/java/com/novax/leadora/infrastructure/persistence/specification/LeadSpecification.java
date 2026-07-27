@@ -18,12 +18,24 @@ public final class LeadSpecification {
     private LeadSpecification() {
     }
 
-    /** Pipeline priority: higher value → shown first. LOST / unknown → 0. */
+    /**
+     * Ordering weight for the "Status" sort: higher value → shown first. Unknown → 0.
+     *
+     * <p><b>Ranked by how much attention a lead still needs, not by how far it has travelled.</b>
+     * {@code CONVERTED} used to sit at the top, which put the one status with nothing left to do —
+     * the record is finished and locked read-only by BR-08 — at the head of a working list. With
+     * ten or more converted leads the first page contained no actionable work at all.
+     *
+     * <p>{@code QUALIFIED} leads the order because it is the state where delay costs the most: the
+     * lead is ready to close and someone has to act. {@code CONVERTED} and {@code LOST} sink to the
+     * bottom — both are closed, and missing one costs nothing.
+     */
     private static final Map<LeadStatus, Integer> PRIORITY = Map.of(
-            LeadStatus.CONVERTED, 4,
-            LeadStatus.QUALIFIED, 3,
-            LeadStatus.CONTACTED, 2,
-            LeadStatus.NEW,       1
+            LeadStatus.QUALIFIED, 4,
+            LeadStatus.CONTACTED, 3,
+            LeadStatus.NEW,       2,
+            LeadStatus.CONVERTED, 1,
+            LeadStatus.LOST,      0
     );
 
     public static final Comparator<LeadEntity> STATUS_PRIORITY_COMPARATOR =

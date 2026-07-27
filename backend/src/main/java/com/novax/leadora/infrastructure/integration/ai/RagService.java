@@ -9,12 +9,18 @@ import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * RAG over company documents (policies, handbooks...) backed by the pgvector store.
@@ -36,11 +42,23 @@ public class RagService {
     /** Cache of finished retrieval blocks, keyed by the normalised query. */
     static final String CONTEXT_CACHE = "rag-context";
 
-    private static final int TOP_K = 4;
-    private static final double SIMILARITY_THRESHOLD = 0.5;
+    /**
+     * How many chunks to feed the LLM as context. Higher = richer grounding (better recall on broad
+     * questions) at the cost of a longer prompt and more chance of an off-topic chunk sneaking in.
+     */
+    @Value("${ai.rag.retrieval.top-k:6}")
+    private int topK;
+
+    /**
+     * Minimum cosine similarity for a chunk to count as relevant (0..1). Lower = more permissive:
+     * recovers loosely-worded matches but admits more noise. 0.4 favours recall for a Q&A assistant.
+     */
+    @Value("${ai.rag.retrieval.similarity-threshold:0.4}")
+    private double similarityThreshold;
 
     private final VectorStore vectorStore;
     private final SemanticChunker semanticChunker;
+    private final VisionOcrService visionOcrService;
 
     /**
      * Parses, chunks, embeds and stores a document. Returns the number of chunks ingested.
@@ -56,13 +74,52 @@ public class RagService {
         TikaDocumentReader reader = new TikaDocumentReader(resource);
         List<Document> rawDocs = reader.get();
 
+        String tikaText = rawDocs.stream()
+                .map(d -> d.getText())
+                .filter(Objects::nonNull)
+                .collect(Collectors.joining("\n"));
+
+        // Text-first, vision-second: Tika read the text layer above; if enabled, transcribe the text
+        // trapped inside images (scanned pages, charts, screenshots) and fold it into the same
+        // chunking/embedding pipeline. Best-effort — an empty result just means "text only".
+        String ocrText = visionOcrService.isEnabled()
+                ? visionOcrService.ocr(fileName, content, tikaText)
+                : "";
+        // The two numbers that explain every "0 chunks" failure: how much the text layer gave and
+        // how much vision recovered. Without them an image-only document that ingests to nothing
+        // is indistinguishable from a quota error or a parser crash.
+        log.info("Parsed {} ({}): {} chars from text layer, {} chars from vision OCR (enabled={})",
+                documentId, fileName, tikaText.strip().length(), ocrText.strip().length(),
+                visionOcrService.isEnabled());
+
+        // One file, one text. The text layer and the vision transcription are two extraction routes
+        // over the *same* document, so they are concatenated in reading order rather than chunked as
+        // two separate inputs. Keeping them apart forced a minimum of two chunks out of an
+        // image-only file: whatever scrap Word left in the text layer became a chunk of its own —
+        // an all-but-empty vector carrying the document's title, competing for a top-K slot — because
+        // SemanticChunker's min-chars merge can only combine fragments *within* one input document.
+        // Joining also lets the semantic splitter see the run of meaning across the two sources.
+        String fullText = Stream.of(tikaText, ocrText)
+                .filter(StringUtils::hasText)
+                .map(s -> s.strip())
+                .collect(Collectors.joining("\n\n"));
+        if (!StringUtils.hasText(fullText)) {
+            log.warn("Document {} ({}) produced no extractable text", documentId, fileName);
+            return 0;
+        }
+
         // Semantic chunking: each chunk is stamped with its parent documentId/title/file so a
-        // document can be retrieved as labelled context and deleted as a unit.
+        // document can be retrieved as labelled context and deleted as a unit. Tika's own metadata
+        // is carried over from the first parsed document so nothing it recorded is lost in the join.
         Map<String, Object> baseMetadata = Map.of(
                 META_DOC_ID, documentId.toString(),
                 META_TITLE, title,
                 META_FILE, fileName);
-        List<Document> chunks = semanticChunker.chunk(rawDocs, baseMetadata);
+        Document merged = Document.builder()
+                .text(fullText)
+                .metadata(rawDocs.isEmpty() ? new HashMap<>() : new HashMap<>(rawDocs.get(0).getMetadata()))
+                .build();
+        List<Document> chunks = semanticChunker.chunk(List.of(merged), baseMetadata);
 
         if (chunks.isEmpty()) {
             log.warn("Document {} ({}) produced no extractable text", documentId, fileName);
@@ -111,8 +168,8 @@ public class RagService {
         try {
             SearchRequest request = SearchRequest.builder()
                     .query(query)
-                    .topK(TOP_K)
-                    .similarityThreshold(SIMILARITY_THRESHOLD)
+                    .topK(topK)
+                    .similarityThreshold(similarityThreshold)
                     .build();
             List<Document> hits = vectorStore.similaritySearch(request);
             if (hits == null || hits.isEmpty()) {

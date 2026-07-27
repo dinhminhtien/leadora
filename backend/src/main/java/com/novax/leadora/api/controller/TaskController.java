@@ -3,6 +3,7 @@ package com.novax.leadora.api.controller;
 import com.novax.leadora.api.dto.request.CreateTaskRequest;
 import com.novax.leadora.api.dto.request.ResignTaskRequest;
 import com.novax.leadora.api.dto.request.UpdateTaskRequest;
+import com.novax.leadora.api.dto.request.ResolveTaskRequest;
 import com.novax.leadora.api.dto.response.TaskResponse;
 import com.novax.leadora.application.usecase.task.CreateTaskUseCase;
 import com.novax.leadora.application.usecase.task.GetTaskDetailUseCase;
@@ -89,8 +90,10 @@ public class TaskController {
     /** UC-17.5 — Resolve SLA Task (marks COMPLETED + resolves SLA tracking + cancels reminders) */
     @PatchMapping("/{taskId}/resolve")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<TaskResponse>> resolveTask(@PathVariable UUID taskId) {
-        TaskResponse task = resolveTaskUseCase.execute(taskId);
+    public ResponseEntity<ApiResponse<TaskResponse>> resolveTask(
+            @PathVariable UUID taskId,
+            @Valid @RequestBody ResolveTaskRequest request) {
+        TaskResponse task = resolveTaskUseCase.execute(taskId, request.getResultNote());
         return ResponseEntity.ok(ApiResponse.success(task, "Task resolved successfully"));
     }
 }

@@ -37,6 +37,7 @@ class BookingRepository {
       decode: (data) => Booking.fromJson(data as Map<String, dynamic>),
     );
   }
+
 }
 
 final bookingRepositoryProvider = Provider<BookingRepository>((ref) {

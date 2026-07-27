@@ -42,26 +42,29 @@ public class DealMapper {
 
     public DealPipelineStage mapStageToEnum(String stage) {
         if (stage == null) {
-            return DealPipelineStage.PROSPECTING;
+            return DealPipelineStage.INQUIRY;
         }
         switch (stage.toLowerCase()) {
             case "inquiry":
-                return DealPipelineStage.PROSPECTING;
+                return DealPipelineStage.INQUIRY;
+            case "qualification":
             case "site visit":
+            case "qualified":
                 return DealPipelineStage.QUALIFICATION;
             case "proposal":
-                return DealPipelineStage.PROPOSAL;
+            case "quotation sent":
+                return DealPipelineStage.QUOTATION_SENT;
             case "negotiation":
                 return DealPipelineStage.NEGOTIATION;
             case "contract":
-                return DealPipelineStage.CLOSED_WON;
+                return DealPipelineStage.PENDING_CONFIRMATION;
             case "confirmed":
-                return DealPipelineStage.CLOSED_WON;
+                return DealPipelineStage.BOOKING_CONFIRMED;
             default:
                 try {
                     return DealPipelineStage.valueOf(stage.toUpperCase());
                 } catch (Exception e) {
-                    return DealPipelineStage.PROSPECTING;
+                    return DealPipelineStage.INQUIRY;
                 }
         }
     }
@@ -71,20 +74,18 @@ public class DealMapper {
             return "Inquiry";
         }
         switch (stage) {
-            case PROSPECTING:
+            case INQUIRY:
                 return "Inquiry";
             case QUALIFICATION:
-                return "Site Visit";
-            case PROPOSAL:
+                return "Qualification";
+            case QUOTATION_SENT:
                 return "Proposal";
             case NEGOTIATION:
                 return "Negotiation";
+            case PENDING_CONFIRMATION:
+                return "Contract";
+            case BOOKING_CONFIRMED:
             case CLOSED_WON:
-                if (status == DealStatus.WON) {
-                    return "Confirmed";
-                } else {
-                    return "Contract";
-                }
             case CLOSED_LOST:
                 return "Confirmed";
             default:
@@ -136,23 +137,27 @@ public class DealMapper {
             return 0;
         }
         if (stage == null) {
-            return 50;
+            return 10;
         }
         switch (stage) {
-            case PROSPECTING:
+            case INQUIRY:
                 return 10;
             case QUALIFICATION:
                 return 30;
-            case PROPOSAL:
+            case QUOTATION_SENT:
                 return 50;
             case NEGOTIATION:
                 return 70;
+            case PENDING_CONFIRMATION:
+                return 80;
+            case BOOKING_CONFIRMED:
+                return 90;
             case CLOSED_WON:
                 return 100;
             case CLOSED_LOST:
                 return 0;
             default:
-                return 50;
+                return 10;
         }
     }
 }

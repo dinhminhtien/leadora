@@ -22,6 +22,8 @@ import type { Quotation } from "@/services/quotation_service";
 import { useConvertToBooking } from "@/features/quotation/hooks/use_quotations";
 import { useAuthStore } from "@/stores/auth_store";
 import { Portal } from "@/components/ui/Portal";
+import { RoomConfirmationPanel } from "@/features/room_request/components/RoomConfirmationPanel";
+import { apiErrorMessage } from "@/services/api_error";
 
 
 interface ConvertToBookingModalProps {
@@ -100,13 +102,12 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
   const [apiError, setApiError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ bookingNo: string } | null>(null);
 
-  const availability = useMemo(() => {
-    if (!roomType || !checkInDate || !checkOutDate) return null;
-    const inDate = new Date(checkInDate);
-    const outDate = new Date(checkOutDate);
-    if (outDate <= inDate) return null;
-    return { available: true };
-  }, [roomType, checkInDate, checkOutDate]);
+  // Whether the Reservation team has confirmed these rooms. Replaces a stub that always
+  // returned `{ available: true }` and rendered an unconditional green "available" badge —
+  // this CRM owns no inventory, so it could never have known that. Advisory only: an
+  // unconfirmed room does not stop the conversion, it just leaves the booking PENDING for
+  // the Reservation team to answer.
+  const [roomConfirmed, setRoomConfirmed] = useState(false);
 
   const nights = useMemo(() => {
     if (!checkInDate || !checkOutDate) return 0;
@@ -132,11 +133,6 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
 
     if (missing.length > 0) {
       setE4Error(`Incomplete customer/booking details — please fill in: ${missing.join(", ")}.`);
-      return;
-    }
-
-    if (availability && !availability.available) {
-      setE3Error(`"${roomType}" is no longer available for the selected dates. Adjust dates or room type.`);
       return;
     }
 
@@ -320,15 +316,8 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
                   </div>
                 </div>
 
-                {/* Availability indicator */}
-                {availability && (
-                  <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                    <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />
-                    <span className="text-[10px] font-semibold text-emerald-700">
-                      Room type is available for selected dates
-                    </span>
-                  </div>
-                )}
+                {/* Real room-confirmation state, answered by the Reservation team. */}
+                <RoomConfirmationPanel quote={quote} onUsableChange={setRoomConfirmed} />
               </div>
             </div>
 

@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   AlertCircle,
   CheckCircle2,
+  Clock,
   Calculator,
   History,
   ChevronDown,
@@ -157,13 +158,10 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
     return { nights, subtotal, discountAmount, total };
   }, [checkInDate, checkOutDate, numberOfRooms, pricePerNight, discountPercent]);
 
-  const availability = useMemo(() => {
-    if (!roomType || !checkInDate || !checkOutDate) return null;
-    const inDate = new Date(checkInDate);
-    const outDate = new Date(checkOutDate);
-    if (outDate <= inDate) return null;
-    return { available: true };
-  }, [roomType, checkInDate, checkOutDate]);
+  // No availability check on this screen. It used to compute `{ available: true }`
+  // unconditionally and render a green "Room type available" badge — this CRM owns no room
+  // inventory, so that claim was never true. Revising is deliberately never blocked;
+  // availability is confirmed by the Reservation team and enforced at Send and Convert.
 
   // Version history: all quotes for the same deal, sorted by version
   const versionHistory = useMemo(() => {
@@ -180,11 +178,6 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
     setE3Error(null);
     setE4Error(null);
     setSubmitError(null);
-
-    if (availability && !availability.available) {
-      setE3Error(`"${data.roomType}" is already booked for the selected dates. Choose different dates or a different room type.`);
-      return;
-    }
 
     if (simulateNoManager && data.discountPercent > 10) {
       setE4Error(
@@ -407,11 +400,9 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
                       Duration: <strong className="text-slate-800">{pricing.nights} night{pricing.nights !== 1 ? "s" : ""}</strong>
                     </span>
                   )}
-                  {availability && (
-                    <span className="text-[10px] font-semibold flex items-center gap-1 text-emerald-600">
-                      <CheckCircle2 className="size-3" /> Room type available
-                    </span>
-                  )}
+                  <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                    <Clock className="size-3" /> Reservation confirms rooms before sending
+                  </span>
                 </div>
               </CardContent>
             </Card>

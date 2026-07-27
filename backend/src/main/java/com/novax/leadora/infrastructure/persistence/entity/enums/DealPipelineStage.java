@@ -1,10 +1,13 @@
 package com.novax.leadora.infrastructure.persistence.entity.enums;
 
 public enum DealPipelineStage {
-    PROSPECTING,
+    INQUIRY,
     QUALIFICATION,
-    PROPOSAL,
+    QUOTATION_SENT,
     NEGOTIATION,
+    PENDING_CONFIRMATION,
+    BOOKING_CONFIRMED,
     CLOSED_WON,
     CLOSED_LOST
 }
+

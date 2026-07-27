@@ -72,7 +72,7 @@ public class ChatTurnWriter {
         String lastIntent = recent.stream()
                 .filter(m -> m.getRole() == ChatRole.ASSISTANT && m.getIntentMatched() != null)
                 .reduce((first, second) -> second) // last assistant turn
-                .map(AiChatMessageEntity::getIntentMatched)
+                .map(m -> m.getIntentMatched())
                 .orElse(null);
 
         List<ChatTurn> history = recent.stream()

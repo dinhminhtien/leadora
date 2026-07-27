@@ -5,10 +5,12 @@ import com.novax.leadora.api.dto.request.CreateLeadRequest;
 import com.novax.leadora.api.dto.request.UpdateLeadRequest;
 import com.novax.leadora.api.dto.response.ConvertLeadResponse;
 import com.novax.leadora.api.dto.response.LeadResponse;
+import com.novax.leadora.api.dto.response.LeadStatsResponse;
 import com.novax.leadora.application.usecase.lead.ConvertLeadUseCase;
 import com.novax.leadora.application.usecase.lead.CreateLeadUseCase;
 import com.novax.leadora.application.usecase.lead.GetLeadDetailUseCase;
 import com.novax.leadora.application.usecase.lead.GetLeadListUseCase;
+import com.novax.leadora.application.usecase.lead.GetLeadStatsUseCase;
 import com.novax.leadora.application.usecase.lead.UpdateLeadUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -29,6 +31,7 @@ public class LeadController {
 
     private final CreateLeadUseCase createLeadUseCase;
     private final GetLeadListUseCase getLeadListUseCase;
+    private final GetLeadStatsUseCase getLeadStatsUseCase;
     private final GetLeadDetailUseCase getLeadDetailUseCase;
     private final UpdateLeadUseCase updateLeadUseCase;
     private final ConvertLeadUseCase convertLeadUseCase;
@@ -58,6 +61,26 @@ public class LeadController {
     ) {
         Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, isCorporate, dateFrom, dateTo, sortBy, sortDir, scope, page, size);
         return ResponseEntity.ok(ApiResponse.success(leads));
+    }
+
+    /**
+     * UC-8.2 — counts for the summary tiles, over the same filters and the same owner scope as
+     * {@link #getLeads}. Separate from the list because the list is paged and these are not:
+     * the client cannot add up what it never received.
+     */
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<LeadStatsResponse>> getLeadStats(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String source,
+            @RequestParam(required = false) Boolean isCorporate,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(defaultValue = "assigned") String scope
+    ) {
+        LeadStatsResponse stats = getLeadStatsUseCase.execute(
+                search, status, source, isCorporate, dateFrom, dateTo, scope);
+        return ResponseEntity.ok(ApiResponse.success(stats));
     }
 
     /** UC-8.3 — View Lead Detail */

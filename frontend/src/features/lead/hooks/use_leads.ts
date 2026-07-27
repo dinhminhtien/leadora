@@ -7,12 +7,28 @@ import {
   type UpdateLeadPayload,
   type ConvertLeadPayload,
   type LeadListParams,
+  type LeadStatsParams,
 } from "@/services/lead_service";
 
 export function useLeads(params?: LeadListParams) {
   return useQuery({
     queryKey: ["leads", params],
     queryFn: () => leadService.getList(params),
+  });
+}
+
+/**
+ * Summary counts for the tiles above the list.
+ *
+ * Deliberately a separate query from {@link useLeads}: the list is paged, these are not, and
+ * deriving them from the loaded page is what made them wrong. Kept under the same `["leads"]` key
+ * prefix so every mutation that invalidates the list refreshes the tiles with it — otherwise
+ * creating a lead would leave the totals a page-refresh behind.
+ */
+export function useLeadStats(params?: LeadStatsParams) {
+  return useQuery({
+    queryKey: ["leads", "stats", params],
+    queryFn: () => leadService.getStats(params),
   });
 }
 

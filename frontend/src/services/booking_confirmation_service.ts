@@ -24,7 +24,7 @@ export type Booking = {
   checkOutDate: string;
   status: "PENDING" | "CONFIRMED" | "CHECKED_IN" | "CHECKED_OUT" | "CANCELLED" | "NO_SHOW" | "REJECTED";
   specialRequests?: string;
-  rejectionReason?: string;
+  statusReason?: string;
   totalAmount: number;
   details?: BookingDetail[];
   createdAt: string;
@@ -53,8 +53,13 @@ export type RoomAvailability = {
   category: "ROOM" | "EVENT_SPACE" | "SERVICE";
   unitPrice: number;
   unit?: string;
+  /**
+   * Units this CRM has already committed for the range. NOT remaining availability — the
+   * CRM does not know the hotel's capacity, so `isAvailable` was removed along with the
+   * invented per-name capacity table it came from. Real availability is answered by the
+   * Reservation team through a room request.
+   */
   totalBooked: number;
-  isAvailable: boolean;
 };
 
 const ENDPOINT = "/bookings";
@@ -90,7 +95,7 @@ export const bookingConfirmationService = {
     return response.data;
   },
 
-  async processRequest(id: string, payload: { status: "CONFIRMED" | "REJECTED"; rejectionReason?: string }) {
+  async processRequest(id: string, payload: { status: "CONFIRMED" | "REJECTED"; statusReason?: string }) {
     const response = await apiClient.put<ApiResponse<Booking>>(
       `${ENDPOINT}/${id}/process`,
       payload,

@@ -199,7 +199,7 @@ class TaskListController extends AutoDisposeAsyncNotifier<TaskListState> {
   /// row checkbox completes immediately and rolls back on failure). Uses the
   /// dedicated resolve endpoint so SLA tracking and reminders settle too.
   /// Returns null on success, or the error message for the caller's snackbar.
-  Future<String?> completeTask(String taskId) async {
+  Future<String?> completeTask(String taskId, String resultNote) async {
     final current = state.valueOrNull;
     if (current == null) return null;
     state = AsyncData(
@@ -211,7 +211,7 @@ class TaskListController extends AutoDisposeAsyncNotifier<TaskListState> {
       ),
     );
     try {
-      await _repo.resolve(taskId);
+      await _repo.resolve(taskId, resultNote);
       return null;
     } on AppException catch (e) {
       state = AsyncData(current); // roll back the optimistic flip

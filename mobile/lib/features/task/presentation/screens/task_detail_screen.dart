@@ -111,20 +111,16 @@ class TaskDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _complete(BuildContext context, WidgetRef ref, Task task) async {
-    final note = await _askResultNote(context, title: 'Complete task');
-    if (note == null || !context.mounted) return;
+    final note = await _askResultNote(
+      context,
+      title: 'Complete task',
+      hint: 'Result note (required)',
+      isRequired: true,
+    );
+    if (note == null || note.trim().isEmpty || !context.mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
-      if (note.trim().isNotEmpty) {
-        await ref.read(taskRepositoryProvider).updateProgress(
-              task.taskId,
-              status: TaskStatus.completed,
-              resultNote: note,
-            );
-      } else {
-        // The dedicated endpoint also settles SLA tracking and cancels reminders.
-        await ref.read(taskRepositoryProvider).resolve(task.taskId);
-      }
+      await ref.read(taskRepositoryProvider).resolve(task.taskId, note);
       _invalidate(ref);
       messenger.showSnackBar(const SnackBar(content: Text('Task completed')));
     } on AppException catch (e) {
@@ -158,29 +154,44 @@ class TaskDetailScreen extends ConsumerWidget {
     BuildContext context, {
     required String title,
     String hint = 'Result note (optional)',
+    bool isRequired = false,
   }) {
     final controller = TextEditingController();
     return showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 3,
-          decoration: InputDecoration(hintText: hint),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final text = controller.text.trim();
+            final isConfirmDisabled = isRequired && text.isEmpty;
+            return AlertDialog(
+              title: Text(title),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                maxLines: 3,
+                onChanged: (val) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: hint,
+                  errorText: isRequired && text.isEmpty ? 'Completion note is required' : null,
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isConfirmDisabled
+                      ? null
+                      : () => Navigator.pop(context, controller.text),
+                  child: const Text('Confirm'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

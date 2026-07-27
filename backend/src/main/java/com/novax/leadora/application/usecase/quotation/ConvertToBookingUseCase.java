@@ -8,6 +8,7 @@ import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
+import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.InventoryStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
@@ -15,6 +16,10 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepo
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
+import com.novax.leadora.common.exception.BusinessException;
+import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -46,33 +51,45 @@ public class ConvertToBookingUseCase {
 
         // PRE-1: Only ACCEPTED quotations can be converted
         if (quotation.getStatus() != QuotationStatus.ACCEPTED) {
-            throw new IllegalStateException(
+            throw new BusinessException("QUOTATION_INVALID_STATUS",
                     "Only ACCEPTED quotations can be converted to a booking. Current status: "
-                            + quotation.getStatus().name());
+                            + quotation.getStatus().name(),
+                    HttpStatus.CONFLICT);
         }
 
         // BR-23: Resolve dates — request values take precedence, fall back to quotation
         LocalDate checkInDate  = request.getCheckInDate()  != null ? request.getCheckInDate()  : quotation.getCheckInDate();
         LocalDate checkOutDate = request.getCheckOutDate() != null ? request.getCheckOutDate() : quotation.getCheckOutDate();
 
+                
         if (checkInDate == null || checkOutDate == null) {
-            throw new IllegalArgumentException(
-                    "Check-in and check-out dates are required for booking conversion (BR-23)");
+            throw new BusinessException("INVALID_DATES",
+                    "Check-in and check-out dates are required for booking conversion (BR-23)",
+                    HttpStatus.BAD_REQUEST);
         }
         if (!checkOutDate.isAfter(checkInDate)) {
-            throw new IllegalArgumentException("Check-out date must be after check-in date");
+            throw new BusinessException("INVALID_DATES", "Check-out date must be after check-in date", HttpStatus.BAD_REQUEST);
         }
+                    
 
         // BR-23: Customer identity required
         if (quotation.getCustomer() == null) {
-            throw new IllegalArgumentException("Customer information is missing (BR-23)");
+            throw new BusinessException("CUSTOMER_MISSING", "Customer information is missing (BR-23)", HttpStatus.UNPROCESSABLE_ENTITY);
         }
+                    
+
+        // Room confirmation is not required to convert. The booking is created PENDING and
+        // the Reservation team confirms it separately, so an unconfirmed room delays t
+        // e
+        // booking rather than blocking the conversion.
+        // 
 
         // E3: room must still be available for the (possibly re-confirmed) dates — BR-24
         availabilityChecker.assertRoomAvailable(checkInDate, checkOutDate, quotation.getRoomType());
 
         // Generate booking code from year + quotation UUID prefix (unique per quotation)
         String bookingCode = "BK-" + checkInDate.getYear() + "-"
+        // 
                 + quotationId.toString().substring(0, 8).toUpperCase();
 
         // POST-2: Create pending booking record

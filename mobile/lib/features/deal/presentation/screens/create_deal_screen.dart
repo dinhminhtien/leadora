@@ -8,11 +8,16 @@ import '../../../../shared/formatters.dart';
 import '../../data/deal_models.dart';
 import '../providers/deal_providers.dart';
 
-/// Create a deal. Stage and status are intentionally not editable here — the
-/// backend opens every new deal at PROSPECTING/OPEN, and the stage gates (deal
-/// value, notes, close date) only make sense once the deal exists.
+/// Create a deal, or edit the commercial details of one.
+///
+/// Stage and status are intentionally not editable here: the backend opens every new deal
+/// at INQUIRY/OPEN, and moving the stage afterwards belongs to `DealStageTracker`,
+/// which is where the backend's per-step validation surfaces.
 class CreateDealScreen extends ConsumerStatefulWidget {
-  const CreateDealScreen({super.key});
+  const CreateDealScreen({super.key, this.deal});
+
+  /// The deal being edited. Null creates a new one.
+  final Deal? deal;
 
   @override
   ConsumerState<CreateDealScreen> createState() => _CreateDealScreenState();
@@ -20,16 +25,38 @@ class CreateDealScreen extends ConsumerStatefulWidget {
 
 class _CreateDealScreenState extends ConsumerState<CreateDealScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _title = TextEditingController();
-  final _contact = TextEditingController();
-  final _email = TextEditingController();
-  final _phone = TextEditingController();
-  final _value = TextEditingController();
-  final _notes = TextEditingController();
+  late final TextEditingController _title;
+  late final TextEditingController _contact;
+  late final TextEditingController _email;
+  late final TextEditingController _phone;
+  late final TextEditingController _value;
+  late final TextEditingController _notes;
 
   DateTime? _expectedClose;
   bool _submitting = false;
   bool _autovalidate = false;
+
+  bool get _isEdit => widget.deal != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final d = widget.deal;
+    _title = TextEditingController(text: d?.title ?? '');
+    _contact = TextEditingController(text: d?.contactName ?? '');
+    _email = TextEditingController(text: d?.email ?? '');
+    _phone = TextEditingController(text: d?.phone ?? '');
+    // Whole amounts should not land in the field as "480000000.0".
+    _value = TextEditingController(
+      text: d?.value == null
+          ? ''
+          : (d!.value! == d.value!.roundToDouble()
+                ? d.value!.toInt().toString()
+                : d.value!.toString()),
+    );
+    _notes = TextEditingController(text: d?.notes ?? '');
+    _expectedClose = d?.expectedClose;
+  }
 
   @override
   void dispose() {
@@ -81,22 +108,25 @@ class _CreateDealScreenState extends ConsumerState<CreateDealScreen> {
       return text.isEmpty ? null : text;
     }
 
+    final payload = DealPayload(
+      title: _title.text.trim(),
+      contactName: _contact.text.trim(),
+      email: trimmedOrNull(_email),
+      phone: trimmedOrNull(_phone),
+      value: double.tryParse(_value.text.trim()),
+      expectedClose: _expectedClose,
+      notes: trimmedOrNull(_notes),
+    );
+
     try {
-      final deal = await ref
-          .read(dealActionsProvider)
-          .create(
-            DealPayload(
-              title: _title.text.trim(),
-              contactName: _contact.text.trim(),
-              email: trimmedOrNull(_email),
-              phone: trimmedOrNull(_phone),
-              value: double.tryParse(_value.text.trim()),
-              expectedClose: _expectedClose,
-              notes: trimmedOrNull(_notes),
-            ),
-          );
+      final actions = ref.read(dealActionsProvider);
+      final deal = _isEdit
+          ? await actions.update(widget.deal!.id, payload)
+          : await actions.create(payload);
       messenger.showSnackBar(
-        SnackBar(content: Text('Deal "${deal.title}" created')),
+        SnackBar(
+          content: Text('Deal "${deal.title}" ${_isEdit ? "updated" : "created"}'),
+        ),
       );
       router.pop();
     } on AppException catch (e) {
@@ -110,7 +140,7 @@ class _CreateDealScreenState extends ConsumerState<CreateDealScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('New deal')),
+      appBar: AppBar(title: Text(_isEdit ? 'Edit deal' : 'New deal')),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -219,7 +249,11 @@ class _CreateDealScreenState extends ConsumerState<CreateDealScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.check_rounded),
-                label: Text(_submitting ? 'Creating…' : 'Create deal'),
+                label: Text(
+                  _submitting
+                      ? (_isEdit ? 'Saving…' : 'Creating…')
+                      : (_isEdit ? 'Save changes' : 'Create deal'),
+                ),
               ),
               const SizedBox(height: AppSpacing.lg),
             ],

@@ -28,6 +28,7 @@ export const ROUTE_PATHS = {
   reminders: "/reminders",
   sla: "/sla",
   bookingConfirmation: "/booking-confirmation",
+  roomRequests: "/room-requests",
   reservationStatus: "/reservation-status",
   operationalHandover: "/operational-handover",
   depositPayment: "/deposit-payment",

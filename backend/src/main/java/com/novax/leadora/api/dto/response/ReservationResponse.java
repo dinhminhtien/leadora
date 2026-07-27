@@ -28,7 +28,7 @@ public class ReservationResponse {
     private BigDecimal totalAmount;
     private BookingStatus status;
     private String specialRequests;
-    private String rejectionReason;
+    private String statusReason;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private List<BookingDetailResponse> details;
@@ -45,7 +45,7 @@ public class ReservationResponse {
                 .totalAmount(entity.getTotalAmount())
                 .status(entity.getStatus())
                 .specialRequests(entity.getSpecialRequests())
-                .rejectionReason(entity.getRejectionReason())
+                .statusReason(entity.getStatusReason())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();
@@ -80,7 +80,7 @@ public class ReservationResponse {
                 .totalAmount(entity.getTotalAmount())
                 .status(entity.getStatus())
                 .specialRequests(entity.getSpecialRequests())
-                .rejectionReason(entity.getRejectionReason())
+                .statusReason(entity.getStatusReason())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .details(detailResponses)
