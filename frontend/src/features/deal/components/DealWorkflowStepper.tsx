@@ -5,22 +5,26 @@ import { Badge } from "@/components/ui/Badge";
 
 interface DealWorkflowStepperProps {
   dealId: string;
+  onSyncSuccess?: () => void;
 }
 
-/// Wire stage name → the label used everywhere else in the product.
 const STAGE_LABELS: Record<string, string> = {
-  PROSPECTING: "New",
-  QUALIFICATION: "Qualified",
-  PROPOSAL: "Proposal",
+  INQUIRY: "Inquiry",
+  QUALIFICATION: "Qualification",
+  QUOTATION_SENT: "Proposal",
   NEGOTIATION: "Negotiation",
+  PENDING_CONFIRMATION: "Contract",
+  BOOKING_CONFIRMED: "Confirmed",
   CLOSED_WON: "Won",
   CLOSED_LOST: "Lost",
 };
 
-export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId }) => {
+export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId, onSyncSuccess }) => {
   const [summary, setSummary] = useState<DealWorkflowSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
 
   useEffect(() => {
     let active = true;
@@ -76,10 +80,7 @@ export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId
 
   if (!summary) return null;
 
-  // `dealStatus` and `pipelineStage` arrive as the raw enum names (OPEN/WON/LOST and
-  // PROSPECTING/QUALIFICATION/PROPOSAL/NEGOTIATION/CLOSED_WON/CLOSED_LOST) because
-  // GetDealWorkflowSummaryUseCase serializes `.name()`. Note this differs from
-  // DealResponse.status, which the mapper lowercases — compare against the names here.
+  // `dealStatus` and `pipelineStage` arrive as the raw enum names
   const dealStatus = summary.dealStatus?.toUpperCase();
   const stage = summary.pipelineStage?.toUpperCase();
   const isClosed = dealStatus === "WON" || dealStatus === "LOST";
@@ -89,7 +90,7 @@ export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId
       title: "Inquiry Stage",
       description: "Initial client inquiry registered",
       isCompleted: true, // Inquiry is always completed once deal is active
-      isActive: !isClosed && (stage === "PROSPECTING" || stage === "QUALIFICATION"),
+      isActive: !isClosed && (stage === "INQUIRY" || stage === "QUALIFICATION"),
       meta: (
         <span className="text-[10px] text-slate-400 font-medium">
           Stage: {STAGE_LABELS[stage ?? ""] ?? summary.pipelineStage ?? "—"}
@@ -100,7 +101,7 @@ export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId
       title: "Proposal / Quotation",
       description: "Send pricing options & get approval",
       isCompleted: !!summary.activeQuotationId,
-      isActive: !isClosed && stage === "PROPOSAL",
+      isActive: !isClosed && stage === "QUOTATION_SENT",
       meta: summary.activeQuotationId ? (
         <div className="flex items-center gap-1.5 mt-1 bg-blue-50/60 border border-blue-100 px-2 py-0.5 rounded text-[10px] text-blue-700 w-fit">
           <FileText className="size-3" />
@@ -117,7 +118,7 @@ export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId
       title: "Booking Reservation",
       description: "Confirm details & reserve resources",
       isCompleted: !!summary.activeBookingId,
-      isActive: !isClosed && stage === "NEGOTIATION",
+      isActive: !isClosed && (stage === "NEGOTIATION" || stage === "PENDING_CONFIRMATION" || stage === "BOOKING_CONFIRMED"),
       meta: summary.activeBookingId ? (
         <div className="flex items-center gap-1.5 mt-1 bg-indigo-50/60 border border-indigo-100 px-2 py-0.5 rounded text-[10px] text-indigo-700 w-fit">
           <Calendar className="size-3" />
@@ -164,6 +165,27 @@ export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId
     },
   ];
 
+  const handleSync = async () => {
+    if (syncing || isClosed) return;
+    setSyncing(true);
+    try {
+      const response = await dealService.syncPipeline(dealId);
+      if (response && response.success) {
+        const summaryResp = await dealService.getWorkflowSummary(dealId);
+        if (summaryResp && summaryResp.success && summaryResp.data) {
+          setSummary(summaryResp.data);
+        }
+        if (onSyncSuccess) {
+          onSyncSuccess();
+        }
+      }
+    } catch (err) {
+      console.error("Failed to manual sync pipeline", err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100/80 space-y-3">
       <div className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -171,10 +193,24 @@ export const DealWorkflowStepper: React.FC<DealWorkflowStepperProps> = ({ dealId
           <ShieldCheck className="size-4 text-[#185FA5]" />
           Sales Lifecycle Workflow
         </h4>
-        <span className="text-[9px] font-black uppercase text-[#185FA5] bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100/50">
+        <button
+          type="button"
+          disabled={syncing || isClosed}
+          onClick={handleSync}
+          className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border transition-all duration-200 flex items-center gap-1 ${
+            isClosed
+              ? "text-slate-400 bg-slate-100 border-slate-200 cursor-not-allowed"
+              : syncing
+              ? "text-blue-500 bg-blue-50 border-blue-200/50 cursor-wait animate-pulse"
+              : "text-[#185FA5] bg-blue-50 border-blue-100/50 hover:bg-blue-100 hover:text-[#0c447c] cursor-pointer"
+          }`}
+          title={isClosed ? "Cannot sync closed deals" : "Force sync deal pipeline stage with active workflow"}
+        >
+          {syncing && <Loader2 className="size-2.5 animate-spin text-[#185FA5]" />}
           Sync Active
-        </span>
+        </button>
       </div>
+
 
       <div className="relative pl-6 space-y-4">
         {/* Connection timeline line */}

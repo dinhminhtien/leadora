@@ -20,9 +20,12 @@ public class GetDealWorkflowSummaryUseCase {
 
     private final DealRepository dealRepository;
     private final DealWorkflowResolver dealWorkflowResolver;
+    private final DealWorkflowSyncService dealWorkflowSyncService;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public DealWorkflowSummaryResponse execute(UUID dealId) {
+        dealWorkflowSyncService.syncPipelineStage(dealId);
+
         DealEntity deal = dealRepository.findById(dealId)
                 .orElseThrow(() -> new BusinessException("DEAL_NOT_FOUND", "Deal not found with ID: " + dealId, HttpStatus.NOT_FOUND));
 

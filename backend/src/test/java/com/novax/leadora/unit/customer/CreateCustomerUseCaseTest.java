@@ -3,6 +3,7 @@ package com.novax.leadora.unit.customer;
 import com.novax.leadora.api.dto.request.CreateCustomerRequest;
 import com.novax.leadora.api.dto.response.CustomerResponse;
 import com.novax.leadora.application.usecase.customer.CreateCustomerUseCase;
+import com.novax.leadora.application.usecase.customer.CustomerDuplicatePolicy;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerType;
@@ -11,7 +12,6 @@ import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -31,8 +31,18 @@ class CreateCustomerUseCaseTest {
     @Mock
     private UserRepository userRepository;
 
-    @InjectMocks
+    /**
+     * Built by hand so the real CustomerDuplicatePolicy runs over the mocked
+     * repository — the duplicate rule moved there, and mocking it out would
+     * leave these cases asserting nothing.
+     */
     private CreateCustomerUseCase createCustomerUseCase;
+
+    @org.junit.jupiter.api.BeforeEach
+    void wireUseCase() {
+        createCustomerUseCase = new CreateCustomerUseCase(customerRepository, userRepository,
+                new CustomerDuplicatePolicy(customerRepository));
+    }
 
     private CreateCustomerRequest buildValidRequest() {
         CreateCustomerRequest req = new CreateCustomerRequest();

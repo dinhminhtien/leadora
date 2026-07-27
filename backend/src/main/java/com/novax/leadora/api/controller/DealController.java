@@ -11,6 +11,7 @@ import com.novax.leadora.application.usecase.deal.GetDealListUseCase;
 import com.novax.leadora.application.usecase.deal.GetPipelineDealsUseCase;
 import com.novax.leadora.application.usecase.deal.GetDealWorkflowSummaryUseCase;
 import com.novax.leadora.application.usecase.deal.UpdateDealUseCase;
+import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 import com.novax.leadora.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class DealController {
     private final UpdateDealUseCase updateDealUseCase;
     private final GetPipelineDealsUseCase getPipelineDealsUseCase;
     private final GetDealWorkflowSummaryUseCase getDealWorkflowSummaryUseCase;
+    private final DealWorkflowSyncService dealWorkflowSyncService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<DealResponse>>> getAllDeals(
@@ -86,6 +88,12 @@ public class DealController {
             @Valid @RequestBody UpdateDealStatusRequest request) {
         DealResponse updated = updateDealUseCase.updateDealStatus(id, request.getStatus(), request.getNotes());
         return ResponseEntity.ok(ApiResponse.success(updated, "Deal status updated successfully"));
+    }
+    @PostMapping("/{id}/sync-pipeline")
+    public ResponseEntity<ApiResponse<DealResponse>> syncPipeline(@PathVariable UUID id) {
+        dealWorkflowSyncService.syncPipelineStage(id);
+        DealResponse updated = getDealDetailUseCase.execute(id);
+        return ResponseEntity.ok(ApiResponse.success(updated, "Deal pipeline stage synchronized successfully"));
     }
 }
 

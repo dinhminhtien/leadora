@@ -29,10 +29,12 @@ enum DealStatus {
 /// and CLOSED_LOST both serialize as "Confirmed"), so it must never drive logic.
 /// Tabs, funnel ordering and the Kanban board key off this enum instead.
 enum DealStage {
-  prospecting('PROSPECTING', 'New'),
-  qualification('QUALIFICATION', 'Qualified'),
-  proposal('PROPOSAL', 'Proposal'),
+  inquiry('INQUIRY', 'Inquiry'),
+  qualification('QUALIFICATION', 'Qualification'),
+  quotationSent('QUOTATION_SENT', 'Proposal'),
   negotiation('NEGOTIATION', 'Negotiation'),
+  pendingConfirmation('PENDING_CONFIRMATION', 'Contract'),
+  bookingConfirmed('BOOKING_CONFIRMED', 'Confirmed'),
   closedWon('CLOSED_WON', 'Won'),
   closedLost('CLOSED_LOST', 'Lost');
 
@@ -53,12 +55,14 @@ enum DealStage {
 
   /// Position in the sales funnel. Both terminal stages share the last slot.
   int get order => switch (this) {
-    DealStage.prospecting => 0,
+    DealStage.inquiry => 0,
     DealStage.qualification => 1,
-    DealStage.proposal => 2,
+    DealStage.quotationSent => 2,
     DealStage.negotiation => 3,
-    DealStage.closedWon => 4,
-    DealStage.closedLost => 4,
+    DealStage.pendingConfirmation => 4,
+    DealStage.bookingConfirmed => 5,
+    DealStage.closedWon => 6,
+    DealStage.closedLost => 6,
   };
 
   bool get isTerminal =>
@@ -66,18 +70,22 @@ enum DealStage {
 
   /// The next stage a user can advance to, or `null` once terminal.
   DealStage? get next => switch (this) {
-    DealStage.prospecting => DealStage.qualification,
-    DealStage.qualification => DealStage.proposal,
-    DealStage.proposal => DealStage.negotiation,
-    DealStage.negotiation => DealStage.closedWon,
+    DealStage.inquiry => DealStage.qualification,
+    DealStage.qualification => DealStage.quotationSent,
+    DealStage.quotationSent => DealStage.negotiation,
+    DealStage.negotiation => DealStage.pendingConfirmation,
+    DealStage.pendingConfirmation => DealStage.bookingConfirmed,
+    DealStage.bookingConfirmed => DealStage.closedWon,
     DealStage.closedWon || DealStage.closedLost => null,
   };
 
   StatusTone get tone => switch (this) {
-    DealStage.prospecting => StatusTone.neutral,
+    DealStage.inquiry => StatusTone.neutral,
     DealStage.qualification => StatusTone.info,
-    DealStage.proposal => StatusTone.brand,
+    DealStage.quotationSent => StatusTone.brand,
     DealStage.negotiation => StatusTone.warning,
+    DealStage.pendingConfirmation => StatusTone.brand,
+    DealStage.bookingConfirmed => StatusTone.success,
     DealStage.closedWon => StatusTone.success,
     DealStage.closedLost => StatusTone.danger,
   };
