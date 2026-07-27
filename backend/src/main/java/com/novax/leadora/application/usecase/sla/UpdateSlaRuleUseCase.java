@@ -6,8 +6,10 @@ import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.SlaRuleEntity;
 import com.novax.leadora.infrastructure.persistence.repository.SlaRuleRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 
@@ -28,6 +30,12 @@ public class UpdateSlaRuleUseCase {
 
         SlaRuleEntity rule = slaRuleRepository.findById(ruleId)
                 .orElseThrow(() -> new ResourceNotFoundException("SlaRule", ruleId));
+
+        // E6.3: activity_type must stay unique across other rules
+        if (slaRuleRepository.existsByActivityTypeAndRuleIdNot(request.getActivityType(), ruleId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "SLA rule for activity type '" + request.getActivityType() + "' already exists.");
+        }
 
         rule.setActivityType(request.getActivityType());
         rule.setName(request.getName());
