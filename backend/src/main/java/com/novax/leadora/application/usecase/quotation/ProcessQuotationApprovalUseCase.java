@@ -32,6 +32,7 @@ public class ProcessQuotationApprovalUseCase {
     private final NotificationRepository notificationRepository;
     private final CurrentUserProvider currentUserProvider;
     private final SystemAuditLogService systemAuditLogService;
+    private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, ProcessApprovalRequest request) {

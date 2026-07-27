@@ -33,6 +33,7 @@ public class CreateQuotationUseCase {
     private final DealRepository dealRepository;
     private final CurrentUserProvider currentUserProvider;
     private final QuotationAvailabilityChecker availabilityChecker;
+    private final DealWorkflowSyncService dealWorkflowSyncService;
 
     @Transactional
     public QuotationResponse execute(CreateQuotationRequest request) {

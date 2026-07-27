@@ -5,6 +5,7 @@ import com.novax.leadora.common.exception.BusinessRuleException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

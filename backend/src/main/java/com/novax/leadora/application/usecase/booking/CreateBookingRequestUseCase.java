@@ -38,6 +38,7 @@ public class CreateBookingRequestUseCase {
     private final QuotationRepository quotationRepository;
     private final UserRepository userRepository;
     private final ProductServiceRepository productServiceRepository;
+    private final DealRepository dealRepository;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Transactional
