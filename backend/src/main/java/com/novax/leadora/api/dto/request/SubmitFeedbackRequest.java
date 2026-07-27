@@ -16,6 +16,18 @@ public class SubmitFeedbackRequest {
     @Max(value = 5, message = "Rating must be at most 5")
     private Short rating;
 
+    @Min(value = 1, message = "Attitude rating must be at least 1")
+    @Max(value = 5, message = "Attitude rating must be at most 5")
+    private Short ratingAttitude;
+
+    @Min(value = 1, message = "Speed rating must be at least 1")
+    @Max(value = 5, message = "Speed rating must be at most 5")
+    private Short ratingSpeed;
+
+    @Min(value = 1, message = "Accuracy rating must be at least 1")
+    @Max(value = 5, message = "Accuracy rating must be at most 5")
+    private Short ratingAccuracy;
+
     @NotBlank(message = "Comment is required")
     private String comment;
 
