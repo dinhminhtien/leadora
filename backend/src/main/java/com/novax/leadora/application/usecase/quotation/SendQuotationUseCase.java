@@ -51,10 +51,6 @@ public class SendQuotationUseCase {
                     "Only APPROVED quotations can be sent. Current status: " + quotation.getStatus().name());
         }
 
-        // Room confirmation is deliberately NOT checked here. It is one condition recorded
-        // against a quotation, not a precondition for sending it: the Reservation team's
-        // answer is surfaced to the rep, who decides whether to send.
-
         // E3: EMAIL method requires a valid recipient address
         boolean isEmail = "EMAIL".equalsIgnoreCase(request.getSendMethod());
         if (isEmail && (request.getRecipientEmail() == null || request.getRecipientEmail().isBlank())) {

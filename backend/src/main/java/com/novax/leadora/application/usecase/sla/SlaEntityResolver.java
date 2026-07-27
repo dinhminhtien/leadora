@@ -2,7 +2,6 @@ package com.novax.leadora.application.usecase.sla;
 
 import com.novax.leadora.infrastructure.persistence.entity.SlaTrackingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
-import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.OpHandoverRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
@@ -27,7 +26,6 @@ public class SlaEntityResolver {
     private final QuotationRepository quotationRepository;
     private final PaymentRepository paymentRepository;
     private final OpHandoverRepository opHandoverRepository;
-    private final BookingRepository bookingRepository;
 
     public UserEntity resolveAssignedUser(SlaTrackingEntity tracking) {
         try {
@@ -41,10 +39,6 @@ public class SlaEntityResolver {
                 case "PAYMENT" -> paymentRepository.findById(tracking.getEntityId())
                         .map(p -> p.getBooking() != null ? p.getBooking().getAssignedUser() : null)
                         .orElse(null);
-                // BOOKING_CONFIRM tracking is started against the booking, so without this
-                // case its breach notifications had no recipient to resolve.
-                case "BOOKING" -> bookingRepository.findById(tracking.getEntityId())
-                        .map(b -> b.getAssignedUser()).orElse(null);
                 case "HANDOVER" -> opHandoverRepository.findById(tracking.getEntityId())
                         .map(h -> h.getBooking() != null ? h.getBooking().getAssignedUser() : null)
                         .orElse(null);

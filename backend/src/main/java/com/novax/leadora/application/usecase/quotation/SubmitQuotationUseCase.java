@@ -39,7 +39,6 @@ public class SubmitQuotationUseCase {
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
     private final QuotationAccessPolicy quotationAccessPolicy;
-    private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Transactional
     public QuotationResponse execute(UUID id, SubmitQuotationRequest request) {

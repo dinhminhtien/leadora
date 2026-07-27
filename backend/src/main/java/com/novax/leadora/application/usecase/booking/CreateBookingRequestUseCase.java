@@ -38,9 +38,7 @@ public class CreateBookingRequestUseCase {
     private final QuotationRepository quotationRepository;
     private final UserRepository userRepository;
     private final ProductServiceRepository productServiceRepository;
-    private final DealRepository dealRepository;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
-    private final DealWorkflowSyncService dealWorkflowSyncService;
 
     @Transactional
     public BookingResponse execute(CreateBookingRequest request) {
@@ -134,10 +132,6 @@ public class CreateBookingRequestUseCase {
 
         savedBooking.setTotalAmount(totalAmount);
         BookingEntity finalSavedBooking = bookingRepository.save(savedBooking);
-
-        if (deal != null) {
-            dealWorkflowSyncService.syncPipelineStage(deal.getDealId());
-        }
 
         // UC-17.2: start SLA tracking — non-fatal if no BOOKING_CONFIRM rule configured
         try {

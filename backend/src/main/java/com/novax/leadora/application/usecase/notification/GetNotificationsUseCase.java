@@ -34,14 +34,13 @@ public class GetNotificationsUseCase {
     public Page<NotificationResponse> execute(UUID userId, Boolean unreadOnly, String type, String priority,
                                                 OffsetDateTime createdFrom, OffsetDateTime createdTo,
                                                 String sortBy, Pageable pageable) {
-        Specification<NotificationEntity> spec = Specification.allOf(
-                NotificationSpecifications.userId(userId),
-                NotificationSpecifications.unreadOnly(Boolean.TRUE.equals(unreadOnly)),
-                NotificationSpecifications.type(type),
-                NotificationSpecifications.priority(priority),
-                NotificationSpecifications.createdFrom(createdFrom),
-                NotificationSpecifications.createdTo(createdTo)
-        );
+        Specification<NotificationEntity> spec = Specification
+                .where(NotificationSpecifications.userId(userId))
+                .and(NotificationSpecifications.unreadOnly(Boolean.TRUE.equals(unreadOnly)))
+                .and(NotificationSpecifications.type(type))
+                .and(NotificationSpecifications.priority(priority))
+                .and(NotificationSpecifications.createdFrom(createdFrom))
+                .and(NotificationSpecifications.createdTo(createdTo));
 
         Pageable effectivePageable;
         if ("priority".equalsIgnoreCase(sortBy)) {

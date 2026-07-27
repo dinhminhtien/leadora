@@ -22,7 +22,6 @@ import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,9 +39,8 @@ public class ConvertToBookingUseCase {
     private final QuotationDetailRepository quotationDetailRepository;
     private final BookingDetailRepository bookingDetailRepository;
     private final QuotationAccessPolicy quotationAccessPolicy;
-    private final DealRepository dealRepository;
+    private final QuotationAvailabilityChecker availabilityChecker;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
-    private final DealWorkflowSyncService dealWorkflowSyncService;
 
     @Transactional
     public BookingResponse execute(UUID quotationId, ConvertToBookingRequest request) {
@@ -50,15 +48,6 @@ public class ConvertToBookingUseCase {
                 .orElseThrow(() -> new ResourceNotFoundException("Quotation", quotationId));
 
         quotationAccessPolicy.assertCanView(quotationAccessPolicy.currentUser(), quotation);
-
-        // Lock Deal first to prevent race conditions (Lock ordering: Deal -> Quotation/Booking)
-        DealEntity deal = quotation.getDeal();
-        // 
-        if (deal != null) {
-            final UUID dealId = deal.getDealId();
-            deal = dealRepository.findByIdForUpdate(dealId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Deal", dealId));
-        }
 
         // PRE-1: Only ACCEPTED quotations can be converted
         if (quotation.getStatus() != QuotationStatus.ACCEPTED) {
@@ -95,6 +84,9 @@ public class ConvertToBookingUseCase {
         // booking rather than blocking the conversion.
         // 
 
+        // E3: room must still be available for the (possibly re-confirmed) dates — BR-24
+        availabilityChecker.assertRoomAvailable(checkInDate, checkOutDate, quotation.getRoomType());
+
         // Generate booking code from year + quotation UUID prefix (unique per quotation)
         String bookingCode = "BK-" + checkInDate.getYear() + "-"
         // 
@@ -115,8 +107,10 @@ public class ConvertToBookingUseCase {
 
         BookingEntity saved = bookingRepository.save(booking);
 
+        // Copy quotation line items into booking details, holding inventory for each room/service
         List<QuotationDetailEntity> quotationDetails =
                 quotationDetailRepository.findByQuotation_QuotationId(quotationId);
+
         List<BookingDetailEntity> bookingDetails = quotationDetails.stream()
                 .map(detail -> BookingDetailEntity.builder()
                         .booking(saved)
@@ -135,10 +129,6 @@ public class ConvertToBookingUseCase {
         // POST-1: Update quotation status to CONVERTED
         quotation.setStatus(QuotationStatus.CONVERTED);
         quotationRepository.save(quotation);
-
-        if (deal != null) {
-            dealWorkflowSyncService.syncPipelineStage(deal.getDealId());
-        }
 
         // UC-17.2: start SLA tracking — non-fatal if no BOOKING_CONFIRM rule configured
         try {

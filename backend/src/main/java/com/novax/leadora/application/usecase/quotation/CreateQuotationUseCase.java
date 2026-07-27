@@ -32,7 +32,7 @@ public class CreateQuotationUseCase {
     private final QuotationDetailRepository quotationDetailRepository;
     private final DealRepository dealRepository;
     private final CurrentUserProvider currentUserProvider;
-    private final DealWorkflowSyncService dealWorkflowSyncService;
+    private final QuotationAvailabilityChecker availabilityChecker;
 
     @Transactional
     public QuotationResponse execute(CreateQuotationRequest request) {
@@ -41,9 +41,8 @@ public class CreateQuotationUseCase {
             throw new IllegalArgumentException("Check-out date must be after check-in date");
         }
 
-        // No availability gate here: this CRM owns no room inventory, so drafting a quote
-        // must never be blocked by a number it invented. Availability is confirmed by the
-        // Reservation team and surfaced on the quotation — never enforced as a precondition.
+        // E2: room type must exist and be available for the requested dates (BR-24)
+        availabilityChecker.assertRoomAvailable(request.getCheckInDate(), request.getCheckOutDate(), request.getRoomType());
 
         // 2. Fetch deal and get linked customer
         DealEntity deal = dealRepository.findById(request.getDealId())
