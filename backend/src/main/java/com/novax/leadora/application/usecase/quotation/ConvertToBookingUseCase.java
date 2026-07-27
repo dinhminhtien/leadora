@@ -18,6 +18,8 @@ import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRe
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.common.exception.BusinessException;
+import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -40,6 +42,7 @@ public class ConvertToBookingUseCase {
     private final QuotationAccessPolicy quotationAccessPolicy;
     private final DealRepository dealRepository;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
+    private final DealWorkflowSyncService dealWorkflowSyncService;
 
     @Transactional
     public BookingResponse execute(UUID quotationId, ConvertToBookingRequest request) {
@@ -50,6 +53,7 @@ public class ConvertToBookingUseCase {
 
         // Lock Deal first to prevent race conditions (Lock ordering: Deal -> Quotation/Booking)
         DealEntity deal = quotation.getDeal();
+        // 
         if (deal != null) {
             final UUID dealId = deal.getDealId();
             deal = dealRepository.findByIdForUpdate(dealId)
@@ -68,6 +72,7 @@ public class ConvertToBookingUseCase {
         LocalDate checkInDate  = request.getCheckInDate()  != null ? request.getCheckInDate()  : quotation.getCheckInDate();
         LocalDate checkOutDate = request.getCheckOutDate() != null ? request.getCheckOutDate() : quotation.getCheckOutDate();
 
+                
         if (checkInDate == null || checkOutDate == null) {
             throw new BusinessException("INVALID_DATES",
                     "Check-in and check-out dates are required for booking conversion (BR-23)",
@@ -76,18 +81,23 @@ public class ConvertToBookingUseCase {
         if (!checkOutDate.isAfter(checkInDate)) {
             throw new BusinessException("INVALID_DATES", "Check-out date must be after check-in date", HttpStatus.BAD_REQUEST);
         }
+                    
 
         // BR-23: Customer identity required
         if (quotation.getCustomer() == null) {
             throw new BusinessException("CUSTOMER_MISSING", "Customer information is missing (BR-23)", HttpStatus.UNPROCESSABLE_ENTITY);
         }
+                    
 
         // Room confirmation is not required to convert. The booking is created PENDING and
-        // the Reservation team confirms it separately, so an unconfirmed room delays the
+        // the Reservation team confirms it separately, so an unconfirmed room delays t
+        // e
         // booking rather than blocking the conversion.
+        // 
 
         // Generate booking code from year + quotation UUID prefix (unique per quotation)
         String bookingCode = "BK-" + checkInDate.getYear() + "-"
+        // 
                 + quotationId.toString().substring(0, 8).toUpperCase();
 
         // POST-2: Create pending booking record
@@ -105,10 +115,8 @@ public class ConvertToBookingUseCase {
 
         BookingEntity saved = bookingRepository.save(booking);
 
-        // Copy quotation line items into booking details, holding inventory for each room/service
         List<QuotationDetailEntity> quotationDetails =
                 quotationDetailRepository.findByQuotation_QuotationId(quotationId);
-
         List<BookingDetailEntity> bookingDetails = quotationDetails.stream()
                 .map(detail -> BookingDetailEntity.builder()
                         .booking(saved)
@@ -127,6 +135,10 @@ public class ConvertToBookingUseCase {
         // POST-1: Update quotation status to CONVERTED
         quotation.setStatus(QuotationStatus.CONVERTED);
         quotationRepository.save(quotation);
+
+        if (deal != null) {
+            dealWorkflowSyncService.syncPipelineStage(deal.getDealId());
+        }
 
         // UC-17.2: start SLA tracking — non-fatal if no BOOKING_CONFIRM rule configured
         try {

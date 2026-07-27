@@ -4,10 +4,12 @@ import 'package:leadora_mobile/features/deal/data/deal_models.dart';
 void main() {
   group('DealStage.fromWire', () {
     test('maps every backend enum value', () {
-      expect(DealStage.fromWire('PROSPECTING'), DealStage.prospecting);
+      expect(DealStage.fromWire('INQUIRY'), DealStage.inquiry);
       expect(DealStage.fromWire('QUALIFICATION'), DealStage.qualification);
-      expect(DealStage.fromWire('PROPOSAL'), DealStage.proposal);
+      expect(DealStage.fromWire('QUOTATION_SENT'), DealStage.quotationSent);
       expect(DealStage.fromWire('NEGOTIATION'), DealStage.negotiation);
+      expect(DealStage.fromWire('PENDING_CONFIRMATION'), DealStage.pendingConfirmation);
+      expect(DealStage.fromWire('BOOKING_CONFIRMED'), DealStage.bookingConfirmed);
       expect(DealStage.fromWire('CLOSED_WON'), DealStage.closedWon);
       expect(DealStage.fromWire('CLOSED_LOST'), DealStage.closedLost);
     });
@@ -22,8 +24,8 @@ void main() {
 
   group('DealStage funnel', () {
     test('next walks forward and stops at both terminal stages', () {
-      expect(DealStage.prospecting.next, DealStage.qualification);
-      expect(DealStage.negotiation.next, DealStage.closedWon);
+      expect(DealStage.inquiry.next, DealStage.qualification);
+      expect(DealStage.bookingConfirmed.next, DealStage.closedWon);
       expect(DealStage.closedWon.next, isNull);
       expect(DealStage.closedLost.next, isNull);
     });
@@ -32,7 +34,7 @@ void main() {
       expect(DealStage.closedWon.order, DealStage.closedLost.order);
       expect(DealStage.closedWon.isTerminal, isTrue);
       expect(DealStage.closedLost.isTerminal, isTrue);
-      expect(DealStage.proposal.isTerminal, isFalse);
+      expect(DealStage.quotationSent.isTerminal, isFalse);
     });
   });
 

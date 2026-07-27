@@ -121,7 +121,7 @@ interface QuickCreateDealFormProps {
 function QuickCreateDealForm({ customerId, lead, onCancel, onSuccess }: QuickCreateDealFormProps) {
   const [title, setTitle] = useState(`${lead.fullName} - Deal`);
   const [value, setValue] = useState("");
-  const [stage, setStage] = useState<"Inquiry" | "Site Visit" | "Proposal" | "Negotiation" | "Contract" | "Confirmed">("Inquiry");
+  const [stage, setStage] = useState<"Inquiry" | "Qualification" | "Proposal" | "Negotiation" | "Contract" | "Confirmed">("Inquiry");
   const [expectedClose, setExpectedClose] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 30);
@@ -222,7 +222,7 @@ function QuickCreateDealForm({ customerId, lead, onCancel, onSuccess }: QuickCre
             className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:border-[#185FA5] focus:outline-none focus:ring-1 focus:ring-[#185FA5]/20 cursor-pointer"
           >
             <option value="Inquiry">Inquiry</option>
-            <option value="Site Visit">Site Visit</option>
+            <option value="Qualification">Qualification</option>
             <option value="Proposal">Proposal</option>
             <option value="Negotiation">Negotiation</option>
             <option value="Contract">Contract</option>

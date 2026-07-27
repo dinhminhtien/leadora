@@ -74,7 +74,6 @@ public class AutoWinDealByPaymentUseCase {
 
         // 4. Perform transition
         DealStatus oldStatus = deal.getStatus();
-        deal.setStatus(DealStatus.WON);
         deal.setPipelineStage(DealPipelineStage.CLOSED_WON);
         dealRepository.save(deal);
 

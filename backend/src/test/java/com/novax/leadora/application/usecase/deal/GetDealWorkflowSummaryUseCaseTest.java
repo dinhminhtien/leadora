@@ -32,6 +32,9 @@ class GetDealWorkflowSummaryUseCaseTest {
     @Mock
     private DealWorkflowResolver dealWorkflowResolver;
 
+    @Mock
+    private DealWorkflowSyncService dealWorkflowSyncService;
+
     @InjectMocks
     private GetDealWorkflowSummaryUseCase getDealWorkflowSummaryUseCase;
 
@@ -58,7 +61,7 @@ class GetDealWorkflowSummaryUseCaseTest {
         DealEntity deal = new DealEntity();
         deal.setDealId(dealId);
         deal.setStatus(DealStatus.OPEN);
-        deal.setPipelineStage(DealPipelineStage.PROPOSAL);
+        deal.setPipelineStage(DealPipelineStage.QUOTATION_SENT);
 
         when(dealRepository.findById(dealId)).thenReturn(Optional.of(deal));
 
@@ -87,7 +90,7 @@ class GetDealWorkflowSummaryUseCaseTest {
         assertThat(summary).isNotNull();
         assertThat(summary.getDealId()).isEqualTo(dealId);
         assertThat(summary.getDealStatus()).isEqualTo("OPEN");
-        assertThat(summary.getPipelineStage()).isEqualTo("PROPOSAL");
+        assertThat(summary.getPipelineStage()).isEqualTo("QUOTATION_SENT");
         assertThat(summary.getActiveQuotationId()).isEqualTo(activeQuotation.getQuotationId());
         assertThat(summary.getActiveQuotationStatus()).isEqualTo("SENT");
         assertThat(summary.getActiveBookingId()).isEqualTo(activeBooking.getBookingId());

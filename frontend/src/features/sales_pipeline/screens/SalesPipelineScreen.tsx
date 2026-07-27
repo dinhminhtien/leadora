@@ -36,7 +36,7 @@ const getStageStyles = (stage: Deal["stage"]) => {
         badge: "!bg-slate-100 !text-slate-700 border !border-slate-200",
         dot: "bg-slate-400"
       };
-    case "Site Visit":
+    case "Qualification":
       return {
         border: "border-t-4 border-t-blue-500/80",
         badge: "!bg-blue-50 !text-blue-700 border !border-blue-200/50",
@@ -118,7 +118,7 @@ export function SalesPipelineScreen() {
 
   const stages: Deal["stage"][] = [
     "Inquiry",
-    "Site Visit",
+    "Qualification",
     "Proposal",
     "Negotiation",
     "Contract",
@@ -410,7 +410,7 @@ export function SalesPipelineScreen() {
   const dealsByStage = useMemo(() => {
     const groups: Record<Deal["stage"], PipelineDealCardResponse[]> = {
       Inquiry: [],
-      "Site Visit": [],
+      Qualification: [],
       Proposal: [],
       Negotiation: [],
       Contract: [],
@@ -771,7 +771,22 @@ export function SalesPipelineScreen() {
               )}
 
               {/* Deal Workflow Stepper Progress Indicator */}
-              <DealWorkflowStepper dealId={editingDeal.id} />
+              <DealWorkflowStepper 
+                dealId={editingDeal.id} 
+                onSyncSuccess={async () => {
+                  try {
+                    const response = await dealService.getById(editingDeal.id);
+                    if (response && response.success && response.data) {
+                      setEditingDeal(response.data as Deal);
+                    }
+                  } catch (err) {
+                    console.error("Failed to reload deal details after sync", err);
+                  }
+                  fetchDeals(searchTerm, ownerFilter);
+                  showSuccess("Deal pipeline stage synchronized!");
+                }}
+              />
+
 
               {/* Stage Tracker Stepper */}
               <div className="space-y-2 border-b border-slate-100 pb-4 mb-4">
@@ -871,7 +886,7 @@ export function SalesPipelineScreen() {
                     className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   >
                     <option value="Inquiry">Inquiry</option>
-                    <option value="Site Visit">Site Visit</option>
+                    <option value="Qualification">Qualification</option>
                     <option value="Proposal">Proposal</option>
                     <option value="Negotiation">Negotiation</option>
                     <option value="Contract">Contract</option>

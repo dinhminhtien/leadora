@@ -76,7 +76,7 @@ public record LeadFilterParams(
         } catch (IllegalArgumentException ex) {
             throw new BusinessException("INVALID_FILTER",
                     "Unknown lead status '" + status + "'. Valid values: "
-                            + Arrays.stream(LeadStatus.values()).map(Enum::name)
+                            + Arrays.stream(LeadStatus.values()).map(s -> s.name())
                                     .collect(Collectors.joining(", ")) + ".",
                     "status",
                     HttpStatus.BAD_REQUEST);

@@ -301,7 +301,7 @@ final _skeletonDeal = Deal(
   id: '',
   title: 'Placeholder deal title',
   status: DealStatus.active,
-  stage: DealStage.proposal,
+  stage: DealStage.quotationSent,
   contactName: 'Placeholder contact',
   value: 100000,
   expectedClose: DateTime(2026),

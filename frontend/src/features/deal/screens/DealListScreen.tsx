@@ -27,13 +27,13 @@ import { customerProfileService, type CustomerSearchItem } from "@/services/cust
 import { Portal } from "@/components/ui/Portal";
 import { DealWorkflowStepper } from "@/features/deal/components/DealWorkflowStepper";
 
-const STAGES_ORDER: Deal["stage"][] = ["Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed"];
+const STAGES_ORDER: Deal["stage"][] = ["Inquiry", "Qualification", "Proposal", "Negotiation", "Contract", "Confirmed"];
 
 const getStageBadgeStyles = (stage: Deal["stage"]) => {
   switch (stage) {
     case "Inquiry":
       return "!bg-slate-100 !text-slate-700 border !border-slate-200";
-    case "Site Visit":
+    case "Qualification":
       return "!bg-blue-50 !text-blue-700 border !border-blue-200/50";
     case "Proposal":
       return "!bg-amber-50 !text-amber-700 border !border-amber-200/50";
@@ -534,7 +534,7 @@ export function DealListScreen() {
               <Select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="w-full py-1.5">
                 <option value="all">All</option>
                 <option value="Inquiry">Inquiry</option>
-                <option value="Site Visit">Site Visit</option>
+                <option value="Qualification">Qualification</option>
                 <option value="Proposal">Proposal</option>
                 <option value="Negotiation">Negotiation</option>
                 <option value="Contract">Contract</option>
@@ -900,7 +900,7 @@ export function DealListScreen() {
                     className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   >
                     <option value="Inquiry">Inquiry</option>
-                    <option value="Site Visit">Site Visit</option>
+                    <option value="Qualification">Qualification</option>
                     <option value="Proposal">Proposal</option>
                     <option value="Negotiation">Negotiation</option>
                     <option value="Contract">Contract</option>
@@ -1117,7 +1117,7 @@ export function DealListScreen() {
                     className="py-1.5 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white"
                   >
                     <option value="Inquiry">Inquiry</option>
-                    <option value="Site Visit">Site Visit</option>
+                    <option value="Qualification">Qualification</option>
                     <option value="Proposal">Proposal</option>
                     <option value="Negotiation">Negotiation</option>
                     <option value="Contract">Contract</option>

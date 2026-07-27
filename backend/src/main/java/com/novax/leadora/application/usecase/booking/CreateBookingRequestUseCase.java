@@ -11,6 +11,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus
 import com.novax.leadora.infrastructure.persistence.repository.*;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -39,6 +40,7 @@ public class CreateBookingRequestUseCase {
     private final ProductServiceRepository productServiceRepository;
     private final DealRepository dealRepository;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
+    private final DealWorkflowSyncService dealWorkflowSyncService;
 
     @Transactional
     public BookingResponse execute(CreateBookingRequest request) {
@@ -132,6 +134,10 @@ public class CreateBookingRequestUseCase {
 
         savedBooking.setTotalAmount(totalAmount);
         BookingEntity finalSavedBooking = bookingRepository.save(savedBooking);
+
+        if (deal != null) {
+            dealWorkflowSyncService.syncPipelineStage(deal.getDealId());
+        }
 
         // UC-17.2: start SLA tracking — non-fatal if no BOOKING_CONFIRM rule configured
         try {

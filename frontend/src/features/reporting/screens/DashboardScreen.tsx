@@ -100,7 +100,7 @@ export function DashboardScreen() {
   // Color mapping for funnel bars
   const STAGE_COLORS: Record<string, string> = {
     "Inquiry": "bg-primary/80",
-    "Site Visit": "bg-accent/80",
+    "Qualification": "bg-accent/80",
     "Proposal": "bg-indigo-500/80",
     "Negotiation": "bg-pink-500/80",
     "Contract": "bg-warning/80",
