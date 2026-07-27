@@ -113,7 +113,12 @@ public class IntentClassifier {
             CrmArea.PAYMENTS, List.of("thanh toan", "payment", "hoa don", "invoice", "tien coc",
                     "dat coc", "deposit", "cong no", "da tra", "chua tra"),
             CrmArea.CUSTOMERS, List.of("khach hang", "customer", "client", "khach le", "khach doan",
-                    "khach cu", "lien he", "contact"));
+                    "khach cu", "lien he", "contact"),
+            // " sla " is deliberately space-wrapped: normalize() pads the text, and a bare "sla"
+            // is a substring of ordinary words ("translate", "slack") that would then pull an
+            // irrelevant SLA listing into unrelated answers.
+            CrmArea.SLA, List.of(" sla ", " sla?", "sla record", "ho so sla", "cam ket dich vu",
+                    "vi pham cam ket", "breach", "tre han xu ly", "han xu ly"));
 
     /**
      * Subject areas named by this message alone, empty when it names none.

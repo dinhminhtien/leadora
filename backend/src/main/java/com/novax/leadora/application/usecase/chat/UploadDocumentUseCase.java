@@ -1,6 +1,7 @@
 package com.novax.leadora.application.usecase.chat;
 
 import com.novax.leadora.api.dto.response.DocumentResponse;
+import com.novax.leadora.infrastructure.integration.ai.VisionOcrService;
 import com.novax.leadora.infrastructure.persistence.entity.AiDocumentEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.AiDocumentRepository;
@@ -36,10 +37,14 @@ public class UploadDocumentUseCase {
     private static final long MAX_FILE_SIZE_BYTES = 5L * 1024 * 1024;
 
     private static final List<String> ALLOWED_EXTENSIONS =
-            List.of(".pdf", ".docx", ".doc", ".txt", ".md");
+            List.of(".pdf", ".docx", ".doc", ".txt", ".md", ".png", ".jpg", ".jpeg");
+
+    /** Formats that carry no text layer at all — ingestible only through vision OCR. */
+    private static final List<String> IMAGE_EXTENSIONS = List.of(".png", ".jpg", ".jpeg");
 
     private final AiDocumentRepository documentRepository;
     private final DocumentIngestService documentIngestService;
+    private final VisionOcrService visionOcrService;
 
     @Transactional
     public DocumentResponse execute(UserEntity user, String title, MultipartFile file) {
@@ -61,10 +66,26 @@ public class UploadDocumentUseCase {
         String lowerName = fileName.toLowerCase();
         if (ALLOWED_EXTENSIONS.stream().noneMatch(lowerName::endsWith)) {
             throw new IllegalStateException(
-                    "Unsupported file format. Accepted: PDF, DOCX, DOC, TXT, MD.");
+                    "Unsupported file format. Accepted: PDF, DOCX, DOC, TXT, MD, PNG, JPG.");
+        }
+
+        // An image has no text layer, so without vision OCR it would ingest to 0 chunks and the
+        // row would silently vanish — reject it up front with the real reason instead.
+        if (IMAGE_EXTENSIONS.stream().anyMatch(lowerName::endsWith) && !visionOcrService.isEnabled()) {
+            throw new IllegalStateException(
+                    "Image upload requires vision OCR, which is currently disabled "
+                            + "(set AI_VISION_OCR_MODE to SCANNED_ONLY or ALL_IMAGES).");
         }
 
         String resolvedTitle = StringUtils.hasText(title) ? title.trim() : fileName;
+
+        // Drop any earlier FAILED attempt at the same title. Those rows carry no chunks, so nothing
+        // is lost, and clearing them here keeps a retry from stacking up one dead row per attempt.
+        // Successful versions are NOT touched — the worker replaces them only once the new version
+        // is fully ingested, so a failed retry can never destroy a good document.
+        documentRepository.findByTitleIgnoreCase(resolvedTitle).stream()
+                .filter(existing -> existing.getChunkCount() < 0)
+                .forEach(documentRepository::delete);
 
         // Read the bytes NOW: the multipart stream is tied to this request and is closed once we
         // return, so the background worker must receive an in-memory copy (safe — capped at 5 MB).

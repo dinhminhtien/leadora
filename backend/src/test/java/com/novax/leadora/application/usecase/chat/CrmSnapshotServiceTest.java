@@ -2,6 +2,7 @@ package com.novax.leadora.application.usecase.chat;
 
 import com.novax.leadora.application.usecase.chat.dto.ChatCounts;
 import com.novax.leadora.application.usecase.chat.dto.RepLeadCount;
+import com.novax.leadora.application.usecase.chat.dto.SlaRow;
 import com.novax.leadora.application.usecase.chat.dto.StatusBucket;
 import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
@@ -9,6 +10,7 @@ import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.SlaStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.ChatAggregateRepository;
@@ -18,6 +20,7 @@ import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
+import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -39,6 +42,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -67,6 +71,7 @@ class CrmSnapshotServiceTest {
     @Mock private BookingRepository bookingRepository;
     @Mock private PaymentRepository paymentRepository;
     @Mock private CustomerRepository customerRepository;
+    @Mock private UserRepository userRepository;
 
     private CrmSnapshotService service;
 
@@ -74,7 +79,7 @@ class CrmSnapshotServiceTest {
     void setUp() {
         service = new CrmSnapshotService(chatAggregateRepository, leadRepository, dealRepository,
                 taskRepository, quotationRepository, bookingRepository, paymentRepository,
-                customerRepository);
+                customerRepository, userRepository);
 
         // Default: nothing anywhere. Individual tests fill in what they need.
         when(chatAggregateRepository.countAll(any())).thenReturn(counts(Map.of(), 0));
@@ -82,6 +87,8 @@ class CrmSnapshotServiceTest {
         when(dealRepository.findRecentForChat(any(), any())).thenReturn(List.of());
         when(taskRepository.findOpenForChat(any(), anyList(), any())).thenReturn(List.of());
         when(leadRepository.countPerAssignee(any())).thenReturn(List.of());
+        when(dealRepository.statsPerAssignee()).thenReturn(List.of());
+        when(userRepository.findAllWithRole()).thenReturn(List.of());
     }
 
     // ── fixtures ──────────────────────────────────────────────────────────────
@@ -229,6 +236,66 @@ class CrmSnapshotServiceTest {
     }
 
     @Nested
+    @DisplayName("Staff member named in the question")
+    class MentionedStaff {
+
+        private final UUID repId = UUID.randomUUID();
+
+        private void givenStaff(String fullName) {
+            when(userRepository.findAllWithRole()).thenReturn(List.of(UserEntity.builder()
+                    .userId(repId)
+                    .fullName(fullName)
+                    .build()));
+        }
+
+        @Test
+        @DisplayName("a Manager's question naming a rep is answered from that rep's scope")
+        void managerQuestionNamingARepScopesToThatRep() {
+            givenStaff("Tiến Đinh");
+            String out = service.mentionedStaffSnapshot(
+                    user("MANAGER"), CrmArea.defaults(), "tổng deal của Tiến Đinh");
+            assertThat(out).contains("Tiến Đinh");
+            verify(chatAggregateRepository).countAll(eq(repId));
+        }
+
+        @Test
+        @DisplayName("the match ignores case and Vietnamese diacritics")
+        void matchIsDiacriticInsensitive() {
+            givenStaff("Tiến Đinh");
+            String out = service.mentionedStaffSnapshot(
+                    user("MANAGER"), CrmArea.defaults(), "deal cua tien dinh thoi");
+            assertThat(out).isNotEmpty();
+        }
+
+        @Test
+        @DisplayName("a display-name suffix after \" - \" does not defeat the match")
+        void suffixedDisplayNameMatchesItsBarePart() {
+            givenStaff("Đinh Minh Tiến - FSchool CT");
+            String out = service.mentionedStaffSnapshot(
+                    user("MANAGER"), CrmArea.defaults(), "xem deal của Đinh Minh Tiến");
+            assertThat(out).isNotEmpty();
+        }
+
+        @Test
+        @DisplayName("BR-36: a Sales user's mention of a colleague is ignored entirely")
+        void salesUserMentionIsIgnored() {
+            givenStaff("Tiến Đinh");
+            String out = service.mentionedStaffSnapshot(
+                    user("SALES"), CrmArea.defaults(), "deal của Tiến Đinh");
+            assertThat(out).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a question naming nobody returns empty so the caller falls back")
+        void noMentionMeansEmpty() {
+            givenStaff("Tiến Đinh");
+            String out = service.mentionedStaffSnapshot(
+                    user("MANAGER"), CrmArea.defaults(), "tổng giá trị của deal");
+            assertThat(out).isEmpty();
+        }
+    }
+
+    @Nested
     @DisplayName("Detail is proportionate to the question")
     class AreaScoping {
 
@@ -248,7 +315,8 @@ class CrmSnapshotServiceTest {
                     .contains("Quotations: total")
                     .contains("Bookings: total")
                     .contains("Payments: total")
-                    .contains("Customers: total");
+                    .contains("Customers: total")
+                    .contains("SLA records: total");
         }
 
         @Test
@@ -287,6 +355,88 @@ class CrmSnapshotServiceTest {
 
             assertThat(snapshot).contains("Empty for this scope: bookings.");
             assertThat(snapshot).contains("Company-wide bookings:");
+        }
+    }
+
+    /**
+     * SLA tracking rows carry no assignee of their own; ownership is resolved in SQL by joining
+     * whichever subject the row points at. Only rows still worth acting on are listed.
+     */
+    @Nested
+    @DisplayName("SLA records")
+    class Sla {
+
+        private void givenSla(long active, long breached, long resolved) {
+            List<StatusBucket> buckets = new ArrayList<>();
+            if (active > 0) buckets.add(bucket(SlaStatus.ACTIVE.name(), active));
+            if (breached > 0) buckets.add(bucket(SlaStatus.BREACHED.name(), breached));
+            if (resolved > 0) buckets.add(bucket(SlaStatus.RESOLVED.name(), resolved));
+            when(chatAggregateRepository.countAll(any()))
+                    .thenReturn(counts(Map.of(CrmArea.SLA, buckets), 0));
+        }
+
+        @Test
+        @DisplayName("counts split active from breached so a breach cannot hide inside a total")
+        void countsSeparateBreaches() {
+            givenSla(3, 2, 7);
+
+            assertThat(service.personalSnapshot(user("SALES"), Set.of(CrmArea.SLA)))
+                    .contains("SLA records: total 12")
+                    .contains("active 3")
+                    .contains("breached 2");
+        }
+
+        /**
+         * The header must report the UNRESOLVED count, not the total: the listing excludes resolved
+         * rows, so "showing 5 of 12" would claim a coverage the rows do not have.
+         */
+        @Test
+        @DisplayName("the listing header counts only unresolved records")
+        void headerUsesUnresolvedCount() {
+            givenSla(3, 2, 7);
+            when(chatAggregateRepository.unresolvedSla(any(), anyInt())).thenReturn(List.of());
+
+            assertThat(service.personalSnapshot(user("SALES"), Set.of(CrmArea.SLA)))
+                    .contains("Unresolved SLA records, earliest deadline first (showing 5 of 5)");
+        }
+
+        @Test
+        @DisplayName("nothing unresolved means no listing at all, only the counts")
+        void noListingWhenEverythingIsResolved() {
+            givenSla(0, 0, 9);
+
+            assertThat(service.personalSnapshot(user("SALES"), Set.of(CrmArea.SLA)))
+                    .contains("SLA records: total 9")
+                    .doesNotContain("Unresolved SLA records");
+        }
+
+        @Test
+        @DisplayName("BR-36: a non-privileged caller only ever asks for their own scope")
+        void listingIsScopedToTheCaller() {
+            givenSla(2, 0, 0);
+            when(chatAggregateRepository.unresolvedSla(any(), anyInt())).thenReturn(List.of());
+
+            service.scopedSnapshot(user("SALES"), Set.of(CrmArea.SLA));
+
+            verify(chatAggregateRepository).unresolvedSla(eq(USER_ID), anyInt());
+        }
+
+        /**
+         * A tracking row can outlive its subject, or point at an unassigned one. Rendering that as
+         * a bare dash invites the model to treat it as a missing field and quietly drop it.
+         */
+        @Test
+        @DisplayName("a row whose subject has no owner is labelled, not blanked")
+        void unownedRowsAreLabelled() {
+            givenSla(0, 1, 0);
+            when(chatAggregateRepository.unresolvedSla(any(), anyInt())).thenReturn(List.of(
+                    new SlaRow("BOOKING_CONFIRM", "BOOKING", "BREACHED",
+                            OffsetDateTime.now().minusDays(2), null)));
+
+            assertThat(service.teamSummary()).isNotNull();
+            assertThat(service.personalSnapshot(user("MANAGER"), Set.of(CrmArea.SLA)))
+                    .contains("BOOKING_CONFIRM on BOOKING")
+                    .contains("assigned to: (unassigned)");
         }
     }
 

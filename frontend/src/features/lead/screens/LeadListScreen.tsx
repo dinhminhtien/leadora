@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Search, Plus, X, Handshake, Users, TrendingUp, Percent,
+  Search, Plus, X, Handshake, Users, TrendingUp, UserX,
   Phone, Building2, User, ArrowUpRight, ChevronLeft, ChevronRight,
   Loader2, AlertCircle, AlertTriangle, SlidersHorizontal, CalendarDays, ArrowUpDown,
   ArrowUp, ArrowDown, ArrowDownWideNarrow, ChevronDown, ServerCrash,
@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
-import { useLeads, useCreateLead } from "@/features/lead/hooks/use_leads";
+import { useLeads, useLeadStats, useCreateLead } from "@/features/lead/hooks/use_leads";
 import { useUsers } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import type { UserSummary } from "@/services/follow_up_task_service";
 import { useAuthStore } from "@/stores/auth_store";
@@ -243,7 +243,7 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-600">Full Name *</label>
-            <Input placeholder="e.g. John Smith" value={form.fullName}
+            <Input maxLength={40} placeholder="e.g. John Smith" value={form.fullName}
               onChange={e => field("fullName", e.target.value)}
               error={errors.fullName}
               className="py-1.5 text-xs" />
@@ -252,7 +252,7 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-600">Email</label>
-              <Input type="text" placeholder="example@gmail.com" value={form.email}
+              <Input type="text" maxLength={40} placeholder="example@gmail.com" value={form.email}
                 onChange={e => field("email", e.target.value)}
                 error={errors.email}
                 className="py-1.5 text-xs" />
@@ -381,24 +381,24 @@ function LeadTable({
   editMode: boolean;
 }) {
   if (isLoading) return (
-    <div className="flex items-center justify-center py-20 gap-2 text-slate-400">
+    <div className="flex items-center justify-center py-20 gap-2 text-muted-foreground">
       <Loader2 className="size-5 animate-spin" /> Loading…
     </div>
   );
 
   if (isError) return (
-    <div className="flex flex-col items-center justify-center py-20 gap-2 text-rose-500">
+    <div className="flex flex-col items-center justify-center py-20 gap-2 text-destructive">
       <ServerCrash className="size-8 mb-1" />
       <p className="text-sm font-semibold">Server error — please contact your Admin.</p>
     </div>
   );
 
   if (leads.length === 0) return (
-    <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+    <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
       <Handshake className="size-10 mb-3 opacity-30" />
       <p className="text-sm font-medium">No results found</p>
       {hasFilters && (
-        <button onClick={onClearFilters} className="mt-2 text-xs text-blue-500 hover:underline">
+        <button onClick={onClearFilters} className="mt-2 text-xs text-primary hover:underline">
           Clear filters
         </button>
       )}
@@ -622,9 +622,22 @@ export function LeadListScreen() {
   const totalPages = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalPages : (pageData?.totalPages ?? 1);
   const totalElements = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalElements : (pageData?.totalElements ?? 0);
 
-  const qualified = leads.filter(l => l.status === "QUALIFIED").length;
-  const active = leads.filter(l => l.status !== "LOST" && l.status !== "CONVERTED").length;
-  const qualifyRate = `${((qualified / (leads.length || 1)) * 100).toFixed(1)}%`;
+  // Counted server-side over every lead matching the current filters. These used to be derived
+  // from `leads` — the ten rows of the current page — so they changed when the user paged or
+  // re-sorted even though the data had not. Same filters and same owner scope as the list below.
+  const { data: statsResp } = useLeadStats({
+    search: search || undefined,
+    status: statusFilter || undefined,
+    source: sourceFilter || undefined,
+    isCorporate: typeFilter === "" ? undefined : typeFilter === "corporate",
+    dateFrom: !dateRangeInvalid ? (dateFrom || undefined) : undefined,
+    dateTo:   !dateRangeInvalid ? (dateTo   || undefined) : undefined,
+    scope: isStaff ? ownerView : undefined,
+  });
+  const stats = statsResp?.data;
+  // A dash, not "0.0%": with no leads there is nothing to measure, which is not the same as
+  // measuring zero conversions.
+  const pct = (v: number | null | undefined) => (v == null ? "—" : `${v.toFixed(1)}%`);
 
   // Type now has its own always-visible segmented toggle, so it is excluded from the advanced-filter badge.
   const activeFilterCount = [statusFilter, sourceFilter, dateFrom, dateTo].filter(Boolean).length;
@@ -830,31 +843,49 @@ export function LeadListScreen() {
         </div>
       </div>
 
-      {/* Stats summary cards */}
+      {/* Stats summary cards.
+          Outcome first, then work in progress: converted and lost are what the pipeline actually
+          produced, and each carries its share of the total right beneath the count so the figure
+          and its weight are read together — which also keeps this to four columns. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
         <div className="border-r border-slate-100 last:border-0 pr-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1">
             <Handshake className="size-3 text-slate-400" /> Total Leads
           </p>
-          <p className="text-lg font-bold text-slate-800 mt-1">{totalElements} Leads</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">{stats?.total ?? totalElements} Leads</p>
         </div>
         <div className="border-r border-slate-100 last:border-0 px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1">
-            <Users className="size-3 text-slate-400" /> Active
+            <TrendingUp className="size-3 text-emerald-500" /> Converted
           </p>
-          <p className="text-lg font-bold text-slate-800 mt-1">{active}</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">
+            {stats?.converted ?? "—"}
+            <span className="ml-1.5 text-xs font-semibold text-emerald-600">
+              {pct(stats?.convertedRate)}
+            </span>
+          </p>
         </div>
         <div className="border-r border-slate-100 last:border-0 px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1">
-            <TrendingUp className="size-3 text-slate-400" /> Qualified
+            <UserX className="size-3 text-rose-400" /> Lost
           </p>
-          <p className="text-lg font-bold text-slate-800 mt-1">{qualified}</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">
+            {stats?.lost ?? "—"}
+            <span className="ml-1.5 text-xs font-semibold text-rose-500">
+              {pct(stats?.lostRate)}
+            </span>
+          </p>
         </div>
         <div className="px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1">
-            <Percent className="size-3 text-slate-400" /> Qualify Rate
+            <Users className="size-3 text-slate-400" /> Active
           </p>
-          <p className="text-lg font-bold text-slate-800 mt-1">{qualifyRate}</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">
+            {stats?.active ?? "—"}
+            <span className="ml-1.5 text-xs font-semibold text-slate-400">
+              {stats ? `${stats.qualified} qualified` : ""}
+            </span>
+          </p>
         </div>
       </div>
 

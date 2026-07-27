@@ -39,7 +39,14 @@ public class ResolveTaskUseCase {
      * @return updated TaskResponse
      */
     @Transactional
-    public TaskResponse execute(UUID taskId) {
+    public TaskResponse execute(UUID taskId, String resultNote) {
+        if (resultNote == null || resultNote.trim().isEmpty()) {
+            throw new BusinessException(
+                    "TASK_COMPLETION_NOTE_REQUIRED",
+                    "Task completion note is required.",
+                    HttpStatus.BAD_REQUEST);
+        }
+
         TaskEntity task = taskRepository.findWithRelationsById(taskId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task", taskId));
 
@@ -57,6 +64,7 @@ public class ResolveTaskUseCase {
         }
 
         // Step 3-4 (POST-1): mark task COMPLETED
+        task.setResultNote(resultNote.trim());
         task.setStatus(TaskStatus.COMPLETED);
         taskRepository.save(task);
 

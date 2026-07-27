@@ -24,6 +24,7 @@ import {
   Maximize2,
   Minimize2,
   ShieldAlert,
+  AlertTriangle,
   Bot,
 } from "lucide-react";
 import Link from "next/link";
@@ -301,6 +302,9 @@ function AssistantPanel({
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+  // Synchronous re-entry guard: `sendMessage.isPending` only flips on the next render, so two
+  // Enter presses in the same frame would both pass it and send the question twice.
+  const sendingRef = useRef(false);
 
   const sessions = useMemo(
     () => sessionsQuery.data?.data ?? [],
@@ -339,18 +343,30 @@ function AssistantPanel({
 
   const handleSend = async (textToSend?: string) => {
     const text = (textToSend ?? inputVal).trim();
-    if (!text || sendMessage.isPending) return;
+    if (!text || sendMessage.isPending || sendingRef.current) return;
+    sendingRef.current = true;
     const sessionId = await ensureSession();
-    if (!sessionId) return;
+    if (!sessionId) {
+      sendingRef.current = false;
+      return;
+    }
     setInputVal("");
     setPendingUserText(text);
     setView("chat");
     try {
       // The reply has already been revealed token by token, so the type-on-arrival
       // animation would replay text the user has read — skip it for streamed turns.
-      await sendMessage.mutateAsync({ sessionId, content: text });
+      await sendMessage.mutateAsync({
+        sessionId,
+        content: text,
+        // The server-recorded question enters the cache on the stream's `start` event and
+        // renders from `messages` — drop the optimistic bubble right then, or the question
+        // shows twice for the whole time the answer is streaming.
+        onUserRecorded: () => setPendingUserText(null),
+      });
     } finally {
       setPendingUserText(null);
+      sendingRef.current = false;
     }
   };
 
@@ -781,6 +797,7 @@ function DocsView({
     title: string;
     chunkCount: number;
     processing?: boolean;
+    failed?: boolean;
   }[];
   uploading: boolean;
   upload: UploadState | null;
@@ -800,7 +817,7 @@ function DocsView({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.docx,.doc,.txt,.md"
+        accept=".pdf,.docx,.doc,.txt,.md,.png,.jpg,.jpeg"
         onChange={onFileChange}
         className="hidden"
       />
@@ -810,7 +827,7 @@ function DocsView({
         className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/10 py-2.5 text-[11px] font-semibold text-primary transition hover:bg-primary/10 disabled:opacity-60"
       >
         {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-        Upload a document (PDF, DOCX, TXT, MD)
+        Upload a document (PDF, DOCX, TXT, MD, PNG, JPG)
       </button>
       <p className="text-center text-[9px] text-muted-foreground">Max 5MB per file.</p>
 
@@ -860,15 +877,28 @@ function DocsView({
         <p className="pt-2 text-center text-[10px] text-muted-foreground">No documents yet.</p>
       )}
       {documents.map((doc) => {
-        const processing = doc.processing || doc.chunkCount === 0;
+        // A failed row is kept by the backend precisely so it can be reported here — it holds no
+        // chunks, so it must not be shown as ready, and it must stay deletable (unlike a row that
+        // is still processing, where deleting would race the background worker).
+        const failed = doc.failed === true;
+        const processing = !failed && (doc.processing || doc.chunkCount === 0);
         return (
           <div
             key={doc.documentId}
-            className="flex items-center justify-between rounded-xl border border-border bg-white px-2.5 py-2 text-[10px] text-muted-foreground"
+            className={`flex items-center justify-between rounded-xl border bg-white px-2.5 py-2 text-[10px] text-muted-foreground ${
+              failed ? "border-danger/40" : "border-border"
+            }`}
           >
             <span className="flex min-w-0 items-center gap-1.5" title={doc.title}>
               <span className="truncate">{doc.title}</span>
-              {processing ? (
+              {failed ? (
+                <span
+                  className="flex shrink-0 items-center gap-1 text-danger"
+                  title="No text could be extracted from this file. If it is a scan or screenshot, check that vision OCR is enabled; otherwise try a version with a real text layer."
+                >
+                  <AlertTriangle className="size-3" /> Indexing failed
+                </span>
+              ) : processing ? (
                 <span className="flex shrink-0 items-center gap-1 text-amber-500">
                   <Loader2 className="size-3 animate-spin" /> Processing…
                 </span>

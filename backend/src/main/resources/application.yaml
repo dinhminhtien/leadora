@@ -184,6 +184,8 @@ sla:
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  quotation:
+    discount-threshold: ${QUOTATION_DISCOUNT_THRESHOLD:10}
   bank:
     account-number: ${APP_BANK_ACCOUNT_NUMBER:123456789}
     provider: ${APP_BANK_PROVIDER:sepay}

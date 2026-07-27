@@ -67,14 +67,44 @@ class ApiPaths {
   static String quotationTrackResponse(String id) =>
       '/quotations/$id/track-response';
 
+  /// Write flows the web app has and mobile is reaching parity with. All are POST
+  /// (QuotationController), all SALES/MANAGER except process-approval (MANAGER only).
+  static String quotationSubmit(String id) => '/quotations/$id/submit';
+  static String quotationRevise(String id) => '/quotations/$id/revise';
+  static String quotationSend(String id) => '/quotations/$id/send';
+  static String quotationConvert(String id) => '/quotations/$id/convert';
+  static String quotationClose(String id) => '/quotations/$id/close';
+  static const String quotationPendingApprovals = '/quotations/pending-approvals';
+  static String quotationProcessApproval(String id) => '/quotations/$id/process-approval';
+
+  // --- Room availability requests (RoomRequestController) ---
+  // This CRM owns no room inventory: Sales asks, the Reservation team answers from the
+  // hotel's real PMS. Sending a quotation and converting it to a booking are both gated
+  // on a confirmed answer.
+  static const String roomRequests = '/room-requests';
+  static String roomRequestsByQuotation(String quotationId) =>
+      '/room-requests/by-quotation/$quotationId';
+
   // --- Deals (DealController) ---
   static const String deals = '/deals';
   static String dealById(String id) => '/deals/$id';
   static String dealStatus(String id) => '/deals/$id/status';
 
+  /// Where the deal stands in the Sales lifecycle: active quotation, active
+  /// booking and payment state, resolved server-side.
+  static String dealWorkflow(String id) => '/deals/$id/workflow';
+
   // --- Bookings (BookingController) ---
   static const String bookings = '/bookings';
   static String bookingById(String id) => '/bookings/$id';
+
+
+  // --- Operational handover (OperationalHandoverController) ---
+  // Sales/Reservation hand a confirmed booking to the Front Office. Read is open to FO
+  // too; create/update is SALES/RESERVATION/MANAGER/ADMIN.
+  static const String operationalHandovers = '/operational-handovers';
+  static String operationalHandoverById(String id) => '/operational-handovers/$id';
+
 
   // --- Payments (PaymentController) ---
   static const String payments = '/payments';

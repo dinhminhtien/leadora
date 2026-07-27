@@ -95,9 +95,10 @@ class TaskRepository {
 
   /// UC-24.5 — mark a task done via the dedicated resolve endpoint (also
   /// resolves SLA tracking + cancels reminders server-side).
-  Future<Task> resolve(String taskId) {
+  Future<Task> resolve(String taskId, String resultNote) {
     return _client.patch<Task>(
       ApiPaths.taskResolve(taskId),
+      data: {'resultNote': resultNote},
       decode: (data) => Task.fromJson(data as Map<String, dynamic>),
     );
   }

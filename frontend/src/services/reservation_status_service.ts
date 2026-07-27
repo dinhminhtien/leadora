@@ -11,7 +11,7 @@ export type ReservationStatus = {
   totalAmount: number;
   status: string;
   specialRequests?: string;
-  rejectionReason?: string;
+  statusReason?: string;
   createdAt?: string;
   updatedAt?: string;
   details?: Array<{

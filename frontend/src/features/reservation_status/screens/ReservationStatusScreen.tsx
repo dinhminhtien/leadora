@@ -245,7 +245,7 @@ export function ReservationStatusScreen() {
 
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
         <div className="w-full overflow-x-auto">
-          <Table className="w-full table-fixed min-w-[1200px]">
+          <Table className="w-full table-fixed min-w-300">
             <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
               <TableRow hoverable={false}>
                 <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[18%] text-left! whitespace-nowrap">Guest Name</TableHead>
@@ -304,7 +304,7 @@ export function ReservationStatusScreen() {
                               : "default"
                           }
                           size="sm"
-                          className="font-bold text-[9px] uppercase min-w-[90px] justify-center text-center py-1"
+                          className="font-bold text-[9px] uppercase min-w-22.5 justify-center text-center py-1"
                         >
                           {res.status}
                         </Badge>
@@ -473,12 +473,12 @@ export function ReservationStatusScreen() {
                             : "default"
                         }
                         size="sm"
-                        className="font-bold uppercase text-[9px] min-w-[90px] justify-center text-center py-1"
+                        className="font-bold uppercase text-[9px] min-w-22.5 justify-center text-center py-1"
                       >
                         {detailData.status}
                       </Badge>
-                      {detailData.rejectionReason && (
-                        <span className="text-red-500 font-semibold italic">Rejection Reason: {detailData.rejectionReason}</span>
+                      {detailData.statusReason && (
+                        <span className="text-red-500 font-semibold italic">Rejection/Status Reason: {detailData.statusReason}</span>
                       )}
                     </div>
                   </div>
@@ -526,7 +526,7 @@ export function ReservationStatusScreen() {
                                         : "default"
                                     }
                                     size="sm"
-                                    className="font-bold text-[8px] uppercase min-w-[90px] justify-center text-center py-0.5"
+                                    className="font-bold text-[8px] uppercase min-w-22.5 justify-center text-center py-0.5"
                                   >
                                     {det.inventoryStatus}
                                   </Badge>

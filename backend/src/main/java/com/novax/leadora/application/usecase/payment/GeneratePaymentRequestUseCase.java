@@ -36,10 +36,15 @@ public class GeneratePaymentRequestUseCase {
         BookingEntity booking = bookingRepository.findById(request.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found", request.getBookingId()));
 
-        // BR-44: Check if booking is cancelled or checked out
-        String bStatus = booking.getStatus() != null ? booking.getStatus().name() : "";
-        if (bStatus.equals("CANCELLED") || bStatus.equals("CHECKED_OUT")) {
-            throw new IllegalStateException("Booking is cancelled or checked out, cannot generate payment request.");
+        // Booking must be approved/confirmed first to generate a payment request
+        com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus status = booking.getStatus();
+        if (status == com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus.PENDING) {
+            throw new IllegalStateException("Booking is PENDING approval. It must be approved/confirmed before generating a payment request.");
+        }
+        if (status == com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus.CANCELLED || 
+            status == com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus.CHECKED_OUT || 
+            status == com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus.REJECTED) {
+            throw new IllegalStateException("Booking is in " + status + " status, cannot generate a payment request.");
         }
 
         // BR-28: Save new Payment request linked to Booking

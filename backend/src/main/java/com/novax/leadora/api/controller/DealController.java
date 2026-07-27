@@ -3,10 +3,15 @@ package com.novax.leadora.api.controller;
 import com.novax.leadora.api.dto.request.DealRequest;
 import com.novax.leadora.api.dto.request.UpdateDealStatusRequest;
 import com.novax.leadora.api.dto.response.DealResponse;
+import com.novax.leadora.api.dto.response.PipelineDealCardResponse;
+import com.novax.leadora.api.dto.response.DealWorkflowSummaryResponse;
 import com.novax.leadora.application.usecase.deal.CreateDealUseCase;
 import com.novax.leadora.application.usecase.deal.GetDealDetailUseCase;
 import com.novax.leadora.application.usecase.deal.GetDealListUseCase;
+import com.novax.leadora.application.usecase.deal.GetPipelineDealsUseCase;
+import com.novax.leadora.application.usecase.deal.GetDealWorkflowSummaryUseCase;
 import com.novax.leadora.application.usecase.deal.UpdateDealUseCase;
+import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 import com.novax.leadora.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +32,9 @@ public class DealController {
     private final GetDealDetailUseCase getDealDetailUseCase;
     private final CreateDealUseCase createDealUseCase;
     private final UpdateDealUseCase updateDealUseCase;
+    private final GetPipelineDealsUseCase getPipelineDealsUseCase;
+    private final GetDealWorkflowSummaryUseCase getDealWorkflowSummaryUseCase;
+    private final DealWorkflowSyncService dealWorkflowSyncService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<DealResponse>>> getAllDeals(
@@ -34,6 +42,20 @@ public class DealController {
             @RequestParam(required = false) UUID ownerId) {
         List<DealResponse> deals = getDealListUseCase.execute(search, ownerId);
         return ResponseEntity.ok(ApiResponse.success(deals));
+    }
+
+    @GetMapping("/pipeline")
+    public ResponseEntity<ApiResponse<List<PipelineDealCardResponse>>> getPipelineDeals(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) UUID ownerId) {
+        List<PipelineDealCardResponse> deals = getPipelineDealsUseCase.execute(search, ownerId);
+        return ResponseEntity.ok(ApiResponse.success(deals));
+    }
+
+    @GetMapping("/{id}/workflow")
+    public ResponseEntity<ApiResponse<DealWorkflowSummaryResponse>> getDealWorkflowSummary(@PathVariable UUID id) {
+        DealWorkflowSummaryResponse summary = getDealWorkflowSummaryUseCase.execute(id);
+        return ResponseEntity.ok(ApiResponse.success(summary));
     }
 
     @GetMapping("/{id}")
@@ -64,8 +86,14 @@ public class DealController {
     public ResponseEntity<ApiResponse<DealResponse>> updateDealStatus(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateDealStatusRequest request) {
-        DealResponse updated = updateDealUseCase.updateDealStatus(id, request.getStatus());
+        DealResponse updated = updateDealUseCase.updateDealStatus(id, request.getStatus(), request.getNotes());
         return ResponseEntity.ok(ApiResponse.success(updated, "Deal status updated successfully"));
+    }
+    @PostMapping("/{id}/sync-pipeline")
+    public ResponseEntity<ApiResponse<DealResponse>> syncPipeline(@PathVariable UUID id) {
+        dealWorkflowSyncService.syncPipelineStage(id);
+        DealResponse updated = getDealDetailUseCase.execute(id);
+        return ResponseEntity.ok(ApiResponse.success(updated, "Deal pipeline stage synchronized successfully"));
     }
 }
 

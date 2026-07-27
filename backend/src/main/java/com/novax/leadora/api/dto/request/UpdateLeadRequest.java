@@ -9,24 +9,29 @@ import lombok.Setter;
 
 import java.util.UUID;
 
+/**
+ * <p>Limits come from {@link LeadFieldLimits} so this DTO cannot drift away from the create form or
+ * from the columns behind it. A blank {@code phone} is accepted here and means "erase it" — see
+ * {@link LeadFieldLimits#PHONE_PATTERN} for why that branch has to exist.
+ */
 @Getter
 @Setter
 public class UpdateLeadRequest {
 
-    @Size(max = 255)
+    @Size(max = LeadFieldLimits.FULL_NAME, message = "Full name must be at most 40 characters")
     private String fullName;
 
     @Email(message = "Invalid email format")
-    @Size(max = 255)
+    @Size(max = LeadFieldLimits.EMAIL, message = "Email must be at most 40 characters")
     private String email;
 
     @Pattern(
-            regexp = "^(0[35789])\\d{8}$",
+            regexp = LeadFieldLimits.PHONE_PATTERN,
             message = "Phone number must be a valid Vietnamese 10-digit number (e.g. 0912345678)"
     )
     private String phone;
 
-    @Size(max = 255)
+    @Size(max = LeadFieldLimits.COMPANY_NAME, message = "Company name must be at most 40 characters")
     private String companyName;
 
     private String address;
@@ -34,11 +39,12 @@ public class UpdateLeadRequest {
     /** false = individual, true = corporate / organization. */
     private Boolean isCorporate;
 
-    @Size(max = 100)
+    @Size(max = LeadFieldLimits.SOURCE, message = "Source must be at most 40 characters")
     private String source;
 
     /** BR-05: hotel service/product the lead is interested in. */
-    @Size(max = 100)
+    @Size(max = LeadFieldLimits.INTERESTED_SERVICE,
+            message = "Interested service must be at most 100 characters")
     private String interestedService;
 
     private LeadStatus status;

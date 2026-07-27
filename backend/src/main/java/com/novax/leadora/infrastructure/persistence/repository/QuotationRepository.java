@@ -17,6 +17,7 @@ import java.util.UUID;
 @Repository
 public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID> {
     List<QuotationEntity> findByDeal_DealId(UUID dealId);
+    List<QuotationEntity> findByDeal_DealIdIn(List<UUID> dealIds);
     List<QuotationEntity> findByCustomer_CustomerId(UUID customerId);
     List<QuotationEntity> findByStatus(QuotationStatus status);
     List<QuotationEntity> findByStatusInAndValidUntilBefore(List<QuotationStatus> statuses, LocalDate date);

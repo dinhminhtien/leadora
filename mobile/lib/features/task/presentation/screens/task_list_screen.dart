@@ -70,9 +70,61 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
   void _onSearchChanged(String term) =>
       _controller.applyFilters(_controller.filters.copyWith(search: term));
 
+  Future<String?> _askResultNote(
+    BuildContext context, {
+    required String title,
+    String hint = 'Result note (optional)',
+    bool isRequired = false,
+  }) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final text = controller.text.trim();
+            final isConfirmDisabled = isRequired && text.isEmpty;
+            return AlertDialog(
+              title: Text(title),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                maxLines: 3,
+                onChanged: (val) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: hint,
+                  errorText: isRequired && text.isEmpty ? 'Completion note is required' : null,
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isConfirmDisabled
+                      ? null
+                      : () => Navigator.pop(context, controller.text),
+                  child: const Text('Confirm'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _completeTask(Task task) async {
+    final note = await _askResultNote(
+      context,
+      title: 'Complete task',
+      hint: 'Result note (required)',
+      isRequired: true,
+    );
+    if (note == null || note.trim().isEmpty || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
-    final error = await _controller.completeTask(task.taskId);
+    final error = await _controller.completeTask(task.taskId, note);
     if (!mounted) return;
     messenger.showSnackBar(SnackBar(content: Text(error ?? 'Task completed')));
   }

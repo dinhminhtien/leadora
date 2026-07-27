@@ -20,6 +20,7 @@ import com.novax.leadora.application.usecase.timeline.CreateInteractionTimelineU
 import com.novax.leadora.api.dto.request.CreateInteractionTimelineRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,6 +48,16 @@ public class UpdateHandoverUseCase {
     public ArrivalHandoverResponse execute(UUID handoverId, UpdateHandoverRequest request, UserEntity actor) {
         OpHandoverEntity handover = opHandoverRepository.findById(handoverId)
                 .orElseThrow(() -> new ResourceNotFoundException("Operational handover", handoverId));
+
+        // PRE-4 & E6-4.1: Unauthorized Update check
+        if (actor != null && actor.getRole() != null) {
+            String roleName = actor.getRole().getRoleName();
+            boolean isAdmin = "ADMIN".equalsIgnoreCase(roleName);
+            boolean isOwner = handover.getCreatedBy() != null && handover.getCreatedBy().getUserId().equals(actor.getUserId());
+            if (!isAdmin && !isOwner) {
+                throw new AccessDeniedException("Access Denied.");
+            }
+        }
 
         BookingEntity booking = handover.getBooking();
 
@@ -99,6 +110,7 @@ public class UpdateHandoverUseCase {
         handover.setVipNotes(request.getVipNotes());
         handover.setOperationalNotes(request.getOperationalNotes());
         handover.setUpdatedBy(actor);
+        handover.setAssignedFoUserId(request.getAssignedFoUserId());
 
         // If transitioning to SUBMITTED or re-submitting
         if (newStatus == HandoverStatus.SUBMITTED) {

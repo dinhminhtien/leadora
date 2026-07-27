@@ -7,19 +7,23 @@ import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.*;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.InventoryStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.*;
+import com.novax.leadora.common.exception.BusinessException;
+import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.Random;
 import java.util.stream.Collectors;
 
@@ -39,17 +43,40 @@ public class CreateBookingRequestUseCase {
     @Transactional
     public BookingResponse execute(CreateBookingRequest request) {
         if (request.getCheckInDate() == null || request.getCheckOutDate() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Check-in and check-out dates are required");
+            throw new BusinessException("INVALID_DATES", "Check-in and check-out dates are required", HttpStatus.BAD_REQUEST);
         }
         if (!request.getCheckInDate().isBefore(request.getCheckOutDate())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Check-in date must be strictly before check-out date");
+            throw new BusinessException("INVALID_DATES", "Check-in date must be strictly before check-out date", HttpStatus.BAD_REQUEST);
         }
 
         CustomerEntity customer = customerRepository.findById(request.getCustomerId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Customer not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Customer", request.getCustomerId()));
 
         QuotationEntity quotation = quotationRepository.findById(request.getQuotationId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Quotation not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Quotation", request.getQuotationId()));
+
+        // Lock Deal first to prevent race conditions (Lock ordering: Deal -> Quotation/Booking)
+        DealEntity deal = quotation.getDeal();
+        if (deal != null) {
+            final UUID dealId = deal.getDealId();
+            deal = dealRepository.findByIdForUpdate(dealId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Deal", dealId));
+        }
+
+        // Validate Quotation status is ACCEPTED
+        if (quotation.getStatus() != QuotationStatus.ACCEPTED) {
+            throw new BusinessException("QUOTATION_INVALID_STATUS",
+                    "Only ACCEPTED quotations can be converted to booking. Current status: " + quotation.getStatus(),
+                    HttpStatus.CONFLICT);
+        }
+
+        // Room confirmation is not required here. The booking request is created PENDING for
+        // the Reservation team to answer, so an unconfirmed room is what this record is for
+        // rather than a reason to refuse it.
+
+        // Update Quotation status to CONVERTED
+        quotation.setStatus(QuotationStatus.CONVERTED);
+        quotationRepository.save(quotation);
 
         UserEntity assignedUser = null;
         if (request.getAssignedUserId() != null) {
@@ -81,7 +108,7 @@ public class CreateBookingRequestUseCase {
         List<BookingDetailEntity> detailEntities = new ArrayList<>();
         for (var detailReq : request.getDetails()) {
             ProductServiceEntity product = productServiceRepository.findById(detailReq.getProductId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Product not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Product", detailReq.getProductId()));
 
             BigDecimal lineTotal = detailReq.getUnitPrice()
                     .multiply(BigDecimal.valueOf(detailReq.getQuantity()))

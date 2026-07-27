@@ -71,3 +71,7 @@ replay_pid*
 *.CLAUDE.md
 *CODING_GUIDELINES.md
 *MILESTONES.md
+
+k6_bin/
+k6_bin
+k6.exe

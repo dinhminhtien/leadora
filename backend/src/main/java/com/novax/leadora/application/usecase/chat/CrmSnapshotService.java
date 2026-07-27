@@ -8,6 +8,7 @@ import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.SlaStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.ChatAggregateRepository;
@@ -17,16 +18,20 @@ import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
+import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.UUID;
@@ -66,10 +71,20 @@ public class CrmSnapshotService {
     private static final int MAX_BOOKINGS = 10;
     private static final int MAX_PAYMENTS = 8;
     private static final int MAX_CUSTOMERS = 10;
+    private static final int MAX_SLA = 10;
     private static final int MAX_REPS = 20;
 
     /** How many staff members to name when suggesting whose records to ask about instead. */
     private static final int MAX_SUGGESTED_REPS = 6;
+
+    /** How many staff members named in one question get their own scoped snapshot. */
+    private static final int MAX_MENTIONED_STAFF = 3;
+
+    /**
+     * A folded name shorter than this is too generic to trust as a mention: with diacritics
+     * stripped, a name like "An" would fire on the Vietnamese word "an" in ordinary sentences.
+     */
+    private static final int MIN_MENTION_CHARS = 5;
 
     /** A task is never "overdue" once it is closed — BR-17 derives the flag, it is not stored. */
     private static final List<TaskStatus> CLOSED_TASK_STATUSES =
@@ -84,6 +99,7 @@ public class CrmSnapshotService {
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
     private final CustomerRepository customerRepository;
+    private final UserRepository userRepository;
 
     /**
      * Roles allowed to see ALL CRM records via chat. Any other role is scoped to their own assigned
@@ -126,6 +142,70 @@ public class CrmSnapshotService {
                 "== CRM data assigned personally to " + actor.fullName() + " ==");
     }
 
+    /**
+     * Snapshot scoped to a staff member <b>named in the question</b> — "deal của Tiến Đinh" asked
+     * by a Manager. Returns {@code ""} when it does not apply, and the caller falls back to the
+     * ordinary scope.
+     *
+     * <p><b>Why this exists.</b> The generic snapshot lists only the newest few rows company-wide,
+     * so a per-person question used to dead-end in "the listing is not filtered by assignee — use
+     * the screen". Re-running the same scoped snapshot with the <em>named person's</em> id answers
+     * it properly: the counts and sums are exact GROUP BY aggregates over all of that person's
+     * rows, and the listing shows their records instead of everyone's.
+     *
+     * <p><b>BR-36:</b> only a caller allowed to read every record may be handed another person's
+     * data this way; for anyone else the mention is ignored entirely.
+     *
+     * <p>Matching is by full name, case- and diacritic-insensitive ("tien dinh" finds "Tiến Đinh"),
+     * against the current question only. A display name carrying a suffix ("Đinh Minh Tiến -
+     * FSchool CT") also answers to its bare part before the dash.
+     */
+    public String mentionedStaffSnapshot(ChatActor actor, Set<CrmArea> areas, String query) {
+        if (!canSeeAllData(actor) || !StringUtils.hasText(query)) {
+            return "";
+        }
+        String foldedQuery = fold(query);
+        StringBuilder sb = new StringBuilder();
+        int matched = 0;
+        // The users table is small (staff, not customers), so scanning it in memory per turn is
+        // cheaper than any fuzzy-match SQL, and keeps the diacritic folding in one place.
+        for (UserEntity u : userRepository.findAllWithRole()) {
+            if (matched >= MAX_MENTIONED_STAFF) {
+                break;
+            }
+            if (u.getFullName() == null || !nameMentioned(foldedQuery, u.getFullName())) {
+                continue;
+            }
+            sb.append(snapshot(actor, u.getUserId(), areas,
+                    "== CRM data assigned to " + u.getFullName()
+                            + " (staff member named in the question) =="));
+            matched++;
+        }
+        return sb.toString();
+    }
+
+    /** True when the folded question contains the folded full name, or its part before " - ". */
+    private static boolean nameMentioned(String foldedQuery, String fullName) {
+        String folded = fold(fullName);
+        if (folded.length() >= MIN_MENTION_CHARS && foldedQuery.contains(folded)) {
+            return true;
+        }
+        String base = folded.split(" - ", 2)[0].trim();
+        return !base.equals(folded)
+                && base.length() >= MIN_MENTION_CHARS
+                && foldedQuery.contains(base);
+    }
+
+    /** Lower-cases, strips Vietnamese diacritics and collapses spaces: "Tiến  Đinh" → "tien dinh". */
+    private static String fold(String s) {
+        return Normalizer.normalize(s, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")   // combining marks (the tone/vowel diacritics)
+                .toLowerCase(Locale.ROOT)
+                .replace('đ', 'd')           // đ carries a stroke, not a combining mark
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
     private String snapshot(ChatActor actor, UUID scopeUserId, Set<CrmArea> areas, String header) {
         OffsetDateTime now = OffsetDateTime.now();
         // Every area's counts in one round trip. Fetching them area by area cost more in network
@@ -144,6 +224,7 @@ public class CrmSnapshotService {
                 case BOOKINGS -> appendBookings(sb, counts, scopeUserId, detail);
                 case PAYMENTS -> appendPayments(sb, counts, scopeUserId, detail);
                 case CUSTOMERS -> appendCustomers(sb, counts, scopeUserId, detail);
+                case SLA -> appendSla(sb, counts, scopeUserId, detail);
             };
             // Guidance is only worth giving for what was actually asked about: an empty payments
             // area is not interesting when the question was about leads.
@@ -199,8 +280,38 @@ public class CrmSnapshotService {
                             .append(" | expected close ").append(d.getExpectedCloseDate())
                             .append(" | assigned to: ").append(assigneeLabel(d.getAssignedUser()))
                             .append("\n"));
+            // Full company scope only: exact per-person aggregates, so "how much does X hold?"
+            // is answerable even though the listing above is capped and unfiltered.
+            if (scope == null) {
+                appendPerRepDealStats(sb);
+            }
         }
         return total;
+    }
+
+    /**
+     * One line of exact deal aggregates per staff member (GROUP BY, covers ALL their deals). The
+     * capped listing cannot answer per-person totals; this can, so per-person questions no longer
+     * have to be deflected to the Deals screen.
+     */
+    private void appendPerRepDealStats(StringBuilder sb) {
+        List<RepDealStat> stats = dealRepository.statsPerAssignee();
+        List<String> reps = stats.stream().map(s -> s.repName()).distinct().limit(MAX_REPS).toList();
+        if (reps.isEmpty()) {
+            return;
+        }
+        sb.append("Deals per staff member (EXACT aggregates over all their deals, up to ")
+                .append(MAX_REPS).append(" people):\n");
+        for (String rep : reps) {
+            List<RepDealStat> forRep = stats.stream().filter(s -> rep.equals(s.repName())).toList();
+            sb.append("  - ").append(rep)
+                    .append(": open ").append(repCount(forRep, DealStatus.OPEN))
+                    .append(" worth ").append(repValue(forRep, DealStatus.OPEN))
+                    .append(", won ").append(repCount(forRep, DealStatus.WON))
+                    .append(" worth ").append(repValue(forRep, DealStatus.WON))
+                    .append(", lost ").append(repCount(forRep, DealStatus.LOST))
+                    .append("\n");
+        }
     }
 
     private long appendTasks(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail,
@@ -311,6 +422,48 @@ public class CrmSnapshotService {
     }
 
     /**
+     * SLA tracking rows — the table the breach scheduler maintains and the SLA Control screen
+     * shows, so the assistant and the screen agree. (The older {@code sla_records} table is not
+     * kept up to date by anything and is deliberately not read here.)
+     *
+     * <p>A tracking row references its subject polymorphically and has no assignee column, so
+     * ownership — and therefore BR-36 — is resolved by joining whichever parent it points at;
+     * that happens in SQL, in {@link ChatAggregateRepository}, for both the counts and the rows.
+     *
+     * <p>Like tasks, the counts cover every row but the listing shows only what is still worth
+     * acting on: a RESOLVED row is history. The header therefore reports the unresolved count, so
+     * "showing 10 of 12" never quietly means "10 of 12 including the closed ones".
+     */
+    private long appendSla(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+        long total = counts.total(CrmArea.SLA);
+        long active = counts.count(CrmArea.SLA, SlaStatus.ACTIVE.name());
+        long breached = counts.count(CrmArea.SLA, SlaStatus.BREACHED.name());
+        long unresolved = active + breached;
+
+        sb.append("SLA records: total ").append(total)
+                .append(", active ").append(active)
+                .append(", breached ").append(breached)
+                .append(statusBreakdown(counts.of(CrmArea.SLA))).append("\n");
+
+        if (detail && unresolved > 0) {
+            sb.append(listingHeader("Unresolved SLA records, earliest deadline first",
+                    Math.min(unresolved, MAX_SLA), unresolved, CrmArea.SLA));
+            chatAggregateRepository.unresolvedSla(scope, MAX_SLA).forEach(s ->
+                    sb.append("  - ").append(s.activityType())
+                            .append(" on ").append(s.entityType())
+                            .append(" | ").append(s.status())
+                            .append(" | deadline ").append(s.deadlineAt())
+                            // Null here is real: the subject may be unassigned, or no longer
+                            // exist at all. Saying so beats a bare dash the model might read
+                            // as a missing field.
+                            .append(" | assigned to: ")
+                            .append(s.assigneeName() != null ? s.assigneeName() : "(unassigned)")
+                            .append("\n"));
+        }
+        return total;
+    }
+
+    /**
      * Explains an empty result and supplies the facts the assistant may turn into follow-up
      * suggestions (system prompt rule 3c). Without this the model can only report "no data", or —
      * worse — invent plausible-looking colleagues to suggest.
@@ -394,6 +547,9 @@ public class CrmSnapshotService {
             case BOOKINGS -> sb.append("\nYou may offer the team's bookings.\n");
             case PAYMENTS -> sb.append("\nYou may offer the team's payments.\n");
             case CUSTOMERS -> sb.append("\nYou may offer the team's customers.\n");
+            case SLA -> sb.append(", of which breached: ")
+                    .append(companyWide.count(CrmArea.SLA, SlaStatus.BREACHED.name()))
+                    .append("\nYou may offer the team's breached or active SLA records.\n");
         }
     }
 
@@ -419,21 +575,12 @@ public class CrmSnapshotService {
         sb.append("Quotations: total ").append(counts.total(CrmArea.QUOTATIONS)).append("\n");
         sb.append("Bookings: total ").append(counts.total(CrmArea.BOOKINGS)).append("\n");
         sb.append("Customers: total ").append(counts.total(CrmArea.CUSTOMERS)).append("\n");
+        sb.append("SLA records: total ").append(counts.total(CrmArea.SLA))
+                .append(", breached ").append(counts.count(CrmArea.SLA, SlaStatus.BREACHED.name()))
+                .append("\n");
 
         // Per-rep breakdown: the query returns one row per (rep, status); pivot to one line per rep.
-        List<RepDealStat> stats = dealRepository.statsPerAssignee();
-        List<String> reps = stats.stream().map(RepDealStat::repName).distinct().limit(MAX_REPS).toList();
-        if (!reps.isEmpty()) {
-            sb.append("By staff member (up to ").append(MAX_REPS).append("):\n");
-            for (String rep : reps) {
-                List<RepDealStat> forRep = stats.stream().filter(s -> rep.equals(s.repName())).toList();
-                sb.append("  - ").append(rep)
-                        .append(": open deals ").append(repCount(forRep, DealStatus.OPEN))
-                        .append(", won ").append(repCount(forRep, DealStatus.WON))
-                        .append(", WON value ").append(repValue(forRep, DealStatus.WON))
-                        .append("\n");
-            }
-        }
+        appendPerRepDealStats(sb);
         return sb.toString();
     }
 
@@ -485,13 +632,13 @@ public class CrmSnapshotService {
 
     private static long repCount(List<RepDealStat> stats, DealStatus status) {
         return stats.stream().filter(s -> s.status() == status)
-                .mapToLong(RepDealStat::count).sum();
+                .mapToLong(s -> s.count()).sum();
     }
 
     private static BigDecimal repValue(List<RepDealStat> stats, DealStatus status) {
         return stats.stream().filter(s -> s.status() == status)
-                .map(RepDealStat::revenueOrZero)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(s -> s.revenueOrZero())
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
     }
 
     private static String dash(String s) {

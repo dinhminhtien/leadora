@@ -80,6 +80,7 @@ public class BookingController {
 
     /** UC-18.5 — Process Booking Request (Approve/Reject) */
     @PutMapping("/{bookingId}/process")
+    @PreAuthorize("hasAnyRole('RESERVATION', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<BookingResponse>> processBooking(
             @PathVariable UUID bookingId,
             @Valid @RequestBody ProcessBookingRequest request
