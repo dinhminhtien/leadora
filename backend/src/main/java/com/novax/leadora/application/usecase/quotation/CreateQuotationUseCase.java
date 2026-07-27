@@ -13,6 +13,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ public class CreateQuotationUseCase {
     private final QuotationDetailRepository quotationDetailRepository;
     private final DealRepository dealRepository;
     private final CurrentUserProvider currentUserProvider;
+    private final DealWorkflowSyncService dealWorkflowSyncService;
 
     @Transactional
     public QuotationResponse execute(CreateQuotationRequest request) {
@@ -110,6 +112,8 @@ public class CreateQuotationUseCase {
                 .build();
 
         quotationDetailRepository.save(detail);
+
+        dealWorkflowSyncService.syncPipelineStage(deal.getDealId());
 
         return QuotationResponse.fromWithDetail(saved, (int) nights,
                 request.getNumberOfRooms(), request.getPricePerNight());

@@ -32,10 +32,12 @@ class _DealStageTrackerState extends ConsumerState<DealStageTracker> {
   /// The funnel, in order. The two terminal stages share the last slot in
   /// [DealStage.order], so they are offered as one step and split by status.
   static const _progression = <DealStage>[
-    DealStage.prospecting,
+    DealStage.inquiry,
     DealStage.qualification,
-    DealStage.proposal,
+    DealStage.quotationSent,
     DealStage.negotiation,
+    DealStage.pendingConfirmation,
+    DealStage.bookingConfirmed,
   ];
 
   bool get _isClosed =>

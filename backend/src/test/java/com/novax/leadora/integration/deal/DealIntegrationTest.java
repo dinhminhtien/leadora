@@ -64,7 +64,7 @@ class DealIntegrationTest {
                 .title("Wedding Q4 2026")
                 .contactName("Nguyen Van A")
                 .email("contact@hotel.vn")
-                .stage("PROSPECTING")
+                .stage("INQUIRY")
                 .value(BigDecimal.valueOf(100000000))
                 .expectedClose(LocalDate.of(2026, 12, 31))
                 .build();
@@ -78,7 +78,7 @@ class DealIntegrationTest {
 
         when(customerRepository.findById(customerId)).thenReturn(Optional.of(customer));
         when(currentUserProvider.resolve(null)).thenReturn(defaultUser);
-        when(dealMapper.mapStageToEnum("PROSPECTING")).thenReturn(DealPipelineStage.PROSPECTING);
+        when(dealMapper.mapStageToEnum("INQUIRY")).thenReturn(DealPipelineStage.INQUIRY);
         when(dealMapper.mapStatusToEnum(null)).thenReturn(DealStatus.OPEN);
         when(dealRepository.save(any(DealEntity.class))).thenAnswer(inv -> {
             DealEntity d = inv.getArgument(0);
@@ -100,7 +100,7 @@ class DealIntegrationTest {
                 .customerId(null)
                 .title("Wedding Q4 2026")
                 .contactName("Nguyen Van A")
-                .stage("PROSPECTING")
+                .stage("INQUIRY")
                 .expectedClose(LocalDate.of(2026, 12, 31))
                 .build();
 
@@ -116,7 +116,7 @@ class DealIntegrationTest {
                 .customerId(customerId)
                 .title("Wedding Q4 2026")
                 .contactName("Nguyen Van A")
-                .stage("PROSPECTING")
+                .stage("INQUIRY")
                 .expectedClose(LocalDate.of(2026, 12, 31))
                 .build();
 

@@ -97,14 +97,14 @@ class DealWorkflowStepper extends ConsumerWidget {
         done: true,
         active:
             open &&
-            (stage == DealStage.prospecting || stage == DealStage.qualification),
+            (stage == DealStage.inquiry || stage == DealStage.qualification),
         detail: 'Stage: ${s.displayStage}',
       ),
       _Step(
         title: 'Proposal / quotation',
         description: 'Send pricing options and get approval',
         done: s.activeQuotationId != null,
-        active: open && stage == DealStage.proposal,
+        active: open && stage == DealStage.quotationSent,
         detail: s.activeQuotationId == null ? 'No active quotation' : null,
         chipLabel: s.activeQuotationStatus,
         chipTone: StatusTone.info,

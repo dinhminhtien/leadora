@@ -59,7 +59,7 @@ public class CreateDealUseCase {
                 .expectedRevenue(request.getValue())
                 .expectedCloseDate(request.getExpectedClose())
                 .build();
-        dealValidation.validateStageTransition(DealPipelineStage.PROSPECTING, initialStage, tempDeal, request);
+        dealValidation.validateStageTransition(DealPipelineStage.INQUIRY, initialStage, tempDeal, request);
 
         DealEntity deal = DealEntity.builder()
                 .dealName(request.getTitle())

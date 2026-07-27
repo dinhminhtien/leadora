@@ -11,7 +11,7 @@ import '../providers/deal_providers.dart';
 /// Create a deal, or edit the commercial details of one.
 ///
 /// Stage and status are intentionally not editable here: the backend opens every new deal
-/// at PROSPECTING/OPEN, and moving the stage afterwards belongs to `DealStageTracker`,
+/// at INQUIRY/OPEN, and moving the stage afterwards belongs to `DealStageTracker`,
 /// which is where the backend's per-step validation surfaces.
 class CreateDealScreen extends ConsumerStatefulWidget {
   const CreateDealScreen({super.key, this.deal});

@@ -60,7 +60,7 @@ public class CheckRoomAvailabilityUseCase {
                 .sumCommittedByProduct(ACTIVE_STATUSES, checkInDate, checkOutDate)
                 .stream()
                 .collect(Collectors.toMap(
-                        BookingDetailRepository.ProductCommitment::getProductId,
+                        row -> row.getProductId(),
                         row -> row.getCommitted() != null ? row.getCommitted() : 0L,
                         (a, b) -> a));
 
