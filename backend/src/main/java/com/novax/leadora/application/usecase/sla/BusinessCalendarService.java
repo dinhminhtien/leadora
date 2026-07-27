@@ -54,7 +54,7 @@ public class BusinessCalendarService {
     @PostConstruct
     void init() {
         businessDays = Arrays.stream(businessDaysCsv.split(","))
-                .map(String::trim)
+                .map(s -> s.trim())
                 .filter(s -> !s.isEmpty())
                 .map(BusinessCalendarService::parseDayOfWeek)
                 .collect(Collectors.toSet());
