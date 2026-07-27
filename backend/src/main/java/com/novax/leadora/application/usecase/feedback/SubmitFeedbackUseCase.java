@@ -47,6 +47,9 @@ public class SubmitFeedbackUseCase {
         String sanitizedComment = request.getComment() != null ? HtmlUtils.htmlEscape(request.getComment().trim()) : null;
 
         feedback.setRating(request.getRating());
+        feedback.setRatingAttitude(request.getRatingAttitude());
+        feedback.setRatingSpeed(request.getRatingSpeed());
+        feedback.setRatingAccuracy(request.getRatingAccuracy());
         feedback.setComment(sanitizedComment);
         feedback.setSubmittedAt(OffsetDateTime.now());
 
