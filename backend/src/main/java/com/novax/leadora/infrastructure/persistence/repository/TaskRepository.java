@@ -76,4 +76,27 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
         long countByStatusNotInAndEndAtBefore(List<TaskStatus> statuses, OffsetDateTime endAt);
 
         List<TaskEntity> findByStatusAndEndAtBeforeAndOverdueNotifiedFalse(TaskStatus status, OffsetDateTime endAt);
+
+        // ── Chat-assistant snapshot ────────────────────────────────────────────
+        // A null :userId means "every task" (Manager/Admin scope); a non-null value restricts to
+        // that user's records. "Overdue" is derived (BR-17), not stored: not closed, and past
+        // end_at — there is no due_date column and no OVERDUE status.
+
+        /**
+         * Tasks still to be done, earliest deadline first — overdue ones therefore come first.
+         *
+         * <p>Listing only the overdue ones (as this did originally) leaves the assistant unable to
+         * name a single task whenever nothing has slipped, which is the normal case: the assistant
+         * could report "3 open tasks" but not what they were.
+         */
+        @EntityGraph(attributePaths = { "assignedUser" })
+        @Query("""
+                        SELECT t FROM TaskEntity t
+                        WHERE (:userId IS NULL OR t.assignedUser.userId = :userId)
+                          AND t.status NOT IN :closedStatuses
+                        ORDER BY t.endAt ASC NULLS LAST
+                        """)
+        List<TaskEntity> findOpenForChat(@Param("userId") UUID userId,
+                        @Param("closedStatuses") List<TaskStatus> closedStatuses,
+                        Pageable pageable);
 }

@@ -34,6 +34,29 @@ public class AsyncConfig {
     }
 
     /**
+     * Drives streamed chat replies: one thread is held for the length of a whole answer.
+     *
+     * <p>Deliberately <b>not</b> {@code taskExecutor}. A streaming turn asks
+     * {@code ContextAssembler} to gather its sources, which submits to {@code taskExecutor} and
+     * waits for the results. Running both on one pool means that once every thread is occupied by
+     * a streaming turn, the context tasks they are all waiting for sit in the queue behind them
+     * and nothing can finish — a textbook pool deadlock, and one that only appears under load.
+     * Separate pools make it impossible.
+     */
+    @Bean(name = "chatStreamExecutor")
+    public Executor chatStreamExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(24);
+        executor.setQueueCapacity(50);
+        executor.setThreadNamePrefix("chat-stream-");
+        // Better to answer slowly on the caller's thread than to reject the message outright.
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+        executor.initialize();
+        return executor;
+    }
+
+    /**
      * General task executor for concurrent background tasks (like async logging or email send-offs)
      * so that fast best-effort tasks do not get queued behind the slow doc-ingest tasks.
      */

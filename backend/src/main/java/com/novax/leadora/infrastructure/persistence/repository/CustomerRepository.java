@@ -58,4 +58,14 @@ public interface CustomerRepository extends JpaRepository<CustomerEntity, UUID>,
     Optional<CustomerEntity> findFirstByEmail(String email);
     Optional<CustomerEntity> findFirstByPhone(String phone);
     Optional<CustomerEntity> findFirstByFullName(String fullName);
+
+    // ── Chat-assistant snapshot ───────────────────────────────────────────────
+
+    @EntityGraph(attributePaths = {"assignedUser"})
+    @Query("""
+            SELECT c FROM CustomerEntity c
+            WHERE (:userId IS NULL OR c.assignedUser.userId = :userId)
+            ORDER BY c.createdAt DESC
+            """)
+    List<CustomerEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
 }

@@ -108,8 +108,12 @@ spring:
       genai:
         vertex-ai: ${GEMINI_USE_VERTEX:true}
         # Vertex AI mode: Uses project-id + location. If api-key is set, it defaults to Gemini Developer API (AI Studio).
-        # We keep api-key optional (empty default) to allow falling back to Vertex AI with GCP credentials (ADC / Service Account).
-        api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:#{null}}}
+        # We keep api-key optional (EMPTY default) to allow falling back to Vertex AI with GCP credentials (ADC / Service Account).
+        # NOTE: the default must be empty (`:}`), NOT `#{null}`. In @ConfigurationProperties binding Spring
+        # does NOT evaluate SpEL, so `#{null}` binds as the literal 6-char string "#{null}" — a non-blank
+        # api-key that the auto-config reports as "API Key detected". The chat connection survives that only
+        # because `vertex-ai: true` above makes it ignore the key; the embedding connection has no such toggle.
+        api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:}}
         project-id: ${GEMINI_PROJECT_ID:mock-project-id}
         location: ${GEMINI_LOCATION:asia-southeast1}
         chat:
@@ -126,11 +130,13 @@ spring:
           # (unlike the chat block). Its mode is inferred purely from the properties present:
           #   - api-key set            → Gemini Developer API (AI Studio)
           #   - project-id + location  → Vertex AI
-          # So we must NOT put an api-key here in Vertex mode: a blank/null api-key still flips the
-          # embedding client to Developer API and fails with "API key not valid" (the upload/RAG bug).
-          # To run embeddings on the Developer API instead, set GEMINI_USE_VERTEX=false AND add:
-          #     api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY}}
-          api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:#{null}}}
+          # So in Vertex mode the api-key must resolve to a BLANK string (hasText == false). The default
+          # here is `:}` (empty), NOT `#{null}`: a `#{null}` default binds as the literal string "#{null}"
+          # (SpEL is not evaluated for @ConfigurationProperties), which is a non-blank api-key and flips
+          # this client to the Developer API → "API key not valid" on every upload (the upload/RAG bug).
+          # To run embeddings on the Developer API instead, set GEMINI_USE_VERTEX=false AND export a real
+          # GEMINI_API_KEY (or GOOGLE_GENAI_API_KEY) — it then resolves here to that non-blank key.
+          api-key: ${GOOGLE_GENAI_API_KEY:${GEMINI_API_KEY:}}
           project-id: ${GEMINI_PROJECT_ID:mock-project-id}
           location: ${GEMINI_LOCATION:asia-southeast1}
           text:
