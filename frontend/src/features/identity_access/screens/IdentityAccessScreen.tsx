@@ -35,10 +35,13 @@ const STATUS_OPTIONS: UserStatus[] = ["ACTIVE", "INACTIVE", "LOCKED"];
 // Display label for the as-built DB role codes (ADMIN/SALES/MANAGER) → Admin/Staff/Manager.
 function roleLabel(roleName?: string | null): string {
   switch ((roleName ?? "").toUpperCase()) {
-    case "SALES":   return "Staff";
-    case "MANAGER": return "Manager";
-    case "ADMIN":   return "Admin";
-    default:        return roleName ?? "—";
+    case "SALES":        return "Staff";
+    case "MANAGER":      return "Manager";
+    case "ADMIN":        return "Admin";
+    case "FO":
+    case "FRONT_OFFICE": return "Front Office";
+    case "RESERVATION":  return "Reservation";
+    default:             return roleName ?? "—";
   }
 }
 
@@ -503,6 +506,24 @@ const ACTION_STYLE: Record<string, { on: string; label: string }> = {
 
 const OFF_STYLE = "border-slate-200 bg-white text-slate-300 hover:border-slate-300 hover:text-slate-500";
 
+const ROLE_COLUMN_ORDER = ["SALES", "MANAGER", "FO", "FRONT_OFFICE", "RESERVATION"];
+
+/** Column position for a role; anything unlisted sorts to the end rather than to the front. */
+function roleColumnRank(roleName: string): number {
+  const i = ROLE_COLUMN_ORDER.indexOf(roleName.toUpperCase());
+  return i === -1 ? ROLE_COLUMN_ORDER.length : i;
+}
+
+/** Accent per role column, so the desks read as a different kind of role from the sales pair. */
+function roleAccent(roleName: string): string {
+  switch (roleName.toUpperCase()) {
+    case "MANAGER":                 return "bg-violet-50 text-violet-600";
+    case "FO": case "FRONT_OFFICE": return "bg-amber-50 text-amber-600";
+    case "RESERVATION":             return "bg-teal-50 text-teal-600";
+    default:                        return "bg-sky-50 text-sky-600";
+  }
+}
+
 function moduleMeta(module: string) {
   return MODULE_META[module] ?? { label: module.replace(/_/g, " ").toLowerCase(), Icon: ShieldCheck, blurb: "" };
 }
@@ -650,10 +671,10 @@ function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: 
         <ShieldCheck className="size-4 text-blue-500 shrink-0 mt-0.5" />
         <div className="text-[11px] leading-relaxed text-slate-500">
           <p>
-            Permissions are configured for <strong className="text-slate-700">Staff</strong> and{" "}
-            <strong className="text-slate-700">Manager</strong> only. <strong className="text-slate-700">Admin</strong>{" "}
-            holds every permission by default, and the operational desks (Front Office, Reservation) are governed by
-            their job role rather than by this matrix.
+            Every job role is configured here except <strong className="text-slate-700">Admin</strong>, which holds
+            each permission by default. <strong className="text-slate-700">Front Office</strong> and{" "}
+            <strong className="text-slate-700">Reservation</strong> are narrow desks — a module left blank for them is
+            simply not part of that job.
           </p>
           <p className="mt-1">
             Turning off <span className="font-semibold text-sky-700">View</span> also removes{" "}
@@ -715,10 +736,11 @@ function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: 
       {/* Matrix */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-160 border-collapse">
+          {/* Wide enough that four role columns keep their chips on one line; the wrapper scrolls. */}
+          <table className="w-full min-w-260 border-collapse">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200">
-                <th className="text-left py-3 px-4 w-[38%]">
+                <th className="text-left py-3 px-4 w-[24%] min-w-56">
                   <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Module</span>
                 </th>
                 {roles.map(role => {
@@ -728,7 +750,7 @@ function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: 
                     <th key={role.roleId} className="text-left py-2.5 px-4 border-l border-slate-200">
                       <div className="flex items-center gap-2">
                         <span className={`size-7 rounded-lg flex items-center justify-center shrink-0
-                          ${role.roleName.toUpperCase() === "MANAGER" ? "bg-violet-50 text-violet-600" : "bg-sky-50 text-sky-600"}`}>
+                          ${roleAccent(role.roleName)}`}>
                           <ShieldCheck className="size-3.5" />
                         </span>
                         <div className="min-w-0">
@@ -819,15 +841,12 @@ function RolesTab() {
   const { data: rolesResp, isLoading, isError } = useRoles();
   const { data: permsResp, isLoading: permsLoading } = usePermissions();
 
-  // The API marks which roles are permission-driven; everything else is governed by its job role.
-  // Staff sits left of Manager so the columns read as "base set → what Manager adds on top".
-  const ROLE_COLUMN_ORDER = ["SALES", "MANAGER"];
+  // The API marks which roles are permission-driven. Sales sits leftmost and Manager next, so the
+  // first two columns read as "base set → what Manager adds on top"; the operational desks follow.
   const roles = useMemo(
     () => (rolesResp?.data ?? [])
       .filter(r => r.configurable)
-      .sort((a, b) => ROLE_COLUMN_ORDER.indexOf(a.roleName.toUpperCase())
-                    - ROLE_COLUMN_ORDER.indexOf(b.roleName.toUpperCase())),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .sort((a, b) => roleColumnRank(a.roleName) - roleColumnRank(b.roleName)),
     [rolesResp],
   );
   const permissions = permsResp?.data ?? [];

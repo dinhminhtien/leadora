@@ -80,11 +80,6 @@ export type Role = {
   configurable: boolean;
 };
 
-export type CreateRolePayload = {
-  roleName: string;
-  description?: string;
-  permissionIds?: number[];
-};
 
 // ── Services ──────────────────────────────────────────────────────────────────
 
@@ -132,11 +127,6 @@ export const roleService = {
     return data;
   },
 
-  // UC-6.4 alt-flow A3 — create role
-  async create(payload: CreateRolePayload): Promise<ApiResponse<Role>> {
-    const { data } = await apiClient.post<ApiResponse<Role>>(ROLES, payload);
-    return data;
-  },
 
   // UC-6.4 — replace a role's permission set
   async setPermissions(roleId: number, permissionIds: number[]): Promise<ApiResponse<Role>> {

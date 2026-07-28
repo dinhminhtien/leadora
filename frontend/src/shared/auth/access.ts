@@ -56,21 +56,31 @@ const ADMIN_ROUTES: string[] = [
   ROUTE_PATHS.depositPayment,
 ];
 
-// Front Office (role-based): a simple, focused desk — arrival handovers + their alerts only.
+// Front Office: a simple, focused desk — arrival handovers + their alerts only.
 const FO_ROUTES: string[] = [
   ROUTE_PATHS.frontOfficeHandover,
   ROUTE_PATHS.notifications,
 ];
 
-// Reservation (role-based): answer room requests, then confirm/reject the bookings that
-// follow. A narrow desk like Front Office, so it is gated by role rather than by the
-// permission matrix Sales/Manager screens use.
+// Reservation: answer room requests, then confirm/reject the bookings that follow.
 const RESERVATION_ROUTES: string[] = [
   ROUTE_PATHS.roomRequests,
   ROUTE_PATHS.bookingConfirmation,
   ROUTE_PATHS.depositPayment,
   ROUTE_PATHS.notifications,
 ];
+
+/**
+ * The desks are gated twice: the route must belong to the desk AND the user must hold the
+ * screen's permission. The route list is the fixed shape of the job; the permission is what an
+ * Admin can take away in UC-6.4. Checking only the route would let a revoked permission leave a
+ * nav link whose every request 403s — the same mismatch the handover screens used to have.
+ */
+function canAccessDeskRoute(routes: string[], pathname: string, permissions: string[]): boolean {
+  if (!matchesAny(routes, pathname)) return false;
+  const required = requiredPermissionFor(pathname);
+  return required == null || permissions.includes(required);
+}
 
 // Maps each protected route to the permission code that gates it (the screen's VIEW
 // permission; the quotation approvals queue needs the dedicated APPROVE permission).
@@ -126,6 +136,9 @@ export function canAccessPath(
   permissions: string[] = [],
 ): boolean {
   if (pathname === ROUTE_PATHS.dashboard) return true;
+  // A role's own home stays reachable even if its permission was revoked. The layout guard
+  // redirects a denied route to this path, so gating it would spin in a redirect loop; the page
+  // loads and its data calls surface the 403 instead.
   if (pathname === DASHBOARD_PATHS[role]) return true;
 
   // Profile page is self-service — every authenticated user may access it regardless of role.
@@ -136,11 +149,11 @@ export function canAccessPath(
   }
 
   if (role === "FO") {
-    return matchesAny(FO_ROUTES, pathname);
+    return canAccessDeskRoute(FO_ROUTES, pathname, permissions);
   }
 
   if (role === "RESERVATION") {
-    return matchesAny(RESERVATION_ROUTES, pathname);
+    return canAccessDeskRoute(RESERVATION_ROUTES, pathname, permissions);
   }
 
   // SALES / MANAGER — permission driven.
