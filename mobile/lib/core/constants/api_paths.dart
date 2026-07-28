@@ -29,6 +29,7 @@ class ApiPaths {
   static const String leads = '/leads';
   static String leadById(String id) => '/leads/$id';
   static String leadConvert(String id) => '/leads/$id/convert';
+  static String leadLinkCustomer(String id) => '/leads/$id/link-customer';
 
   // --- Follow-up tasks (TaskController) ---
   static const String tasks = '/tasks';

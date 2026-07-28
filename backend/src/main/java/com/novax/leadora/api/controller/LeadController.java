@@ -2,6 +2,7 @@ package com.novax.leadora.api.controller;
 
 import com.novax.leadora.api.dto.request.ConvertLeadRequest;
 import com.novax.leadora.api.dto.request.CreateLeadRequest;
+import com.novax.leadora.api.dto.request.LinkLeadToCustomerRequest;
 import com.novax.leadora.api.dto.request.UpdateLeadRequest;
 import com.novax.leadora.api.dto.response.ConvertLeadResponse;
 import com.novax.leadora.api.dto.response.LeadResponse;
@@ -11,6 +12,7 @@ import com.novax.leadora.application.usecase.lead.CreateLeadUseCase;
 import com.novax.leadora.application.usecase.lead.GetLeadDetailUseCase;
 import com.novax.leadora.application.usecase.lead.GetLeadListUseCase;
 import com.novax.leadora.application.usecase.lead.GetLeadStatsUseCase;
+import com.novax.leadora.application.usecase.lead.LinkLeadToCustomerUseCase;
 import com.novax.leadora.application.usecase.lead.UpdateLeadUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -35,6 +37,7 @@ public class LeadController {
     private final GetLeadDetailUseCase getLeadDetailUseCase;
     private final UpdateLeadUseCase updateLeadUseCase;
     private final ConvertLeadUseCase convertLeadUseCase;
+    private final LinkLeadToCustomerUseCase linkLeadToCustomerUseCase;
 
     /** UC-8.1 — Create Lead */
     @PostMapping
@@ -56,10 +59,12 @@ public class LeadController {
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir,
             @RequestParam(defaultValue = "assigned") String scope,
+            @RequestParam(required = false) Boolean unassigned,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
-        Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, isCorporate, dateFrom, dateTo, sortBy, sortDir, scope, page, size);
+        Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, isCorporate,
+                dateFrom, dateTo, sortBy, sortDir, scope, unassigned, page, size);
         return ResponseEntity.ok(ApiResponse.success(leads));
     }
 
@@ -76,10 +81,11 @@ public class LeadController {
             @RequestParam(required = false) Boolean isCorporate,
             @RequestParam(required = false) String dateFrom,
             @RequestParam(required = false) String dateTo,
-            @RequestParam(defaultValue = "assigned") String scope
+            @RequestParam(defaultValue = "assigned") String scope,
+            @RequestParam(required = false) Boolean unassigned
     ) {
         LeadStatsResponse stats = getLeadStatsUseCase.execute(
-                search, status, source, isCorporate, dateFrom, dateTo, scope);
+                search, status, source, isCorporate, dateFrom, dateTo, scope, unassigned);
         return ResponseEntity.ok(ApiResponse.success(stats));
     }
 
@@ -108,5 +114,19 @@ public class LeadController {
     ) {
         ConvertLeadResponse response = convertLeadUseCase.execute(leadId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "Lead converted to customer successfully"));
+    }
+
+    /**
+     * UC-8.5 exception E6 — the lead turned out to be an existing customer, so it is attached to
+     * that profile rather than creating a duplicate one. Reached from the 409 that
+     * {@link #convertLead} returns, which carries the matching customer's id.
+     */
+    @PostMapping("/{leadId}/link-customer")
+    public ResponseEntity<ApiResponse<ConvertLeadResponse>> linkLeadToCustomer(
+            @PathVariable UUID leadId,
+            @Valid @RequestBody LinkLeadToCustomerRequest request
+    ) {
+        ConvertLeadResponse response = linkLeadToCustomerUseCase.execute(leadId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "Lead linked to the existing customer profile"));
     }
 }

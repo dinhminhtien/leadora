@@ -271,11 +271,6 @@ class _ConvertLeadSheetState extends ConsumerState<_ConvertLeadSheet> {
             lead.leadId,
             ConvertLeadPayload(
               customerType: lead.isCorporate ? 'CORPORATE' : 'INDIVIDUAL',
-              fullName: lead.fullName,
-              email: lead.email,
-              phone: lead.phone,
-              companyName: lead.companyName,
-              address: lead.address,
               reason: _isQualified ? null : _reason.text.trim(),
             ),
           );

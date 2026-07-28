@@ -6,6 +6,7 @@ import {
   type CreateLeadPayload,
   type UpdateLeadPayload,
   type ConvertLeadPayload,
+  type LinkLeadToCustomerPayload,
   type LeadListParams,
   type LeadStatsParams,
 } from "@/services/lead_service";
@@ -75,6 +76,26 @@ export function useConvertLead(leadId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
       queryClient.invalidateQueries({ queryKey: ["leads", leadId] });
+      // A customer profile now exists — the customer list and its counters are stale.
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["customer-stats"] });
+    },
+  });
+}
+
+/**
+ * UC-8.5 exception E6 — the conversion was refused because the person is already a customer, and
+ * the user chose to attach the lead to that profile instead of creating a second one.
+ */
+export function useLinkLeadToCustomer(leadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: LinkLeadToCustomerPayload) => leadService.linkCustomer(leadId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads", leadId] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["customer-stats"] });
     },
   });
 }

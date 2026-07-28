@@ -109,4 +109,48 @@ class DealRequestValidationTest {
         assertFalse(violations.isEmpty());
         assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("email")));
     }
+
+    /**
+     * The customer this deal is for may simply have no phone on file — which is exactly what the
+     * post-conversion "Create Deal" panel forwards from a walk-in lead. The pattern used to have no
+     * empty branch, so an optional field refused the only value it could carry.
+     */
+    @Test
+    @DisplayName("UT-DEAL-REQ-08: A missing phone is accepted — it is an optional field")
+    void testBlankPhoneIsAccepted() {
+        DealRequest request = buildValidRequest();
+        request.setPhone("");
+
+        assertTrue(validator.validate(request).isEmpty());
+
+        request.setPhone(null);
+        assertTrue(validator.validate(request).isEmpty());
+    }
+
+    @Test
+    @DisplayName("UT-DEAL-REQ-09: A malformed phone is still rejected")
+    void testMalformedPhoneStillRejected() {
+        DealRequest request = buildValidRequest();
+        request.setPhone("abc123");
+
+        Set<ConstraintViolation<DealRequest>> violations = validator.validate(request);
+        assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("phone")));
+    }
+
+    /**
+     * {@code deals.deal_name} is {@code VARCHAR(50)}. Anything the DTO lets through above that
+     * reaches the database and comes back as an unexplained 500 instead of a field-level message.
+     */
+    @Test
+    @DisplayName("UT-DEAL-REQ-10: A title longer than the deal_name column is rejected by validation")
+    void testOverlongTitleRejected() {
+        DealRequest request = buildValidRequest();
+        request.setTitle("x".repeat(51));
+
+        Set<ConstraintViolation<DealRequest>> violations = validator.validate(request);
+        assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("title")));
+
+        request.setTitle("x".repeat(50));
+        assertTrue(validator.validate(request).isEmpty());
+    }
 }
