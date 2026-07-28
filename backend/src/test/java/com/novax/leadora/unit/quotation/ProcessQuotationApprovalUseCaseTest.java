@@ -15,6 +15,7 @@ import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.application.usecase.activitylog.AuditCorrectionService;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,6 +56,9 @@ class ProcessQuotationApprovalUseCaseTest {
 
     @Mock
     private ActivityLogPublisher activityLogPublisher;
+
+    @Mock
+    private AuditCorrectionService auditCorrectionService;
 
     @Spy
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();

@@ -10,7 +10,10 @@ export const ROUTE_PATHS = {
   identityAccess: "/identity-access",
   customerFeedback: "/customer-feedback",
   leads: "/leads",
-  leadDetail: (id: string) => `/leads/${id}`,
+  // A lead opens in the drawer over the list — there is no full-page detail any
+  // more. `/leads/{id}` still redirects here for links already in the wild, but
+  // new links should skip that hop and point straight at the list.
+  leadDetail: (id: string) => `/leads?lead=${encodeURIComponent(id)}`,
   customerProfiles: "/customer-profiles",
   followUpTasks: "/follow-up-tasks",
   manageFollowUpTasks: "/manage-follow-up-tasks",
