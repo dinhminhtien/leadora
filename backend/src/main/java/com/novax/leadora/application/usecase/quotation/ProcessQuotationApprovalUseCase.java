@@ -14,7 +14,8 @@ import com.novax.leadora.infrastructure.persistence.repository.NotificationRepos
 import com.novax.leadora.infrastructure.persistence.repository.QuotationApprovalHistoryRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
-import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
+import com.novax.leadora.application.usecase.activitylog.AuditCorrectionService;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -38,8 +40,14 @@ public class ProcessQuotationApprovalUseCase {
     private final CurrentUserProvider currentUserProvider;
     private final SystemAuditLogService systemAuditLogService;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
-    private final ActivityLogPublisher activityLogPublisher;
+    private final AuditCorrectionService auditCorrectionService;
     private final ObjectMapper objectMapper;
+
+    private static final List<ActivityLogType> QUOTATION_FAMILY_TYPES = List.of(
+            ActivityLogType.QUOTATION_CREATED,
+            ActivityLogType.QUOTATION_UPDATED,
+            ActivityLogType.QUOTATION_APPROVED,
+            ActivityLogType.QUOTATION_REJECTED);
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, ProcessApprovalRequest request) {
@@ -83,7 +91,8 @@ public class ProcessQuotationApprovalUseCase {
 
         quotation.setStatus(newStatus);
         // Optimistic lock (versionLock) is checked on this save — a concurrent approval
-        // by another manager since findById() above throws OptimisticLockingFailureException (E3).
+        // by another manager since findById() above throws
+        // OptimisticLockingFailureException (E3).
         QuotationEntity saved = quotationRepository.save(quotation);
 
         if (newStatus == QuotationStatus.APPROVED) {
@@ -109,37 +118,51 @@ public class ProcessQuotationApprovalUseCase {
         systemAuditLogService.log("QUOTATION", "QUOTATION", quotationId, historyAction, manager,
                 previousStatus.name(), newStatus.name(), request.getNotes());
 
-        try {
-            ActivityLogType logType;
-            if (newStatus == QuotationStatus.APPROVED) {
-                logType = ActivityLogType.QUOTATION_APPROVED;
-            } else if (newStatus == QuotationStatus.REJECTED) {
-                logType = ActivityLogType.QUOTATION_REJECTED;
-            } else {
-                logType = ActivityLogType.QUOTATION_UPDATED;
-            }
-            ObjectNode payload = objectMapper.createObjectNode()
-                    .put("action", historyAction)
-                    .put("previousStatus", previousStatus.name())
-                    .put("newStatus", newStatus.name());
-            if (request.getNotes() != null) {
-                payload.put("notes", request.getNotes());
-            }
-            activityLogPublisher.publish(
-                    logType,
-                    EntityType.QUOTATION,
-                    saved.getQuotationId(),
-                    "Quotation " + historyAction.toLowerCase().replace("_", " "),
-                    payload
-            );
-        } catch (Exception e) {
-            log.warn("Failed to publish quotation approval/rejection activity: {}", e.getMessage());
+        ActivityLogType logType;
+        if (newStatus == QuotationStatus.APPROVED) {
+            logType = ActivityLogType.QUOTATION_APPROVED;
+        } else if (newStatus == QuotationStatus.REJECTED) {
+            logType = ActivityLogType.QUOTATION_REJECTED;
+        } else {
+            logType = ActivityLogType.QUOTATION_UPDATED;
         }
 
-        // BR-37: Notify the Sales Staff who created the quotation of the manager decision
+        if (newStatus == QuotationStatus.REJECTED) {
+            try {
+                auditCorrectionService.voidPriorActivity(saved.getQuotationId(), QUOTATION_FAMILY_TYPES,
+                        request.getNotes());
+            } catch (Exception e) {
+                log.warn("Failed to void quotation activity: {}", e.getMessage());
+            }
+        } else {
+            try {
+                ObjectNode payload = objectMapper.createObjectNode()
+                        .put("action", historyAction)
+                        .put("previousStatus", previousStatus.name())
+                        .put("newStatus", newStatus.name());
+                if (request.getNotes() != null) {
+                    payload.put("notes", request.getNotes());
+                }
+                ActivityLogCommand command = ActivityLogCommand.builder()
+                        .activityType(logType)
+                        .entityType(EntityType.QUOTATION)
+                        .entityId(saved.getQuotationId())
+                        .summary("Quotation " + historyAction.toLowerCase().replace("_", " "))
+                        .payload(payload)
+                        .reason(request.getNotes())
+                        .build();
+                auditCorrectionService.correctPriorActivity(saved.getQuotationId(), QUOTATION_FAMILY_TYPES, command);
+            } catch (Exception e) {
+                log.warn("Failed to publish quotation approval/rejection activity: {}", e.getMessage());
+            }
+        }
+
+        // BR-37: Notify the Sales Staff who created the quotation of the manager
+        // decision
         UserEntity creator = quotation.getCreatedBy();
         if (creator != null) {
-            String notifTitle = "Quotation " + historyAction + ": " + quotationId.toString().substring(0, 8).toUpperCase();
+            String notifTitle = "Quotation " + historyAction + ": "
+                    + quotationId.toString().substring(0, 8).toUpperCase();
             String notifMsg = String.format("Your quotation was %s by %s (%s).%s",
                     historyAction.toLowerCase().replace("_", " "),
                     manager.getFullName(),
