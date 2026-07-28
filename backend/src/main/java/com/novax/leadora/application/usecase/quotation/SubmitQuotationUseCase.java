@@ -14,6 +14,11 @@ import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRe
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -40,6 +45,8 @@ public class SubmitQuotationUseCase {
     private final NotificationRepository notificationRepository;
     private final QuotationAccessPolicy quotationAccessPolicy;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public QuotationResponse execute(UUID id, SubmitQuotationRequest request) {
@@ -79,6 +86,21 @@ public class SubmitQuotationUseCase {
         }
 
         QuotationEntity saved = quotationRepository.save(quotation);
+
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("discountPercent", discountPct.toString())
+                    .put("newStatus", newStatus.name());
+            activityLogPublisher.publish(
+                    ActivityLogType.QUOTATION_SUBMITTED,
+                    EntityType.QUOTATION,
+                    saved.getQuotationId(),
+                    "Quotation submitted",
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish quotation submission activity: {}", e.getMessage());
+        }
 
         if (newStatus == QuotationStatus.APPROVED) {
             try {

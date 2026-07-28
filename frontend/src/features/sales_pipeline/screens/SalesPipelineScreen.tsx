@@ -818,7 +818,7 @@ export function SalesPipelineScreen() {
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-600">Deal Title *</label>
-                <Input
+                <Input maxLength={50}
                   required
                   disabled={isAlreadyClosed}
                   placeholder="e.g. Wedding Catering Block, Corporate Conference..."

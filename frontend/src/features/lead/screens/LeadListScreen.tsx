@@ -14,12 +14,17 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
-import { useLeads, useLeadStats, useCreateLead } from "@/features/lead/hooks/use_leads";
+import { useLeads, useLeadStats, useCreateLead, useLeadDetail, useUpdateLead } from "@/features/lead/hooks/use_leads";
 import { useUsers } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import type { UserSummary } from "@/services/follow_up_task_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
-import type { Lead, LeadStatus, CreateLeadPayload } from "@/services/lead_service";
+import type { LeadStatus, CreateLeadPayload, UpdateLeadPayload } from "@/services/lead_service";
+import {
+  LeadEditDrawer, validateLeadForm, seedLeadForm, leadApiError, leadApiStatus,
+  type LeadEditErrors,
+} from "@/features/lead/components/LeadEditDrawer";
+import { InterestedServiceInput } from "@/features/lead/components/InterestedServiceInput";
 import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
 import { StatusPill } from "@/components/ui/status-pill";
 import { LeadDetailDrawer } from "@/features/lead/components/LeadDetailDrawer";
@@ -63,39 +68,14 @@ const TYPE_SEGMENTS: { value: string; label: string; icon?: React.ElementType }[
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
-type FormErrors = { fullName?: string; email?: string; phone?: string; companyName?: string };
+/**
+ * Create and edit are validated by the same function. This screen used to carry its own copy —
+ * a third one, after the detail screen's and the drawer's — and the three had already diverged on
+ * which fields they checked at all.
+ */
+type FormErrors = LeadEditErrors;
 
-// Name: letters (any language, incl. Vietnamese), spaces and the few punctuation
-// marks real names use (hyphen, apostrophe, period). Digits and other symbols are rejected.
-const NAME_ALLOWED = /^[\p{L}\s.'-]+$/u;
-
-function validateForm(f: CreateLeadPayload): FormErrors {
-  const err: FormErrors = {};
-  const name = f.fullName.trim();
-  if (!name) {
-    err.fullName = "Full name is required";
-  } else if (/\d/.test(name)) {
-    err.fullName = "Full name cannot contain numbers";
-  } else if (!NAME_ALLOWED.test(name)) {
-    err.fullName = "Full name cannot contain special characters";
-  }
-  if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) {
-    err.email = "Invalid email format (e.g. name@domain.com)";
-  }
-  if (f.phone) {
-    const digits = f.phone.replace(/\s/g, "");
-    if (/[^\d]/.test(digits)) {
-      err.phone = "Phone number can only contain digits (no letters or symbols)";
-    } else if (!/^\d{10,11}$/.test(digits)) {
-      err.phone = "Phone number must be 10–11 digits";
-    }
-  }
-  // Organization leads must name the company; individuals don't need one.
-  if (f.isCorporate && !f.companyName?.trim()) {
-    err.companyName = "Company name is required for an organization";
-  }
-  return err;
-}
+const validateForm = (f: CreateLeadPayload): FormErrors => validateLeadForm(f);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -104,7 +84,10 @@ function Avatar({ name }: { name: string | null }) {
   const colors = ["bg-blue-100 text-blue-700", "bg-violet-100 text-violet-700", "bg-emerald-100 text-emerald-700", "bg-amber-100 text-amber-700"];
   const color = colors[(name?.charCodeAt(0) ?? 0) % colors.length];
   return (
-    <span className={`inline-flex items-center justify-center rounded-full font-bold size-7 text-[10px] ${color}`}>
+    // shrink-0: the avatar sits in a flex row next to a name that can be far wider than its
+    // column. Without it the circle is the flex item that gives way — squashed into an ellipse
+    // whose width depends on the neighbouring name. IdentityAccessScreen's copy already had it.
+    <span className={`inline-flex items-center justify-center rounded-full font-bold size-7 text-[10px] shrink-0 ${color}`}>
       {initials}
     </span>
   );
@@ -126,9 +109,16 @@ function FieldError({ msg }: { msg?: string }) {
   return <p className="mt-1 text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{msg}</p>;
 }
 
-// Missing/null information in the list is surfaced in red as "Unknown".
+/**
+ * A field the record simply does not carry.
+ *
+ * <p>It used to render a red italic "Unknown", which reads as an error the user has to fix — but
+ * most of these fields are optional by design (a walk-in lead with no email is a valid lead, not a
+ * broken one). A whole column of red text also drowns out the warnings that do mean something. A
+ * muted dash says "nothing here" without claiming anything is wrong.
+ */
 function Unknown() {
-  return <span className="text-rose-500 italic font-medium">Unknown</span>;
+  return <span className="text-slate-300" aria-label="No value">—</span>;
 }
 
 // Caps a value at a fixed pixel width and clips the overflow with a CSS ellipsis ("…"),
@@ -160,9 +150,11 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
   const [form, setForm] = useState<CreateLeadPayload>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [serverError, setServerError] = useState("");
-  // A duplicate (same email/phone) is shown as a warning with a link to the existing lead,
-  // not as a generic server error.
-  const [duplicate, setDuplicate] = useState<{ message: string; leadId?: string } | null>(null);
+  // A duplicate (same email/phone) is shown as a warning with a link to whatever it collided
+  // with, not as a generic server error. Two kinds collide: another LEAD, or — the case that used
+  // to pass silently — an existing CUSTOMER, i.e. a returning guest being typed in as new.
+  const [duplicate, setDuplicate] = useState<
+    { kind: "lead" | "customer"; message: string; id?: string } | null>(null);
   const createMutation = useCreateLead();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -180,10 +172,18 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
       onError: (err: any) => {
         const data = err?.response?.data;
         const status = err?.response?.status;
-        if (status === 409 || data?.errorCode === "DUPLICATE_LEAD") {
+        const code: string | undefined = data?.errorCode;
+        const isCustomerClash =
+          code === "DUPLICATE_CUSTOMER_EMAIL" || code === "DUPLICATE_CUSTOMER_PHONE";
+        // Match on the error CODE, never on the 409 alone. DataIntegrityViolation also answers
+        // 409, and its `details` is a log correlation id — treating that as a duplicate produced
+        // a "Possible duplicate lead" banner for a constraint failure, with a "View the existing
+        // lead" link pointing at /leads/<log-reference>, which is always Not Found.
+        if (code === "DUPLICATE_LEAD" || isCustomerClash) {
           setDuplicate({
-            message: data?.message || "A lead with these contact details already exists.",
-            leadId: data?.details || undefined,
+            kind: isCustomerClash ? "customer" : "lead",
+            message: data?.message || "A record with these contact details already exists.",
+            id: data?.details || undefined,
           });
         } else if (status >= 500) {
           setServerError("Server error — please contact your Admin.");
@@ -232,12 +232,22 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
             <div className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
               <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-500" />
               <div className="space-y-1">
-                <p className="font-semibold">Possible duplicate lead</p>
-                <p className="text-amber-700">{duplicate.message}</p>
-                {duplicate.leadId && (
-                  <Link href={`/leads/${duplicate.leadId}`}
+                <p className="font-semibold">
+                  {duplicate.kind === "customer" ? "Already a customer" : "Possible duplicate lead"}
+                </p>
+                <p className="text-amber-700">
+                  {duplicate.kind === "customer"
+                    ? `${duplicate.message} Open their profile to add a new deal instead of creating a second record.`
+                    : duplicate.message}
+                </p>
+                {duplicate.id && (
+                  <Link
+                    href={duplicate.kind === "customer"
+                      ? `/customer-profiles/${duplicate.id}`
+                      : `/leads/${duplicate.id}`}
                     className="inline-flex items-center gap-1 font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-950">
-                    View the existing lead <ArrowUpRight className="size-3" />
+                    {duplicate.kind === "customer" ? "Open the customer profile" : "View the existing lead"}
+                    <ArrowUpRight className="size-3" />
                   </Link>
                 )}
               </div>
@@ -279,10 +289,10 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
           {/* BR-05: required before a lead enters active follow-up. */}
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-600">Interested Service</label>
-            <Input placeholder="e.g. Wedding banquet, Conference, Rooms…"
+            <InterestedServiceInput
               value={form.interestedService ?? ""}
-              onChange={e => field("interestedService", e.target.value)}
-              className="py-1.5" />
+              onChange={v => field("interestedService", v)}
+              className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
           </div>
 
           {/* Manager only: assign the new lead to a sales staff member.
@@ -375,19 +385,110 @@ const COL_WIDTHS = ["4%", "24%", "22%", "10%", "12%", "10%", "14%", "4%"];
 // fixed regardless of how many leads the current page actually holds.
 const PAGE_SIZE = 10;
 
+// ── Unassigned-lead editor ────────────────────────────────────────────────────
+
+/**
+ * The edit slide-over for a lead this staff member created but does not own.
+ *
+ * <p>It has no Status control on purpose. An unassigned lead cannot change status — the server
+ * refuses it (BR-06) because follow-up only starts once a Manager has given the lead to someone —
+ * so offering a dropdown here would put a control on screen whose every option is rejected.
+ *
+ * <p>Loads the lead itself rather than reusing the row: the list row carries a summary, and saving
+ * a partial form would blank whatever the summary omits.
+ */
+function UnassignedLeadDrawer({ leadId, onClose }: { leadId: string; onClose: () => void }) {
+  const { data: resp, isLoading } = useLeadDetail(leadId);
+  const updateMutation = useUpdateLead(leadId);
+  const lead = resp?.data;
+
+  // The form is derived, not copied: the lead arrives one render after this mounts, and seeding it
+  // from an effect would set state during render and cascade. Edits are held separately and laid
+  // over the loaded values, so there is no window where the form exists but is empty.
+  const [draft, setDraft] = useState<Partial<UpdateLeadPayload>>({});
+  const [errors, setErrors] = useState<LeadEditErrors>({});
+  const [serverError, setServerError] = useState("");
+
+  const form: UpdateLeadPayload | null = lead ? { ...seedLeadForm(lead), ...draft } : null;
+
+  if (isLoading || !form) {
+    return (
+      <>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40" onClick={onClose} />
+        <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl border-l border-slate-200
+          flex items-center justify-center gap-2 text-slate-400 animate-in slide-in-from-right duration-300">
+          <Loader2 className="size-5 animate-spin" /> Loading lead…
+        </aside>
+      </>
+    );
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs = validateLeadForm(form);
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+    setErrors({});
+    setServerError("");
+    updateMutation.mutate(
+      {
+        ...form,
+        // Status is not editable here, so it is not sent — the server keeps whatever it has
+        // rather than being echoed a value this form never offered to change.
+        status: undefined,
+        assignedUserId: form.assignedUserId || undefined,
+      },
+      {
+        onSuccess: onClose,
+        onError: err => {
+          setServerError((leadApiStatus(err) ?? 0) >= 500
+            ? "Server error — please contact your Admin."
+            : leadApiError(err)?.message || "Update failed. Please try again.");
+        },
+      },
+    );
+  };
+
+  return (
+    <LeadEditDrawer
+      form={form}
+      errors={errors}
+      serverError={serverError}
+      saving={updateMutation.isPending}
+      subtitle="Update contact info"
+      notice={
+        <div className="flex items-start gap-2.5 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+          <AlertCircle className="size-4 shrink-0 mt-0.5 text-amber-500" />
+          <p>This lead hasn’t been assigned yet. You can edit its details; a Manager must
+            assign it to a sales rep before it can change status or be converted.</p>
+        </div>
+      }
+      onChange={patch => {
+        setDraft(d => ({ ...d, ...patch }));
+        setErrors(prev => {
+          const next = { ...prev };
+          for (const key of Object.keys(patch)) delete next[key as keyof LeadEditErrors];
+          return next;
+        });
+      }}
+      onSubmit={handleSubmit}
+      onClose={onClose}
+    />
+  );
+}
+
 // ── Lead Table ────────────────────────────────────────────────────────────────
 
 function LeadTable({
-  isLoading, isError, leads, totalPages, totalElements, page, onPageChange, onClearFilters, hasFilters, editMode, onOpenLead,
+  isLoading, isError, leads, totalPages, totalElements, page, onPageChange, onClearFilters, hasFilters,
+  editMode, onEditLead,
 }: {
   isLoading: boolean; isError: boolean;
   leads: Lead[]; totalPages: number; totalElements: number;
   page: number; onPageChange: (p: number) => void;
   onClearFilters: () => void; hasFilters: boolean;
-  // When true (staff viewing "Created by me"), rows link to the edit-only screen.
+  // When true (staff viewing "Created by me"), a row opens the edit drawer instead of navigating.
   editMode: boolean;
-  /** Row click opens the detail drawer instead of navigating away (§2.11). */
-  onOpenLead: (lead: Lead) => void;
+  onEditLead?: (leadId: string) => void;
 }) {
   if (isLoading) return (
     <div className="flex items-center justify-center py-20 gap-2 text-muted-foreground">
@@ -418,7 +519,16 @@ function LeadTable({
   const pageNumbers = Array.from({ length: Math.min(5, totalPages) }, (_, i) => pageStart + i);
 
   // "Created by me" rows open the edit-only screen; everything else opens full detail.
-  const hrefFor = (id: string) => (editMode ? `/leads/${id}?mode=edit` : `/leads/${id}`);
+  // In editMode (staff looking at leads they created but do not own) a row opens the edit
+  // slide-over in place, over this list — matching how every other edit in the app behaves.
+  // Everyone else navigates to the full detail screen.
+  //
+  // A plain function rather than a component: declaring a component inside render would give it a
+  // new identity every pass and remount the cell on each keystroke in the filter box.
+  const rowOpen = (id: string, className: string, children: React.ReactNode) =>
+    editMode
+      ? <button type="button" onClick={() => onEditLead?.(id)} className={`${className} text-left w-full`}>{children}</button>
+      : <Link href={`/leads/${id}`} className={className}>{children}</Link>;
 
   return (
     <>
@@ -459,12 +569,15 @@ function LeadTable({
                   fields in one column instead of two columns of mostly-blank
                   cells. */}
               <TableCell className="py-3 px-4 border-b-0">
-                <Truncate
-                  text={lead.fullName}
-                  width={180}
-                  className="font-semibold text-sm text-foreground group-hover:text-brand-600 dark:group-hover:text-brand-500 transition-colors"
-                />
-                <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                {rowOpen(lead.leadId, "block group-hover:underline decoration-blue-300 underline-offset-2",
+                  <Truncate text={lead.fullName} width={130}
+                    className="font-semibold text-sm text-slate-800 group-hover:text-blue-600 transition-colors" />)}
+                <div className="text-[11px] mt-0.5">
+                  {lead.email ? <Truncate text={lead.email} width={130} className="text-slate-400" /> : <Unknown />}
+                </div>
+              </TableCell>
+              <TableCell className="py-3 px-4 border-b-0">
+                <span className="flex items-center gap-1.5 text-xs text-slate-600" title={lead.isCorporate ? "Organization" : "Individual"}>
                   {lead.isCorporate
                     ? <Building2 className="size-3 shrink-0" />
                     : <User className="size-3 shrink-0" />}
@@ -501,7 +614,9 @@ function LeadTable({
               </TableCell>
 
               <TableCell className="py-3 px-4 border-b-0">
-                <ArrowUpRight className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                {rowOpen(lead.leadId,
+                  "inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity hover:text-blue-800",
+                  <ArrowUpRight className="size-3.5" />)}
               </TableCell>
             </TableRow>
           ))}
@@ -566,12 +681,19 @@ export function LeadListScreen() {
   const [dateTo, setDateTo] = useState("");
   // Staff-only owner view: "assigned" (default) vs "created" (leads I created).
   const [ownerView, setOwnerView] = useState<"assigned" | "created">("assigned");
-  const [sortOption, setSortOption] = useState("status_desc");
+  // Manager-only: the queue of leads nobody owns yet (BR-06 — nothing starts until one is
+  // assigned). Meaningless for a sales rep: an unassigned lead is, by definition, not theirs.
+  const [needsAssignment, setNeedsAssignment] = useState(false);
+  // Newest first. "Status" priority used to be the default, which is a judgement about what
+  // matters rather than a neutral starting point — and it put the same rows on page 1 no matter
+  // how the list had changed since the user last looked. Creation order is the one ordering the
+  // user can reason about without knowing the ranking rules.
+  const [sortOption, setSortOption] = useState("createdAt_desc");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [page,        setPage]        = useState(0);
   const [drawerOpen,  setDrawer]      = useState(false);
-  const [detailLead,  setDetailLead]  = useState<Lead | null>(null);
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const sortRef = useRef<HTMLDivElement>(null);
 
   // Block an inverted range (From later than To). Date inputs hold "YYYY-MM-DD",
@@ -615,6 +737,7 @@ export function LeadListScreen() {
     dateTo:   !dateRangeInvalid ? (dateTo   || undefined) : undefined,
     // Owner view is a staff concept; managers/admins are unscoped server-side.
     scope: isStaff ? ownerView : undefined,
+    unassigned: canAssign && needsAssignment ? true : undefined,
     page,
     size: PAGE_SIZE,
   });
@@ -635,6 +758,7 @@ export function LeadListScreen() {
     dateFrom: !dateRangeInvalid ? (dateFrom || undefined) : undefined,
     dateTo:   !dateRangeInvalid ? (dateTo   || undefined) : undefined,
     scope: isStaff ? ownerView : undefined,
+    unassigned: canAssign && needsAssignment ? true : undefined,
   });
   const stats = statsResp?.data;
   // A dash, not "0.0%": with no leads there is nothing to measure, which is not the same as
@@ -642,12 +766,13 @@ export function LeadListScreen() {
   const pct = (v: number | null | undefined) => (v == null ? "—" : `${v.toFixed(1)}%`);
 
   // Type now has its own always-visible segmented toggle, so it is excluded from the advanced-filter badge.
-  const activeFilterCount = [statusFilter, sourceFilter, dateFrom, dateTo].filter(Boolean).length;
+  const activeFilterCount = [statusFilter, sourceFilter, dateFrom, dateTo].filter(Boolean).length
+    + (needsAssignment ? 1 : 0);
   const hasFilters = activeFilterCount > 0 || !!search;
 
   const clearAll = () => {
     setStatusFilter(""); setSourceFilter(""); setTypeFilter(""); setDateFrom(""); setDateTo("");
-    setSearchInput(""); setSearch(""); setPage(0);
+    setSearchInput(""); setSearch(""); setNeedsAssignment(false); setPage(0);
   };
 
   const currentSort = SORT_OPTIONS.find(o => o.value === sortOption) ?? SORT_OPTIONS[0];
@@ -692,6 +817,23 @@ export function LeadListScreen() {
               );
             })}
           </div>
+        )}
+
+        {/* Manager only: the distribution queue. A toggle rather than a value in the Status
+            dropdown — "needs assigning" is orthogonal to where the lead sits in the pipeline, and
+            a Manager wants it combined with the other filters, not instead of them. */}
+        {canAssign && (
+          <button type="button"
+            onClick={() => { setNeedsAssignment(v => !v); resetPage(); }}
+            aria-pressed={needsAssignment}
+            title="Leads with no owner yet — assign them to a sales rep"
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition
+              ${needsAssignment
+                ? "bg-amber-50 border-amber-300 text-amber-800 shadow-sm"
+                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"}`}>
+            <UserCog className={`size-3.5 ${needsAssignment ? "text-amber-600" : "text-slate-400"}`} />
+            Assignment needed
+          </button>
         )}
 
         {/* Status */}
@@ -904,17 +1046,19 @@ export function LeadListScreen() {
           page={page} onPageChange={setPage}
           onClearFilters={clearAll} hasFilters={hasFilters}
           editMode={isStaff && ownerView === "created"}
-          onOpenLead={setDetailLead}
+          onEditLead={setEditingLeadId}
         />
       </div>
 
       {drawerOpen && <CreateLeadDrawer onClose={() => setDrawer(false)} canAssign={canAssign} users={salesUsers} />}
 
-      {/* Peek at a lead without losing the list's filters, page or scroll (§2.11). */}
-      <LeadDetailDrawer
-        lead={detailLead}
-        onOpenChange={(open) => !open && setDetailLead(null)}
-      />
+      {/* A lead this staff member created but does not own: edited in place, over the list.
+          Keyed by id so switching rows remounts the form rather than leaving the previous
+          lead's values behind. */}
+      {editingLeadId && (
+        <UnassignedLeadDrawer key={editingLeadId} leadId={editingLeadId}
+          onClose={() => setEditingLeadId(null)} />
+      )}
     </div>
   );
 }

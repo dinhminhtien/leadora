@@ -22,4 +22,5 @@ export const PROTECTED_ROUTES = [
   ROUTE_PATHS.frontOfficeHandover,
   ROUTE_PATHS.reporting,
   ROUTE_PATHS.aiAssistant,
+  ROUTE_PATHS.activityLogs,
 ] as const;

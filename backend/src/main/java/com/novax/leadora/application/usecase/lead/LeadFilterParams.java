@@ -38,6 +38,8 @@ import java.util.stream.Collectors;
  * @param isCorporate individual/organization filter, or {@code null}
  * @param dateFrom    inclusive lower bound on {@code createdAt}, or {@code null}
  * @param dateTo      inclusive upper bound on {@code createdAt}, or {@code null}
+ * @param unassignedOnly restrict to leads with no owner yet — the Manager's "assignment needed"
+ *                       queue. Never {@code null}: absent means "do not restrict".
  */
 public record LeadFilterParams(
         String search,
@@ -45,11 +47,13 @@ public record LeadFilterParams(
         String source,
         Boolean isCorporate,
         OffsetDateTime dateFrom,
-        OffsetDateTime dateTo
+        OffsetDateTime dateTo,
+        boolean unassignedOnly
 ) {
 
     public static LeadFilterParams parse(String search, String status, String source,
-                                         Boolean isCorporate, String dateFrom, String dateTo) {
+                                         Boolean isCorporate, String dateFrom, String dateTo,
+                                         Boolean unassignedOnly) {
         return new LeadFilterParams(
                 // "" rather than null so Hibernate 6 binds a varchar instead of bytea.
                 StringUtils.hasText(search) ? search.trim() : "",
@@ -57,14 +61,15 @@ public record LeadFilterParams(
                 StringUtils.hasText(source) ? source.trim() : "",
                 isCorporate,
                 parseStartOfDay(dateFrom),
-                parseEndOfDay(dateTo));
+                parseEndOfDay(dateTo),
+                Boolean.TRUE.equals(unassignedOnly));
     }
 
     /** The filters as a JPA specification; owner scope is supplied by the caller (BR-02). */
     public Specification<LeadEntity> toSpecification(boolean unscoped, UUID ownerId,
                                                     boolean createdByMe) {
         return LeadSpecification.filter(search, status, source, isCorporate,
-                dateFrom, dateTo, unscoped, ownerId, createdByMe);
+                dateFrom, dateTo, unscoped, ownerId, createdByMe, unassignedOnly);
     }
 
     private static LeadStatus parseStatus(String status) {

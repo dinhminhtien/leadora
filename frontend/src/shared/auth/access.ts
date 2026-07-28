@@ -54,6 +54,7 @@ const ADMIN_ROUTES: string[] = [
   DASHBOARD_PATHS.ADMIN,
   ROUTE_PATHS.identityAccess,
   ROUTE_PATHS.depositPayment,
+  ROUTE_PATHS.activityLogs,
 ];
 
 // Front Office (role-based): a simple, focused desk — arrival handovers + their alerts only.

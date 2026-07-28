@@ -39,4 +39,5 @@ export const ROUTE_PATHS = {
   reporting: "/reporting",
   aiAssistant: "/ai-assistant",
   profile: "/profile",
+  activityLogs: "/activity-logs",
 } as const;

@@ -61,13 +61,13 @@ public class GetDashboardSummaryUseCase {
         OffsetDateTime fourteenDaysAgo = now.minusDays(14);
 
         // ── Lead KPIs ─────────────────────────────────────────────────────────
-        Specification<LeadEntity> totalLeadsSpec = LeadSpecification.filter(null, null, null, null, null, null, unscoped, userId, false);
+        Specification<LeadEntity> totalLeadsSpec = LeadSpecification.filter(null, null, null, null, null, null, unscoped, userId, false, false);
         long totalLeads = leadRepository.count(totalLeadsSpec);
 
-        Specification<LeadEntity> lostLeadsSpec = LeadSpecification.filter(null, LeadStatus.LOST, null, null, null, null, unscoped, userId, false);
+        Specification<LeadEntity> lostLeadsSpec = LeadSpecification.filter(null, LeadStatus.LOST, null, null, null, null, unscoped, userId, false, false);
         long lostLeads = leadRepository.count(lostLeadsSpec);
 
-        Specification<LeadEntity> convertedLeadsSpec = LeadSpecification.filter(null, LeadStatus.CONVERTED, null, null, null, null, unscoped, userId, false);
+        Specification<LeadEntity> convertedLeadsSpec = LeadSpecification.filter(null, LeadStatus.CONVERTED, null, null, null, null, unscoped, userId, false, false);
         long convertedLeads = leadRepository.count(convertedLeadsSpec);
 
         long activeLeads = totalLeads - lostLeads - convertedLeads;

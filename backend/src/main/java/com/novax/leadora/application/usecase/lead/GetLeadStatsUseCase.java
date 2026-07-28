@@ -42,9 +42,10 @@ public class GetLeadStatsUseCase {
 
     @Transactional(readOnly = true)
     public LeadStatsResponse execute(String search, String status, String source, Boolean isCorporate,
-                                     String dateFrom, String dateTo, String scope) {
+                                     String dateFrom, String dateTo, String scope,
+                                     Boolean unassigned) {
         LeadFilterParams filters =
-                LeadFilterParams.parse(search, status, source, isCorporate, dateFrom, dateTo);
+                LeadFilterParams.parse(search, status, source, isCorporate, dateFrom, dateTo, unassigned);
 
         UserEntity currentUser = leadAccessPolicy.currentUser();
         UUID ownerId = leadAccessPolicy.listScopeOwnerId(currentUser);

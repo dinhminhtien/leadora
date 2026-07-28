@@ -11,6 +11,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -35,14 +36,15 @@ public interface LeadRepository
 
     /**
      * Filtered, paginated search with standard column-based sort from {@code pageable}.
+     *
+     * <p>Takes the built {@link Specification} rather than re-listing every filter. The parameter
+     * list used to mirror {@code LeadSpecification.filter} field for field — ten positional
+     * arguments including three adjacent booleans — repeated at each call site, where swapping two
+     * of them compiles cleanly and silently returns the wrong rows. {@link LeadFilterParams}
+     * already owns the job of turning a query string into a specification; this only runs it.
      */
-    default Page<LeadEntity> searchLeads(
-            String search, LeadStatus status, String source, Boolean isCorporate,
-            OffsetDateTime dateFrom, OffsetDateTime dateTo,
-            boolean unscoped, UUID ownerId, boolean createdByMe, Pageable pageable
-    ) {
-        return findAll(LeadSpecification.filter(search, status, source, isCorporate,
-                dateFrom, dateTo, unscoped, ownerId, createdByMe), pageable);
+    default Page<LeadEntity> searchLeads(Specification<LeadEntity> spec, Pageable pageable) {
+        return findAll(spec, pageable);
     }
 
     /**
@@ -54,15 +56,9 @@ public interface LeadRepository
      * acceptable for typical CRM volumes (&lt; 50k leads).
      */
     default Page<LeadEntity> searchLeadsByStatusPriority(
-            String search, LeadStatus status, String source, Boolean isCorporate,
-            OffsetDateTime dateFrom, OffsetDateTime dateTo,
-            boolean unscoped, UUID ownerId, boolean createdByMe, Pageable pageable
+            Specification<LeadEntity> spec, Pageable pageable
     ) {
-        List<LeadEntity> all = findAll(
-                LeadSpecification.filter(search, status, source, isCorporate,
-                        dateFrom, dateTo, unscoped, ownerId, createdByMe),
-                Sort.unsorted()
-        );
+        List<LeadEntity> all = findAll(spec, Sort.unsorted());
 
         List<LeadEntity> sorted = all.stream()
                 .sorted(LeadSpecification.STATUS_PRIORITY_COMPARATOR)

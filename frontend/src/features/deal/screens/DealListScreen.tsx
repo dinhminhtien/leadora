@@ -742,7 +742,7 @@ export function DealListScreen() {
             <form onSubmit={handleCreateDeal} className="flex-1 overflow-y-auto p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-600">Deal Title *</label>
-                <Input
+                <Input maxLength={50}
                   required
                   placeholder="e.g. Wedding Catering Block, Corporate Conference..."
                   value={newDeal.title}
@@ -1032,7 +1032,7 @@ export function DealListScreen() {
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-600">Deal Title *</label>
-                <Input
+                <Input maxLength={50}
                   required
                   disabled={isAlreadyClosed}
                   placeholder="e.g. Wedding Catering Block, Corporate Conference..."

@@ -65,6 +65,17 @@ class LeadRepository {
       decode: (data) => (data as Map<String, dynamic>)['customerId'] as String,
     );
   }
+
+  /// UC-8.5 E6 — the lead turned out to be an existing customer, so it is attached to that
+  /// profile rather than creating a duplicate. Reached from the 409 [convertLead] returns,
+  /// whose `details` field carries the matching customer's id.
+  Future<String> linkLeadToCustomer(String leadId, LinkLeadToCustomerPayload payload) {
+    return _client.post<String>(
+      ApiPaths.leadLinkCustomer(leadId),
+      data: payload.toJson(),
+      decode: (data) => (data as Map<String, dynamic>)['customerId'] as String,
+    );
+  }
 }
 
 final leadRepositoryProvider = Provider<LeadRepository>((ref) {

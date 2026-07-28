@@ -4,20 +4,27 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   ChevronLeft, Mail, Phone, Building2, User, Calendar,
   FileText, Clock, MessageSquare, Sparkles, CheckCircle2,
-  Circle, Edit3, X, Loader2, Save, AlertCircle, UserPlus,
+  Circle, Edit3, X, Loader2, AlertCircle, UserPlus,
   ArrowRight, ShieldCheck, ShieldAlert, Lock,
-  BadgeCheck, Building, ServerCrash, UserCog, Briefcase,
+  BadgeCheck, Building, ServerCrash, Briefcase,
+  Users, Link2,
 } from "lucide-react";
+import { isAxiosError } from "axios";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useLeadDetail, useUpdateLead, useConvertLead } from "@/features/lead/hooks/use_leads";
+import type { ApiErrorResponse } from "@/services/api_client";
+import {
+  useLeadDetail, useUpdateLead, useConvertLead, useLinkLeadToCustomer,
+} from "@/features/lead/hooks/use_leads";
 import { useUsers } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import { dealService } from "@/services/deal_service";
 import type { UserSummary } from "@/services/follow_up_task_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
 import type { Lead, LeadStatus, UpdateLeadPayload, CustomerType } from "@/services/lead_service";
-import { Input } from "@/components/ui/Input";
+import {
+  LeadEditDrawer, validateLeadForm, seedLeadForm,
+} from "@/features/lead/components/LeadEditDrawer";
 
 // ── Status pipeline config ────────────────────────────────────────────────────
 
@@ -60,13 +67,6 @@ function allowedStatusOptions(current: LeadStatus): LeadStatus[] {
   if (current !== "LOST") opts.push("LOST");
   return opts;
 }
-
-const SOURCE_OPTIONS = [
-  "Website Inquiry", "Referral", "Social Media", "Cold Call", "Walk-in", "Event",
-];
-
-// Letters (any language), spaces and basic name punctuation — no digits/symbols.
-const NAME_ALLOWED = /^[\p{L}\s.'-]+$/u;
 
 // ── Mock interaction data ─────────────────────────────────────────────────────
 
@@ -140,17 +140,20 @@ function QuickCreateDealForm({ customerId, lead, onCancel, onSuccess }: QuickCre
     setIsSubmitting(true);
     setErrorMsg("");
 
+    // Absent contact details are sent as undefined, not "". An empty string is a value the
+    // server has to validate — and the phone pattern rejected it — where undefined simply means
+    // the customer has no number on file, which is the truth for a walk-in lead.
     const payload = {
       customerId,
       title: title.trim(),
       contactName: lead.fullName,
-      email: lead.email ?? "",
-      phone: lead.phone ?? "",
+      email: lead.email || undefined,
+      phone: lead.phone || undefined,
       stage,
       value: Number(value) || 0,
       expectedClose,
       status: "active",
-      notes: notes.trim(),
+      notes: notes.trim() || undefined,
     };
 
     try {
@@ -193,7 +196,7 @@ function QuickCreateDealForm({ customerId, lead, onCancel, onSuccess }: QuickCre
 
       <div className="space-y-1">
         <label className="text-xs font-semibold text-slate-600">Deal Title *</label>
-        <input
+        <input maxLength={50}
           required
           type="text"
           value={title}
@@ -280,10 +283,12 @@ function QuickCreateDealForm({ customerId, lead, onCancel, onSuccess }: QuickCre
 interface QuickActionPanelProps {
   lead: Lead;
   customerId: string;
+  /** E6 — the lead was attached to a profile that already existed, rather than creating one. */
+  linked?: boolean;
   onClose: () => void;
 }
 
-function QuickActionPanel({ lead, customerId, onClose }: QuickActionPanelProps) {
+function QuickActionPanel({ lead, customerId, linked = false, onClose }: QuickActionPanelProps) {
   const [mode, setMode] = useState<"actions" | "create_deal" | "deal_success">("actions");
 
   if (mode === "deal_success") {
@@ -326,7 +331,11 @@ function QuickActionPanel({ lead, customerId, onClose }: QuickActionPanelProps) 
       </div>
       <h2 className="text-xl font-extrabold text-slate-800 mb-2">Conversion successful!</h2>
       <p className="text-sm text-slate-500 mb-2">
-        <strong className="text-slate-700">{lead.fullName}</strong> has been created as an official customer profile.
+        {linked ? (
+          <>This lead has been linked to <strong className="text-slate-700">{lead.fullName}</strong>’s existing customer profile.</>
+        ) : (
+          <><strong className="text-slate-700">{lead.fullName}</strong> has been created as an official customer profile.</>
+        )}
       </p>
       <p className="text-xs text-slate-400 mb-8">The original lead record is retained for historical lookup.</p>
       
@@ -350,12 +359,41 @@ function QuickActionPanel({ lead, customerId, onClose }: QuickActionPanelProps) 
 
 // ── Convert Modal ─────────────────────────────────────────────────────────────
 
-export function ConvertModal({
+/** The backend's error envelope, when the failure actually came from the backend. */
+function apiError(error: unknown): ApiErrorResponse | undefined {
+  return isAxiosError<ApiErrorResponse>(error) ? error.response?.data : undefined;
+}
+
+function apiStatus(error: unknown): number | undefined {
+  return isAxiosError(error) ? error.response?.status : undefined;
+}
+
+/**
+ * UC-8.5 E6 — reads a duplicate-customer refusal out of a failed conversion.
+ *
+ * Returns `null` for every other error, which is what keeps the "link instead" affordance from
+ * appearing next to failures it cannot fix. `details` carries the existing customer's id; a 409
+ * without one is still shown as a plain error rather than a button that would post `undefined`.
+ */
+function duplicateCustomerFrom(error: unknown): { customerId: string; field: string } | null {
+  const body = apiError(error);
+  if (body?.errorCode !== "DUPLICATE_CUSTOMER_EMAIL" && body?.errorCode !== "DUPLICATE_CUSTOMER_PHONE") {
+    return null;
+  }
+  if (!body.details) return null;
+  return {
+    customerId: body.details,
+    field: body.errorCode === "DUPLICATE_CUSTOMER_EMAIL" ? "email address" : "phone number",
+  };
+}
+
+function ConvertModal({
   lead, onClose,
 }: {
   lead: Lead; onClose: () => void;
 }) {
   const convertMutation = useConvertLead(lead.leadId);
+  const linkMutation    = useLinkLeadToCustomer(lead.leadId);
   const [done, setDone] = useState(false);
   const [reason, setReason] = useState("");
 
@@ -368,36 +406,44 @@ export function ConvertModal({
   const role = getUserRole(useAuthStore(s => s.user));
   const canOverride = role === "MANAGER" || role === "ADMIN";
   const canConfirm = isQualified || (canOverride && reason.trim().length > 0);
+  const approvalReason = isQualified ? undefined : reason.trim();
 
-  // Confirmation only — every detail already lives on the lead (captured at create/edit time).
+  // E6 — the server refused because this person is already a customer. The refusal carries that
+  // customer's id in `details`, which is what turns a dead end into the choice UC-8.5 describes:
+  // link the lead to the existing profile, or cancel.
+  const duplicate = duplicateCustomerFrom(convertMutation.error);
+
+  const busy = convertMutation.isPending || linkMutation.isPending;
+
+  // Confirmation only — every detail already lives on the lead (captured at create/edit time),
+  // and the server now builds the customer from the lead rather than from anything sent here.
   const handleConfirm = () => {
-    if (!canConfirm) return;
+    if (!canConfirm || busy) return;
     convertMutation.mutate(
-      {
-        customerType,
-        fullName:    lead.fullName,
-        email:       lead.email ?? "",
-        phone:       lead.phone ?? "",
-        companyName: lead.companyName ?? "",
-        taxCode:     "",
-        address:     lead.address ?? "",
-        reason:      isQualified ? undefined : reason.trim(),
-      },
-      {
-        onSuccess: () => setDone(true),
-        onError: () => {},
-      },
+      { customerType, reason: approvalReason },
+      { onSuccess: () => setDone(true) },
+    );
+  };
+
+  const handleLinkExisting = () => {
+    if (!duplicate || busy) return;
+    linkMutation.mutate(
+      { customerId: duplicate.customerId, reason: approvalReason },
+      { onSuccess: () => setDone(true) },
     );
   };
 
   // ── Success state ──────────────────────────────────────────────────────────
+  // Either route ends here, and both return the same { customerId, lead } shape — so the
+  // follow-up actions (create a deal for this customer) work identically after a link.
   if (done) {
-    const conversionResult = convertMutation.data?.data; // { customerId, lead }
+    const result = (linkMutation.data ?? convertMutation.data)?.data;
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
         <QuickActionPanel
           lead={lead}
-          customerId={conversionResult?.customerId ?? ""}
+          customerId={result?.customerId ?? ""}
+          linked={Boolean(linkMutation.data)}
           onClose={onClose}
         />
       </div>
@@ -486,37 +532,59 @@ export function ConvertModal({
                 <div className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Company</dt>
                   <dd className="text-sm text-slate-700 font-medium text-right">
-                    {lead.companyName || <span className="text-rose-500 italic">Unknown</span>}
+                    {lead.companyName || <span className="text-slate-300">—</span>}
                   </dd>
                 </div>
               )}
               <div className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Email</dt>
                 <dd className="text-sm text-slate-700 font-medium text-right">
-                  {lead.email || <span className="text-rose-500 italic">Unknown</span>}
+                  {lead.email || <span className="text-slate-300">—</span>}
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Phone</dt>
                 <dd className="text-sm text-slate-700 font-medium text-right">
-                  {lead.phone || <span className="text-rose-500 italic">Unknown</span>}
+                  {lead.phone || <span className="text-slate-300">—</span>}
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Address</dt>
                 <dd className="text-sm text-slate-700 font-medium text-right max-w-[60%]">
-                  {lead.address || <span className="text-rose-500 italic">Unknown</span>}
+                  {lead.address || <span className="text-slate-300">—</span>}
                 </dd>
               </div>
             </dl>
           </div>
 
-          {convertMutation.isError && (
+          {/* E6 — already a customer. Shown instead of the plain error, because this refusal has
+              a next step and the others do not. */}
+          {duplicate && (
+            <div className="mt-5 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+              <div className="flex items-start gap-3">
+                <Users className="size-4 text-amber-500 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-amber-800">This person is already a customer</p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    A customer profile with the same {duplicate.field} already exists. Link this lead to
+                    that profile to keep their history in one place, or cancel and check the lead’s details.
+                  </p>
+                </div>
+              </div>
+              {linkMutation.isError && (
+                <p className="mt-2 text-xs text-rose-600">
+                  {apiError(linkMutation.error)?.message || "Linking failed. Please try again."}
+                </p>
+              )}
+            </div>
+          )}
+
+          {convertMutation.isError && !duplicate && (
             <div className="flex items-center gap-2 px-3 py-2.5 mt-5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-600">
               <ServerCrash className="size-3.5 shrink-0" />
-              {(convertMutation.error as any)?.response?.status >= 500
+              {(apiStatus(convertMutation.error) ?? 0) >= 500
                 ? "Server error — please contact your Admin."
-                : (convertMutation.error as any)?.response?.data?.message || "Conversion failed. Please try again."}
+                : apiError(convertMutation.error)?.message || "Conversion failed. Please try again."}
             </div>
           )}
         </div>
@@ -527,14 +595,19 @@ export function ConvertModal({
             className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition">
             Cancel
           </button>
-          <button type="button" onClick={handleConfirm}
-            disabled={convertMutation.isPending || !canConfirm}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition active:scale-95">
-            {convertMutation.isPending
-              ? <Loader2 className="size-4 animate-spin" />
-              : <BadgeCheck className="size-4" />}
-            {convertMutation.isPending ? "Processing…" : isQualified ? "Confirm Conversion" : "Approve & Convert"}
-          </button>
+          {duplicate ? (
+            <button type="button" onClick={handleLinkExisting} disabled={busy}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-amber-600 rounded-xl hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed transition active:scale-95">
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}
+              {busy ? "Linking…" : "Link to existing customer"}
+            </button>
+          ) : (
+            <button type="button" onClick={handleConfirm} disabled={busy || !canConfirm}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition active:scale-95">
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <BadgeCheck className="size-4" />}
+              {busy ? "Processing…" : isQualified ? "Confirm Conversion" : "Approve & Convert"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -582,13 +655,7 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
   // restricted-mode effect and the normal "Edit" button can use it.
   const seedEditForm = () => {
     if (!lead) return;
-    setEditForm({
-      fullName: lead.fullName, email: lead.email ?? "", phone: lead.phone ?? "",
-      companyName: lead.companyName ?? "", address: lead.address ?? "", isCorporate: lead.isCorporate,
-      source: lead.source ?? "", interestedService: lead.interestedService ?? "", notes: lead.notes ?? "",
-      status: lead.status,
-      assignedUserId: lead.assignedUserId ?? "",
-    });
+    setEditForm(seedLeadForm(lead));
     setEditErrors({});
     setEditServerErr("");
   };
@@ -649,29 +716,7 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
   }
 
   const validateEdit = (): boolean => {
-    const errs: typeof editErrors = {};
-    const name = editForm.fullName?.trim() ?? "";
-    if (!name) {
-      errs.fullName = "Full name is required";
-    } else if (/\d/.test(name)) {
-      errs.fullName = "Full name cannot contain numbers";
-    } else if (!NAME_ALLOWED.test(name)) {
-      errs.fullName = "Full name cannot contain special characters";
-    }
-    if (editForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.email)) {
-      errs.email = "Invalid email format (e.g. name@domain.com)";
-    }
-    if (editForm.phone) {
-      const digits = editForm.phone.replace(/\s/g, "");
-      if (/[^\d]/.test(digits)) {
-        errs.phone = "Phone number can only contain digits (no letters or symbols)";
-      } else if (!/^\d{10,11}$/.test(digits)) {
-        errs.phone = "Phone number must be 10–11 digits";
-      }
-    }
-    if (editForm.isCorporate && !editForm.companyName?.trim()) {
-      errs.companyName = "Company name is required for an organization";
-    }
+    const errs = validateLeadForm(editForm);
     setEditErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -709,147 +754,37 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
     setLogText("");
   };
 
-  // ── Restricted EDIT-ONLY page (staff + unassigned created-by-me lead) ──────────
-  // No detail panels, no pipeline, no convert, no status — info fields only.
+  // ── Restricted view: a lead this staff member created but does not own ────────
+  // Rendered as the same slide-over the rest of the app edits leads in, minus Status: an
+  // unassigned lead cannot change status at all (BR-06, enforced server-side), so a locked
+  // dropdown here would only offer a click the server then refuses. Reached by direct URL —
+  // the Leads list opens this drawer in place rather than navigating.
   if (restricted) {
-    const editField = (key: keyof UpdateLeadPayload, value: string) => {
-      setEditForm(f => ({ ...f, [key]: value }));
-      if (editErrors[key as keyof typeof editErrors]) setEditErrors(er => ({ ...er, [key]: undefined }));
-    };
     return (
-      <div className="max-w-2xl mx-auto space-y-6">
-        {/* Top bar */}
-        <div className="flex items-center gap-3">
-          <Link href="/leads"
-            className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition border border-slate-200">
-            <ChevronLeft className="size-4" />
-          </Link>
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Edit Lead</span>
-            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">{lead.fullName}</h1>
+      <LeadEditDrawer
+        form={editForm}
+        errors={editErrors}
+        serverError={editServerErr}
+        saving={updateMutation.isPending}
+        subtitle="Update contact info"
+        notice={
+          <div className="flex items-start gap-2.5 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+            <AlertCircle className="size-4 shrink-0 mt-0.5 text-amber-500" />
+            <p>This lead hasn’t been assigned yet. You can edit its details; a Manager must
+              assign it to a sales rep before it can change status or be converted.</p>
           </div>
-        </div>
-
-        {/* Draft notice */}
-        <div className="flex items-start gap-2.5 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-          <AlertCircle className="size-4 shrink-0 mt-0.5 text-amber-500" />
-          <p>This lead hasn’t been assigned yet. You can edit its details; a Manager must
-            assign it to a sales rep before it can change status or be converted.</p>
-        </div>
-
-        {/* Edit form */}
-        <form onSubmit={handleSave} className="bg-white rounded-xl border border-slate-100 shadow-sm p-6 space-y-5">
-          {editServerErr && (
-            <div className="flex items-center gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-600">
-              <ServerCrash className="size-4 shrink-0" />{editServerErr}
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-700">Full Name <span className="text-rose-500">*</span></label>
-            <input value={editForm.fullName ?? ""}
-              onChange={e => editField("fullName", e.target.value)}
-              className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                ${editErrors.fullName ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-            {editErrors.fullName && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.fullName}</p>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">Email</label>
-              <input type="text" value={editForm.email ?? ""}
-                onChange={e => editField("email", e.target.value)}
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                  ${editErrors.email ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-              {editErrors.email && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.email}</p>}
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">Phone Number</label>
-              <Input phoneOnly value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
-                onChange={e => editField("phone", e.target.value)}
-                error={editErrors.phone} className="py-1.5 text-xs" />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-700">Address</label>
-            <input value={editForm.address ?? ""}
-              onChange={e => editField("address", e.target.value)}
-              placeholder="e.g. 12 Nguyen Hue, District 1, HCMC"
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-700">Source Channel</label>
-            <select value={editForm.source ?? ""}
-              onChange={e => editField("source", e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer">
-              <option value="">— Select —</option>
-              {SOURCE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-
-          {/* BR-05: required before a lead enters active follow-up. */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-700">Interested Service</label>
-            <input value={editForm.interestedService ?? ""}
-              placeholder="e.g. Wedding banquet, Conference, Rooms…"
-              onChange={e => editField("interestedService", e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-700">Notes</label>
-            <textarea rows={4} value={editForm.notes ?? ""}
-              onChange={e => editField("notes", e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition resize-none" />
-          </div>
-
-          <div className="space-y-1.5 pt-1 border-t border-slate-100">
-            <label className="text-xs font-semibold text-slate-700 pt-3 block">Customer Type</label>
-            <div className="grid grid-cols-2 gap-2">
-              {([["individual", false, User], ["corporate", true, Building]] as const).map(([val, corp, Icon]) => {
-                const selected = !!editForm.isCorporate === corp;
-                return (
-                  <button key={val} type="button"
-                    onClick={() => setEditForm(f => ({ ...f, isCorporate: corp, ...(corp ? {} : { companyName: "" }) }))}
-                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition
-                      ${selected
-                        ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm"
-                        : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
-                    <Icon className={`size-4 ${selected ? "text-blue-600" : "text-slate-400"}`} />
-                    {corp ? "Organization" : "Individual"}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {editForm.isCorporate && (
-            <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-              <label className="text-xs font-semibold text-slate-700">Company / Organization <span className="text-rose-500">*</span></label>
-              <input value={editForm.companyName ?? ""}
-                onChange={e => editField("companyName", e.target.value)}
-                placeholder="e.g. TechCorp Inc."
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                  ${editErrors.companyName ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-              {editErrors.companyName && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.companyName}</p>}
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-4 border-t border-slate-100">
-            <Link href="/leads"
-              className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition text-center">
-              Cancel
-            </Link>
-            <button type="submit" disabled={updateMutation.isPending}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-primary rounded-xl hover:bg-primary/90 disabled:opacity-60 transition active:scale-95">
-              {updateMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-              Save Changes
-            </button>
-          </div>
-        </form>
-      </div>
+        }
+        onChange={patch => {
+          setEditForm(f => ({ ...f, ...patch }));
+          setEditErrors(prev => {
+            const next = { ...prev };
+            for (const key of Object.keys(patch)) delete next[key as keyof typeof next];
+            return next;
+          });
+        }}
+        onSubmit={handleSave}
+        onClose={() => router.push("/leads")}
+      />
     );
   }
 
@@ -1098,200 +1033,36 @@ export function LeadDetailScreen({ leadId, editMode = false }: { leadId: string;
 
       {/* ── Edit Lead Drawer ── */}
       {editOpen && (
-        <>
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40" onClick={() => setEditOpen(false)} />
-          <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl border-l border-slate-200 flex flex-col
-            animate-in slide-in-from-right duration-300 ease-out">
-
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                  <Edit3 className="size-4.5 text-blue-600" />
-                  Edit Lead
-                </h3>
-                <p className="text-[10px] text-slate-400 mt-0.5">Update contact info and stage</p>
-              </div>
-              <button onClick={() => setEditOpen(false)}
-                className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
-                <X className="size-4.5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-5">
-
-              {editServerErr && (
-                <div className="flex items-center gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-600">
-                  <ServerCrash className="size-4 shrink-0" />{editServerErr}
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Full Name <span className="text-rose-500">*</span></label>
-                <input value={editForm.fullName ?? ""}
-                  onChange={e => { setEditForm(f => ({ ...f, fullName: e.target.value })); setEditErrors(er => ({ ...er, fullName: undefined })); }}
-                  className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                    ${editErrors.fullName ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-                {editErrors.fullName && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.fullName}</p>}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Email</label>
-                  <input type="text" value={editForm.email ?? ""}
-                    onChange={e => { setEditForm(f => ({ ...f, email: e.target.value })); setEditErrors(er => ({ ...er, email: undefined })); }}
-                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                      ${editErrors.email ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-                  {editErrors.email && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.email}</p>}
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Phone Number</label>
-                  <Input phoneOnly value={editForm.phone ?? ""} placeholder="e.g. 09xxxxxxxx"
-                    onChange={e => { setEditForm(f => ({ ...f, phone: e.target.value })); setEditErrors(er => ({ ...er, phone: undefined })); }}
-                    error={editErrors.phone} className="py-1.5 text-xs" />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Address</label>
-                <input value={editForm.address ?? ""}
-                  onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))}
-                  placeholder="e.g. 12 Nguyen Hue, District 1, HCMC"
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
-              </div>
-
-              {/* BR-05: the three fields a lead needs before it may enter active follow-up are
-                  phone/email, source and interested service. Interested Service was missing from
-                  this form while the Status control right below refuses CONTACTED without it —
-                  so the dialog stated a requirement it gave no way to satisfy. Kept next to
-                  Source Channel and above Status, in the order the guard reads them. */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Source Channel</label>
-                  <select value={editForm.source ?? ""}
-                    onChange={e => setEditForm(f => ({ ...f, source: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer">
-                    <option value="">— Select —</option>
-                    {SOURCE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Interested Service</label>
-                  <input value={editForm.interestedService ?? ""}
-                    maxLength={100}
-                    placeholder="e.g. Wedding banquet, Conference, Rooms…"
-                    onChange={e => setEditForm(f => ({ ...f, interestedService: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
-                </div>
-              </div>
-
-              {/* Full width, unlike the paired rows above: the hint below carries the reason the
-                  control is blocked and which fields unblock it, which a half-column would wrap
-                  into an unreadable stack. */}
-              <div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Status</label>
-                  <select value={editForm.status ?? ""}
-                    disabled={statusLocked}
-                    onChange={e => setEditForm(f => ({ ...f, status: e.target.value as LeadStatus }))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed">
-                    {allowedStatusOptions(lead.status).map(s => {
-                      // Only the two active-follow-up states need BR-05's details. NEW and LOST
-                      // stay selectable on purpose: a junk lead must be closable immediately
-                      // rather than after filling in fields nobody will ever read.
-                      const needsDetails = s === "CONTACTED" || s === "QUALIFIED";
-                      const blocked = needsDetails && missingForFollowUp.length > 0;
-                      return (
-                        <option key={s} value={s} disabled={blocked}>
-                          {STATUS_LABEL[s]}
-                          {/* Name the missing fields here, not just "unavailable": the hint under
-                              the select is hidden by the open menu at the moment it is needed. */}
-                          {blocked ? ` — add ${missingForFollowUp.join(" + ")} first` : ""}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <p className={`text-[10px] ${missingForFollowUp.length ? "text-amber-600" : "text-slate-400"}`}>
-                    {isConverted
-                      ? "This lead has been converted to a customer — its status is locked."
-                      : !editForm.assignedUserId
-                        ? "This lead must be assigned to a sales rep before its status can change."
-                        : missingForFollowUp.length
-                          ? `To move this lead to Contacted or Qualified, fill in ${missingForFollowUp.join(", ")} in this form — the option unlocks as soon as you type. You can still mark it Lost.`
-                          : "Status only moves forward (New → Contacted → Qualified). “Converted” is set automatically during conversion."}
-                  </p>
-                </div>
-              </div>
-
-              {/* Manager only: (re)assign this lead to a sales staff member.
-                  Lets a manager move leads off a staff member who has too many. */}
-              {canAssign && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                    <UserCog className="size-3.5 text-slate-400" /> Assign To
-                  </label>
-                  <select value={editForm.assignedUserId ?? ""}
-                    onChange={e => setEditForm(f => ({ ...f, assignedUserId: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition cursor-pointer">
-                    <option value="">Unassigned</option>
-                    {salesUsers.map(u => <option key={u.userId} value={u.userId}>{u.fullName}</option>)}
-                  </select>
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Notes</label>
-                <textarea rows={4} value={editForm.notes ?? ""}
-                  onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition resize-none" />
-              </div>
-
-              {/* Customer Type at the bottom; Organization reveals a required company field. */}
-              <div className="space-y-1.5 pt-1 border-t border-slate-100">
-                <label className="text-xs font-semibold text-slate-700 pt-3 block">Customer Type</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {([["individual", false, User], ["corporate", true, Building]] as const).map(([val, corp, Icon]) => {
-                    const selected = !!editForm.isCorporate === corp;
-                    return (
-                      <button key={val} type="button"
-                        onClick={() => setEditForm(f => ({ ...f, isCorporate: corp, ...(corp ? {} : { companyName: "" }) }))}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition
-                          ${selected
-                            ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm"
-                            : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"}`}>
-                        <Icon className={`size-4 ${selected ? "text-blue-600" : "text-slate-400"}`} />
-                        {corp ? "Organization" : "Individual"}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {editForm.isCorporate && (
-                <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                  <label className="text-xs font-semibold text-slate-700">Company / Organization <span className="text-rose-500">*</span></label>
-                  <input value={editForm.companyName ?? ""}
-                    onChange={e => { setEditForm(f => ({ ...f, companyName: e.target.value })); setEditErrors(er => ({ ...er, companyName: undefined })); }}
-                    placeholder="e.g. TechCorp Inc."
-                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition
-                      ${editErrors.companyName ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100" : "border-slate-200 focus:border-blue-400 focus:ring-blue-100"}`} />
-                  {editErrors.companyName && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{editErrors.companyName}</p>}
-                </div>
-              )}
-            </form>
-
-            <div className="flex gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
-              <button type="button" onClick={() => setEditOpen(false)}
-                className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition">
-                Cancel
-              </button>
-              <button onClick={handleSave} disabled={updateMutation.isPending}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-primary rounded-xl hover:bg-primary/90 disabled:opacity-60 transition active:scale-95">
-                {updateMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                Save Changes
-              </button>
-            </div>
-          </aside>
-        </>
+        <LeadEditDrawer
+          form={editForm}
+          errors={editErrors}
+          serverError={editServerErr}
+          saving={updateMutation.isPending}
+          onChange={patch => {
+            setEditForm(f => ({ ...f, ...patch }));
+            setEditErrors(prev => {
+              const next = { ...prev };
+              for (const key of Object.keys(patch)) delete next[key as keyof typeof next];
+              return next;
+            });
+          }}
+          onSubmit={handleSave}
+          onClose={() => setEditOpen(false)}
+          status={{
+            options: allowedStatusOptions(lead.status),
+            labels: STATUS_LABEL,
+            locked: statusLocked,
+            missingForFollowUp,
+            hint: isConverted
+              ? "This lead has been converted to a customer — its status is locked."
+              : !editForm.assignedUserId
+                ? "This lead must be assigned to a sales rep before its status can change."
+                : missingForFollowUp.length
+                  ? `To move this lead to Contacted or Qualified, fill in ${missingForFollowUp.join(", ")} in this form — the option unlocks as soon as you type. You can still mark it Lost.`
+                  : "Status only moves forward (New → Contacted → Qualified). “Converted” is set automatically during conversion.",
+          }}
+          assign={canAssign ? { users: salesUsers } : undefined}
+        />
       )}
     </div>
   );

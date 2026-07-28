@@ -10,7 +10,13 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.PaymentStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,12 +28,15 @@ import java.util.UUID;
 
 import static com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BookingStatusTransitionService {
     private final BookingRepository bookingRepository;
     private final BookingDetailRepository bookingDetailRepository;
     private final PaymentRepository paymentRepository;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     // Sales owns the deal, not the room: they may withdraw a booking, never confirm one.
     private static final Map<BookingStatus, Set<BookingStatus>> SALES_TRANSITIONS = Map.of(
@@ -97,6 +106,32 @@ public class BookingStatusTransitionService {
         }
         bookingDetailRepository.saveAll(details);
 
-        return bookingRepository.save(booking);
+        BookingEntity savedBooking = bookingRepository.save(booking);
+
+        try {
+            ActivityLogType logType = switch (newStatus) {
+                case CONFIRMED -> ActivityLogType.BOOKING_CONFIRMED;
+                case CANCELLED -> ActivityLogType.BOOKING_CANCELLED;
+                default -> ActivityLogType.BOOKING_UPDATED;
+            };
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("actor", actor.name())
+                    .put("previousStatus", oldStatus.name())
+                    .put("newStatus", newStatus.name());
+            if (reason != null) {
+                payload.put("reason", reason);
+            }
+            activityLogPublisher.publish(
+                    logType,
+                    EntityType.BOOKING,
+                    savedBooking.getBookingId(),
+                    "Booking status updated to " + newStatus,
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish booking status transition activity: {}", e.getMessage());
+        }
+
+        return savedBooking;
     }
 }
