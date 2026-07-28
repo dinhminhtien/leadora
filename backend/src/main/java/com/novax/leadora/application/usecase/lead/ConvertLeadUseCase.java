@@ -4,25 +4,47 @@ import com.novax.leadora.api.dto.request.ConvertLeadRequest;
 import com.novax.leadora.api.dto.response.ConvertLeadResponse;
 import com.novax.leadora.api.dto.response.LeadResponse;
 import com.novax.leadora.application.usecase.customer.CustomerDuplicatePolicy;
-import com.novax.leadora.common.exception.BusinessException;
+import com.novax.leadora.application.usecase.customer.CustomerProfilePolicy;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerType;
-import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
-import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import static com.novax.leadora.common.util.TextUtils.blankToNull;
+
+/**
+ * UC-8.5 — Convert Lead to Customer Profile.
+ *
+ * <p>
+ * The customer is built from the <b>lead</b>, not from the request. See
+ * {@link ConvertLeadRequest} for why the payload no longer carries the identity
+ * fields at all.
+ *
+ * <p>
+ * Everything after the validation block is delegated to
+ * {@link LeadConversionCompleter}, which
+ * this use case shares with {@link LinkLeadToCustomerUseCase} (exception E6).
+ * Both end the same
+ * way — the lead becomes an immutable CONVERTED snapshot, its SLA tracking
+ * stops, the action is
+ * audited — and writing that ending twice is how the two would drift apart.
+ */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ConvertLeadUseCase {
@@ -30,7 +52,12 @@ public class ConvertLeadUseCase {
     private final LeadRepository leadRepository;
     private final CustomerRepository customerRepository;
     private final LeadAccessPolicy leadAccessPolicy;
+    private final LeadConversionPolicy leadConversionPolicy;
     private final CustomerDuplicatePolicy customerDuplicatePolicy;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
+    private final CustomerProfilePolicy customerProfilePolicy;
+    private final LeadConversionCompleter leadConversionCompleter;
 
     @Transactional
     public ConvertLeadResponse execute(UUID leadId, ConvertLeadRequest request) {
@@ -39,73 +66,55 @@ public class ConvertLeadUseCase {
         LeadEntity lead = leadRepository.findWithUsersById(leadId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead", leadId));
 
-        // UC-8.5 RBAC: same owner-scoping as viewing — a Sales Staff may only
-        // convert leads assigned to (or created by) them; MANAGER/ADMIN unscoped.
+        // 2. UC-8.5 step 2 / BR-02 — same owner-scoping as viewing: a Sales Staff may
+        // only convert
+        // leads assigned to (or created by) them; MANAGER/ADMIN unscoped.
         UserEntity currentUser = leadAccessPolicy.currentUser();
         leadAccessPolicy.assertCanView(currentUser, lead);
 
-        // 2. Idempotency — already converted
-        if (lead.getStatus() == LeadStatus.CONVERTED) {
-            throw new BusinessException("LEAD_ALREADY_CONVERTED",
-                    "This lead has already been converted to a customer.",
-                    HttpStatus.CONFLICT);
-        }
+        // 3. UC-8.5 step 4 / E4 + BR-07 — is this lead eligible at all? Shared with the
+        // E6 link
+        // path, which must answer exactly the same question.
+        String overrideReason = leadConversionPolicy.assertEligible(lead, currentUser, request.getReason());
 
-        // 2b. LOST is a terminal state — UpdateLeadUseCase already refuses to move a lead out of
-        //     it, and conversion is the same kind of transition by another route. Without this the
-        //     two files disagreed: a Manager supplying a reason could convert a lead the rest of
-        //     the system treats as closed. Reopening is a deliberate act and should be one.
-        if (lead.getStatus() == LeadStatus.LOST) {
-            throw new BusinessException("LEAD_LOST",
-                    "A lost lead cannot be converted. Reopen it first if the customer came back.",
-                    "status",
-                    HttpStatus.UNPROCESSABLE_ENTITY);
-        }
+        // 4. BR-09 — Individual or Corporate. The lead's own flag decides unless the
+        // caller
+        // deliberately overrides it at conversion time.
+        CustomerType customerType = request.getCustomerType() != null
+                ? request.getCustomerType()
+                : (Boolean.TRUE.equals(lead.getIsCorporate()) ? CustomerType.CORPORATE : CustomerType.INDIVIDUAL);
 
-        // 3a. A lead must be assigned to a sales rep (by a Manager) before conversion.
-        //     Unassigned leads are drafts that never progress past NEW.
-        if (lead.getAssignedUser() == null) {
-            throw new BusinessException("LEAD_UNASSIGNED",
-                    "Lead must be assigned to a sales rep before it can be converted.",
-                    "assignedUserId",
-                    HttpStatus.UNPROCESSABLE_ENTITY);
-        }
+        // 5. The profile about to be created must be a usable one. Both rules read the
+        // LEAD's
+        // fields, because those are the fields the customer is built from — validating
+        // the
+        // request instead is what let a corporate customer be created with no company
+        // name.
+        customerProfilePolicy.assertCorporateHasCompany(customerType, lead.getCompanyName());
+        customerProfilePolicy.assertReachable(lead.getEmail(), lead.getPhone());
 
-        // 3. BR-07: a lead may be converted when QUALIFIED. Otherwise it may still be
-        //    converted only via a Sales Manager override with a documented reason
-        //    (covers the "confirmed booking / customer request exists" exception).
-        if (lead.getStatus() != LeadStatus.QUALIFIED) {
-            if (!StringUtils.hasText(request.getReason())) {
-                throw new BusinessException("LEAD_NOT_QUALIFIED",
-                        "Lead must be QUALIFIED before conversion, or a Sales Manager must approve "
-                                + "with a reason. Current status: " + lead.getStatus(),
-                        "reason",
-                        HttpStatus.UNPROCESSABLE_ENTITY);
-            }
-            // Only a Manager/Admin may approve the exception.
-            leadAccessPolicy.assertFullAccess(currentUser);
-            // Preserve the approval reason on the lead itself — it is about to become an
-            // immutable CONVERTED snapshot, so this is the audit trail for the override.
-            String note = "[Converted with manager approval by " + currentUser.getFullName()
-                    + ": " + request.getReason().trim() + "]";
-            lead.setNotes(StringUtils.hasText(lead.getNotes()) ? lead.getNotes() + "\n" + note : note);
-        }
+        // 6. Two different leads can still describe the same person, so the duplicate
+        // check done
+        // when each LEAD was created protects nothing here. Same rule
+        // CreateCustomerUseCase
+        // applies, shared rather than copied — see CustomerDuplicatePolicy. On a hit
+        // this throws
+        // 409 carrying the existing customer's id, which is what lets the UI offer E6's
+        // "link to the existing profile" instead of a dead end.
+        customerDuplicatePolicy.assertNoDuplicate(lead.getEmail(), lead.getPhone());
 
-        // 3c. The conversion form is typed by hand and need not match the lead, so the
-        //     duplicate check done when the LEAD was created protects nothing here: two different
-        //     leads can be converted onto the same person. This is the same rule
-        //     CreateCustomerUseCase applies, shared rather than copied — see CustomerDuplicatePolicy.
-        customerDuplicatePolicy.assertNoDuplicate(request.getEmail(), request.getPhone());
-
-        // 4. Create customer record from payload + inherit owner from lead
+        // 7. UC-8.5 step 6 — the customer profile, built from the lead. Owner and
+        // creator are
+        // inherited so the new profile lands in the same person's queue as the lead
+        // did.
         CustomerEntity customer = CustomerEntity.builder()
-                .customerType(request.getCustomerType())
-                .fullName(request.getFullName())
-                .email(request.getEmail())
-                .phone(request.getPhone())
-                .companyName(request.getCompanyName())
-                .taxCode(request.getTaxCode())
-                .address(request.getAddress())
+                .customerType(customerType)
+                .fullName(lead.getFullName())
+                .email(blankToNull(lead.getEmail()))
+                .phone(blankToNull(lead.getPhone()))
+                .companyName(blankToNull(lead.getCompanyName()))
+                .taxCode(blankToNull(request.getTaxCode()))
+                .address(blankToNull(lead.getAddress()))
                 .leadId(lead.getLeadId())
                 .assignedUser(lead.getAssignedUser())
                 .createdBy(lead.getCreatedBy())
@@ -114,15 +123,39 @@ public class ConvertLeadUseCase {
 
         CustomerEntity savedCustomer = customerRepository.save(customer);
 
-        // 5. Mark lead as converted (BR-08: lead record is preserved, not deleted).
-        //    Sync the lead's corporate flag with the type chosen at conversion time,
-        //    so leads.is_corporate reflects the final individual/organization decision.
-        lead.setStatus(LeadStatus.CONVERTED);
-        lead.setConvertedAt(OffsetDateTime.now());
-        lead.setIsCorporate(request.getCustomerType() == CustomerType.CORPORATE);
-        lead.setCustomer(savedCustomer);
+        // 8. Keep leads.is_corporate consistent with the individual/organization
+        // decision that was
+        // just finalised, so the retained snapshot does not contradict the customer it
+        // produced.
+        if (Boolean.TRUE.equals(lead.getIsCorporate()) != (customerType == CustomerType.CORPORATE)) {
+            lead.setIsCorporate(customerType == CustomerType.CORPORATE);
+        }
 
-        LeadEntity savedLead = leadRepository.save(lead);
+        // 9. Steps 7-9 — mark converted, link both ways, stop SLA, write the audit
+        // entry.
+        LeadEntity savedLead = leadConversionCompleter.complete(
+                lead, savedCustomer, currentUser, overrideReason, "CONVERTED");
+
+        // Publish Activity Log event
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("customerId", savedCustomer.getCustomerId().toString())
+                    .put("customerType", savedCustomer.getCustomerType().name())
+                    .put("fullName", savedCustomer.getFullName())
+                    .put("email", savedCustomer.getEmail())
+                    .put("phone", savedCustomer.getPhone());
+            if (request.getReason() != null) {
+                payload.put("reason", request.getReason());
+            }
+            activityLogPublisher.publish(
+                    ActivityLogType.LEAD_CONVERTED,
+                    EntityType.LEAD,
+                    savedLead.getLeadId(),
+                    "Lead converted to customer: " + savedCustomer.getFullName(),
+                    payload);
+        } catch (Exception e) {
+            log.warn("Failed to publish lead conversion activity: {}", e.getMessage());
+        }
 
         return ConvertLeadResponse.builder()
                 .customerId(savedCustomer.getCustomerId())

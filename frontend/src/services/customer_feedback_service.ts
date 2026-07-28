@@ -10,6 +10,9 @@ export interface CustomerFeedback {
   bookingCode: string;
   salesStaffName: string;
   rating: number;
+  ratingAttitude?: number;
+  ratingSpeed?: number;
+  ratingAccuracy?: number;
   comment: string;
   reviewStatus: ReviewStatus;
   submittedAt?: string;
@@ -31,6 +34,9 @@ export interface FeedbackTokenValidation {
 
 export interface SubmitFeedbackPayload {
   rating: number;
+  ratingAttitude?: number;
+  ratingSpeed?: number;
+  ratingAccuracy?: number;
   comment: string;
   recommendScore?: number;
 }

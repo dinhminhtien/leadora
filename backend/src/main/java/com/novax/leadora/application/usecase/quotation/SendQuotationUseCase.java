@@ -15,6 +15,11 @@ import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationSendLogRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -37,6 +42,8 @@ public class SendQuotationUseCase {
     private final CurrentUserProvider currentUserProvider;
     private final QuotationAccessPolicy quotationAccessPolicy;
     private final SystemAuditLogService systemAuditLogService;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, SendQuotationRequest request) {
@@ -50,10 +57,6 @@ public class SendQuotationUseCase {
             throw new IllegalStateException(
                     "Only APPROVED quotations can be sent. Current status: " + quotation.getStatus().name());
         }
-
-        // Room confirmation is deliberately NOT checked here. It is one condition recorded
-        // against a quotation, not a precondition for sending it: the Reservation team's
-        // answer is surfaced to the rep, who decides whether to send.
 
         // E3: EMAIL method requires a valid recipient address
         boolean isEmail = "EMAIL".equalsIgnoreCase(request.getSendMethod());
@@ -93,6 +96,24 @@ public class SendQuotationUseCase {
 
         systemAuditLogService.log("QUOTATION", "QUOTATION", quotationId, "SENT", actor,
                 "APPROVED", "SENT", "via " + request.getSendMethod() + " to " + request.getRecipientName());
+
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("sendMethod", request.getSendMethod())
+                    .put("recipientName", request.getRecipientName())
+                    .put("recipientEmail", request.getRecipientEmail())
+                    .put("previousStatus", "APPROVED")
+                    .put("newStatus", "SENT");
+            activityLogPublisher.publish(
+                    ActivityLogType.QUOTATION_UPDATED,
+                    EntityType.QUOTATION,
+                    saved.getQuotationId(),
+                    "Quotation sent to customer",
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish quotation sent activity: {}", e.getMessage());
+        }
 
         // UC-17.2: auto-resolve SLA tracking — quotation sent = action completed
         try {

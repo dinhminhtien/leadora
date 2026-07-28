@@ -1,7 +1,9 @@
 package com.novax.leadora.unit.lead;
 
 import com.novax.leadora.api.dto.request.UpdateLeadRequest;
+import com.novax.leadora.application.usecase.customer.CustomerDuplicatePolicy;
 import com.novax.leadora.application.usecase.lead.LeadAccessPolicy;
+import com.novax.leadora.application.usecase.lead.LeadContactPolicy;
 import com.novax.leadora.application.usecase.lead.UpdateLeadUseCase;
 import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
@@ -10,6 +12,7 @@ import com.novax.leadora.common.exception.DuplicateLeadException;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
+import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
@@ -17,7 +20,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -35,24 +37,46 @@ import static org.mockito.Mockito.when;
 /**
  * The lead status machine and the record invariants around it (UC-8.4).
  *
- * <p>Nothing covered this before: every transition rule, BR-05 and the duplicate check lived in one
- * method with no test behind it, so a wrong edit there would have surfaced only in the UI.
+ * <p>
+ * Nothing covered this before: every transition rule, BR-05 and the duplicate
+ * check lived in one
+ * method with no test behind it, so a wrong edit there would have surfaced only
+ * in the UI.
  *
- * <p>Lenient stubbing — several tests refuse before the save path is reached, and marking each
+ * <p>
+ * Lenient stubbing — several tests refuse before the save path is reached, and
+ * marking each
  * unused stub individually would bury what each case is actually asserting.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class UpdateLeadUseCaseTest {
 
-    @Mock private LeadRepository leadRepository;
-    @Mock private UserRepository userRepository;
-    @Mock private ResolveSlaBreachUseCase resolveSlaBreachUseCase;
-    @Mock private StartSlaTrackingUseCase startSlaTrackingUseCase;
-    @Mock private NotificationRepository notificationRepository;
-    @Mock private LeadAccessPolicy leadAccessPolicy;
+    @Mock
+    private LeadRepository leadRepository;
+    @Mock
+    private UserRepository userRepository;
+    @Mock
+    private ResolveSlaBreachUseCase resolveSlaBreachUseCase;
+    @Mock
+    private StartSlaTrackingUseCase startSlaTrackingUseCase;
+    @Mock
+    private NotificationRepository notificationRepository;
+    @Mock
+    private LeadAccessPolicy leadAccessPolicy;
+    @Mock
+    private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
+    @Mock
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    @Mock
+    private CustomerRepository customerRepository;
 
-    @InjectMocks private UpdateLeadUseCase useCase;
+    // Built by hand rather than @InjectMocks so the real LeadContactPolicy runs:
+    // the reachability
+    // and duplicate rules moved into it, and a mocked policy would leave those
+    // cases asserting
+    // that a method was called rather than that an edit was actually refused.
+    private UpdateLeadUseCase useCase;
 
     private UUID leadId;
     private UserEntity owner;
@@ -61,11 +85,19 @@ class UpdateLeadUseCaseTest {
     void setUp() {
         leadId = UUID.randomUUID();
         owner = UserEntity.builder().userId(UUID.randomUUID()).fullName("Rep").build();
+        useCase = new UpdateLeadUseCase(leadRepository, userRepository, resolveSlaBreachUseCase,
+                startSlaTrackingUseCase, notificationRepository, leadAccessPolicy,
+                activityLogPublisher, objectMapper,
+                new LeadContactPolicy(leadRepository, new CustomerDuplicatePolicy(customerRepository)));
         when(leadRepository.save(any(LeadEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         when(leadRepository.findFirstByEmailIgnoreCaseOrderByCreatedAtDesc(anyString()))
                 .thenReturn(Optional.empty());
         when(leadRepository.findFirstByPhoneOrderByCreatedAtDesc(anyString()))
                 .thenReturn(Optional.empty());
+        when(objectMapper.createObjectNode())
+                .thenAnswer(inv -> new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode());
+        when(customerRepository.findFirstByEmail(anyString())).thenReturn(Optional.empty());
+        when(customerRepository.findFirstByPhone(anyString())).thenReturn(Optional.empty());
     }
 
     /** A lead that satisfies BR-05, so a test can change one thing at a time. */
@@ -201,8 +233,11 @@ class UpdateLeadUseCaseTest {
     @DisplayName("all missing qualifying fields are reported together, not one save at a time")
     void reportsEveryMissingFieldAtOnce() {
         LeadEntity lead = readyLead(LeadStatus.NEW);
-        lead.setEmail(null);
-        lead.setPhone(null);
+        // Contact details are no longer among these: LeadContactPolicy requires them on
+        // every
+        // write, so a lead cannot reach this check without one. What is left is what
+        // genuinely
+        // only becomes necessary once follow-up starts.
         lead.setSource(null);
         lead.setInterestedService(null);
 
@@ -210,14 +245,16 @@ class UpdateLeadUseCaseTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getDetails())
                 .satisfies(details -> assertThat((String) details)
-                        .contains("phoneOrEmail").contains("source").contains("interestedService"));
+                        .contains("source").contains("interestedService"));
     }
 
     @Test
-    @DisplayName("BR-05 keeps holding after the transition: contact details cannot be blanked later")
+    @DisplayName("a lead cannot have its last contact detail erased, at any status")
     void refusesClearingContactOnALeadAlreadyInFollowUp() {
-        // The old check ran only when leaving NEW, so an already-CONTACTED lead could have its
-        // only email erased and stay in active follow-up with no way to reach it.
+        // Previously this was only caught for a lead in active follow-up, and only
+        // because BR-05
+        // happened to list the field. It now holds everywhere, including for a NEW
+        // lead.
         LeadEntity lead = readyLead(LeadStatus.CONTACTED);
         lead.setPhone(null);
 
@@ -226,8 +263,41 @@ class UpdateLeadUseCaseTest {
 
         assertThatThrownBy(() -> useCase.execute(leadId, req))
                 .isInstanceOf(BusinessException.class)
-                .extracting(e -> ((BusinessException) e).getErrorCode())
-                .isEqualTo("LEAD_NOT_READY_FOR_FOLLOW_UP");
+                .extracting("errorCode", "details")
+                .containsExactly("LEAD_NOT_REACHABLE", "phoneOrEmail");
+    }
+
+    @Test
+    @DisplayName("a NEW lead cannot have its last contact detail erased either")
+    void refusesClearingContactOnANewLead() {
+        LeadEntity lead = readyLead(LeadStatus.NEW);
+        lead.setEmail(null);
+
+        UpdateLeadRequest req = new UpdateLeadRequest();
+        req.setPhone("");
+
+        assertThatThrownBy(() -> useCase.execute(leadId, req))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo("LEAD_NOT_REACHABLE");
+    }
+
+    @Test
+    @DisplayName("an edit that collides with an existing CUSTOMER is refused, not just one with a lead")
+    void refusesEmailBelongingToACustomer() {
+        readyLead(LeadStatus.CONTACTED);
+        UUID customerId = UUID.randomUUID();
+        when(customerRepository.findFirstByEmail("guest@hotel.vn")).thenReturn(
+                Optional.of(com.novax.leadora.infrastructure.persistence.entity.CustomerEntity.builder()
+                        .customerId(customerId).build()));
+
+        UpdateLeadRequest req = new UpdateLeadRequest();
+        req.setEmail("guest@hotel.vn");
+
+        assertThatThrownBy(() -> useCase.execute(leadId, req))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode", "details")
+                .containsExactly("DUPLICATE_CUSTOMER_EMAIL", customerId.toString());
     }
 
     @Test

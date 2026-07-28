@@ -124,16 +124,24 @@ export type DealOption = {
   contactName: string;
   email: string;
   phone: string;
+  status: string;
+  expectedClose: string | null;
 };
 
-// Fetch deals for the quotation deal selector
+// Fetch deals for the quotation deal selector — a quotation can only be raised
+// against a deal still open in the pipeline with an expected-close date that
+// hasn't already passed. Closed (WON/LOST) or overdue deals are hidden here so
+// the picker can't be pointed at a deal that no longer makes sense to quote.
 export function useDealsForQuotation() {
   return useQuery({
     queryKey: ["deals-for-quotation"],
     queryFn: async () => {
       const res = await dealService.getList();
       const items = (res.data as unknown as DealOption[]) ?? [];
-      return items;
+      const today = new Date().toISOString().split("T")[0];
+      return items.filter(
+        (d) => d.status === "OPEN" && (!d.expectedClose || d.expectedClose >= today)
+      );
     },
     staleTime: 60_000,
   });

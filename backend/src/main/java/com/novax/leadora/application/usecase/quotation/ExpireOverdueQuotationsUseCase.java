@@ -7,6 +7,11 @@ import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationClosureLogRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,6 +38,8 @@ public class ExpireOverdueQuotationsUseCase {
     private final QuotationRepository quotationRepository;
     private final QuotationClosureLogRepository closureLogRepository;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public Map<String, Object> execute(ExpireOverdueRequest request) {
@@ -62,6 +69,22 @@ public class ExpireOverdueQuotationsUseCase {
                 resolveSlaBreachUseCase.executeByEntity("QUOTATION", q.getQuotationId());
             } catch (Exception e) {
                 log.warn("SLA auto-resolve failed for expired quotation {}: {}", q.getQuotationId(), e.getMessage());
+            }
+
+            try {
+                ObjectNode payload = objectMapper.createObjectNode()
+                        .put("reason", "Validity period exceeded — auto-expired by system")
+                        .put("previousStatus", previousStatus)
+                        .put("newStatus", "EXPIRED");
+                activityLogPublisher.publish(
+                        ActivityLogType.QUOTATION_UPDATED,
+                        EntityType.QUOTATION,
+                        q.getQuotationId(),
+                        "Quotation expired",
+                        payload
+                );
+            } catch (Exception e) {
+                log.warn("Failed to publish quotation expiration activity: {}", e.getMessage());
             }
 
             return q.getQuotationId().toString();

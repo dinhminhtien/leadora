@@ -11,7 +11,11 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus
 import com.novax.leadora.infrastructure.persistence.repository.*;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
-import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -40,15 +44,18 @@ public class CreateBookingRequestUseCase {
     private final ProductServiceRepository productServiceRepository;
     private final DealRepository dealRepository;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
-    private final DealWorkflowSyncService dealWorkflowSyncService;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public BookingResponse execute(CreateBookingRequest request) {
         if (request.getCheckInDate() == null || request.getCheckOutDate() == null) {
-            throw new BusinessException("INVALID_DATES", "Check-in and check-out dates are required", HttpStatus.BAD_REQUEST);
+            throw new BusinessException("INVALID_DATES", "Check-in and check-out dates are required",
+                    HttpStatus.BAD_REQUEST);
         }
         if (!request.getCheckInDate().isBefore(request.getCheckOutDate())) {
-            throw new BusinessException("INVALID_DATES", "Check-in date must be strictly before check-out date", HttpStatus.BAD_REQUEST);
+            throw new BusinessException("INVALID_DATES", "Check-in date must be strictly before check-out date",
+                    HttpStatus.BAD_REQUEST);
         }
 
         CustomerEntity customer = customerRepository.findById(request.getCustomerId())
@@ -57,7 +64,8 @@ public class CreateBookingRequestUseCase {
         QuotationEntity quotation = quotationRepository.findById(request.getQuotationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Quotation", request.getQuotationId()));
 
-        // Lock Deal first to prevent race conditions (Lock ordering: Deal -> Quotation/Booking)
+        // Lock Deal first to prevent race conditions (Lock ordering: Deal ->
+        // Quotation/Booking)
         DealEntity deal = quotation.getDeal();
         if (deal != null) {
             final UUID dealId = deal.getDealId();
@@ -72,8 +80,10 @@ public class CreateBookingRequestUseCase {
                     HttpStatus.CONFLICT);
         }
 
-        // Room confirmation is not required here. The booking request is created PENDING for
-        // the Reservation team to answer, so an unconfirmed room is what this record is for
+        // Room confirmation is not required here. The booking request is created
+        // PENDING for
+        // the Reservation team to answer, so an unconfirmed room is what this record is
+        // for
         // rather than a reason to refuse it.
 
         // Update Quotation status to CONVERTED
@@ -135,8 +145,37 @@ public class CreateBookingRequestUseCase {
         savedBooking.setTotalAmount(totalAmount);
         BookingEntity finalSavedBooking = bookingRepository.save(savedBooking);
 
-        if (deal != null) {
-            dealWorkflowSyncService.syncPipelineStage(deal.getDealId());
+        // Publish Activity Log for Quotation conversion
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("previousStatus", QuotationStatus.ACCEPTED.name())
+                    .put("newStatus", QuotationStatus.CONVERTED.name());
+            activityLogPublisher.publish(
+                    ActivityLogType.QUOTATION_UPDATED,
+                    EntityType.QUOTATION,
+                    quotation.getQuotationId(),
+                    "Quotation converted to booking",
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish quotation conversion activity: {}", e.getMessage());
+        }
+
+        // Publish Activity Log for Booking creation
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("bookingCode", finalSavedBooking.getBookingCode())
+                    .put("totalAmount", totalAmount.toString())
+                    .put("status", finalSavedBooking.getStatus().name());
+            activityLogPublisher.publish(
+                    ActivityLogType.BOOKING_CREATED,
+                    EntityType.BOOKING,
+                    finalSavedBooking.getBookingId(),
+                    "Booking request created",
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish booking request creation activity: {}", e.getMessage());
         }
 
         // UC-17.2: start SLA tracking — non-fatal if no BOOKING_CONFIRM rule configured

@@ -14,6 +14,11 @@ import com.novax.leadora.infrastructure.persistence.repository.NotificationRepos
 import com.novax.leadora.infrastructure.persistence.repository.QuotationApprovalHistoryRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,6 +38,8 @@ public class ProcessQuotationApprovalUseCase {
     private final CurrentUserProvider currentUserProvider;
     private final SystemAuditLogService systemAuditLogService;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, ProcessApprovalRequest request) {
@@ -101,6 +108,33 @@ public class ProcessQuotationApprovalUseCase {
 
         systemAuditLogService.log("QUOTATION", "QUOTATION", quotationId, historyAction, manager,
                 previousStatus.name(), newStatus.name(), request.getNotes());
+
+        try {
+            ActivityLogType logType;
+            if (newStatus == QuotationStatus.APPROVED) {
+                logType = ActivityLogType.QUOTATION_APPROVED;
+            } else if (newStatus == QuotationStatus.REJECTED) {
+                logType = ActivityLogType.QUOTATION_REJECTED;
+            } else {
+                logType = ActivityLogType.QUOTATION_UPDATED;
+            }
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("action", historyAction)
+                    .put("previousStatus", previousStatus.name())
+                    .put("newStatus", newStatus.name());
+            if (request.getNotes() != null) {
+                payload.put("notes", request.getNotes());
+            }
+            activityLogPublisher.publish(
+                    logType,
+                    EntityType.QUOTATION,
+                    saved.getQuotationId(),
+                    "Quotation " + historyAction.toLowerCase().replace("_", " "),
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish quotation approval/rejection activity: {}", e.getMessage());
+        }
 
         // BR-37: Notify the Sales Staff who created the quotation of the manager decision
         UserEntity creator = quotation.getCreatedBy();

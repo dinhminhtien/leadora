@@ -21,6 +21,9 @@ public class FeedbackResponse {
     private String bookingCode;
     private String salesStaffName;
     private Short rating;
+    private Short ratingAttitude;
+    private Short ratingSpeed;
+    private Short ratingAccuracy;
     private String comment;
     private ReviewStatus reviewStatus;
     private OffsetDateTime submittedAt;

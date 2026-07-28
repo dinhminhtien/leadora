@@ -415,7 +415,7 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
               <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <FieldLabel required>Price Per Night / Unit (VND)</FieldLabel>
-                  <Input {...register("pricePerNight")} type="number" min={0} step={0.01} placeholder="0.00" error={errors.pricePerNight?.message} />
+                  <Input {...register("pricePerNight")} type="text" inputMode="numeric" numericOnly placeholder="0" error={errors.pricePerNight?.message} />
                 </div>
                 <div>
                   <FieldLabel>Discount (%)</FieldLabel>

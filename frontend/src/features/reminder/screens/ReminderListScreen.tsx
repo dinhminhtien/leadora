@@ -4,7 +4,7 @@ import React, { useState, useMemo } from "react";
 import {
   Bell, Clock, AlertTriangle, Plus, Filter,
   FileSpreadsheet, Calendar, LayoutList, ChevronLeft, ChevronRight,
-  Users, Building2, CreditCard,
+  Users, Building2, CreditCard, ChevronUp, ChevronDown, ArrowUpDown,
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -36,6 +36,8 @@ const ENTITY_ICON: Record<string, React.ReactNode> = {
 };
 
 const PRIORITY_ORDER: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+// "Active" = still needs attention (pending or overdue); "Done" = past, no more action needed.
+const DONE_REMINDER_STATUSES: ReminderStatus[] = ["DONE", "CANCELLED"];
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTHS   = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const PAD      = (n: number) => String(n).padStart(2, "0");
@@ -69,11 +71,13 @@ function matchesDateFilter(r: Reminder, dateFilter: string, calDay: string | nul
   return true;
 }
 
-function applySort(list: Reminder[], sortBy: string): Reminder[] {
+function applySort(list: Reminder[], sortField: "due" | "priority", sortDir: "asc" | "desc"): Reminder[] {
+  const dirMul = sortDir === "asc" ? 1 : -1;
   return [...list].sort((a, b) => {
-    if (sortBy === "date-desc") return new Date(b.remindAt).getTime() - new Date(a.remindAt).getTime();
-    if (sortBy === "priority")  return (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1);
-    return new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime();
+    if (sortField === "priority") {
+      return ((PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1)) * dirMul;
+    }
+    return (new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime()) * dirMul;
   });
 }
 
@@ -212,11 +216,26 @@ export function ReminderListScreen() {
   const { data: usersRes } = useUsers();
   const teamUsers = usersRes?.data ?? [];
 
+  // Tabs — Active (still needs attention) vs Completed (past, no action needed)
+  const [listTab, setListTab] = useState<"active" | "done">("active");
+
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [dateFilter, setDateFilter]     = useState<string>("");
   const [entityFilter, setEntityFilter] = useState<string>("");
-  const [sortBy, setSortBy]             = useState<string>("date-asc");
+
+  // Column sort — Due / Priority, toggled by clicking the table header.
+  const [sortField, setSortField] = useState<"due" | "priority">("due");
+  const [sortDir, setSortDir]     = useState<"asc" | "desc">("asc");
+
+  const handleSort = (field: "due" | "priority") => {
+    if (sortField === field) {
+      setSortDir(prev => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
 
   // View & calendar
   const [viewMode, setViewMode]       = useState<"list" | "calendar">("list");
@@ -225,22 +244,36 @@ export function ReminderListScreen() {
   const [showCreate, setShowCreate] = useState(false);
   const [updateTarget, setUpdateTarget] = useState<Reminder | null>(null);
 
+  const isDoneReminder = (r: Reminder) => DONE_REMINDER_STATUSES.includes(r.status);
+
   // Stats (from full unfiltered data)
   const pendingCount = allReminders.filter(r => r.status === "PENDING" && !isOverdue(r)).length;
   const overdueCount = allReminders.filter(r => isOverdue(r) || r.status === "OVERDUE").length;
-  const doneCount    = allReminders.filter(r => r.status === "DONE").length;
+  const doneCount    = allReminders.filter(r => isDoneReminder(r)).length;
+  const activeCount  = allReminders.filter(r => !isDoneReminder(r)).length;
 
-  // Apply client-side filters + sort
+  const handleTabChange = (tab: "active" | "done") => {
+    setListTab(tab);
+    setStatusFilter("");
+  };
+
+  const goToStatus = (status: string, tab: "active" | "done") => {
+    setListTab(tab);
+    setStatusFilter(status);
+  };
+
+  // Apply tab + client-side filters + sort
   const displayed = useMemo(() => {
-    let list = allReminders.filter(r => {
+    let list = allReminders.filter(r => (listTab === "done" ? isDoneReminder(r) : !isDoneReminder(r)));
+    list = list.filter(r => {
       if (statusFilter === "OVERDUE") return isOverdue(r) || r.status === "OVERDUE";
       if (statusFilter)               return r.status === statusFilter;
       return true;
     });
     if (entityFilter) list = list.filter(r => r.relatedEntity === entityFilter);
     list = list.filter(r => matchesDateFilter(r, dateFilter, calendarDay));
-    return applySort(list, sortBy);
-  }, [allReminders, statusFilter, entityFilter, dateFilter, calendarDay, sortBy]);
+    return applySort(list, sortField, sortDir);
+  }, [allReminders, listTab, statusFilter, entityFilter, dateFilter, calendarDay, sortField, sortDir]);
 
   const hasFilters = !!(statusFilter || dateFilter || entityFilter || calendarDay || filterUserId);
 
@@ -306,9 +339,9 @@ export function ReminderListScreen() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: "Pending",  count: pendingCount, color: "text-amber-600",   bg: "bg-amber-50 border-amber-100",     onClick: () => setStatusFilter("PENDING") },
-          { label: "Overdue",  count: overdueCount, color: "text-red-600",     bg: "bg-red-50 border-red-100",         onClick: () => setStatusFilter("OVERDUE") },
-          { label: "Done",     count: doneCount,    color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-100", onClick: () => setStatusFilter("DONE") },
+          { label: "Pending",  count: pendingCount, color: "text-amber-600",   bg: "bg-amber-50 border-amber-100",     onClick: () => goToStatus("PENDING", "active") },
+          { label: "Overdue",  count: overdueCount, color: "text-red-600",     bg: "bg-red-50 border-red-100",         onClick: () => goToStatus("OVERDUE", "active") },
+          { label: "Done",     count: doneCount,    color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-100", onClick: () => goToStatus("DONE", "done") },
         ].map(({ label, count, color, bg, onClick }) => (
           <button
             key={label}
@@ -321,6 +354,42 @@ export function ReminderListScreen() {
         ))}
       </div>
 
+      {/* Active / Completed tabs */}
+      <div className="flex items-center gap-1 border-b border-slate-200">
+        <button
+          type="button"
+          onClick={() => handleTabChange("active")}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
+            listTab === "active"
+              ? "border-primary text-blue-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Active
+          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+            listTab === "active" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"
+          }`}>
+            {activeCount}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleTabChange("done")}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
+            listTab === "done"
+              ? "border-slate-600 text-slate-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Completed
+          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+            listTab === "done" ? "bg-slate-200 text-slate-600" : "bg-slate-100 text-slate-400"
+          }`}>
+            {doneCount}
+          </span>
+        </button>
+      </div>
+
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2">
         <Filter className="size-3.5 text-slate-400 shrink-0" />
@@ -328,9 +397,17 @@ export function ReminderListScreen() {
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
           className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-400 transition">
           <option value="">All statuses</option>
-          <option value="PENDING">Pending</option>
-          <option value="OVERDUE">Overdue</option>
-          <option value="DONE">Done</option>
+          {listTab === "active" ? (
+            <>
+              <option value="PENDING">Pending</option>
+              <option value="OVERDUE">Overdue</option>
+            </>
+          ) : (
+            <>
+              <option value="DONE">Done</option>
+              <option value="CANCELLED">Cancelled</option>
+            </>
+          )}
         </select>
 
         <select value={dateFilter} onChange={e => { setDateFilter(e.target.value); setCalendarDay(null); }}
@@ -348,13 +425,6 @@ export function ReminderListScreen() {
           <option value="LEAD">Lead</option>
           <option value="BOOKING">Booking</option>
           <option value="DEPOSIT">Deposit</option>
-        </select>
-
-        <select value={sortBy} onChange={e => setSortBy(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-400 transition">
-          <option value="date-asc">Due: Soonest first</option>
-          <option value="date-desc">Due: Latest first</option>
-          <option value="priority">Priority: High first</option>
         </select>
 
         {/* Manager-only: filter by team member */}
@@ -404,8 +474,26 @@ export function ReminderListScreen() {
                 <TableRow hoverable={false}>
                   <TableHead className="font-semibold text-xs text-slate-500 w-6" />
                   <TableHead className="font-semibold text-xs text-slate-500">Title</TableHead>
-                  <TableHead className="font-semibold text-xs text-slate-500">Due</TableHead>
-                  <TableHead className="font-semibold text-xs text-slate-500">Priority</TableHead>
+                  <TableHead className="font-semibold text-xs text-slate-500">
+                    <button type="button" onClick={() => handleSort("due")} className="flex items-center gap-0.5 hover:text-slate-700">
+                      Due
+                      {sortField === "due" ? (
+                        sortDir === "asc" ? <ChevronUp className="size-3.5 text-blue-500" /> : <ChevronDown className="size-3.5 text-blue-500" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-slate-300" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-semibold text-xs text-slate-500">
+                    <button type="button" onClick={() => handleSort("priority")} className="flex items-center gap-0.5 hover:text-slate-700">
+                      Priority
+                      {sortField === "priority" ? (
+                        sortDir === "asc" ? <ChevronUp className="size-3.5 text-blue-500" /> : <ChevronDown className="size-3.5 text-blue-500" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-slate-300" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="font-semibold text-xs text-slate-500">Status</TableHead>
                   <TableHead className="font-semibold text-xs text-slate-500">Linked To</TableHead>
                   <TableHead className="font-semibold text-xs text-slate-500">Assigned</TableHead>
@@ -444,7 +532,7 @@ export function ReminderListScreen() {
                         className={`border-b border-slate-100 transition cursor-pointer ${
                           highlightedId === r.reminderId ? "bg-amber-50 ring-2 ring-inset ring-amber-400" :
                           overdue          ? "bg-red-50/30 hover:bg-red-50/50" :
-                          r.status === "DONE" ? "opacity-55 bg-slate-50/40" :
+                          isDoneReminder(r) ? "opacity-55 bg-slate-50/40" :
                           "hover:bg-slate-50/60"
                         }`}
                       >

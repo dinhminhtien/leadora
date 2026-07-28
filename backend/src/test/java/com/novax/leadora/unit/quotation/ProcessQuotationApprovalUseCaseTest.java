@@ -4,6 +4,8 @@ import com.novax.leadora.api.dto.request.ProcessApprovalRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.application.usecase.quotation.ProcessQuotationApprovalUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
@@ -11,7 +13,6 @@ import com.novax.leadora.infrastructure.persistence.repository.QuotationApproval
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
-import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
@@ -48,6 +50,12 @@ class ProcessQuotationApprovalUseCaseTest {
 
     @Mock
     private StartSlaTrackingUseCase startSlaTrackingUseCase;
+
+    @Mock
+    private ActivityLogPublisher activityLogPublisher;
+
+    @Spy
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
     @InjectMocks
     private ProcessQuotationApprovalUseCase approvalUseCase;

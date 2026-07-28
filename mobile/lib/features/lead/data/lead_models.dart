@@ -286,45 +286,47 @@ class CreateLeadPayload {
 }
 
 /// Payload for UC-8.5 Convert Lead to Customer — POST /leads/{id}/convert.
-/// Customer details are inherited from the lead; [reason] carries a Sales
-/// Manager's approval when converting a lead that is not yet QUALIFIED (BR-07).
+///
+/// The identity fields (name, email, phone, company, address) used to be sent here and are not
+/// any more: the server builds the customer from the lead itself, so sending them was at best
+/// redundant and at worst a way to create a customer that did not match the lead it came from.
+/// [reason] carries a Sales Manager's approval when converting a lead that is not yet
+/// QUALIFIED (BR-07).
 class ConvertLeadPayload {
-  const ConvertLeadPayload({
-    required this.customerType,
-    required this.fullName,
-    this.email,
-    this.phone,
-    this.companyName,
-    this.taxCode,
-    this.address,
-    this.reason,
-  });
+  const ConvertLeadPayload({this.customerType, this.taxCode, this.reason});
 
   /// 'INDIVIDUAL' or 'CORPORATE' — mirrors the backend `CustomerType` enum.
-  final String customerType;
-  final String fullName;
-  final String? email;
-  final String? phone;
-  final String? companyName;
+  /// Omit to inherit the lead's `isCorporate` flag.
+  final String? customerType;
+
+  /// The one customer field with no counterpart on the lead.
   final String? taxCode;
-  final String? address;
   final String? reason;
 
   Map<String, dynamic> toJson() {
-    final map = <String, dynamic>{
-      'customerType': customerType,
-      'fullName': fullName,
-    };
+    final map = <String, dynamic>{};
     void put(String k, String? v) {
       if (v != null && v.trim().isNotEmpty) map[k] = v.trim();
     }
 
-    put('email', email);
-    put('phone', phone);
-    put('companyName', companyName);
+    put('customerType', customerType);
     put('taxCode', taxCode);
-    put('address', address);
     put('reason', reason);
+    return map;
+  }
+}
+
+/// Payload for UC-8.5 exception E6 — POST /leads/{id}/link-customer.
+/// Attaches the lead to a customer profile that already exists instead of creating a second one.
+class LinkLeadToCustomerPayload {
+  const LinkLeadToCustomerPayload({required this.customerId, this.reason});
+
+  final String customerId;
+  final String? reason;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{'customerId': customerId};
+    if (reason != null && reason!.trim().isNotEmpty) map['reason'] = reason!.trim();
     return map;
   }
 }

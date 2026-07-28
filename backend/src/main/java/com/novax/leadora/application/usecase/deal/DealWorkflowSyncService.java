@@ -4,6 +4,11 @@ import com.novax.leadora.api.dto.request.DealRequest;
 import com.novax.leadora.infrastructure.persistence.entity.*;
 import com.novax.leadora.infrastructure.persistence.entity.enums.*;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,6 +26,8 @@ public class DealWorkflowSyncService {
     private final DealRepository dealRepository;
     private final DealWorkflowResolver dealWorkflowResolver;
     private final DealValidation dealValidation;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public void syncPipelineStage(UUID dealId) {
@@ -130,6 +137,21 @@ public class DealWorkflowSyncService {
 
         // 4. Update and save
         deal.setPipelineStage(targetStage);
-        dealRepository.save(deal);
+        DealEntity savedDeal = dealRepository.save(deal);
+
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("previousStage", currentStage.name())
+                    .put("newStage", targetStage.name());
+            activityLogPublisher.publish(
+                    ActivityLogType.DEAL_STAGE_UPDATED,
+                    EntityType.DEAL,
+                    savedDeal.getDealId(),
+                    "Deal pipeline stage auto-promoted from " + currentStage + " to " + targetStage,
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish auto-promoted deal stage activity: {}", e.getMessage());
+        }
     }
 }

@@ -15,10 +15,23 @@ public class DealRequest {
 
     private UUID customerId;
 
+    /**
+     * Maps to {@code deals.deal_name}, which is {@code VARCHAR(50)} — not 255.
+     *
+     * <p>The looser limit here was the same class of bug as the lead DTOs before
+     * {@code LeadFieldLimits}: everything between 51 and 255 characters passed validation and then
+     * failed at the database, surfacing as an unexplained 500 rather than a message naming the
+     * field. The project runs {@code ddl-auto: validate} with no migration framework, so the column
+     * is the fixed side of this contract.
+     */
     @NotBlank(message = "Deal name is required")
-    @Size(max = 255)
+    @Size(max = 50, message = "Deal title must be at most 50 characters")
     private String title;
 
+    /**
+     * Form-only: there is no contact column on {@code deals} — the contact details are read from
+     * the linked customer. Kept because the create form collects and displays them.
+     */
     @NotBlank(message = "Contact name is required")
     @Size(max = 255)
     private String contactName;
@@ -27,8 +40,15 @@ public class DealRequest {
     @Size(max = 255)
     private String email;
 
+    /**
+     * Same rule as the lead DTOs, shared rather than re-typed — and crucially the shared pattern
+     * has an empty branch. This copy did not: it demanded a 10-digit number of a field that is
+     * optional, so creating a deal for a customer with no phone on file was refused with a
+     * validation error about a field the user never filled in. That is the exact path the
+     * post-conversion "Create Deal" panel takes, since it forwards whatever the lead had.
+     */
     @Pattern(
-            regexp = "^(0[35789])\\d{8}$",
+            regexp = LeadFieldLimits.PHONE_PATTERN,
             message = "Phone number must be a valid Vietnamese 10-digit number (e.g. 0912345678)"
     )
     private String phone;
