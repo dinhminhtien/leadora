@@ -37,7 +37,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/quotations")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+@PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_VIEW')")
 public class QuotationController {
 
     private final CreateQuotationUseCase createQuotationUseCase;
@@ -55,6 +55,7 @@ public class QuotationController {
 
     /** UC-14.1 — Create Room Quotation */
     @PostMapping
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> createQuotation(
             @Valid @RequestBody CreateQuotationRequest request) {
         QuotationResponse response = createQuotationUseCase.execute(request);
@@ -78,7 +79,7 @@ public class QuotationController {
 
     /** UC-14.3 — Get quotations pending manager approval. Manager only. */
     @GetMapping("/pending-approvals")
-    @PreAuthorize("hasRole('MANAGER')")
+    @PreAuthorize("hasRole('MANAGER') and @access.can('QUOTATION_APPROVE')")
     public ResponseEntity<ApiResponse<List<QuotationResponse>>> getPendingApprovals() {
         List<QuotationResponse> pending = getPendingApprovalsUseCase.execute();
         return ResponseEntity.ok(ApiResponse.success(pending));
@@ -86,6 +87,7 @@ public class QuotationController {
 
     /** UC-14.1 — Submit a DRAFT quotation: discount ≤10% → APPROVED, >10% → PENDING_APPROVAL */
     @PostMapping("/{id}/submit")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> submitQuotation(
             @PathVariable UUID id,
             @RequestBody(required = false) SubmitQuotationRequest request) {
@@ -96,7 +98,7 @@ public class QuotationController {
 
     /** UC-14.3 — Process approval decision (approve / reject / request changes). Manager only. */
     @PostMapping("/{id}/process-approval")
-    @PreAuthorize("hasRole('MANAGER')")
+    @PreAuthorize("hasRole('MANAGER') and @access.can('QUOTATION_APPROVE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> processApproval(
             @PathVariable UUID id,
             @Valid @RequestBody ProcessApprovalRequest request) {
@@ -106,6 +108,7 @@ public class QuotationController {
 
     /** UC-14.5 — Create a new version of an existing quotation */
     @PostMapping("/{id}/revise")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> reviseQuotation(
             @PathVariable UUID id,
             @Valid @RequestBody ReviseQuotationRequest request) {
@@ -116,6 +119,7 @@ public class QuotationController {
 
     /** UC-14.4 — Send approved quotation to customer */
     @PostMapping("/{id}/send")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> sendQuotation(
             @PathVariable UUID id,
             @Valid @RequestBody SendQuotationRequest request) {
@@ -125,6 +129,7 @@ public class QuotationController {
 
     /** UC-14.7 — Convert accepted quotation to confirmed booking */
     @PostMapping("/{id}/convert")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<BookingResponse>> convertToBooking(
             @PathVariable UUID id,
             @Valid @RequestBody ConvertToBookingRequest request) {
@@ -135,6 +140,7 @@ public class QuotationController {
 
     /** UC-14.8 — Manually close a quotation */
     @PostMapping("/{id}/close")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> closeQuotation(
             @PathVariable UUID id,
             @Valid @RequestBody CloseQuotationRequest request) {
@@ -144,6 +150,7 @@ public class QuotationController {
 
     /** UC-14.8 — Batch expire all overdue quotations (validUntil < today) */
     @PostMapping("/expire-overdue")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<Object>> expireOverdue(
             @RequestBody(required = false) ExpireOverdueRequest request) {
         ExpireOverdueRequest req = request != null ? request : new ExpireOverdueRequest();
@@ -153,6 +160,7 @@ public class QuotationController {
 
     /** UC-14.6 — Track customer response (Accept / Reject / Interested / Need Revision) */
     @PostMapping("/{id}/track-response")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> trackCustomerResponse(
             @PathVariable UUID id,
             @Valid @RequestBody TrackCustomerResponseRequest request) {

@@ -7,6 +7,7 @@ export const PROTECTED_ROUTES = [
   ROUTE_PATHS.leads,
   ROUTE_PATHS.customerProfiles,
   ROUTE_PATHS.followUpTasks,
+  ROUTE_PATHS.calendar,
   ROUTE_PATHS.salesPipeline,
   ROUTE_PATHS.deals,
   ROUTE_PATHS.interactionTimeline,

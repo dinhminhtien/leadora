@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Search, User, CheckCircle2, XCircle, Info, Calendar, Banknote, ArrowRight, Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import { Search, User, XCircle, Info, Calendar, ArrowRight, Loader2, AlertCircle, RefreshCw, LogIn, LogOut } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { StatusPill } from "@/components/ui/status-pill";
 import { reservationStatusService, type ReservationStatus } from "@/services/reservation_status_service";
+import { ReservationDetailDrawer } from "@/features/reservation_status/components/ReservationDetailDrawer";
 import { toast } from "@/stores/toast_store";
 
 export function ReservationStatusScreen() {
@@ -291,23 +293,13 @@ export function ReservationStatusScreen() {
                     </TableCell>
                     <TableCell className="py-3! px-4! text-center! whitespace-nowrap">
                       <div className="flex justify-center">
-                        <Badge
-                          variant={
-                            res.status === "CHECKED_IN"
-                              ? "success"
-                              : res.status === "CONFIRMED"
-                              ? "primary"
-                              : res.status === "CHECKED_OUT"
-                              ? "default"
-                              : res.status === "CANCELLED"
-                              ? "danger"
-                              : "default"
-                          }
-                          size="sm"
-                          className="font-bold text-[9px] uppercase min-w-22.5 justify-center text-center py-1"
-                        >
-                          {res.status}
-                        </Badge>
+                        {/*
+                          Canonical booking binding (Blueprint §2.7). The
+                          hand-rolled ternary this replaces also silently fell
+                          through to `default` for REJECTED and NO_SHOW, so two
+                          failure states rendered as neutral grey.
+                        */}
+                        <StatusPill size="sm" domain="booking" value={res.status} />
                       </div>
                     </TableCell>
                     <TableCell className="py-3! px-4! text-center! whitespace-nowrap">
@@ -407,182 +399,54 @@ export function ReservationStatusScreen() {
         )}
       </div>
 
-      {/* Detail Modal */}
-      {showDetailModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto transition-all">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center px-6 py-4 bg-slate-50 border-b border-slate-100">
-              <h2 className="font-bold text-slate-800 flex items-center gap-2">
-                <Info className="size-4 text-blue-500" />
-                Reservation Details
-              </h2>
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg transition"
-              >
-                &times;
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {detailLoading ? (
-                <div className="flex flex-col items-center justify-center py-12 gap-2">
-                  <Loader2 className="size-8 text-blue-500 animate-spin" />
-                  <span className="text-slate-500 text-xs">Loading detail data...</span>
-                </div>
-              ) : detailData ? (
-                <div className="space-y-6 text-xs text-slate-700">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="text-slate-400 mb-1">Reservation Code</div>
-                      <div className="font-bold text-slate-800 text-sm">{detailData.reservationNo}</div>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="text-slate-400 mb-1">Guest Name</div>
-                      <div className="font-bold text-slate-800 text-sm">{detailData.guestName}</div>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="text-slate-400 mb-1">Check-in / Check-out Dates</div>
-                      <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                        <Calendar className="size-3 text-slate-400" />
-                        {detailData.checkInDate} <ArrowRight className="size-3 text-slate-400" /> {detailData.checkOutDate}
-                      </div>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="text-slate-400 mb-1">Total Amount</div>
-                      <div className="font-bold text-blue-600 text-sm flex items-center">
-                        <Banknote className="size-3 text-blue-500 mr-1" />
-                        {detailData.totalAmount?.toLocaleString("vi-VN")} ₫
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="font-bold text-slate-800 text-sm">Status Information</div>
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant={
-                          detailData.status === "CHECKED_IN"
-                            ? "success"
-                            : detailData.status === "CONFIRMED"
-                            ? "primary"
-                            : detailData.status === "CHECKED_OUT"
-                            ? "default"
-                            : detailData.status === "CANCELLED"
-                            ? "danger"
-                            : "default"
-                        }
-                        size="sm"
-                        className="font-bold uppercase text-[9px] min-w-22.5 justify-center text-center py-1"
-                      >
-                        {detailData.status}
-                      </Badge>
-                      {detailData.statusReason && (
-                        <span className="text-red-500 font-semibold italic">Rejection/Status Reason: {detailData.statusReason}</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {detailData.specialRequests && (
-                    <div className="space-y-1.5 p-3.5 bg-yellow-50/60 rounded-xl border border-yellow-100/60">
-                      <div className="font-bold text-yellow-800">Special Requests & Notes</div>
-                      <div className="text-slate-600 whitespace-pre-wrap">{detailData.specialRequests}</div>
-                    </div>
-                  )}
-
-                  {/* Room Allocation Items */}
-                  <div className="space-y-2">
-                    <div className="font-bold text-slate-800 text-sm">Room Types & Allocations</div>
-                    <div className="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-100">
-                            <th className="p-3 text-[10px] uppercase">Room Type</th>
-                            <th className="p-3 text-[10px] uppercase">Room No</th>
-                            <th className="p-3 text-[10px] uppercase">Qty</th>
-                            <th className="p-3 text-[10px] uppercase">Nights</th>
-                            <th className="p-3 text-[10px] uppercase">Price/Night</th>
-                            <th className="p-3 text-[10px] uppercase">Alloc. Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {detailData.details && detailData.details.length > 0 ? (
-                            detailData.details.map((det) => (
-                              <tr key={det.bookingDetailId} className="border-b border-slate-50 hover:bg-slate-50/50">
-                                <td className="p-3 font-semibold text-slate-800">{det.productName}</td>
-                                <td className="p-3 font-mono text-slate-600">{det.roomNumber || "Unassigned"}</td>
-                                <td className="p-3 text-slate-500">{det.quantity}</td>
-                                <td className="p-3 text-slate-500">{det.nights}</td>
-                                <td className="p-3 text-slate-600">{det.unitPrice?.toLocaleString("vi-VN")} ₫</td>
-                                <td className="p-3">
-                                  <Badge
-                                    variant={
-                                      det.inventoryStatus === "CHECKED_IN"
-                                        ? "success"
-                                        : det.inventoryStatus === "ALLOCATED"
-                                        ? "primary"
-                                        : det.inventoryStatus === "RELEASED"
-                                        ? "danger"
-                                        : "default"
-                                    }
-                                    size="sm"
-                                    className="font-bold text-[8px] uppercase min-w-22.5 justify-center text-center py-0.5"
-                                  >
-                                    {det.inventoryStatus}
-                                  </Badge>
-                                </td>
-                              </tr>
-                            ))
-                          ) : (
-                            <tr>
-                              <td colSpan={6} className="p-4 text-center text-slate-400">
-                                No details found for this reservation.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-12 text-slate-400">No data available.</div>
-              )}
-            </div>
-            
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-              {detailData && detailData.status === "CONFIRMED" && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleStatusChange({ id: detailData.id, newStatus: "CHECKED_IN", reason: "Guest Checked In" })}
-                  className="bg-primary hover:bg-primary/90 text-white font-bold"
-                >
-                  Check In Guest
-                </Button>
-              )}
-              {detailData && detailData.status === "CHECKED_IN" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleStatusChange({ id: detailData.id, newStatus: "CHECKED_OUT", reason: "Guest Checked Out" })}
-                  className="border-slate-200 text-emerald-600 hover:bg-emerald-50 font-bold"
-                >
-                  Check Out Guest
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowDetailModal(false)}
-                className="border-slate-200 text-slate-600 hover:bg-slate-50 font-bold"
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ReservationDetailDrawer
+        reservation={showDetailModal ? detailData : null}
+        onOpenChange={(open) => !open && setShowDetailModal(false)}
+        actions={
+          detailData
+            ? [
+                // Check-in and check-out are sequential — the server accepts
+                // each from exactly one prior status (§12.13).
+                ...(detailData.status === "CONFIRMED"
+                  ? [
+                      {
+                        label: "Check in guest",
+                        icon: LogIn,
+                        variant: "primary" as const,
+                        onClick: () =>
+                          handleStatusChange({
+                            id: detailData.id,
+                            newStatus: "CHECKED_IN",
+                            reason: "Guest Checked In",
+                          }),
+                      },
+                    ]
+                  : []),
+                ...(detailData.status === "CHECKED_IN"
+                  ? [
+                      {
+                        label: "Check out guest",
+                        icon: LogOut,
+                        variant: "outline" as const,
+                        onClick: () =>
+                          handleStatusChange({
+                            id: detailData.id,
+                            newStatus: "CHECKED_OUT",
+                            reason: "Guest Checked Out",
+                          }),
+                      },
+                    ]
+                  : []),
+              ]
+            : []
+        }
+      >
+        {detailLoading && (
+          <p className="flex items-center gap-2 text-[12px] text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> Loading reservation…
+          </p>
+        )}
+      </ReservationDetailDrawer>
 
       {/* Cancel Request Modal */}
       {showCancelModal && (

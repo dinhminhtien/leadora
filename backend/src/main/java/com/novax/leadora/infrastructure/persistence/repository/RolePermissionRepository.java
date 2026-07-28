@@ -25,7 +25,15 @@ public interface RolePermissionRepository extends JpaRepository<RolePermissionEn
 
     long countByRole_RoleId(Integer roleId);
 
-    /** Effective permission codes granted to a role — drives frontend gating. */
+    /**
+     * Effective permission codes granted to a role — drives frontend gating AND the backend
+     * {@code hasAuthority(...)} checks, so it is resolved on every authenticated request.
+     *
+     * <p>Deliberately NOT cached. It is a single indexed join returning a handful of rows, and
+     * caching it would put UC-6.4 POST-2 ("changes are applied immediately to associated users")
+     * at the mercy of eviction-vs-commit ordering: a revoked permission could keep working until
+     * the entry expired. Reading it fresh makes "immediately" true by construction.
+     */
     @Query("SELECT rp.permission.permissionCode FROM RolePermissionEntity rp WHERE rp.role.roleId = :roleId")
     List<String> findPermissionCodesByRoleId(@Param("roleId") Integer roleId);
 

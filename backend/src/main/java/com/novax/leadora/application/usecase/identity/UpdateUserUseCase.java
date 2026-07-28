@@ -2,7 +2,9 @@ package com.novax.leadora.application.usecase.identity;
 
 import com.novax.leadora.api.dto.request.UpdateUserRequest;
 import com.novax.leadora.api.dto.response.UserAccountResponse;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.UserStatus;
@@ -31,12 +33,19 @@ public class UpdateUserUseCase {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final SystemAuditLogService systemAuditLogService;
+    private final CurrentUserProvider currentUserProvider;
 
     @Transactional
     @org.springframework.cache.annotation.CacheEvict(value = "user-roles", allEntries = true)
     public UserAccountResponse execute(UUID userId, UpdateUserRequest request) {
         UserEntity user = userRepository.findWithRoleByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+
+        // Snapshot BEFORE any setter runs — the entity is mutated in place below, so an
+        // "old value" read afterwards would already be the new one (BR-37).
+        String oldValue = snapshot(user);
+        boolean passwordChanged = StringUtils.hasText(request.getPassword());
 
         if (StringUtils.hasText(request.getFullName())) {
             user.setFullName(request.getFullName().trim());
@@ -84,7 +93,23 @@ public class UpdateUserUseCase {
         user.setRole(newRole);
         user.setStatus(newStatus);
 
-        return UserAccountResponse.from(userRepository.save(user));
+        UserEntity saved = userRepository.save(user);
+
+        // BR-03 / BR-37 — role, status and profile changes are recorded with old → new values.
+        systemAuditLogService.log("IDENTITY", "USER", saved.getUserId(), "UPDATED",
+                currentUserProvider.resolveQuietly(), oldValue, snapshot(saved),
+                passwordChanged ? "Password was reset by an administrator." : null);
+
+        return UserAccountResponse.from(saved);
+    }
+
+    /** Auditable view of an account — deliberately excludes the password hash. */
+    private String snapshot(UserEntity user) {
+        return "fullName=" + user.getFullName()
+                + ", email=" + user.getEmail()
+                + ", phone=" + user.getPhone()
+                + ", role=" + (user.getRole() != null ? user.getRole().getRoleName() : null)
+                + ", status=" + user.getStatus();
     }
 
     /**

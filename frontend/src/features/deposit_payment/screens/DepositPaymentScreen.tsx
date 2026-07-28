@@ -9,18 +9,13 @@ import {
   CreditCard,
   CheckCircle2,
   Search,
-  Landmark,
   Plus,
   X,
   RefreshCw,
   AlertTriangle,
-  Copy,
-  ExternalLink,
   Calendar,
   FileText,
-  Download,
-  Printer,
-  Banknote
+  Printer
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -28,7 +23,9 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { PaymentDetailDrawer } from "@/features/deposit_payment/components/PaymentDetailDrawer";
 import { toast } from "@/stores/toast_store";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
   depositPaymentService,
   type Payment,
@@ -52,6 +49,8 @@ const generatePaymentSchema = z.object({
 type GeneratePaymentFormData = z.infer<typeof generatePaymentSchema>;
 
 export function DepositPaymentScreen() {
+  // Design-system confirmation (§3.16) replacing the native confirm().
+  const { confirm, confirmElement } = useConfirm();
   const searchParams = useSearchParams();
   const initialSearch = searchParams ? searchParams.get("search") || "" : "";
 
@@ -317,9 +316,21 @@ export function DepositPaymentScreen() {
     }
   };
 
-  // Cancel Payment Request (UC-21.5)
+  // Cancel Payment Request (UC-21.5).
+  //
+  // Destructive and irreversible for the customer's link, so it uses the
+  // design-system confirmation (§1.5 / §3.16) with `danger` severity rather
+  // than the native `confirm`, which could not convey either fact.
   const handleCancelRequest = async (paymentId: string) => {
-    if (!confirm("Are you sure you want to cancel this payment request? This will invalidate the QR code and checkout link.")) return;
+    const { ok } = await confirm({
+      title: "Cancel this payment request?",
+      description:
+        "The VietQR code and checkout link stop working immediately. The guest will need a new request to pay.",
+      severity: "danger",
+      confirmLabel: "Cancel request",
+      cancelLabel: "Keep it",
+    });
+    if (!ok) return;
 
     setActionLoading(true);
     try {
@@ -803,280 +814,95 @@ export function DepositPaymentScreen() {
         </div>
       )}
 
-      {/* Modal: View Payment Detail / Audit Control (UC-21.3, UC-21.4, UC-21.5) */}
-      {showDetailModal && selectedPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/60 backdrop-blur-sm transition-opacity">
-          <div className="relative w-full max-w-lg bg-white dark:bg-zinc-900 rounded-xl shadow-2xl border border-slate-100 dark:border-zinc-800 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center bg-slate-50 dark:bg-zinc-800/30 px-6 py-4 border-b border-slate-200 dark:border-zinc-800">
-              <div>
-                <h3 className="font-extrabold text-sm text-slate-800 dark:text-zinc-100">Audit Payment Log Record</h3>
-                <p className="text-[10px] text-slate-400 dark:text-zinc-500">Verifying secure checksum signatures and payment logs references.</p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => handleOpenPrintModal(selectedPayment)}
-                  className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 transition mr-0.5"
-                  title="Export QR Form / Print Receipt"
-                >
-                  <Printer className="size-4" />
-                </button>
-                <button
-                  onClick={() => { setShowDetailModal(false); }}
-                  className="text-slate-400 hover:text-slate-650 dark:hover:text-zinc-300 rounded p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 transition"
-                >
-                  <X className="size-4" />
-                </button>
-              </div>
+      <PaymentDetailDrawer
+        payment={showDetailModal ? selectedPayment : null}
+        onOpenChange={(open) => !open && setShowDetailModal(false)}
+        onDownloadQr={handleDownloadQR}
+        onPrintReceipt={handleOpenPrintModal}
+        onCopyLink={copyToClipboard}
+        actions={
+          selectedPayment
+            ? [
+                {
+                  label: "Print receipt",
+                  icon: Printer,
+                  variant: "outline" as const,
+                  onClick: () => handleOpenPrintModal(selectedPayment),
+                },
+                // A settled or cancelled request accepts neither transition —
+                // the server refuses both, so they are absent (§12.13).
+                ...(selectedPayment.status === "PENDING" && !showConfirmPaidForm
+                  ? [
+                      {
+                        label: "Confirm paid",
+                        icon: CheckCircle2,
+                        variant: "success" as const,
+                        disabled: actionLoading,
+                        // BR-29: PAID needs a verification note, so this opens
+                        // the note form rather than firing the mutation.
+                        onClick: () => setShowConfirmPaidForm(true),
+                      },
+                      {
+                        label: "Cancel request",
+                        icon: X,
+                        variant: "danger" as const,
+                        disabled: actionLoading,
+                        onClick: () => handleCancelRequest(selectedPayment.paymentId),
+                      },
+                    ]
+                  : []),
+              ]
+            : []
+        }
+      >
+        {showConfirmPaidForm && (
+          <div className="space-y-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <p className="flex items-center gap-1.5 text-[12px] font-semibold text-warning">
+              <AlertTriangle className="size-3.5 shrink-0" />
+              Manual payment confirmation
+            </p>
+            <div>
+              <label
+                htmlFor="verification-note"
+                className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+              >
+                Verification note / reference ID
+              </label>
+              <textarea
+                id="verification-note"
+                rows={2}
+                value={verificationNote}
+                onChange={(e) => {
+                  setVerificationNote(e.target.value);
+                  setVerificationNoteError("");
+                }}
+                placeholder="Cashier note, authorisation ID or transfer reference…"
+                aria-invalid={!!verificationNoteError}
+                aria-describedby={verificationNoteError ? "verification-note-error" : undefined}
+                className="w-full rounded-md border border-border bg-input px-3 py-2 text-[12.5px] text-foreground focus-ring"
+              />
+              {verificationNoteError && (
+                <p id="verification-note-error" className="mt-1 text-[11.5px] font-medium text-danger">
+                  {verificationNoteError}
+                </p>
+              )}
             </div>
-
-            <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
-              {/* Payment basic info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Payment ID</span>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-zinc-300 select-all">{selectedPayment.paymentId}</span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Booking Ref / Code</span>
-                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{selectedPayment.bookingCode || "N/A"}</span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Guest Account Name</span>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-zinc-300">{selectedPayment.customerName || "N/A"}</span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Payment Target type</span>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-zinc-300">{selectedPayment.paymentType}</span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Expected Due Date</span>
-                  <span className="text-xs font-semibold text-slate-600 dark:text-zinc-400 flex items-center gap-1">
-                    <Calendar className="size-3.5 text-slate-400 dark:text-zinc-500" />
-                    {selectedPayment.dueDate || "N/A"}
-                  </span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Cleared / Paid At</span>
-                  <span className="text-xs font-semibold text-slate-600 dark:text-zinc-400">
-                    {selectedPayment.paidAt ? new Date(selectedPayment.paidAt).toLocaleString('en-US') : "Pending clearing"}
-                  </span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Method channel</span>
-                  <span className="text-xs font-bold uppercase text-slate-600 dark:text-zinc-300 flex items-center gap-1">
-                    <Landmark className="size-3.5 text-slate-400 dark:text-zinc-500" />
-                    {selectedPayment.paymentMethod || "N/A"}
-                  </span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Gateway status</span>
-                  <span className="block mt-0.5">{getStatusBadge(selectedPayment.status)}</span>
-                </div>
-              </div>
-
-              {/* Amount block */}
-              <div className="bg-slate-50 dark:bg-zinc-800/40 border border-slate-100 dark:border-zinc-800 rounded-lg p-3 flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <Banknote className="size-5 text-slate-400 dark:text-zinc-500 shrink-0" />
-                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-400">Total Requested Amount</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-lg font-black text-slate-900 dark:text-zinc-100 block">
-                    {selectedPayment.amount?.toLocaleString('vi-VN')} ₫
-                  </span>
-                </div>
-              </div>
-
-              {/* Gateway Details */}
-              <div className="border-t border-slate-100 dark:border-zinc-800 pt-4 space-y-3">
-                <h4 className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">Gateway Connection Data</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500 dark:text-zinc-400 font-medium">Gateway Provider:</span>
-                    <span className="font-bold text-slate-700 dark:text-zinc-300">{selectedPayment.gatewayProvider || "SEPAY"}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500 dark:text-zinc-400 font-medium">Transaction reference link ID:</span>
-                    <span className="font-semibold text-slate-700 dark:text-zinc-300 text-right max-w-50 truncate select-all">{selectedPayment.gatewayTransactionId || "N/A"}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* QR and Payment Link for Pending */}
-              {selectedPayment.status === "PENDING" && (
-                <div className="border-t border-slate-100 dark:border-zinc-800 pt-4 flex flex-col items-center gap-4">
-                  {/* VietQR for TRANSFER only */}
-                  {selectedPayment.paymentMethod === "TRANSFER" && selectedPayment.qrCodeUrl && (
-                    <div className="flex flex-col items-center gap-2 bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 shadow-sm w-full max-w-70">
-                      <span className="text-[10px] font-bold text-slate-450 dark:text-zinc-400 uppercase tracking-wider mb-1">Dynamic VietQR</span>
-                      <img
-                        src={selectedPayment.qrCodeUrl}
-                        alt="Napas VietQR Payment"
-                        className="size-52 object-contain rounded-lg border border-white shadow bg-white p-1"
-                      />
-                      <span className="text-[10px] text-slate-400 dark:text-zinc-550">Scan using any Banking App</span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDownloadQR(selectedPayment.qrCodeUrl!, selectedPayment.paymentId)}
-                        className="mt-1 w-full border border-slate-200 dark:border-zinc-700 text-slate-650 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"
-                      >
-                        <span className="flex items-center justify-center gap-1.5 w-full text-[10px] font-bold py-0.5">
-                          <Download className="size-3.5 shrink-0" />
-                          <span>Download QR Image</span>
-                        </span>
-                      </Button>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => handleOpenPrintModal(selectedPayment)}
-                        className="mt-1.5 w-full bg-blue-650 hover:bg-blue-700 text-white"
-                      >
-                        <span className="flex items-center justify-center gap-1.5 w-full text-[10px] font-bold py-0.5">
-                          <FileText className="size-3.5 shrink-0" />
-                          <span>Export QR Form</span>
-                        </span>
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Payment link copy for TRANSFER or CARD */}
-                  {(selectedPayment.paymentMethod === "TRANSFER" || selectedPayment.paymentMethod === "CARD") && selectedPayment.notes && selectedPayment.notes.startsWith("http") && (
-                    <div className="w-full space-y-2">
-                      <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">Payment Link URL</span>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          readOnly
-                          value={selectedPayment.notes}
-                          className="flex-1 bg-slate-50 dark:bg-zinc-805 border border-slate-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-slate-600 dark:text-zinc-300 focus:outline-none select-all truncate"
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyToClipboard(selectedPayment.notes || "")}
-                          className="p-2 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700"
-                        >
-                          <Copy className="size-3.5 text-slate-500 dark:text-zinc-400" />
-                        </Button>
-                        <a
-                          href={selectedPayment.notes}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700 rounded-lg flex items-center justify-center"
-                        >
-                          <ExternalLink className="size-3.5 text-blue-500" />
-                        </a>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* CASH instruction alert */}
-                  {selectedPayment.paymentMethod === "CASH" && (
-                    <div className="w-full bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900 text-amber-800 dark:text-amber-300 rounded-lg p-3 flex gap-2 font-medium">
-                      <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-bold">Cash Payment Instruction</p>
-                        <p className="text-slate-650 dark:text-zinc-400 mt-0.5 text-[11px]">
-                          Please collect the cash amount of <strong>{selectedPayment.amount?.toLocaleString('vi-VN')} ₫</strong> directly from the guest at the front desk.
-                          After receiving, click <strong>Manual Confirm PAID</strong> below to settle this request.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Verification notes (if PAID) */}
-              {selectedPayment.status === "PAID" && selectedPayment.notes && (
-                <div className="border-t border-slate-100 dark:border-zinc-800 pt-4">
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-1">Audit Verification References</span>
-                  <div className="bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-900 text-slate-700 dark:text-zinc-300 rounded-lg p-3 flex gap-2 font-semibold">
-                    <FileText className="size-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span>{selectedPayment.notes}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Action: Manual Confirm PAID Form Overlay */}
-              {showConfirmPaidForm && (
-                <div className="border-t border-amber-200 dark:border-amber-900 bg-amber-50/30 dark:bg-amber-950/10 rounded-xl p-4 space-y-3 border transition-all">
-                  <div className="flex gap-1.5 items-center text-xs font-bold text-amber-800 dark:text-amber-400">
-                    <AlertTriangle className="size-4 text-amber-600 shrink-0" />
-                    <span>Manual Override Confirmation hold</span>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1">Verification Note / Reference ID (CASH/TRANSFER)</label>
-                    <textarea
-                      placeholder="Enter verification code, cashier note, or authorization ID references..."
-                      rows={2}
-                      value={verificationNote}
-                      onChange={e => { setVerificationNote(e.target.value); setVerificationNoteError(""); }}
-                      className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg focus:outline-none focus:border-amber-500 transition text-slate-800 dark:text-zinc-100"
-                    />
-                    {verificationNoteError && (
-                      <p className="text-red-500 text-[10px] font-semibold mt-1">{verificationNoteError}</p>
-                    )}
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowConfirmPaidForm(false)}
-                      className="text-[10px] px-3 py-1 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200"
-                    >
-                      Cancel Override
-                    </Button>
-                    <Button
-                      variant="success"
-                      size="sm"
-                      onClick={handleConfirmPaidSubmit}
-                      className="text-[10px] px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold"
-                    >
-                      Verify & Mark PAID
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Action Buttons Row */}
-              <div className="flex flex-wrap justify-between items-center gap-2 border-t border-slate-100 dark:border-zinc-800 pt-4">
-                {selectedPayment.status === "PENDING" && !showConfirmPaidForm ? (
-                  <div className="flex gap-2 w-full justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowConfirmPaidForm(true)}
-                      className="text-xs font-bold text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900 hover:bg-amber-50 dark:hover:bg-amber-950/20"
-                    >
-                      Manual Confirm PAID
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => handleCancelRequest(selectedPayment.paymentId)}
-                      className="text-xs font-bold text-white bg-red-650 hover:bg-red-750"
-                    >
-                      Cancel Request
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex justify-end w-full">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowDetailModal(false)}
-                      className="text-xs font-semibold px-4 py-2 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-850 text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-750"
-                    >
-                      Close Audit Log
-                    </Button>
-                  </div>
-                )}
-              </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowConfirmPaidForm(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="success"
+                size="sm"
+                onClick={handleConfirmPaidSubmit}
+                isLoading={actionLoading}
+              >
+                Verify &amp; mark paid
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </PaymentDetailDrawer>
 
       {/* Modal: View Booking Detail (Pending Payment) */}
       {selectedBookingForDetails && (
@@ -1184,6 +1010,7 @@ export function DepositPaymentScreen() {
           onClose={() => setShowPrintModal(false)}
         />
       )}
+      {confirmElement}
     </div>
   );
 }

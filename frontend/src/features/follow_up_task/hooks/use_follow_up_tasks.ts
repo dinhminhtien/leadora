@@ -78,6 +78,28 @@ export function useUpdateTask(taskId: string) {
   });
 }
 
+/**
+ * Update any task, id supplied per call.
+ *
+ * `useUpdateTask(taskId)` binds one id at hook-creation time, which suits a form
+ * editing a single record. Surfaces that mutate whichever row the user touched
+ * — the calendar's drag-to-reschedule, the board's drag-between-columns, inline
+ * table edits — cannot know that id in advance.
+ */
+export function useUpdateTaskById() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, payload }: { taskId: string; payload: UpdateTaskPayload }) =>
+      taskService.update(taskId, payload),
+    onSuccess: (_res, { taskId }) => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEY, taskId] });
+      // The calendar keeps its own query namespace.
+      queryClient.invalidateQueries({ queryKey: ["calendar"] });
+    },
+  });
+}
+
 export function useResignTask(taskId: string) {
   const queryClient = useQueryClient();
   return useMutation({

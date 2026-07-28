@@ -4,7 +4,7 @@ import React, { useState, useMemo } from "react";
 import {
   Bell, Clock, AlertTriangle, Plus, Filter,
   FileSpreadsheet, Calendar, LayoutList, ChevronLeft, ChevronRight,
-  Users, Building2, CreditCard, ChevronUp, ChevronDown, ArrowUpDown,
+  Users, Building2, CreditCard, ChevronUp, ChevronDown, ArrowUpDown, Pencil,
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { CreateReminderModal } from "@/features/reminder/components/CreateReminderModal";
 import { UpdateReminderModal } from "@/features/reminder/components/UpdateReminderModal";
+import { ReminderDetailDrawer } from "@/features/reminder/components/ReminderDetailDrawer";
 import { useReminders } from "@/features/reminder/hooks/use_reminders";
 import { useUsers } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import { useAuthStore } from "@/stores/auth_store";
@@ -243,6 +244,9 @@ export function ReminderListScreen() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [updateTarget, setUpdateTarget] = useState<Reminder | null>(null);
+  // Row click opens the shared detail surface; Edit from there opens the modal
+  // below, so the existing update flow is preserved rather than replaced.
+  const [detailReminder, setDetailReminder] = useState<Reminder | null>(null);
 
   const isDoneReminder = (r: Reminder) => DONE_REMINDER_STATUSES.includes(r.status);
 
@@ -528,7 +532,7 @@ export function ReminderListScreen() {
                       <TableRow
                         key={r.reminderId}
                         ref={setRowRef(r.reminderId)}
-                        onClick={() => setUpdateTarget(r)}
+                        onClick={() => setDetailReminder(r)}
                         className={`border-b border-slate-100 transition cursor-pointer ${
                           highlightedId === r.reminderId ? "bg-amber-50 ring-2 ring-inset ring-amber-400" :
                           overdue          ? "bg-red-50/30 hover:bg-red-50/50" :
@@ -595,6 +599,27 @@ export function ReminderListScreen() {
 
       {showCreate && <CreateReminderModal onClose={() => setShowCreate(false)} />}
       {updateTarget && <UpdateReminderModal reminder={updateTarget} onClose={() => setUpdateTarget(null)} />}
+
+      {/* Shared detail surface — same behaviour as every other module. */}
+      <ReminderDetailDrawer
+        reminder={detailReminder}
+        onOpenChange={(open) => !open && setDetailReminder(null)}
+        actions={
+          detailReminder && !["DONE", "CANCELLED"].includes((detailReminder.status ?? "").toUpperCase())
+            ? [
+                {
+                  label: "Edit",
+                  icon: Pencil,
+                  onClick: () => {
+                    const target = detailReminder;
+                    setDetailReminder(null);
+                    setUpdateTarget(target);
+                  },
+                },
+              ]
+            : []
+        }
+      />
     </div>
   );
 }

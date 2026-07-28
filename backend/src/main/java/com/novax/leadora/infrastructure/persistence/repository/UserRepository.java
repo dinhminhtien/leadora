@@ -45,8 +45,15 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID>, JpaSpec
 
     long countByRole_RoleId(Integer roleId);
 
+    /**
+     * Assignable users for the assignee pickers (leads / tasks / deals).
+     *
+     * <p>Restricted to ACTIVE accounts: a deactivated or locked member must not be offered as an
+     * assignee, otherwise the pickers contradict the "the assigned Sales Staff is unavailable or
+     * inactive" rejection that the task use cases enforce on submit.
+     */
     @EntityGraph(attributePaths = {"role"})
-    @Query("SELECT u FROM UserEntity u ORDER BY u.fullName ASC")
+    @Query("SELECT u FROM UserEntity u WHERE u.status = com.novax.leadora.infrastructure.persistence.entity.enums.UserStatus.ACTIVE ORDER BY u.fullName ASC")
     List<UserEntity> findAllWithRole();
 
     /** Active users (with role) — used by the idle-account inactivation scheduler. */

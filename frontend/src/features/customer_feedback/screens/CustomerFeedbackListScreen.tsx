@@ -5,6 +5,7 @@ import { Star, ThumbsUp, Search, User, Filter, ChevronLeft, ChevronRight, X, Che
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { customerFeedbackService, type CustomerFeedback } from "@/services/customer_feedback_service";
@@ -273,12 +274,8 @@ export function CustomerFeedbackListScreen() {
                         {f.comment ? `"${f.comment}"` : <span className="text-slate-300 italic">No comment</span>}
                       </TableCell>
                       <TableCell className="py-3 px-4">
-                        <Badge
-                          variant={f.reviewStatus === "REVIEWED" ? "success" : f.reviewStatus === "DISMISSED" ? "default" : "warning"}
-                          className="font-bold text-[9px] uppercase border-none"
-                        >
-                          {f.reviewStatus === "REVIEWED" ? "Reviewed" : f.reviewStatus === "DISMISSED" ? "Dismissed" : "Pending"}
-                        </Badge>
+                        {/* Canonical review-status binding (Blueprint §2.7). */}
+                        <StatusPill size="sm" domain="review" value={f.reviewStatus} />
                       </TableCell>
                       <TableCell className="py-3 px-4 text-right">
                         <Button

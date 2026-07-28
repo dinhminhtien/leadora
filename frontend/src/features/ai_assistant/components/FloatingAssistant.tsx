@@ -34,7 +34,8 @@ import type { Components } from "react-markdown";
 
 import { useChatStore } from "@/stores/chat_store";
 import { useAuthStore } from "@/stores/auth_store";
-import { getUserRole } from "@/shared/auth/access";
+import { canAccessPath, getUserRole } from "@/shared/auth/access";
+import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import type { ChatMessage } from "@/services/chat_assistant_service";
 import {
   useChatMessages,
@@ -186,7 +187,13 @@ export function FloatingAssistant() {
     }
   };
 
-  if (!mounted || role === "ADMIN") return null;
+  // The launcher is the assistant's only entry point, so it answers exactly the question the
+  // route guard does: may this user open /ai-assistant? Revoking CHAT_VIEW now removes the icon
+  // outright rather than leaving a button that opens a panel every request 403s. Admin and the
+  // operational desks fall out of the same check — the assistant is not part of their job.
+  const canUseAssistant = canAccessPath(role, ROUTE_PATHS.aiAssistant, currentUser?.permissions ?? []);
+
+  if (!mounted || !canUseAssistant) return null;
 
   // Panel placement: open above the launcher, aligned to its nearest horizontal edge,
   // clamped to the viewport so it's always fully visible.
@@ -698,7 +705,7 @@ function EmptyState({
     <div className="flex h-full flex-col items-center justify-center px-3 text-center">
       <LiaMascot variant="full" size={104} />
       <p className="mt-2 text-xs font-bold text-foreground">
-        Hi {userName?.split(" ").slice(-1)[0] || "there"}! I'm Lia 💚
+        Hi {userName?.split(" ").slice(-1)[0] || "there"}! I&apos;m Lia 💚
       </p>
       <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
         Ask me about your leads/deals/tasks, team-wide figures, or company documents.
