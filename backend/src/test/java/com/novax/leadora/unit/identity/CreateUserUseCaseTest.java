@@ -3,6 +3,7 @@ package com.novax.leadora.unit.identity;
 import com.novax.leadora.api.dto.request.CreateUserRequest;
 import com.novax.leadora.api.dto.response.UserAccountResponse;
 import com.novax.leadora.application.usecase.identity.CreateUserUseCase;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
@@ -34,6 +35,9 @@ class CreateUserUseCaseTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private ActivityLogPublisher activityLogPublisher;
 
     @InjectMocks
     private CreateUserUseCase createUserUseCase;

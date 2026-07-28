@@ -21,9 +21,6 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import com.novax.leadora.common.security.TokenBlacklistService;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
-
 import java.util.Collection;
 import java.util.List;
 
@@ -36,22 +33,34 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import com.novax.leadora.infrastructure.security.audit.SecurityAuditLogger;
+
 @Configuration
 @EnableWebSecurity
-@org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
+@EnableMethodSecurity
 public class WebSecurityConfig {
 
-    @Value("${SUPABASE_JWT_SECRET}")
-    private String jwtSecret;
+    private final String jwtSecret;
+    private final String supabaseUrl;
+    private final UserRepository userRepository;
+    private final TokenBlacklistService tokenBlacklistService;
+    private final SecurityAuditLogger securityAuditLogger;
 
-    @Value("${SUPABASE_URL}")
-    private String supabaseUrl;
-
-    @Autowired @Lazy
-    private UserRepository userRepository;
-
-    @Autowired @Lazy
-    private TokenBlacklistService tokenBlacklistService;
+    public WebSecurityConfig(
+            @Value("${SUPABASE_JWT_SECRET}") String jwtSecret,
+            @Value("${SUPABASE_URL}") String supabaseUrl,
+            UserRepository userRepository,
+            TokenBlacklistService tokenBlacklistService,
+            SecurityAuditLogger securityAuditLogger) {
+        this.jwtSecret = jwtSecret;
+        this.supabaseUrl = supabaseUrl;
+        this.userRepository = userRepository;
+        this.tokenBlacklistService = tokenBlacklistService;
+        this.securityAuditLogger = securityAuditLogger;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -60,14 +69,18 @@ public class WebSecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/", "/error", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/forgot-password",
-                                "/api/v1/auth/reset-password", "/api/v1/health", "/api/v1/feedback/public/**", "/api/v1/public/**")
+                        .requestMatchers("/", "/error", "/api/v1/auth/login", "/api/v1/auth/logout",
+                                "/api/v1/auth/forgot-password",
+                                "/api/v1/auth/reset-password", "/api/v1/health", "/api/v1/feedback/public/**",
+                                "/api/v1/public/**")
                         .permitAll()
                         .requestMatchers("/api/v1/auth/profile").authenticated()
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().permitAll())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+                        .authenticationEntryPoint(customAuthenticationEntryPoint())
+                        .accessDeniedHandler(customAccessDeniedHandler())
                         .bearerTokenResolver(request -> {
                             String path = request.getRequestURI();
                             if ("/".equals(path) || "/error".equals(path) || "/api/v1/health".equals(path)
@@ -90,6 +103,28 @@ public class WebSecurityConfig {
                         }));
 
         return http.build();
+    }
+
+    private AuthenticationEntryPoint customAuthenticationEntryPoint() {
+        return (request, response, authException) -> {
+            securityAuditLogger.logInvalidTokenAccess(request, authException);
+
+            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"success\":false,\"errorCode\":\"UNAUTHORIZED\",\"message\":\""
+                    + authException.getMessage() + "\"}");
+        };
+    }
+
+    private AccessDeniedHandler customAccessDeniedHandler() {
+        return (request, response, accessDeniedException) -> {
+            securityAuditLogger.logAccessDenied(request, accessDeniedException);
+
+            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_FORBIDDEN);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"success\":false,\"errorCode\":\"ACCESS_DENIED\",\"message\":\""
+                    + accessDeniedException.getMessage() + "\"}");
+        };
     }
 
     @Bean
@@ -147,8 +182,10 @@ public class WebSecurityConfig {
     }
 
     /**
-     * Extracts the application role from the users table using the email claim in the Supabase JWT.
-     * Supabase's built-in "role" claim always returns "authenticated", not the app role.
+     * Extracts the application role from the users table using the email claim in
+     * the Supabase JWT.
+     * Supabase's built-in "role" claim always returns "authenticated", not the app
+     * role.
      */
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {

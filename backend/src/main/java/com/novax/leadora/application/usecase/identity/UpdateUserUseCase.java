@@ -13,6 +13,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 
 import java.util.UUID;
 
@@ -31,6 +35,7 @@ public class UpdateUserUseCase {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ActivityLogPublisher activityLogPublisher;
 
     @Transactional
     @org.springframework.cache.annotation.CacheEvict(value = "user-roles", allEntries = true)
@@ -84,7 +89,16 @@ public class UpdateUserUseCase {
         user.setRole(newRole);
         user.setStatus(newStatus);
 
-        return UserAccountResponse.from(userRepository.save(user));
+        UserEntity savedUser = userRepository.save(user);
+
+        activityLogPublisher.publish(ActivityLogCommand.builder()
+                .activityType(ActivityLogType.USER_ACCOUNT_UPDATED)
+                .entityType(EntityType.USER)
+                .entityId(savedUser.getUserId())
+                .summary("User account updated for " + savedUser.getFullName() + " (" + savedUser.getEmail() + "). Status: " + savedUser.getStatus() + ", Role: " + savedUser.getRole().getRoleName())
+                .build());
+
+        return UserAccountResponse.from(savedUser);
     }
 
     /**

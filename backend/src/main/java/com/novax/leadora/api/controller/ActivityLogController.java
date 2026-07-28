@@ -43,6 +43,7 @@ public class ActivityLogController {
             @RequestParam(required = false) UUID entityId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime endDate,
+            @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "EFFECTIVE") String view,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
@@ -58,6 +59,7 @@ public class ActivityLogController {
                 .startDate(startDate)
                 .endDate(endDate)
                 .view(view)
+                .category(category)
                 .build();
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));

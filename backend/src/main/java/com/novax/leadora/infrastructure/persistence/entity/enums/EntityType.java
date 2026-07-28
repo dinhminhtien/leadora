@@ -6,5 +6,6 @@ public enum EntityType {
     TASK,
     QUOTATION,
     BOOKING,
-    PAYMENT
+    PAYMENT,
+    USER
 }
