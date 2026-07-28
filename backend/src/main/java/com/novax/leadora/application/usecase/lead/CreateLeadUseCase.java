@@ -12,6 +12,11 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,6 +35,8 @@ public class CreateLeadUseCase {
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
     private final CurrentUserProvider currentUserProvider;
     private final NotificationRepository notificationRepository;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
     private final LeadContactPolicy leadContactPolicy;
 
     @Transactional
@@ -39,9 +46,12 @@ public class CreateLeadUseCase {
             throw new IllegalArgumentException("Company name is required for an organization lead.");
         }
 
-        // A lead must be contactable, and must not duplicate a lead or a customer. Both rules are
-        // shared with UpdateLeadUseCase — see LeadContactPolicy for why they are not written out
-        // here. Reachability is checked first: "you left both contact fields empty" is a more
+        // A lead must be contactable, and must not duplicate a lead or a customer. Both
+        // rules are
+        // shared with UpdateLeadUseCase — see LeadContactPolicy for why they are not
+        // written out
+        // here. Reachability is checked first: "you left both contact fields empty" is
+        // a more
         // useful answer than a duplicate report on whichever one field was filled in.
         leadContactPolicy.assertReachable(request.getEmail(), request.getPhone());
         leadContactPolicy.assertNoDuplicate(request.getEmail(), request.getPhone(), null);
@@ -56,13 +66,19 @@ public class CreateLeadUseCase {
 
         // Who typed it in. Non-fatal if unresolved.
         //
-        // Creating a lead does NOT make you its owner. A sales rep who records a walk-in used to be
-        // auto-assigned it, which quietly handed out work that is a Manager's to distribute: the
-        // rep's own queue grew by whatever they happened to type in, the lead started an SLA clock
-        // nobody had accepted, and the distribution step the process is built around never
+        // Creating a lead does NOT make you its owner. A sales rep who records a
+        // walk-in used to be
+        // auto-assigned it, which quietly handed out work that is a Manager's to
+        // distribute: the
+        // rep's own queue grew by whatever they happened to type in, the lead started
+        // an SLA clock
+        // nobody had accepted, and the distribution step the process is built around
+        // never
         // happened. `created_by` alone still lets them find and correct their own entry
-        // (LeadAccessPolicy.owns treats creator and assignee alike for read/edit), which is the
-        // access they actually need — everything that requires ownership (status changes,
+        // (LeadAccessPolicy.owns treats creator and assignee alike for read/edit),
+        // which is the
+        // access they actually need — everything that requires ownership (status
+        // changes,
         // conversion) stays blocked until a Manager assigns it.
         UserEntity creator = null;
         try {
@@ -71,11 +87,16 @@ public class CreateLeadUseCase {
             log.warn("Could not resolve creator for new lead: {}", e.getMessage());
         }
 
-        // Every optional column is normalised — a blank form field is "not provided", not the
-        // value "". See TextUtils.blankToNull: `leads` carries partial unique indexes on
-        // lower(email) and phone WHERE the column IS NOT NULL, and "" is not null, so the first
-        // lead saved without an email claimed that slot and every later one collided with it. The
-        // user saw "a lead with this email already exists" for a field they had left empty.
+        // Every optional column is normalised — a blank form field is "not provided",
+        // not the
+        // value "". See TextUtils.blankToNull: `leads` carries partial unique indexes
+        // on
+        // lower(email) and phone WHERE the column IS NOT NULL, and "" is not null, so
+        // the first
+        // lead saved without an email claimed that slot and every later one collided
+        // with it. The
+        // user saw "a lead with this email already exists" for a field they had left
+        // empty.
         LeadEntity lead = LeadEntity.builder()
                 .fullName(request.getFullName().trim())
                 .email(blankToNull(request.getEmail()))
@@ -93,6 +114,28 @@ public class CreateLeadUseCase {
 
         LeadEntity saved = leadRepository.save(lead);
 
+        // Publish Activity Log event
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("fullName", saved.getFullName())
+                    .put("email", saved.getEmail())
+                    .put("phone", saved.getPhone())
+                    .put("companyName", saved.getCompanyName())
+                    .put("source", saved.getSource())
+                    .put("interestedService", saved.getInterestedService());
+            if (saved.getAssignedUser() != null) {
+                payload.put("assignedUserId", saved.getAssignedUser().getUserId().toString());
+            }
+            activityLogPublisher.publish(
+                    ActivityLogType.LEAD_CREATED,
+                    EntityType.LEAD,
+                    saved.getLeadId(),
+                    "Lead created: " + saved.getFullName(),
+                    payload);
+        } catch (Exception e) {
+            log.warn("Failed to publish lead creation activity: {}", e.getMessage());
+        }
+
         // BR-06: SLA/follow-up enforcement begins only once a lead is assigned to a
         // sales rep. An unassigned draft starts no SLA timer (hence no warning/breach/
         // escalation, no overdue flag, no reminder). When the lead is later assigned,
@@ -105,8 +148,10 @@ public class CreateLeadUseCase {
             }
         }
 
-        // UC-15.1: notify the assigned sales rep, if the lead was created already assigned
-        // by someone else. Skip self-assignment (a rep creating their own lead) — no point
+        // UC-15.1: notify the assigned sales rep, if the lead was created already
+        // assigned
+        // by someone else. Skip self-assignment (a rep creating their own lead) — no
+        // point
         // telling them they were "assigned" a lead they just created.
         if (assignedUser != null && !assignedUser.equals(creator)) {
             notifyLeadAssigned(saved, assignedUser);
@@ -114,7 +159,6 @@ public class CreateLeadUseCase {
 
         return LeadResponse.from(saved);
     }
-
 
     private void notifyLeadAssigned(LeadEntity lead, UserEntity assignedUser) {
         try {

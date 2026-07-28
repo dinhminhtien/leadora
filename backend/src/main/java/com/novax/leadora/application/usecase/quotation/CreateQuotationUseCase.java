@@ -14,6 +14,11 @@ import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +39,8 @@ public class CreateQuotationUseCase {
         private final CurrentUserProvider currentUserProvider;
         private final QuotationAvailabilityChecker availabilityChecker;
         private final DealWorkflowSyncService dealWorkflowSyncService;
+        private final ActivityLogPublisher activityLogPublisher;
+        private final ObjectMapper objectMapper;
 
         @Transactional
         public QuotationResponse execute(CreateQuotationRequest request) {
@@ -115,6 +122,24 @@ public class CreateQuotationUseCase {
                                 .build();
 
                 quotationDetailRepository.save(detail);
+
+                // Publish Activity Log event
+                try {
+                        ObjectNode payload = objectMapper.createObjectNode()
+                                        .put("dealId", deal.getDealId().toString())
+                                        .put("customerId", customer.getCustomerId().toString())
+                                        .put("totalAmount", totalAmount.toString())
+                                        .put("status", status.name());
+                        activityLogPublisher.publish(
+                                        ActivityLogType.QUOTATION_CREATED,
+                                        EntityType.QUOTATION,
+                                        saved.getQuotationId(),
+                                        "Quotation created",
+                                        payload
+                        );
+                } catch (Exception e) {
+                        log.warn("Failed to publish quotation creation activity: {}", e.getMessage());
+                }
 
                 dealWorkflowSyncService.syncPipelineStage(deal.getDealId());
 

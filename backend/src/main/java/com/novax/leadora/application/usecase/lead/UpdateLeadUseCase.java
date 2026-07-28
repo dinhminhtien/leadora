@@ -13,6 +13,11 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -39,6 +44,8 @@ public class UpdateLeadUseCase {
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
     private final NotificationRepository notificationRepository;
     private final LeadAccessPolicy leadAccessPolicy;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
     private final LeadContactPolicy leadContactPolicy;
 
     @Transactional
@@ -59,49 +66,89 @@ public class UpdateLeadUseCase {
                     HttpStatus.UNPROCESSABLE_ENTITY);
         }
 
-        // Editing is held to exactly the same contact rules as creating — the same policy object,
-        // so the two cannot drift apart again. Editing used to check only against other LEADS,
-        // which meant the collision with an existing CUSTOMER that creation refuses could still be
+        // Editing is held to exactly the same contact rules as creating — the same
+        // policy object,
+        // so the two cannot drift apart again. Editing used to check only against other
+        // LEADS,
+        // which meant the collision with an existing CUSTOMER that creation refuses
+        // could still be
         // typed in afterwards through this path.
         //
-        // Both rules are resolved against the record as it will be AFTER the edit, not against the
-        // request: a request that only touches `notes` carries no contact fields at all, and
-        // validating those nulls would report a perfectly reachable lead as unreachable.
+        // Both rules are resolved against the record as it will be AFTER the edit, not
+        // against the
+        // request: a request that only touches `notes` carries no contact fields at
+        // all, and
+        // validating those nulls would report a perfectly reachable lead as
+        // unreachable.
         String resolvedEmail = request.getEmail() != null ? request.getEmail() : lead.getEmail();
         String resolvedPhone = request.getPhone() != null ? request.getPhone() : lead.getPhone();
         leadContactPolicy.assertReachable(resolvedEmail, resolvedPhone);
         leadContactPolicy.assertNoDuplicate(resolvedEmail, resolvedPhone, lead.getLeadId());
 
-        // A null field means "leave unchanged"; a blank one means "clear it". Clearing must write
-        // NULL rather than "" — the partial unique indexes on lower(email) and phone cover every
-        // non-null value, so a cleared field stored as "" keeps occupying the index and collides
+        // A null field means "leave unchanged"; a blank one means "clear it". Clearing
+        // must write
+        // NULL rather than "" — the partial unique indexes on lower(email) and phone
+        // cover every
+        // non-null value, so a cleared field stored as "" keeps occupying the index and
+        // collides
         // with the next record cleared the same way. See TextUtils.blankToNull.
-        if (StringUtils.hasText(request.getFullName())) {
+        ObjectNode updatePayload = objectMapper.createObjectNode();
+        boolean detailsChanged = false;
+
+        if (StringUtils.hasText(request.getFullName()) && !request.getFullName().equals(lead.getFullName())) {
+            updatePayload.put("previousFullName", lead.getFullName());
+            updatePayload.put("newFullName", request.getFullName());
             lead.setFullName(request.getFullName().trim());
+            detailsChanged = true;
         }
-        if (request.getEmail() != null) {
+        if (request.getEmail() != null && !request.getEmail().equals(lead.getEmail())) {
+            updatePayload.put("previousEmail", lead.getEmail());
+            updatePayload.put("newEmail", request.getEmail());
             lead.setEmail(blankToNull(request.getEmail()));
+            detailsChanged = true;
         }
-        if (request.getPhone() != null) {
+        if (request.getPhone() != null && !request.getPhone().equals(lead.getPhone())) {
+            updatePayload.put("previousPhone", lead.getPhone());
+            updatePayload.put("newPhone", request.getPhone());
             lead.setPhone(blankToNull(request.getPhone()));
+            detailsChanged = true;
         }
-        if (request.getCompanyName() != null) {
+        if (request.getCompanyName() != null && !request.getCompanyName().equals(lead.getCompanyName())) {
+            updatePayload.put("previousCompanyName", lead.getCompanyName());
+            updatePayload.put("newCompanyName", request.getCompanyName());
             lead.setCompanyName(blankToNull(request.getCompanyName()));
+            detailsChanged = true;
         }
-        if (request.getAddress() != null) {
+        if (request.getAddress() != null && !request.getAddress().equals(lead.getAddress())) {
+            updatePayload.put("previousAddress", lead.getAddress());
+            updatePayload.put("newAddress", request.getAddress());
             lead.setAddress(blankToNull(request.getAddress()));
+            detailsChanged = true;
         }
-        if (request.getIsCorporate() != null) {
+        if (request.getIsCorporate() != null && !request.getIsCorporate().equals(lead.getIsCorporate())) {
+            updatePayload.put("previousIsCorporate", lead.getIsCorporate());
+            updatePayload.put("newIsCorporate", request.getIsCorporate());
             lead.setIsCorporate(request.getIsCorporate());
+            detailsChanged = true;
         }
-        if (request.getSource() != null) {
+        if (request.getSource() != null && !request.getSource().equals(lead.getSource())) {
+            updatePayload.put("previousSource", lead.getSource());
+            updatePayload.put("newSource", request.getSource());
             lead.setSource(blankToNull(request.getSource()));
+            detailsChanged = true;
         }
-        if (request.getInterestedService() != null) {
+        if (request.getInterestedService() != null
+                && !request.getInterestedService().equals(lead.getInterestedService())) {
+            updatePayload.put("previousInterestedService", lead.getInterestedService());
+            updatePayload.put("newInterestedService", request.getInterestedService());
             lead.setInterestedService(blankToNull(request.getInterestedService()));
+            detailsChanged = true;
         }
-        if (request.getNotes() != null) {
+        if (request.getNotes() != null && !request.getNotes().equals(lead.getNotes())) {
+            updatePayload.put("previousNotes", lead.getNotes());
+            updatePayload.put("newNotes", request.getNotes());
             lead.setNotes(blankToNull(request.getNotes()));
+            detailsChanged = true;
         }
         // Apply (re)assignment BEFORE the status check, so assigning and advancing a
         // lead in the same request is allowed (the assignee is already set when the
@@ -115,6 +162,11 @@ public class UpdateLeadUseCase {
             lead.setAssignedUser(assignedUser);
 
             if (!assignedUser.getUserId().equals(previousAssigneeId)) {
+                updatePayload.put("previousAssignedUserId",
+                        previousAssigneeId != null ? previousAssigneeId.toString() : null);
+                updatePayload.put("newAssignedUserId", request.getAssignedUserId().toString());
+                detailsChanged = true;
+
                 // UC-15.1: notify the newly (re)assigned sales rep
                 notifyLeadAssigned(lead, assignedUser);
 
@@ -148,7 +200,24 @@ public class UpdateLeadUseCase {
                 lead.setConvertedAt(OffsetDateTime.now());
             }
 
-            // UC-17.2: leaving NEW means the sales rep has responded to the lead — auto-resolve
+            if (newStatus != previousStatus) {
+                try {
+                    ObjectNode payload = objectMapper.createObjectNode()
+                            .put("previousStatus", previousStatus.name())
+                            .put("newStatus", newStatus.name());
+                    activityLogPublisher.publish(
+                            ActivityLogType.LEAD_STATUS_UPDATED,
+                            EntityType.LEAD,
+                            lead.getLeadId(),
+                            "Lead status updated from " + previousStatus + " to " + newStatus,
+                            payload);
+                } catch (Exception e) {
+                    log.warn("Failed to publish lead status update activity: {}", e.getMessage());
+                }
+            }
+
+            // UC-17.2: leaving NEW means the sales rep has responded to the lead —
+            // auto-resolve
             // the LEAD_RESPONSE SLA tracking. Non-fatal if no rule was ever configured.
             if (previousStatus == LeadStatus.NEW && newStatus != LeadStatus.NEW) {
                 try {
@@ -159,42 +228,72 @@ public class UpdateLeadUseCase {
             }
         }
 
+        // BR-05: validate active follow-up details are present on the resulting state
+        assertQualifyingDetailsPresent(lead);
+
         // BR: an organization lead must name its company. Validate the resulting state,
         // since either isCorporate or companyName may have just changed.
         if (Boolean.TRUE.equals(lead.getIsCorporate()) && !StringUtils.hasText(lead.getCompanyName())) {
             throw new IllegalArgumentException("Company name is required for an organization lead.");
         }
 
-        assertQualifyingDetailsPresent(lead);
+        if (detailsChanged) {
+            try {
+                activityLogPublisher.publish(
+                        ActivityLogType.LEAD_UPDATED,
+                        EntityType.LEAD,
+                        lead.getLeadId(),
+                        "Lead details updated",
+                        updatePayload);
+            } catch (Exception e) {
+                log.warn("Failed to publish lead update activity: {}", e.getMessage());
+            }
+        }
 
         return LeadResponse.from(leadRepository.save(lead));
     }
 
     /**
-     * BR-05 — a lead in active follow-up must carry the details that make follow-up possible.
+     * BR-05 — a lead in active follow-up must carry the details that make follow-up
+     * possible.
      *
-     * <p><b>Checked on the resulting record, not on the transition.</b> It used to run only when a
-     * lead left {@code NEW}, which guarded the doorway and then stopped looking: a lead already in
-     * {@code CONTACTED} could have its email blanked in a later edit — {@code @Email} accepts an
-     * empty string — and stay in active follow-up with no way to reach it. Validating the state
+     * <p>
+     * <b>Checked on the resulting record, not on the transition.</b> It used to run
+     * only when a
+     * lead left {@code NEW}, which guarded the doorway and then stopped looking: a
+     * lead already in
+     * {@code CONTACTED} could have its email blanked in a later edit —
+     * {@code @Email} accepts an
+     * empty string — and stay in active follow-up with no way to reach it.
+     * Validating the state
      * about to be saved closes that, and covers every future edit path for free.
      *
-     * <p>Placed beside the corporate-company check above, which was already written this way.
+     * <p>
+     * Placed beside the corporate-company check above, which was already written
+     * this way.
      *
-     * <p>{@code NEW} and {@code LOST} are exempt by design: a walk-in must be recordable in
-     * seconds, and a junk lead must be closable immediately rather than after filling in details
+     * <p>
+     * {@code NEW} and {@code LOST} are exempt by design: a walk-in must be
+     * recordable in
+     * seconds, and a junk lead must be closable immediately rather than after
+     * filling in details
      * nobody will use.
      *
-     * <p>Reports <em>all</em> missing fields at once, in {@code details}, so the form can mark them
+     * <p>
+     * Reports <em>all</em> missing fields at once, in {@code details}, so the form
+     * can mark them
      * together instead of surfacing them one refused save at a time.
      */
     private void assertQualifyingDetailsPresent(LeadEntity lead) {
         if (lead.getStatus() != LeadStatus.CONTACTED && lead.getStatus() != LeadStatus.QUALIFIED) {
             return;
         }
-        // The phone-or-email half of BR-05 is no longer checked here: LeadContactPolicy enforces
-        // it on every write, so by the time a lead reaches any status it already has one. What
-        // remains are the two fields that are genuinely only needed once follow-up starts.
+        // The phone-or-email half of BR-05 is no longer checked here: LeadContactPolicy
+        // enforces
+        // it on every write, so by the time a lead reaches any status it already has
+        // one. What
+        // remains are the two fields that are genuinely only needed once follow-up
+        // starts.
         List<String> missing = new ArrayList<>();
         if (!StringUtils.hasText(lead.getSource())) {
             missing.add("source");
@@ -213,7 +312,10 @@ public class UpdateLeadUseCase {
                 HttpStatus.UNPROCESSABLE_ENTITY);
     }
 
-    /** Turns the machine-readable field list into the sentence a user actually reads. */
+    /**
+     * Turns the machine-readable field list into the sentence a user actually
+     * reads.
+     */
     private static String describe(List<String> missing) {
         List<String> labels = missing.stream()
                 .map(f -> switch (f) {
@@ -230,14 +332,16 @@ public class UpdateLeadUseCase {
 
     /**
      * One-directional lead lifecycle: NEW → CONTACTED → QUALIFIED.
-     * A lead may only advance a single stage at a time (no skipping, no going back).
-     * An active lead can always be marked LOST. CONVERTED is reached only through the
-     * conversion flow (ConvertLeadUseCase), and both CONVERTED and LOST are terminal.
+     * A lead may only advance a single stage at a time (no skipping, no going
+     * back).
+     * An active lead can always be marked LOST. CONVERTED is reached only through
+     * the
+     * conversion flow (ConvertLeadUseCase), and both CONVERTED and LOST are
+     * terminal.
      */
     private static final Map<LeadStatus, LeadStatus> FORWARD = Map.of(
             LeadStatus.NEW, LeadStatus.CONTACTED,
-            LeadStatus.CONTACTED, LeadStatus.QUALIFIED
-    );
+            LeadStatus.CONTACTED, LeadStatus.QUALIFIED);
 
     private void validateStatusTransition(LeadStatus current, LeadStatus next) {
         if (current == next) {
@@ -262,7 +366,10 @@ public class UpdateLeadUseCase {
         }
     }
 
-    /** All transition refusals share one code, so the UI can point them at the status field. */
+    /**
+     * All transition refusals share one code, so the UI can point them at the
+     * status field.
+     */
     private static BusinessException invalidTransition(String message) {
         return new BusinessException("LEAD_INVALID_TRANSITION", message, "status",
                 HttpStatus.UNPROCESSABLE_ENTITY);

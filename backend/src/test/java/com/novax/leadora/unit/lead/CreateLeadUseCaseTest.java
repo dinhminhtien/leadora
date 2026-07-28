@@ -61,6 +61,8 @@ class CreateLeadUseCaseTest {
     @Mock private StartSlaTrackingUseCase startSlaTrackingUseCase;
     @Mock private CurrentUserProvider currentUserProvider;
     @Mock private NotificationRepository notificationRepository;
+    @Mock private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
+    @Mock private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     private CreateLeadUseCase useCase;
 
@@ -75,9 +77,10 @@ class CreateLeadUseCaseTest {
                 .build();
 
         useCase = new CreateLeadUseCase(leadRepository, userRepository, startSlaTrackingUseCase,
-                currentUserProvider, notificationRepository,
+                currentUserProvider, notificationRepository, activityLogPublisher, objectMapper,
                 new LeadContactPolicy(leadRepository, new CustomerDuplicatePolicy(customerRepository)));
 
+        when(objectMapper.createObjectNode()).thenAnswer(inv -> new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode());
         when(leadRepository.save(any(LeadEntity.class))).thenAnswer(inv -> {
             LeadEntity lead = inv.getArgument(0);
             if (lead.getLeadId() == null) lead.setLeadId(UUID.randomUUID());

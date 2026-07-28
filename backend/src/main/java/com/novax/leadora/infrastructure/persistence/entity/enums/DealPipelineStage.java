@@ -10,4 +10,3 @@ public enum DealPipelineStage {
     CLOSED_WON,
     CLOSED_LOST
 }
-

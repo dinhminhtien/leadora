@@ -11,6 +11,11 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus
 import com.novax.leadora.infrastructure.persistence.repository.*;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -39,6 +44,8 @@ public class CreateBookingRequestUseCase {
     private final ProductServiceRepository productServiceRepository;
     private final DealRepository dealRepository;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public BookingResponse execute(CreateBookingRequest request) {
@@ -137,6 +144,39 @@ public class CreateBookingRequestUseCase {
 
         savedBooking.setTotalAmount(totalAmount);
         BookingEntity finalSavedBooking = bookingRepository.save(savedBooking);
+
+        // Publish Activity Log for Quotation conversion
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("previousStatus", QuotationStatus.ACCEPTED.name())
+                    .put("newStatus", QuotationStatus.CONVERTED.name());
+            activityLogPublisher.publish(
+                    ActivityLogType.QUOTATION_UPDATED,
+                    EntityType.QUOTATION,
+                    quotation.getQuotationId(),
+                    "Quotation converted to booking",
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish quotation conversion activity: {}", e.getMessage());
+        }
+
+        // Publish Activity Log for Booking creation
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("bookingCode", finalSavedBooking.getBookingCode())
+                    .put("totalAmount", totalAmount.toString())
+                    .put("status", finalSavedBooking.getStatus().name());
+            activityLogPublisher.publish(
+                    ActivityLogType.BOOKING_CREATED,
+                    EntityType.BOOKING,
+                    finalSavedBooking.getBookingId(),
+                    "Booking request created",
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish booking request creation activity: {}", e.getMessage());
+        }
 
         // UC-17.2: start SLA tracking — non-fatal if no BOOKING_CONFIRM rule configured
         try {

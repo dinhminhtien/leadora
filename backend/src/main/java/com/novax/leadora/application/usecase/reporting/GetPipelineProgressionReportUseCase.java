@@ -26,7 +26,10 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class GetPipelineProgressionReportUseCase {
 
-    /** Stages that are still "in-flight" (a bottleneck candidate); the other two are terminal. */
+    /**
+     * Stages that are still "in-flight" (a bottleneck candidate); the other two are
+     * terminal.
+     */
     private static final Set<DealPipelineStage> OPEN_STAGES = EnumSet.of(
             DealPipelineStage.INQUIRY, DealPipelineStage.QUALIFICATION,
             DealPipelineStage.QUOTATION_SENT, DealPipelineStage.NEGOTIATION,
@@ -50,34 +53,35 @@ public class GetPipelineProgressionReportUseCase {
         long openDeals = totalDeals - closedWon - closedLost;
 
         BigDecimal pipelineValue = deals.stream()
-            .filter(d -> d.getPipelineStage() != null && OPEN_STAGES.contains(d.getPipelineStage()))
-            .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
-            .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
+                .filter(d -> d.getPipelineStage() != null && OPEN_STAGES.contains(d.getPipelineStage()))
+                .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
         List<StageRow> stages = new ArrayList<>();
         String bottleneck = null;
         double worstAge = -1;
         for (DealPipelineStage stage : DealPipelineStage.values()) {
             List<DealEntity> inStage = deals.stream()
-                .filter(d -> d.getPipelineStage() == stage).toList();
+                    .filter(d -> d.getPipelineStage() == stage).toList();
             BigDecimal value = inStage.stream()
-                .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
+                    .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
             double avgAge = inStage.stream()
-                .mapToLong(d -> ageDays(d.getCreatedAt(), now))
-                .average().orElse(0);
+                    .mapToLong(d -> ageDays(d.getCreatedAt(), now))
+                    .average().orElse(0);
             boolean closed = !OPEN_STAGES.contains(stage);
 
             stages.add(StageRow.builder()
-                .stage(stage.name())
-                .label(label(stage))
-                .count(inStage.size())
-                .value(value)
-                .avgAgeDays(Math.round(avgAge * 10.0) / 10.0)
-                .closed(closed)
-                .build());
+                    .stage(stage.name())
+                    .label(label(stage))
+                    .count(inStage.size())
+                    .value(value)
+                    .avgAgeDays(Math.round(avgAge * 10.0) / 10.0)
+                    .closed(closed)
+                    .build());
 
-            // Bottleneck = the open stage where deals have aged the longest (and something is there).
+            // Bottleneck = the open stage where deals have aged the longest (and something
+            // is there).
             if (!closed && !inStage.isEmpty() && avgAge > worstAge) {
                 worstAge = avgAge;
                 bottleneck = label(stage);
@@ -85,17 +89,17 @@ public class GetPipelineProgressionReportUseCase {
         }
 
         return PipelineProgressionReportResponse.builder()
-            .dateFrom(from)
-            .dateTo(to)
-            .totalDeals(totalDeals)
-            .openDeals(openDeals)
-            .closedWon(closedWon)
-            .closedLost(closedLost)
-            .winRate(ReportingUtils.calculateRate(closedWon, closedWon + closedLost))
-            .pipelineValue(pipelineValue)
-            .bottleneckStage(bottleneck)
-            .stages(stages)
-            .build();
+                .dateFrom(from)
+                .dateTo(to)
+                .totalDeals(totalDeals)
+                .openDeals(openDeals)
+                .closedWon(closedWon)
+                .closedLost(closedLost)
+                .winRate(ReportingUtils.calculateRate(closedWon, closedWon + closedLost))
+                .pipelineValue(pipelineValue)
+                .bottleneckStage(bottleneck)
+                .stages(stages)
+                .build();
     }
 
     private long countStage(List<DealEntity> deals, DealPipelineStage stage) {
@@ -103,7 +107,8 @@ public class GetPipelineProgressionReportUseCase {
     }
 
     private long ageDays(OffsetDateTime createdAt, OffsetDateTime now) {
-        if (createdAt == null) return 0;
+        if (createdAt == null)
+            return 0;
         return Math.max(0, Duration.between(createdAt, now).toDays());
     }
 

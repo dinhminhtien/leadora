@@ -37,26 +37,44 @@ import static org.mockito.Mockito.when;
 /**
  * The lead status machine and the record invariants around it (UC-8.4).
  *
- * <p>Nothing covered this before: every transition rule, BR-05 and the duplicate check lived in one
- * method with no test behind it, so a wrong edit there would have surfaced only in the UI.
+ * <p>
+ * Nothing covered this before: every transition rule, BR-05 and the duplicate
+ * check lived in one
+ * method with no test behind it, so a wrong edit there would have surfaced only
+ * in the UI.
  *
- * <p>Lenient stubbing — several tests refuse before the save path is reached, and marking each
+ * <p>
+ * Lenient stubbing — several tests refuse before the save path is reached, and
+ * marking each
  * unused stub individually would bury what each case is actually asserting.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class UpdateLeadUseCaseTest {
 
-    @Mock private LeadRepository leadRepository;
-    @Mock private UserRepository userRepository;
-    @Mock private ResolveSlaBreachUseCase resolveSlaBreachUseCase;
-    @Mock private StartSlaTrackingUseCase startSlaTrackingUseCase;
-    @Mock private NotificationRepository notificationRepository;
-    @Mock private LeadAccessPolicy leadAccessPolicy;
-    @Mock private CustomerRepository customerRepository;
+    @Mock
+    private LeadRepository leadRepository;
+    @Mock
+    private UserRepository userRepository;
+    @Mock
+    private ResolveSlaBreachUseCase resolveSlaBreachUseCase;
+    @Mock
+    private StartSlaTrackingUseCase startSlaTrackingUseCase;
+    @Mock
+    private NotificationRepository notificationRepository;
+    @Mock
+    private LeadAccessPolicy leadAccessPolicy;
+    @Mock
+    private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
+    @Mock
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    @Mock
+    private CustomerRepository customerRepository;
 
-    // Built by hand rather than @InjectMocks so the real LeadContactPolicy runs: the reachability
-    // and duplicate rules moved into it, and a mocked policy would leave those cases asserting
+    // Built by hand rather than @InjectMocks so the real LeadContactPolicy runs:
+    // the reachability
+    // and duplicate rules moved into it, and a mocked policy would leave those
+    // cases asserting
     // that a method was called rather than that an edit was actually refused.
     private UpdateLeadUseCase useCase;
 
@@ -69,12 +87,15 @@ class UpdateLeadUseCaseTest {
         owner = UserEntity.builder().userId(UUID.randomUUID()).fullName("Rep").build();
         useCase = new UpdateLeadUseCase(leadRepository, userRepository, resolveSlaBreachUseCase,
                 startSlaTrackingUseCase, notificationRepository, leadAccessPolicy,
+                activityLogPublisher, objectMapper,
                 new LeadContactPolicy(leadRepository, new CustomerDuplicatePolicy(customerRepository)));
         when(leadRepository.save(any(LeadEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         when(leadRepository.findFirstByEmailIgnoreCaseOrderByCreatedAtDesc(anyString()))
                 .thenReturn(Optional.empty());
         when(leadRepository.findFirstByPhoneOrderByCreatedAtDesc(anyString()))
                 .thenReturn(Optional.empty());
+        when(objectMapper.createObjectNode())
+                .thenAnswer(inv -> new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode());
         when(customerRepository.findFirstByEmail(anyString())).thenReturn(Optional.empty());
         when(customerRepository.findFirstByPhone(anyString())).thenReturn(Optional.empty());
     }
@@ -212,8 +233,10 @@ class UpdateLeadUseCaseTest {
     @DisplayName("all missing qualifying fields are reported together, not one save at a time")
     void reportsEveryMissingFieldAtOnce() {
         LeadEntity lead = readyLead(LeadStatus.NEW);
-        // Contact details are no longer among these: LeadContactPolicy requires them on every
-        // write, so a lead cannot reach this check without one. What is left is what genuinely
+        // Contact details are no longer among these: LeadContactPolicy requires them on
+        // every
+        // write, so a lead cannot reach this check without one. What is left is what
+        // genuinely
         // only becomes necessary once follow-up starts.
         lead.setSource(null);
         lead.setInterestedService(null);
@@ -228,8 +251,10 @@ class UpdateLeadUseCaseTest {
     @Test
     @DisplayName("a lead cannot have its last contact detail erased, at any status")
     void refusesClearingContactOnALeadAlreadyInFollowUp() {
-        // Previously this was only caught for a lead in active follow-up, and only because BR-05
-        // happened to list the field. It now holds everywhere, including for a NEW lead.
+        // Previously this was only caught for a lead in active follow-up, and only
+        // because BR-05
+        // happened to list the field. It now holds everywhere, including for a NEW
+        // lead.
         LeadEntity lead = readyLead(LeadStatus.CONTACTED);
         lead.setPhone(null);
 

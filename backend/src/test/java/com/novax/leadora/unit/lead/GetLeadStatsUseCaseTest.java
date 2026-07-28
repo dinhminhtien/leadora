@@ -65,8 +65,7 @@ class GetLeadStatsUseCaseTest {
         when(policy.listScopeOwnerId(caller)).thenReturn(null); // manager
         stubCounts(32, 12, 5, 7);
 
-        LeadStatsResponse stats =
-                useCase.execute(null, null, null, null, null, null, "assigned", null);
+        LeadStatsResponse stats = useCase.execute(null, null, null, null, null, null, "assigned", null);
 
         assertThat(stats.getTotal()).isEqualTo(32);
         assertThat(stats.getConverted()).isEqualTo(12);
@@ -98,16 +97,14 @@ class GetLeadStatsUseCaseTest {
         when(policy.listScopeOwnerId(outsider))
                 .thenThrow(new AccessDeniedException("no access"));
 
-        assertThatThrownBy(() ->
-                useCase.execute(null, null, null, null, null, null, "assigned", null))
+        assertThatThrownBy(() -> useCase.execute(null, null, null, null, null, null, "assigned", null))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
     @DisplayName("an unreadable filter is refused before any counting happens")
     void refusesAnInvalidFilter() {
-        assertThatThrownBy(() ->
-                useCase.execute(null, "NOT_A_STATUS", null, null, null, null, "assigned", null))
+        assertThatThrownBy(() -> useCase.execute(null, "NOT_A_STATUS", null, null, null, null, "assigned", null))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo("INVALID_FILTER");
@@ -121,8 +118,7 @@ class GetLeadStatsUseCaseTest {
         when(policy.listScopeOwnerId(caller)).thenReturn(null);
         stubCounts(0, 0, 0, 0);
 
-        LeadStatsResponse stats =
-                useCase.execute(null, null, null, null, null, null, "assigned", null);
+        LeadStatsResponse stats = useCase.execute(null, null, null, null, null, null, "assigned", null);
 
         assertThat(stats.getConvertedRate()).isNull();
         assertThat(stats.getLostRate()).isNull();
@@ -144,9 +140,12 @@ class GetLeadStatsUseCaseTest {
     }
 
     /**
-     * The tiles and the table must describe the same rows. "Assignment needed" narrows the list, so
-     * it has to narrow the counts too — a filter applied to one and not the other is the exact
-     * failure LeadFilterParams exists to prevent, and it would look like nothing was wrong.
+     * The tiles and the table must describe the same rows. "Assignment needed"
+     * narrows the list, so
+     * it has to narrow the counts too — a filter applied to one and not the other
+     * is the exact
+     * failure LeadFilterParams exists to prevent, and it would look like nothing
+     * was wrong.
      */
     @Test
     @DisplayName("the assignment-needed filter reaches the counts, not just the list")
@@ -160,6 +159,6 @@ class GetLeadStatsUseCaseTest {
 
         useCase.execute(null, null, null, null, null, null, "assigned", true);
 
-        verify(repository, org.mockito.Mockito.times(4)).count(any(Specification.class));
+        verify(repository, org.mockito.Mockito.times(4)).count(ArgumentMatchers.<Specification<LeadEntity>>any());
     }
 }

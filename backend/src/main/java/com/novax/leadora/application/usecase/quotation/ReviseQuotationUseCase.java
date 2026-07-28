@@ -12,6 +12,11 @@ import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -42,6 +47,8 @@ public class ReviseQuotationUseCase {
     private final QuotationAccessPolicy quotationAccessPolicy;
     private final QuotationAvailabilityChecker availabilityChecker;
     private final SystemAuditLogService systemAuditLogService;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public QuotationResponse execute(UUID parentId, ReviseQuotationRequest request) {
@@ -135,6 +142,40 @@ public class ReviseQuotationUseCase {
                 "version=" + parent.getVersion() + ", totalAmount=" + parent.getTotalAmount(),
                 "version=" + saved.getVersion() + ", totalAmount=" + saved.getTotalAmount(),
                 "parentQuotationId=" + parentId + ", changeReason=" + request.getChangeReason());
+
+        // Publish Activity Log for the new version
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("parentQuotationId", parentId.toString())
+                    .put("changeReason", request.getChangeReason())
+                    .put("version", saved.getVersion())
+                    .put("totalAmount", saved.getTotalAmount().toString());
+            activityLogPublisher.publish(
+                    ActivityLogType.QUOTATION_CREATED,
+                    EntityType.QUOTATION,
+                    saved.getQuotationId(),
+                    "Quotation revised (new version created)",
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish revision quotation creation activity: {}", e.getMessage());
+        }
+
+        // Publish Activity Log for the superseded parent
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("previousStatus", QuotationStatus.SUPERSEDED.name())
+                    .put("newStatus", QuotationStatus.SUPERSEDED.name());
+            activityLogPublisher.publish(
+                    ActivityLogType.QUOTATION_UPDATED,
+                    EntityType.QUOTATION,
+                    parent.getQuotationId(),
+                    "Quotation superseded by version " + saved.getVersion(),
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish parent quotation supersede activity: {}", e.getMessage());
+        }
 
         return QuotationResponse.fromWithDetail(saved, (int) nights,
                 request.getNumberOfRooms(), request.getPricePerNight());

@@ -1,0 +1,20 @@
+package com.novax.leadora.application.listener;
+
+import com.novax.leadora.application.event.BusinessActivityEvent;
+import com.novax.leadora.application.usecase.activitylog.AppendActivityLogUseCase;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
+
+@Component
+@RequiredArgsConstructor
+public class ActivityLogListener {
+
+    private final AppendActivityLogUseCase appendActivityLogUseCase;
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleBusinessActivity(BusinessActivityEvent event) {
+        appendActivityLogUseCase.execute(event.command());
+    }
+}

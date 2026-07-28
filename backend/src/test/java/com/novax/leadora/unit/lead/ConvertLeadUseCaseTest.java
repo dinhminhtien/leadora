@@ -65,6 +65,8 @@ class ConvertLeadUseCaseTest {
     @Mock private LeadAccessPolicy leadAccessPolicy;
     @Mock private ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     @Mock private SystemAuditLogService systemAuditLogService;
+    @Mock private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
+    @Mock private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     private ConvertLeadUseCase useCase;
 
@@ -85,8 +87,9 @@ class ConvertLeadUseCaseTest {
                 leadRepository, resolveSlaBreachUseCase, systemAuditLogService);
 
         useCase = new ConvertLeadUseCase(leadRepository, customerRepository, leadAccessPolicy,
-                conversionPolicy, duplicatePolicy, profilePolicy, completer);
+                conversionPolicy, duplicatePolicy, activityLogPublisher, objectMapper, profilePolicy, completer);
 
+        when(objectMapper.createObjectNode()).thenAnswer(inv -> new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode());
         when(leadRepository.save(any(LeadEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         when(customerRepository.save(any(CustomerEntity.class))).thenAnswer(inv -> {
             CustomerEntity c = inv.getArgument(0);

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
@@ -32,6 +33,12 @@ class AutoWinDealByPaymentUseCaseTest {
 
     @Mock
     private DealWorkflowResolver dealWorkflowResolver;
+
+    @Mock
+    private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
+
+    @Spy
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
     @InjectMocks
     private AutoWinDealByPaymentUseCase useCase;
