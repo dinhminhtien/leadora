@@ -71,6 +71,12 @@ export function PaymentDetailDrawer({
   /** Inline forms — e.g. the manual PAID verification note. */
   children?: React.ReactNode;
 }) {
+  // Captured once per mount rather than read during render: `Date.now()` in a
+  // render body makes the render impure — two renders of the same props could
+  // disagree — which React Compiler rejects. An overdue flag does not need
+  // sub-session precision, and the list refetches on every mutation anyway.
+  const [now] = React.useState(() => Date.now());
+
   if (!payment) {
     return <RecordDetailDrawer open={false} onOpenChange={onOpenChange} title="" sections={[]} />;
   }
@@ -85,7 +91,7 @@ export function PaymentDetailDrawer({
   const overdue =
     isPending &&
     !!payment.dueDate &&
-    new Date(payment.dueDate).getTime() < Date.now();
+    new Date(payment.dueDate).getTime() < now;
 
   const sections: DetailSectionSpec[] = [
     {
