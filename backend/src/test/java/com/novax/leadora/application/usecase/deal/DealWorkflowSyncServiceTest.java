@@ -16,6 +16,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -36,7 +37,7 @@ class DealWorkflowSyncServiceTest {
     private DealValidation dealValidation;
 
     @Mock
-    private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
+    private ActivityLogPublisher activityLogPublisher;
 
     @Spy
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();

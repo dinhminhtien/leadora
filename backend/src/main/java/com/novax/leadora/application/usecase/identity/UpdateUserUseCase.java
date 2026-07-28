@@ -15,14 +15,21 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 
 import java.util.UUID;
 
 /**
  * UC-6.3 — Update User Account.
- * Partial update: only non-null fields are applied. Enforces email uniqueness (E5), a valid role
- * (E6), and a safety guard that the system can never lose its last active Admin (BR-03 spirit —
- * prevents an Admin from accidentally locking everyone out by demoting/deactivating themselves).
+ * Partial update: only non-null fields are applied. Enforces email uniqueness
+ * (E5), a valid role
+ * (E6), and a safety guard that the system can never lose its last active Admin
+ * (BR-03 spirit —
+ * prevents an Admin from accidentally locking everyone out by
+ * demoting/deactivating themselves).
  */
 @Service
 @RequiredArgsConstructor
@@ -33,6 +40,7 @@ public class UpdateUserUseCase {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ActivityLogPublisher activityLogPublisher;
     private final SystemAuditLogService systemAuditLogService;
     private final CurrentUserProvider currentUserProvider;
 
@@ -72,7 +80,8 @@ public class UpdateUserUseCase {
             user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         }
 
-        // Resolve the role + status the account WOULD have after this update, then guard the
+        // Resolve the role + status the account WOULD have after this update, then
+        // guard the
         // "last active Admin" invariant before mutating.
         RoleEntity newRole = user.getRole();
         if (request.getRoleId() != null && !request.getRoleId().equals(user.getRole().getRoleId())) {
@@ -81,7 +90,8 @@ public class UpdateUserUseCase {
         }
         UserStatus newStatus = request.getStatus() != null ? request.getStatus() : user.getStatus();
 
-        // A non-admin cannot be promoted to Admin through this form (existing admins keep their role).
+        // A non-admin cannot be promoted to Admin through this form (existing admins
+        // keep their role).
         boolean promotingToAdmin = ADMIN_ROLE.equalsIgnoreCase(newRole.getRoleName())
                 && !ADMIN_ROLE.equalsIgnoreCase(user.getRole().getRoleName());
         if (promotingToAdmin) {
@@ -93,14 +103,24 @@ public class UpdateUserUseCase {
         user.setRole(newRole);
         user.setStatus(newStatus);
 
-        UserEntity saved = userRepository.save(user);
+        UserEntity savedUser = userRepository.save(user);
 
-        // BR-03 / BR-37 — role, status and profile changes are recorded with old → new values.
-        systemAuditLogService.log("IDENTITY", "USER", saved.getUserId(), "UPDATED",
-                currentUserProvider.resolveQuietly(), oldValue, snapshot(saved),
+        // Publish activity log for compliance audit dashboard
+        activityLogPublisher.publish(ActivityLogCommand.builder()
+                .activityType(ActivityLogType.USER_ACCOUNT_UPDATED)
+                .entityType(EntityType.USER)
+                .entityId(savedUser.getUserId())
+                .summary("User account updated for " + savedUser.getFullName() + " (" + savedUser.getEmail()
+                        + "). Status: " + savedUser.getStatus() + ", Role: " + savedUser.getRole().getRoleName())
+                .build());
+
+        // BR-03 / BR-37 — role, status and profile changes are recorded with old → new
+        // values.
+        systemAuditLogService.log("IDENTITY", "USER", savedUser.getUserId(), "UPDATED",
+                currentUserProvider.resolveQuietly(), oldValue, snapshot(savedUser),
                 passwordChanged ? "Password was reset by an administrator." : null);
 
-        return UserAccountResponse.from(saved);
+        return UserAccountResponse.from(savedUser);
     }
 
     /** Auditable view of an account — deliberately excludes the password hash. */
@@ -113,17 +133,17 @@ public class UpdateUserUseCase {
     }
 
     /**
-     * Block the change if {@code user} is currently the only ACTIVE Admin and the update would stop
+     * Block the change if {@code user} is currently the only ACTIVE Admin and the
+     * update would stop
      * it from being one (demotion off ADMIN, or deactivation/lock).
      */
     private void guardLastActiveAdmin(UserEntity user, RoleEntity newRole, UserStatus newStatus) {
-        boolean currentlyActiveAdmin =
-                ADMIN_ROLE.equalsIgnoreCase(user.getRole().getRoleName()) && user.getStatus() == UserStatus.ACTIVE;
+        boolean currentlyActiveAdmin = ADMIN_ROLE.equalsIgnoreCase(user.getRole().getRoleName())
+                && user.getStatus() == UserStatus.ACTIVE;
         if (!currentlyActiveAdmin) {
             return;
         }
-        boolean staysActiveAdmin =
-                ADMIN_ROLE.equalsIgnoreCase(newRole.getRoleName()) && newStatus == UserStatus.ACTIVE;
+        boolean staysActiveAdmin = ADMIN_ROLE.equalsIgnoreCase(newRole.getRoleName()) && newStatus == UserStatus.ACTIVE;
         if (staysActiveAdmin) {
             return;
         }
@@ -141,10 +161,12 @@ public class UpdateUserUseCase {
         boolean hasUppercase = password.chars().anyMatch(Character::isUpperCase);
         boolean hasLowercase = password.chars().anyMatch(Character::isLowerCase);
         boolean hasDigit = password.chars().anyMatch(Character::isDigit);
-        boolean hasSymbol = password.chars().anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
+        boolean hasSymbol = password.chars()
+                .anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
 
         if (!hasUppercase || !hasLowercase || !hasDigit || !hasSymbol) {
-            throw new IllegalStateException("Password must contain at least one lowercase letter, one uppercase letter, one digit, and one symbol.");
+            throw new IllegalStateException(
+                    "Password must contain at least one lowercase letter, one uppercase letter, one digit, and one symbol.");
         }
     }
 }

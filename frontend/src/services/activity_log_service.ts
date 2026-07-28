@@ -42,6 +42,7 @@ export type ActivityLogListParams = {
   view?: "RAW" | "EFFECTIVE";
   page?: number;
   size?: number;
+  category?: "BUSINESS" | "SECURITY";
 };
 
 const ENDPOINT = "/activity-logs";

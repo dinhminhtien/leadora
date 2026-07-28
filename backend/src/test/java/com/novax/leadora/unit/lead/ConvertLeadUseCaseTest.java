@@ -19,6 +19,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -65,7 +66,7 @@ class ConvertLeadUseCaseTest {
     @Mock private LeadAccessPolicy leadAccessPolicy;
     @Mock private ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     @Mock private SystemAuditLogService systemAuditLogService;
-    @Mock private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
+    @Mock private ActivityLogPublisher activityLogPublisher;
     @Mock private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     private ConvertLeadUseCase useCase;
