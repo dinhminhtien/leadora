@@ -9,6 +9,9 @@ import {
   UserCheck, PenLine, UserCog,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { toast } from "@/stores/toast_store";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -244,7 +247,7 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
                   <Link
                     href={duplicate.kind === "customer"
                       ? `/customer-profiles/${duplicate.id}`
-                      : `/leads/${duplicate.id}`}
+                      : ROUTE_PATHS.leadDetail(duplicate.id)}
                     className="inline-flex items-center gap-1 font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-950">
                     {duplicate.kind === "customer" ? "Open the customer profile" : "View the existing lead"}
                     <ArrowUpRight className="size-3" />
@@ -528,10 +531,14 @@ function LeadTable({
   //
   // A plain function rather than a component: declaring a component inside render would give it a
   // new identity every pass and remount the cell on each keystroke in the filter box.
+  // The non-edit branch is a real <Link> rather than a click handler even though the row
+  // already opens the drawer: it is what makes ctrl/middle-click open the lead in a new tab.
+  // The href is the list URL with the lead pre-selected — there is no full-page detail to
+  // navigate to any more, so a new tab lands on this same list with the drawer open.
   const rowOpen = (id: string, className: string, children: React.ReactNode) =>
     editMode
       ? <button type="button" onClick={() => onEditLead?.(id)} className={`${className} text-left w-full`}>{children}</button>
-      : <Link href={`/leads/${id}`} className={className}>{children}</Link>;
+      : <Link href={ROUTE_PATHS.leadDetail(id)} className={className}>{children}</Link>;
 
   return (
     <>
@@ -578,17 +585,16 @@ function LeadTable({
                 {rowOpen(lead.leadId, "block group-hover:underline decoration-blue-300 underline-offset-2",
                   <Truncate text={lead.fullName} width={130}
                     className="font-semibold text-sm text-slate-800 group-hover:text-blue-600 transition-colors" />)}
-                <div className="text-[11px] mt-0.5">
-                  {lead.email ? <Truncate text={lead.email} width={130} className="text-slate-400" /> : <Unknown />}
-                </div>
-              </TableCell>
-              <TableCell className="py-3 px-4 border-b-0">
-                <span className="flex items-center gap-1.5 text-xs text-slate-600" title={lead.isCorporate ? "Organization" : "Individual"}>
+                {/* The company/individual line lives under the name — it is not a column of its
+                    own. A separate Type cell used to be rendered here with no matching header,
+                    which pushed every following column one slot out of alignment. */}
+                <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground"
+                  title={lead.isCorporate ? "Organization" : "Individual"}>
                   {lead.isCorporate
                     ? <Building2 className="size-3 shrink-0" />
                     : <User className="size-3 shrink-0" />}
                   {lead.isCorporate
-                    ? (lead.companyName ? <Truncate text={lead.companyName} width={150} /> : <Unknown />)
+                    ? (lead.companyName ? <Truncate text={lead.companyName} width={110} /> : <Unknown />)
                     : "Individual"}
                 </span>
               </TableCell>
@@ -673,6 +679,13 @@ function LeadTable({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function LeadListScreen() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // `/leads?lead=<id>` opens that lead's drawer straight away. Every link to a lead in the
+  // app points here — notifications, SLA escalations, task drawers, customer profiles — and
+  // the old `/leads/{id}` page redirects here too. There is no full-page lead detail.
+  const deepLinkId = searchParams.get("lead");
+
   const user = useAuthStore(s => s.user);
   const role = getUserRole(user);
   const isStaff = role === "SALES";
@@ -756,6 +769,29 @@ export function LeadListScreen() {
   const totalPages = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalPages : (pageData?.totalPages ?? 1);
   const totalElements = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalElements : (pageData?.totalElements ?? 0);
 
+  // ── Deep-linked lead ──────────────────────────────────────────────────────
+  // If the linked lead happens to be on the page in front of us, use that row and paint
+  // immediately; otherwise fetch it. A deep link usually arrives with the default filters,
+  // so the lead is often *not* in the current page — but checking first saves a request on
+  // the common case of clicking a name in this very table.
+  const rowForDeepLink = deepLinkId ? leads.find(l => l.leadId === deepLinkId) ?? null : null;
+  const { data: deepLinkResp, isError: deepLinkFailed } =
+    useLeadDetail(deepLinkId && !rowForDeepLink ? deepLinkId : undefined);
+
+  const clearDeepLink = useCallback(() => {
+    if (deepLinkId) router.replace(ROUTE_PATHS.leads, { scroll: false });
+  }, [deepLinkId, router]);
+
+  // A link to a lead that no longer exists, or that this rep is not allowed to see (403),
+  // used to land on a dedicated "Lead not found" / "Access Denied" page. That page is gone,
+  // so say it once and drop the parameter — otherwise the URL keeps promising a drawer that
+  // never opens, and a refresh retries the same dead id.
+  useEffect(() => {
+    if (!deepLinkFailed) return;
+    toast.error("That lead is unavailable — it may have been removed, or it belongs to another sales rep.");
+    clearDeepLink();
+  }, [deepLinkFailed, clearDeepLink]);
+
   // Counted server-side over every lead matching the current filters. These used to be derived
   // from `leads` — the ten rows of the current page — so they changed when the user paged or
   // re-sorted even though the data had not. Same filters and same owner scope as the list below.
@@ -785,6 +821,10 @@ export function LeadListScreen() {
   };
 
   const currentSort = SORT_OPTIONS.find(o => o.value === sortOption) ?? SORT_OPTIONS[0];
+
+  // A row click wins over the URL: clicking row B while ?lead=A is still in the address
+  // bar must show B, not A. Both routes end at the same drawer.
+  const drawerLead: Lead | null = detailLead ?? rowForDeepLink ?? deepLinkResp?.data ?? null;
 
   // ── Filter bar (reused in both normal + fullscreen) ──────────────────────
   const filterBar = (
@@ -1070,12 +1110,17 @@ export function LeadListScreen() {
           onClose={() => setEditingLeadId(null)} />
       )}
 
-      {/* Full lead detail — Overview / Edit / Activity, plus Convert and the
-          status ladder. Keyed by id so switching rows resets the edit form. */}
+      {/* Full lead detail — Overview / Edit / Activity, plus Convert and the status
+          ladder. This is the *only* place a lead opens; there is no second, full-page
+          copy of it any more. Keyed by id so switching rows resets the edit form. */}
       <LeadDetailDrawer
-        key={detailLead?.leadId ?? "none"}
-        lead={detailLead}
-        onOpenChange={(open) => !open && setDetailLead(null)}
+        key={drawerLead?.leadId ?? "none"}
+        lead={drawerLead}
+        onOpenChange={(open) => {
+          if (open) return;
+          setDetailLead(null);
+          clearDeepLink();
+        }}
       />
     </div>
   );

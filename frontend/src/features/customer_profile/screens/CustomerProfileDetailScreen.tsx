@@ -41,6 +41,7 @@ import type { Customer, CustomerHistoryItem, CustomerType, CustomerStatus, Updat
 import type { Task } from "@/services/follow_up_task_service";
 import { toast } from "@/stores/toast_store";
 import { getApiErrorMessage } from "@/lib/api_error";
+import { ROUTE_PATHS } from "@/app/routes/route_paths";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -530,7 +531,7 @@ export function CustomerProfileDetailScreen({ customerId }: { customerId: string
                   <InfoItem icon={<UserCog className="size-3.5" />} label="Assigned To" value={customer.assignedUserName} />
                 )}
                 {customer.leadId && (
-                  <InfoItem icon={<Link2 className="size-3.5" />} label="Converted From Lead" value="View Lead" href={`/leads/${customer.leadId}`} />
+                  <InfoItem icon={<Link2 className="size-3.5" />} label="Converted From Lead" value="View Lead" href={ROUTE_PATHS.leadDetail(customer.leadId)} />
                 )}
                 <InfoItem icon={<Calendar className="size-3.5" />} label="Customer Since" value={fmtDate(customer.createdAt)} />
                 {customer.createdByName && (
@@ -602,7 +603,7 @@ export function CustomerProfileDetailScreen({ customerId }: { customerId: string
                   <InfoField label="Assigned To" value={customer.assignedUserName} />
                   <InfoField label="Created By" value={customer.createdByName} />
                   {customer.leadId && (
-                    <InfoField label="Source Lead" value={`Lead ${customer.leadId.slice(0, 8)}…`} href={`/leads/${customer.leadId}`} />
+                    <InfoField label="Source Lead" value={`Lead ${customer.leadId.slice(0, 8)}…`} href={ROUTE_PATHS.leadDetail(customer.leadId)} />
                   )}
                   <InfoField label="Customer Since" value={fmtDateTime(customer.createdAt)} />
                   <InfoField label="Last Updated" value={fmtDateTime(customer.updatedAt)} />
