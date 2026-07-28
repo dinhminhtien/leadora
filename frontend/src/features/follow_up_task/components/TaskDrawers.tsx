@@ -65,6 +65,7 @@ import {
 } from "@/services/follow_up_task_service";
 import { toast } from "@/stores/toast_store";
 import { getApiErrorMessage } from "@/lib/api_error";
+import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { useRouter } from "next/navigation";
 import { leadService, type Lead } from "@/services/lead_service";
 import { customerProfileService } from "@/services/customer_profile_service";
@@ -230,7 +231,11 @@ function RelatedRecordCard({ task }: { task: Task }) {
         ["Owner", task.leadOwnerName ?? "—"],
       ] as const,
       openLabel: "Open lead",
-      href: `/leads/${task.leadId}`,
+      // This object is built for all three kinds, so `leadId` is null whenever the task
+      // relates to a deal or a customer instead. The href was a template literal before,
+      // which happily produced the string "/leads/null"; falling back to the list means a
+      // stray click lands somewhere real.
+      href: task.leadId ? ROUTE_PATHS.leadDetail(task.leadId) : ROUTE_PATHS.leads,
     },
   }[kind];
   const { Icon } = config;
