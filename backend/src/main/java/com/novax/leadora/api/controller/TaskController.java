@@ -25,7 +25,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/tasks")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+@PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('TASK_VIEW')")
 public class TaskController {
 
     private final CreateTaskUseCase createTaskUseCase;
@@ -37,6 +37,7 @@ public class TaskController {
 
     /** UC-10.1 — Create Follow-up Task */
     @PostMapping
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('TASK_WRITE')")
     public ResponseEntity<ApiResponse<TaskResponse>> createTask(@Valid @RequestBody CreateTaskRequest request) {
         TaskResponse task = createTaskUseCase.execute(request);
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -68,6 +69,7 @@ public class TaskController {
 
     /** UC-10.4 / UC-10.6 — Update / Reassign Follow-up Task */
     @PutMapping("/{taskId}")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('TASK_WRITE')")
     public ResponseEntity<ApiResponse<TaskResponse>> updateTask(
             @PathVariable UUID taskId,
             @Valid @RequestBody UpdateTaskRequest request
@@ -78,6 +80,7 @@ public class TaskController {
 
     /** UC-10.7 — Resign Task (clone + create new follow-up task, soft parent ref in resultNote) */
     @PostMapping("/{taskId}/resign")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('TASK_WRITE')")
     public ResponseEntity<ApiResponse<TaskResponse>> resignTask(
             @PathVariable UUID taskId,
             @Valid @RequestBody ResignTaskRequest request

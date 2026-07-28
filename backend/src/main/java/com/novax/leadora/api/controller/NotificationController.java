@@ -25,7 +25,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/notifications")
 @RequiredArgsConstructor
-@PreAuthorize("isAuthenticated()")
+@PreAuthorize("isAuthenticated() and @access.can('NOTIFICATION_VIEW')")
 public class NotificationController {
 
     private static final Set<String> FULL_ACCESS_ROLES = Set.of("MANAGER", "ADMIN");

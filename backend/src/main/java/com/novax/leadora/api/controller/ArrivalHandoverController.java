@@ -29,7 +29,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/arrival-handovers")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('FO','FRONT_OFFICE','MANAGER','ADMIN')")
+@PreAuthorize("hasAnyRole('FO','FRONT_OFFICE','MANAGER','ADMIN') and @access.can('HANDOVER_VIEW')")
 public class ArrivalHandoverController {
 
     private final GetArrivalHandoverListUseCase getArrivalHandoverListUseCase;
@@ -68,6 +68,7 @@ public class ArrivalHandoverController {
 
     /** UC-22.3 — Update Handover Readiness Status. */
     @PutMapping("/{id}/readiness")
+    @PreAuthorize("hasAnyRole('FO','FRONT_OFFICE','MANAGER','ADMIN') and @access.can('HANDOVER_WRITE')")
     public ResponseEntity<ApiResponse<ArrivalHandoverResponse>> updateReadiness(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @PathVariable UUID id,

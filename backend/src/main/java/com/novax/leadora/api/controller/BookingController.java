@@ -25,7 +25,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/bookings")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','RESERVATION','MANAGER','ADMIN')")
+@PreAuthorize("hasAnyRole('SALES','RESERVATION','MANAGER','ADMIN') and @access.can('BOOKING_VIEW')")
 public class BookingController {
 
     private final CheckRoomAvailabilityUseCase checkRoomAvailabilityUseCase;
@@ -47,6 +47,7 @@ public class BookingController {
 
     /** UC-18.2 — Submit Booking Request */
     @PostMapping
+    @PreAuthorize("hasAnyRole('SALES','RESERVATION','MANAGER','ADMIN') and @access.can('BOOKING_WRITE')")
     public ResponseEntity<ApiResponse<BookingResponse>> submitBookingRequest(
             @Valid @RequestBody CreateBookingRequest request
     ) {
@@ -80,7 +81,7 @@ public class BookingController {
 
     /** UC-18.5 — Process Booking Request (Approve/Reject) */
     @PutMapping("/{bookingId}/process")
-    @PreAuthorize("hasAnyRole('RESERVATION', 'MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('RESERVATION', 'MANAGER', 'ADMIN') and @access.can('BOOKING_WRITE')")
     public ResponseEntity<ApiResponse<BookingResponse>> processBooking(
             @PathVariable UUID bookingId,
             @Valid @RequestBody ProcessBookingRequest request
