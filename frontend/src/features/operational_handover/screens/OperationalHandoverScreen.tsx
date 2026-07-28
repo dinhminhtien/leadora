@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Workflow, ClipboardList, Search, Plus, Edit, X, RefreshCw, AlertTriangle, User, Calendar, CreditCard, Home } from "lucide-react";
+import { Workflow, ClipboardList, Search, Plus, Edit, X, RefreshCw, AlertTriangle, Calendar } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,6 +16,7 @@ import { getApiErrorMessage } from "@/lib/api_error";
 import { operationalHandoverService, type OperationalHandoverPayload } from "@/services/operational_handover_service";
 import { bookingConfirmationService, type Booking } from "@/services/booking_confirmation_service";
 import { type ArrivalHandover } from "@/services/arrival_handover_service";
+import { HandoverDetailDrawer } from "@/features/front_office_handover/components/HandoverDetailDrawer";
 import { userService } from "@/services/follow_up_task_service";
 
 const handoverSchema = z.object({
@@ -241,35 +243,19 @@ export function OperationalHandoverScreen() {
     }
   };
 
-  const getStatusBadge = (status?: string) => {
-    switch (status) {
-      case "DRAFT":
-        return <Badge variant="warning" className="font-bold bg-amber-50 text-amber-700 border-amber-200">DRAFT</Badge>;
-      case "SUBMITTED":
-        return <Badge variant="primary" className="font-bold bg-blue-50 text-blue-700 border-blue-200">SUBMITTED</Badge>;
-      case "ACKNOWLEDGED":
-        return <Badge className="font-bold bg-purple-50 text-purple-700 border-purple-200">ACKNOWLEDGED</Badge>;
-      case "READY":
-        return <Badge variant="success" className="font-bold bg-emerald-50 text-emerald-700 border-emerald-200">READY</Badge>;
-      default:
-        return <Badge variant="default">{status || "UNKNOWN"}</Badge>;
-    }
-  };
+  /**
+   * Handover and readiness statuses via the canonical bindings (Blueprint §2.7).
+   *
+   * These were two switch statements pinning raw Tailwind palettes
+   * (`bg-amber-50`, `bg-sky-50`, `bg-purple-50`…) with no dark-mode variants, so
+   * the badges relied on the global compatibility shim to be legible at night.
+   * Token-backed pills theme themselves.
+   */
+  const getStatusBadge = (status?: string) =>
+    status ? <StatusPill size="sm" domain="handover" value={status} /> : null;
 
-  const getReadinessBadge = (readiness?: string) => {
-    switch (readiness) {
-      case "PENDING_REVIEW":
-        return <Badge variant="default" className="font-bold bg-slate-50 text-slate-500 border-slate-200">PENDING REVIEW</Badge>;
-      case "REVIEWED":
-        return <Badge variant="primary" className="font-bold bg-sky-50 text-sky-700 border-sky-200">REVIEWED</Badge>;
-      case "READY_FOR_ARRIVAL":
-        return <Badge variant="success" className="font-bold bg-emerald-50 text-emerald-700 border-emerald-200">READY FOR ARRIVAL</Badge>;
-      case "NEED_CLARIFICATION":
-        return <Badge variant="danger" className="font-bold bg-rose-50 text-rose-700 border-rose-200 flex items-center gap-1">NEED CLARIFICATION</Badge>;
-      default:
-        return null;
-    }
-  };
+  const getReadinessBadge = (readiness?: string) =>
+    readiness ? <StatusPill size="sm" domain="readiness" value={readiness} /> : null;
 
   return (
     <div className="space-y-6 min-h-[101vh]" style={{ scrollbarGutter: "stable" }}>
@@ -577,7 +563,7 @@ export function OperationalHandoverScreen() {
                   <AlertTriangle className="size-4.5 text-rose-500 shrink-0 mt-0.5" />
                   <div>
                     <h5 className="font-bold text-xs text-rose-800 dark:text-rose-400">FO requested clarification:</h5>
-                    <p className="text-xs text-rose-700 dark:text-rose-300 mt-1 italic font-medium">"{editHandover.clarificationNote}"</p>
+                    <p className="text-xs text-rose-700 dark:text-rose-300 mt-1 italic font-medium">&ldquo;{editHandover.clarificationNote}&rdquo;</p>
                   </div>
                 </div>
               )}
@@ -697,192 +683,30 @@ export function OperationalHandoverScreen() {
         </div>
       )}
 
-      {/* ==================== MODAL: View Handover Detail ==================== */}
-      {selectedHandover && (
-        <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-zinc-900 rounded-xl w-full max-w-4xl shadow-xl border border-slate-100 dark:border-zinc-800 flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 rounded-t-xl">
-              <div>
-                <h3 className="font-bold text-slate-800 dark:text-zinc-100 text-base flex items-center gap-1.5">
-                  <Workflow className="size-4.5 text-blue-600 dark:text-blue-400" />
-                  Handover Logs Detail
-                </h3>
-                <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
-                  Booking Code: <span className="font-bold text-slate-700 dark:text-zinc-300">{selectedHandover.bookingCode}</span>
-                </p>
-              </div>
-              <button
-                onClick={() => setSelectedHandover(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300 transition p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg"
-              >
-                <X className="size-4.5" />
-              </button>
-            </div>
-
-            {/* Modal Detail Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Warnings / Readiness Status */}
-              {selectedHandover.readinessStatus === "NEED_CLARIFICATION" && selectedHandover.clarificationNote && (
-                <div className="p-4 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900 rounded-lg flex items-start gap-3 shadow-sm">
-                  <AlertTriangle className="size-4.5 text-rose-500 shrink-0 mt-0.5" />
-                  <div>
-                    <h5 className="font-bold text-xs text-rose-800 dark:text-rose-400">FO requested clarification on this handover:</h5>
-                    <p className="text-xs text-rose-700 dark:text-rose-300 mt-1 italic font-semibold">"{selectedHandover.clarificationNote}"</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Status Header Block */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 dark:bg-zinc-800 p-4 rounded-lg border border-slate-100 dark:border-zinc-800">
-                <div className="text-xs">
-                  <span className="text-slate-400 dark:text-zinc-500 block mb-1 uppercase tracking-wider font-semibold">Handover Status</span>
-                  {getStatusBadge(selectedHandover.status)}
-                </div>
-                <div className="text-xs">
-                  <span className="text-slate-400 dark:text-zinc-500 block mb-1 uppercase tracking-wider font-semibold">FO Readiness</span>
-                  {getReadinessBadge(selectedHandover.readinessStatus) || <span className="text-slate-400 font-bold text-[10px] uppercase">PENDING REVIEW</span>}
-                </div>
-                <div className="text-xs">
-                  <span className="text-slate-400 dark:text-zinc-500 block mb-1 uppercase tracking-wider font-semibold">Last Updated By</span>
-                  <span className="text-slate-800 dark:text-zinc-200 font-bold text-xs flex items-center gap-1 mt-0.5">
-                    <User className="size-3.5 text-slate-400" />
-                    {selectedHandover.updatedByName || "N/A"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Content Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Column 1: Booking & Room summary */}
-                <div className="space-y-4">
-                  {/* Customer Block */}
-                  <div className="border border-slate-100 dark:border-zinc-800 rounded-lg p-4 space-y-3 shadow-sm bg-white dark:bg-zinc-900">
-                    <h4 className="font-bold text-xs text-slate-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                      <User className="size-4 text-blue-500" /> Customer & Booking Context
-                    </h4>
-                    <div className="grid grid-cols-2 gap-y-2 text-xs">
-                      <div>
-                        <span className="text-slate-400 block">Guest Name</span>
-                        <span className="font-bold text-slate-800 dark:text-zinc-250">{selectedHandover.customerName}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block">Phone Number</span>
-                        <span className="font-bold text-slate-800 dark:text-zinc-250">{selectedHandover.customerPhone || "—"}</span>
-                      </div>
-                      <div className="col-span-2 border-t border-slate-50 dark:border-zinc-800 pt-2 flex items-center gap-2">
-                        <Calendar className="size-4 text-slate-400" />
-                        <div>
-                          <span className="text-slate-400 block">Stay Duration</span>
-                          <span className="font-bold text-slate-800 dark:text-zinc-200">{selectedHandover.checkInDate} to {selectedHandover.checkOutDate}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Room Allocation Block */}
-                  <div className="border border-slate-100 dark:border-zinc-800 rounded-lg p-4 space-y-3 shadow-sm bg-white dark:bg-zinc-900">
-                    <h4 className="font-bold text-xs text-slate-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                      <Home className="size-4 text-emerald-500" /> Room Allocations
-                    </h4>
-                    {selectedHandover.rooms && selectedHandover.rooms.length > 0 ? (
-                      <div className="space-y-2">
-                        {selectedHandover.rooms.map((r, i) => (
-                          <div key={i} className="flex justify-between items-center bg-slate-50 dark:bg-zinc-800 p-2.5 rounded-lg text-xs">
-                            <div>
-                              <span className="font-bold text-slate-800 dark:text-zinc-200 block">{r.productName}</span>
-                              <span className="text-[10px] text-slate-400 dark:text-zinc-500">Qty: {r.quantity} | Nights: {r.nights}</span>
-                            </div>
-                            {r.roomNumber ? (
-                              <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-950/20 dark:text-blue-400 font-bold border-blue-200 dark:border-blue-900">
-                                {r.roomNumber}
-                              </Badge>
-                            ) : (
-                              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">Not assigned yet</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-slate-400 dark:text-zinc-500 text-xs py-2 italic">
-                        No detailed room allocations found.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Payment Block */}
-                  <div className="border border-slate-100 dark:border-zinc-800 rounded-lg p-4 space-y-2 shadow-sm bg-white dark:bg-zinc-900">
-                    <h4 className="font-bold text-xs text-slate-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                      <CreditCard className="size-4 text-purple-500" /> Payment & Deposit Reference
-                    </h4>
-                    <div className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
-                      {selectedHandover.paymentReference || "—"}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Column 2: Handover details */}
-                <div className="space-y-4">
-                  {/* Special Requests */}
-                  <div className="border border-slate-100 dark:border-zinc-800 rounded-lg p-4 space-y-1 bg-white dark:bg-zinc-900 shadow-sm">
-                    <span className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block">Special Requests</span>
-                    <div className="text-xs text-slate-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed min-h-[40px] italic">
-                      {selectedHandover.specialRequests || "None"}
-                    </div>
-                  </div>
-
-                  {/* Room Preferences */}
-                  <div className="border border-slate-100 dark:border-zinc-800 rounded-lg p-4 space-y-1 bg-white dark:bg-zinc-900 shadow-sm">
-                    <span className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block">Room Preferences</span>
-                    <div className="text-xs text-slate-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed min-h-[40px] italic">
-                      {selectedHandover.roomPreferences || "None"}
-                    </div>
-                  </div>
-
-                  {/* VIP Notes */}
-                  <div className="border border-slate-100 dark:border-zinc-800 rounded-lg p-4 space-y-1 bg-white dark:bg-zinc-900 shadow-sm">
-                    <span className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block">VIP Notes</span>
-                    <div className="text-xs text-rose-700 dark:text-rose-400 whitespace-pre-wrap leading-relaxed min-h-[40px] font-semibold">
-                      {selectedHandover.vipNotes || "None"}
-                    </div>
-                  </div>
-
-                  {/* Operational Notes */}
-                  <div className="border border-slate-100 dark:border-zinc-800 rounded-lg p-4 space-y-1 bg-white dark:bg-zinc-900 shadow-sm">
-                    <span className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block">Other Operational Notes</span>
-                    <div className="text-xs text-slate-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed min-h-[40px] italic">
-                      {selectedHandover.operationalNotes || "None"}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="flex items-center justify-end px-6 py-4 border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 rounded-b-xl gap-3">
-              <Button
-                variant="ghost"
-                onClick={() => setSelectedHandover(null)}
-              >
-                Close
-              </Button>
-              
-              {(selectedHandover.status === "DRAFT" || selectedHandover.readinessStatus === "NEED_CLARIFICATION") && (
-                <Button
-                  variant="primary"
-                  leftIcon={<Edit className="size-3.5" />}
-                  onClick={() => {
-                    setEditHandover(selectedHandover);
+      <HandoverDetailDrawer
+        handover={selectedHandover}
+        onOpenChange={(open) => !open && setSelectedHandover(null)}
+        actions={
+          // A submitted handover is locked; only a draft or one Front Office
+          // sent back for clarification may be edited (§12.13).
+          selectedHandover &&
+          (selectedHandover.status === "DRAFT" ||
+            selectedHandover.readinessStatus === "NEED_CLARIFICATION")
+            ? [
+                {
+                  label: "Edit handover",
+                  icon: Edit,
+                  variant: "primary" as const,
+                  onClick: () => {
+                    const target = selectedHandover;
                     setSelectedHandover(null);
-                  }}
-                >
-                  Edit Handover
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+                    setEditHandover(target);
+                  },
+                },
+              ]
+            : []
+        }
+      />
 
       {/* ==================== MODAL: View Booking Detail (Pending Handover) ==================== */}
       {selectedBooking && (

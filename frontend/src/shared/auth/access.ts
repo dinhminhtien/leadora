@@ -82,6 +82,9 @@ const ROUTE_PERMISSION: Record<string, string> = {
   [ROUTE_PATHS.customerProfiles]: "CUSTOMER_VIEW",
   [ROUTE_PATHS.followUpTasks]: "TASK_VIEW",
   [ROUTE_PATHS.manageFollowUpTasks]: "TASK_VIEW",
+  // Blueprint §14 groups `/tasks` and `/calendar` under the same gate: the
+  // calendar renders tasks, so seeing it requires being allowed to see them.
+  [ROUTE_PATHS.calendar]: "TASK_VIEW",
   [ROUTE_PATHS.salesPipeline]: "PIPELINE_VIEW",
   [ROUTE_PATHS.deals]: "DEAL_VIEW",
   [ROUTE_PATHS.pendingApprovals]: "QUOTATION_APPROVE",
@@ -152,6 +155,13 @@ export function canAccessPath(
   // ADMIN/MANAGER), not something that should silently break if an Admin never
   // granted the SLA_VIEW permission.
   if (required === "SLA_VIEW") return true;
+  // Leads are role-gated on the backend (@PreAuthorize hasAnyRole('SALES','MANAGER')),
+  // not permission-gated. A Manager is authorised for every lead endpoint regardless
+  // of whether anyone ever granted LEAD_VIEW, and the Manager lead screen is a
+  // distinct surface — it assigns owners and spans the whole team rather than one
+  // rep's pipeline. Gating it on a permission the API ignores just hid a working
+  // screen, so the role decides here exactly as it does server-side.
+  if (required === "LEAD_VIEW" && role === "MANAGER") return true;
   // Quotation approval is Manager-only on the backend (@PreAuthorize hasRole('MANAGER'))
   // — enforce that here too, so a stray QUOTATION_APPROVE grant to a non-manager role
   // can't surface a nav link / route whose API calls would just 403 anyway.

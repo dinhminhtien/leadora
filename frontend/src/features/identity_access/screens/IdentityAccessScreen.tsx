@@ -6,6 +6,7 @@ import {
   ChevronLeft, ChevronRight, Pencil, KeyRound, Check, Plus, Save,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -61,9 +62,13 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
+/**
+ * Account status via the canonical binding (Blueprint §2.7):
+ * ACTIVE success · INACTIVE muted · LOCKED danger.
+ * `STATUS_CONFIG` below is retained only for the filter dropdown's labels.
+ */
 function StatusBadge({ status }: { status: UserStatus }) {
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.INACTIVE;
-  return <Badge variant={cfg.variant} size="sm" className="font-bold text-[9px] uppercase">{cfg.label}</Badge>;
+  return <StatusPill size="sm" domain="user" value={status} />;
 }
 
 function FieldError({ msg }: { msg?: string }) {

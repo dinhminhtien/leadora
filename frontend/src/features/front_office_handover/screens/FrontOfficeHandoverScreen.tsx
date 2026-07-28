@@ -1,23 +1,10 @@
 "use client";
 
-/*
- * Seeding the editable readiness/note from the freshly fetched detail is a legitimate
- * external-system sync that the react-hooks/set-state-in-effect rule flags as a false positive.
- */
-/* eslint-disable react-hooks/set-state-in-effect */
-
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Headphones,
   Search,
-  X,
   Loader2,
-  CalendarCheck,
-  Phone,
-  Star,
-  BedDouble,
-  ClipboardList,
-  CreditCard,
   Save,
   Inbox,
   Clock3,
@@ -34,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -47,35 +35,10 @@ import type {
   ArrivalHandover,
   ReadinessStatus,
 } from "@/services/arrival_handover_service";
+import { HandoverDetailDrawer } from "@/features/front_office_handover/components/HandoverDetailDrawer";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 const PAGE_SIZE = 10;
-
-const READINESS_LABELS: Record<string, string> = {
-  PENDING_REVIEW: "Pending review",
-  REVIEWED: "Reviewed",
-  READY_FOR_ARRIVAL: "Ready for arrival",
-  NEED_CLARIFICATION: "Needs clarification",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  SUBMITTED: "Submitted",
-  ACKNOWLEDGED: "Acknowledged",
-  READY: "Complete",
-};
-
-function readinessClass(value?: string) {
-  switch (value) {
-    case "READY_FOR_ARRIVAL":
-      return "bg-emerald-100 text-emerald-700";
-    case "REVIEWED":
-      return "bg-blue-100 text-blue-700";
-    case "NEED_CLARIFICATION":
-      return "bg-rose-100 text-rose-700";
-    default:
-      return "bg-amber-100 text-amber-700";
-  }
-}
 
 function Pill({ text, className }: { text: string; className: string }) {
   return (
@@ -130,16 +93,6 @@ function SummaryCard({
 function fmtDate(iso?: string) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("vi-VN");
-}
-
-function fmtDateTime(iso?: string) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 export function FrontOfficeHandoverScreen() {
@@ -342,10 +295,7 @@ export function FrontOfficeHandoverScreen() {
                     {h.specialRequests?.trim() ? h.specialRequests : "—"}
                   </TableCell>
                   <TableCell>
-                    <Pill
-                      text={READINESS_LABELS[h.readinessStatus ?? ""] ?? h.readinessStatus ?? "—"}
-                      className={readinessClass(h.readinessStatus)}
-                    />
+                    <StatusPill size="sm" domain="readiness" value={h.readinessStatus} />
                   </TableCell>
                 </TableRow>
               ))}
@@ -391,25 +341,46 @@ export function FrontOfficeHandoverScreen() {
 
 function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void }) {
   const detailQuery = useArrivalHandoverDetail(id);
-  const updateReadiness = useUpdateReadiness();
   const detail = detailQuery.data?.data;
 
-  const [readiness, setReadiness] = useState<ReadinessStatus | "">("");
-  const [note, setNote] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
+  return (
+    <HandoverDetailDrawer
+      handover={detail ?? null}
+      onOpenChange={(open) => !open && onClose()}
+    >
+      {detailQuery.isLoading ? (
+        <p className="flex items-center gap-2 text-[12px] text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" /> Loading…
+        </p>
+      ) : !detail ? (
+        <p className="text-[12px] text-danger">Could not load handover details.</p>
+      ) : (
+        // Keyed on the record so the form re-seeds from server state when a
+        // different arrival is opened, instead of syncing through an effect.
+        <ReadinessForm key={detail.handoverId} id={id} detail={detail} />
+      )}
+    </HandoverDetailDrawer>
+  );
+}
 
-  useEffect(() => {
-    // Seed editable fields from the freshly loaded detail (external-system sync).
-    if (!detail) return;
-    setReadiness((detail.readinessStatus as ReadinessStatus) ?? "");
-    setNote(detail.clarificationNote ?? "");
-  }, [detail]);
+/**
+ * UC-22.3 — the only field Front Office may write (BR-27). Everything else in
+ * the drawer is read-only, which is why this is the sole form on the surface.
+ */
+function ReadinessForm({ id, detail }: { id: string; detail: ArrivalHandover }) {
+  const updateReadiness = useUpdateReadiness();
+
+  const [readiness, setReadiness] = useState<ReadinessStatus | "">(
+    (detail.readinessStatus as ReadinessStatus) ?? "",
+  );
+  const [note, setNote] = useState(detail.clarificationNote ?? "");
+  const [localError, setLocalError] = useState<string | null>(null);
 
   const needsClarification = readiness === "NEED_CLARIFICATION";
   const dirty =
     !!readiness &&
-    (readiness !== detail?.readinessStatus ||
-      (needsClarification && note.trim() !== (detail?.clarificationNote ?? "")));
+    (readiness !== detail.readinessStatus ||
+      (needsClarification && note.trim() !== (detail.clarificationNote ?? "")));
 
   const handleSave = async () => {
     setLocalError(null);
@@ -426,215 +397,67 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      {/* backdrop */}
-      <div className="absolute inset-0 bg-slate-900/30" onClick={onClose} />
-
-      <div className="relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-200">
-        {/* header */}
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Handover details
-            </p>
-            <h2 className="text-sm font-bold text-slate-800">{detail?.bookingCode || "—"}</h2>
-            {detail?.readinessStatus && (
-              <div className="mt-1">
-                <Pill
-                  text={READINESS_LABELS[detail.readinessStatus] ?? detail.readinessStatus}
-                  className={readinessClass(detail.readinessStatus)}
-                />
-              </div>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
-            title="Close"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-
-        {/* body */}
-        <div className="custom-scrollbar flex-1 space-y-4 overflow-y-auto p-4">
-          {detailQuery.isLoading ? (
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <Loader2 className="size-4 animate-spin" /> Loading…
-            </div>
-          ) : !detail ? (
-            <p className="text-xs text-rose-500">Could not load handover details.</p>
-          ) : (
-            <>
-              {/* Guest / booking */}
-              <section className="space-y-2 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-                <InfoRow label="Guest" value={detail.customerName} />
-                <InfoRow
-                  label="Contact"
-                  value={detail.customerPhone}
-                  icon={<Phone className="size-3.5 text-slate-400" />}
-                />
-                <InfoRow
-                  label="Check-in / Check-out"
-                  value={`${fmtDate(detail.checkInDate)} → ${fmtDate(detail.checkOutDate)}`}
-                  icon={<CalendarCheck className="size-3.5 text-slate-400" />}
-                />
-                <InfoRow label="Status" value={STATUS_LABELS[detail.status ?? ""] ?? detail.status} />
-                <InfoRow
-                  label="Payment / Deposit"
-                  value={detail.paymentReference}
-                  icon={<CreditCard className="size-3.5 text-slate-400" />}
-                />
-                {detail.submittedAt && (
-                  <InfoRow label="Sent to Front Office" value={fmtDateTime(detail.submittedAt)} />
-                )}
-                {detail.acknowledgedAt && (
-                  <InfoRow label="Acknowledged at" value={fmtDateTime(detail.acknowledgedAt)} />
-                )}
-              </section>
-
-              {/* Room / service breakdown */}
-              <section className="space-y-1">
-                <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  <BedDouble className="size-3.5 text-blue-500" />
-                  Room / Service
-                </p>
-                <div className="space-y-1 rounded-lg border border-slate-100 bg-white p-2">
-                  {detail.rooms && detail.rooms.length > 0 ? (
-                    detail.rooms.map((r, i) => (
-                      <div key={i} className="flex items-center justify-between text-xs text-slate-600">
-                        <span className="font-medium text-slate-700">
-                          {r.productName || "Service"}
-                          {r.roomNumber ? ` · Room ${r.roomNumber}` : ""}
-                        </span>
-                        <span className="text-slate-400">
-                          x{r.quantity ?? 1}
-                          {r.nights ? ` · ${r.nights} nights` : ""}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-xs text-slate-400">—</p>
-                  )}
-                </div>
-              </section>
-
-              {/* Handover notes (read-only for FO) */}
-              <NoteBlock icon={<Star className="size-3.5 text-amber-500" />} title="VIP notes" text={detail.vipNotes} />
-              <NoteBlock icon={<BedDouble className="size-3.5 text-blue-500" />} title="Room preferences" text={detail.roomPreferences} />
-              <NoteBlock icon={<ClipboardList className="size-3.5 text-slate-500" />} title="Special requests" text={detail.specialRequests} />
-              <NoteBlock icon={<ClipboardList className="size-3.5 text-slate-500" />} title="Operational notes" text={detail.operationalNotes} />
-
-              {/* Readiness update (UC-22.3) */}
-              <section className="space-y-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                  Update readiness status
-                </p>
-                <Select
-                  value={readiness}
-                  onChange={(e) => {
-                    setReadiness(e.target.value as ReadinessStatus);
-                    setLocalError(null);
-                  }}
-                >
-                  <option value="PENDING_REVIEW" disabled>
-                    Pending review
-                  </option>
-                  <option value="REVIEWED">Reviewed</option>
-                  <option value="READY_FOR_ARRIVAL">Ready for arrival</option>
-                  <option value="NEED_CLARIFICATION">Needs clarification</option>
-                </Select>
-
-                {needsClarification && (
-                  <textarea
-                    rows={3}
-                    value={note}
-                    onChange={(e) => {
-                      setNote(e.target.value);
-                      setLocalError(null);
-                    }}
-                    placeholder="Details for Sales/Reservations to clarify…"
-                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none"
-                  />
-                )}
-
-                {(localError || updateReadiness.isError) && (
-                  <p className="text-[11px] text-rose-500">
-                    {localError || "Update failed. Please try again."}
-                  </p>
-                )}
-                {updateReadiness.isSuccess && !dirty && !localError && (
-                  <p className="text-[11px] text-emerald-600">Updated.</p>
-                )}
-
-                <Button
-                  size="sm"
-                  className="w-full"
-                  disabled={!dirty || updateReadiness.isPending}
-                  isLoading={updateReadiness.isPending}
-                  leftIcon={<Save className="size-3.5" />}
-                  onClick={handleSave}
-                >
-                  Save status
-                </Button>
-                {needsClarification && (
-                  <p className="text-[10px] text-slate-400">
-                    When you choose “Needs clarification”, the system notifies the responsible Sales/Reservations staff.
-                  </p>
-                )}
-              </section>
-
-              {detail.updatedByName && (
-                <p className="text-[10px] text-slate-400">
-                  Last updated by {detail.updatedByName}
-                </p>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function InfoRow({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value?: string;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3 text-xs">
-      <span className="text-slate-400">{label}</span>
-      <span className="flex items-center gap-1.5 text-right font-medium text-slate-700">
-        {icon}
-        {value || "—"}
-      </span>
-    </div>
-  );
-}
-
-function NoteBlock({
-  icon,
-  title,
-  text,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  text?: string;
-}) {
-  return (
-    <section className="space-y-1">
-      <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-        {icon}
-        {title}
+    <section className="space-y-2 rounded-lg border border-brand-500/30 bg-brand-500/8 p-3">
+      <p className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+        Update readiness status
       </p>
-      <p className="whitespace-pre-line rounded-lg border border-slate-100 bg-white p-2.5 text-xs text-slate-600">
-        {text?.trim() ? text : "—"}
-      </p>
+
+      <Select
+        aria-label="Readiness status"
+        value={readiness}
+        onChange={(e) => {
+          setReadiness(e.target.value as ReadinessStatus);
+          setLocalError(null);
+        }}
+      >
+        <option value="PENDING_REVIEW" disabled>
+          Pending review
+        </option>
+        <option value="REVIEWED">Reviewed</option>
+        <option value="READY_FOR_ARRIVAL">Ready for arrival</option>
+        <option value="NEED_CLARIFICATION">Needs clarification</option>
+      </Select>
+
+      {needsClarification && (
+        <textarea
+          rows={3}
+          value={note}
+          onChange={(e) => {
+            setNote(e.target.value);
+            setLocalError(null);
+          }}
+          placeholder="Details for Sales/Reservations to clarify…"
+          aria-label="Clarification details"
+          className="w-full resize-none rounded-md border border-border bg-input px-3 py-2 text-[12.5px] text-foreground placeholder:text-muted-foreground focus-ring"
+        />
+      )}
+
+      {(localError || updateReadiness.isError) && (
+        <p className="text-[11.5px] text-danger">
+          {localError || "Update failed. Please try again."}
+        </p>
+      )}
+      {updateReadiness.isSuccess && !dirty && !localError && (
+        <p className="text-[11.5px] text-success">Updated.</p>
+      )}
+
+      <Button
+        size="sm"
+        className="w-full"
+        disabled={!dirty || updateReadiness.isPending}
+        isLoading={updateReadiness.isPending}
+        leftIcon={<Save className="size-3.5" />}
+        onClick={handleSave}
+      >
+        Save status
+      </Button>
+
+      {needsClarification && (
+        <p className="text-[11px] text-muted-foreground">
+          Choosing “Needs clarification” notifies the responsible
+          Sales/Reservations staff.
+        </p>
+      )}
     </section>
   );
 }
