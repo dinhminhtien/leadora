@@ -387,7 +387,9 @@ function duplicateCustomerFrom(error: unknown): { customerId: string; field: str
   };
 }
 
-function ConvertModal({
+/** Exported so `LeadDetailDrawer` converts through this exact flow — one
+ *  conversion dialog, not a second copy that could drift from BR-09/BR-10. */
+export function ConvertModal({
   lead, onClose,
 }: {
   lead: Lead; onClose: () => void;
