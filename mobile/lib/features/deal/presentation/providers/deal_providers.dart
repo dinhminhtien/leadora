@@ -13,6 +13,13 @@ final dealDetailProvider = AutoDisposeFutureProvider.family<Deal, String>((
   return ref.watch(dealRepositoryProvider).getDeal(dealId);
 });
 
+/// Lifecycle progress for one deal. Separate from [dealDetailProvider] so a slow or
+/// failing workflow lookup never blocks the deal itself from rendering.
+final dealWorkflowProvider =
+    AutoDisposeFutureProvider.family<DealWorkflowSummary, String>((ref, dealId) {
+      return ref.watch(dealRepositoryProvider).getWorkflowSummary(dealId);
+    });
+
 /// How the deal list is ordered. Applied client-side — `GET /deals` takes no
 /// sort param.
 enum DealSort {

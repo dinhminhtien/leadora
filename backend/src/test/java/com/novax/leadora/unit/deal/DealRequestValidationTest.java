@@ -32,7 +32,7 @@ class DealRequestValidationTest {
                 .email("contact@hotel.vn")
                 .phone("0912345678")
                 .value(BigDecimal.valueOf(50000000))
-                .stage("PROSPECTING")
+                .stage("INQUIRY")
                 .expectedClose(LocalDate.of(2026, 12, 31))
                 .build();
     }

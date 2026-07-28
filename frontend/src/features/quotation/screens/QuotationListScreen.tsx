@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ListFilter, Bell } from "lucide-react";
+import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ArrowUpDown, ListFilter, Bell, BedDouble, X } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -16,16 +16,21 @@ import { ExpireCloseModal } from "@/features/quotation/components/ExpireCloseMod
 import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
 import { CreateReminderModal } from "@/features/reminder/components/CreateReminderModal";
 import { QuotationActionMenu, type QuotationMenuAction } from "@/features/quotation/components/QuotationActionMenu";
+import { RoomConfirmationPanel } from "@/features/room_request/components/RoomConfirmationPanel";
 import type { Quotation } from "@/services/quotation_service";
 export type { Quotation } from "@/services/quotation_service";
 import { useQuotations, useExpireOverdue, useSubmitQuotation } from "@/features/quotation/hooks/use_quotations";
 import { useAuthStore } from "@/stores/auth_store";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
+// "rejected" stays active, not done — Revise is still the primary action on it
+// (see getPrimaryAction below), so filing it under "Done" alongside truly terminal
+// statuses would hide a quotation the staff still needs to act on.
 const ACTIVE_STATUSES: Quotation["status"][] = [
-  "draft", "pending_approval", "approved", "sent", "accepted", "interested", "pending_revision",
+  "draft", "pending_approval", "approved", "sent", "accepted", "interested",
+  "pending_revision", "rejected",
 ];
-const DONE_STATUSES: Quotation["status"][] = ["converted", "closed", "expired", "rejected"];
+const DONE_STATUSES: Quotation["status"][] = ["converted", "closed", "expired"];
 
 type ClosureLog = {
   id: string;
@@ -64,13 +69,35 @@ export function QuotationListScreen() {
   const [autoExpireResult, setAutoExpireResult] = useState<number | null>(null);
   const [showClosureLog, setShowClosureLog] = useState(false);
   const [reminderTarget, setReminderTarget] = useState<Quotation | null>(null);
+  // Asking Reservation about rooms is available from any live status, not just when the
+  // Send modal can open — a rep should be able to check before promising anything.
+  const [roomTarget, setRoomTarget] = useState<Quotation | null>(null);
   const [activeTab, setActiveTab] = useState<"active" | "done">("active");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
 
+  // Pagination — each tab (In Progress / Completed) paginates independently.
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  // Column sort — Total / Valid Until only, toggled by clicking the header.
+  const [sortField, setSortField] = useState<"total" | "validUntil" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const handleSort = (field: "total" | "validUntil") => {
+    if (sortField === field) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+    setCurrentPage(1);
+  };
+
   const handleTabChange = (tab: "active" | "done") => {
     setActiveTab(tab);
     setStatusFilter("");
+    setCurrentPage(1);
   };
 
   const activeCount = useMemo(() => quotes.filter((q) => ACTIVE_STATUSES.includes(q.status)).length, [quotes]);
@@ -88,6 +115,32 @@ export function QuotationListScreen() {
       return matchesTab && matchesStatus && matchesSearch;
     });
   }, [quotes, search, activeTab, statusFilter]);
+
+  // Reset to page 1 whenever the filtered set changes shape (search/status typed)
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter]);
+
+  const sortedQuotes = useMemo(() => {
+    if (!sortField) return filteredQuotes;
+    const dirMul = sortDir === "asc" ? 1 : -1;
+    return [...filteredQuotes].sort((a, b) => {
+      if (sortField === "total") {
+        return (a.amount - b.amount) * dirMul;
+      }
+      // Valid Until: empty dates sort last regardless of direction
+      const aTime = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity;
+      const bTime = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity;
+      return (aTime - bTime) * dirMul;
+    });
+  }, [filteredQuotes, sortField, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedQuotes.length / pageSize));
+
+  const paginatedQuotes = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return sortedQuotes.slice(startIndex, startIndex + pageSize);
+  }, [sortedQuotes, currentPage]);
 
   const handleSent = (_quotationId: string) => {
     setLocalStatusMap(prev => ({ ...prev, [_quotationId]: "sent" }));
@@ -232,6 +285,11 @@ export function QuotationListScreen() {
     if (!["converted", "expired", "closed"].includes(q.status)) {
       actions.push({ key: "close", label: "Close", Icon: Archive, onClick: () => setCloseTarget(q), tone: "danger" });
     }
+    // Sending and converting are both gated on a confirmed room, so let the rep ask as
+    // early as they like rather than only from inside those modals.
+    if (!["converted", "expired", "closed"].includes(q.status)) {
+      actions.push({ key: "rooms", label: "Room Confirmation", Icon: BedDouble, onClick: () => setRoomTarget(q), tone: "primary" });
+    }
     actions.push({ key: "remind", label: "Add Reminder", Icon: Bell, onClick: () => setReminderTarget(q) });
     return actions;
   };
@@ -362,8 +420,42 @@ export function QuotationListScreen() {
               <TableHead className="font-semibold text-xs text-slate-500">Quote Reference</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Client Name</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Linked Deal</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Total</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Valid Until</TableHead>
+              <TableHead className="font-semibold text-xs text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleSort("total")}
+                  className="flex items-center gap-0.5 hover:text-slate-700"
+                >
+                  Total
+                  {sortField === "total" ? (
+                    sortDir === "asc" ? (
+                      <ChevronUp className="size-3.5 text-blue-500" />
+                    ) : (
+                      <ChevronDown className="size-3.5 text-blue-500" />
+                    )
+                  ) : (
+                    <ArrowUpDown className="size-3 text-slate-300" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="font-semibold text-xs text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleSort("validUntil")}
+                  className="flex items-center gap-0.5 hover:text-slate-700"
+                >
+                  Valid Until
+                  {sortField === "validUntil" ? (
+                    sortDir === "asc" ? (
+                      <ChevronUp className="size-3.5 text-blue-500" />
+                    ) : (
+                      <ChevronDown className="size-3.5 text-blue-500" />
+                    )
+                  ) : (
+                    <ArrowUpDown className="size-3 text-slate-300" />
+                  )}
+                </button>
+              </TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">Status</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500">SLA</TableHead>
               <TableHead className="font-semibold text-xs text-slate-500 text-center">Actions</TableHead>
@@ -376,8 +468,8 @@ export function QuotationListScreen() {
                   Loading quotations...
                 </TableCell>
               </TableRow>
-            ) : filteredQuotes.length > 0 ? (
-              filteredQuotes.map((q) => (
+            ) : paginatedQuotes.length > 0 ? (
+              paginatedQuotes.map((q) => (
                 <TableRow
                   key={q.id}
                   ref={setRowRef(q.id)}
@@ -452,6 +544,56 @@ export function QuotationListScreen() {
         </Table>
       </div>
 
+      {/* Pagination Controls */}
+      {filteredQuotes.length > pageSize && (
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white px-6 py-4 rounded-xl border border-slate-100 shadow-sm text-xs">
+          <div className="text-slate-500 font-medium">
+            Showing <strong className="text-slate-700">{(currentPage - 1) * pageSize + 1}</strong> to{" "}
+            <strong className="text-slate-700">
+              {Math.min(currentPage * pageSize, filteredQuotes.length)}
+            </strong>{" "}
+            of <strong className="text-slate-700">{filteredQuotes.length}</strong> entries
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="border-slate-200 text-slate-600 font-bold px-3 py-1.5 h-8 disabled:opacity-50"
+            >
+              Previous
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }).map((_, idx) => {
+                const p = idx + 1;
+                const isCurrent = p === currentPage;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setCurrentPage(p)}
+                    className={`size-8 rounded-lg font-bold transition flex items-center justify-center ${
+                      isCurrent ? "bg-[#185FA5] text-white shadow-xs" : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="border-slate-200 text-slate-600 font-bold px-3 py-1.5 h-8 disabled:opacity-50"
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* UC-14.4: Send Quotation Modal */}
       {sendTarget && (
         <SendQuotationModal
@@ -495,6 +637,32 @@ export function QuotationListScreen() {
           defaultRelatedId={reminderTarget.id}
           onClose={() => setReminderTarget(null)}
         />
+      )}
+
+      {/* Ask the Reservation team about rooms, from any live status — Send and Convert are
+          both gated on their answer, so waiting until those modals open is too late. */}
+      {roomTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-800">Room Confirmation</h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {roomTarget.quoteNo} · {roomTarget.roomType ?? "—"} ·{" "}
+                  {roomTarget.checkInDate ?? "—"} → {roomTarget.checkOutDate ?? "—"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRoomTarget(null)}
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <RoomConfirmationPanel quote={roomTarget} />
+          </div>
+        </div>
       )}
 
       {/* UC-14.8: Closure & Expiry Audit Log */}

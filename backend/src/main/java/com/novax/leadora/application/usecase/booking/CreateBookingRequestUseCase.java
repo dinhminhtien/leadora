@@ -43,10 +43,12 @@ public class CreateBookingRequestUseCase {
     @Transactional
     public BookingResponse execute(CreateBookingRequest request) {
         if (request.getCheckInDate() == null || request.getCheckOutDate() == null) {
-            throw new BusinessException("INVALID_DATES", "Check-in and check-out dates are required", HttpStatus.BAD_REQUEST);
+            throw new BusinessException("INVALID_DATES", "Check-in and check-out dates are required",
+                    HttpStatus.BAD_REQUEST);
         }
         if (!request.getCheckInDate().isBefore(request.getCheckOutDate())) {
-            throw new BusinessException("INVALID_DATES", "Check-in date must be strictly before check-out date", HttpStatus.BAD_REQUEST);
+            throw new BusinessException("INVALID_DATES", "Check-in date must be strictly before check-out date",
+                    HttpStatus.BAD_REQUEST);
         }
 
         CustomerEntity customer = customerRepository.findById(request.getCustomerId())
@@ -55,7 +57,8 @@ public class CreateBookingRequestUseCase {
         QuotationEntity quotation = quotationRepository.findById(request.getQuotationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Quotation", request.getQuotationId()));
 
-        // Lock Deal first to prevent race conditions (Lock ordering: Deal -> Quotation/Booking)
+        // Lock Deal first to prevent race conditions (Lock ordering: Deal ->
+        // Quotation/Booking)
         DealEntity deal = quotation.getDeal();
         if (deal != null) {
             final UUID dealId = deal.getDealId();
@@ -69,6 +72,12 @@ public class CreateBookingRequestUseCase {
                     "Only ACCEPTED quotations can be converted to booking. Current status: " + quotation.getStatus(),
                     HttpStatus.CONFLICT);
         }
+
+        // Room confirmation is not required here. The booking request is created
+        // PENDING for
+        // the Reservation team to answer, so an unconfirmed room is what this record is
+        // for
+        // rather than a reason to refuse it.
 
         // Update Quotation status to CONVERTED
         quotation.setStatus(QuotationStatus.CONVERTED);

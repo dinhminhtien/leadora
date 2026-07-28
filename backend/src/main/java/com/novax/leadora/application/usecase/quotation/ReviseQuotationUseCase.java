@@ -2,6 +2,7 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.ReviseQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
@@ -40,6 +41,7 @@ public class ReviseQuotationUseCase {
     private final CurrentUserProvider currentUserProvider;
     private final QuotationAccessPolicy quotationAccessPolicy;
     private final QuotationAvailabilityChecker availabilityChecker;
+    private final SystemAuditLogService systemAuditLogService;
 
     @Transactional
     public QuotationResponse execute(UUID parentId, ReviseQuotationRequest request) {
@@ -125,6 +127,14 @@ public class ReviseQuotationUseCase {
         // new version exists, instead of leaving both live simultaneously.
         parent.setStatus(QuotationStatus.SUPERSEDED);
         quotationRepository.save(parent);
+
+        // BR-37/BR-22: record the price change in the audit trail — the parent row
+        // itself is preserved (SUPERSEDED, not deleted/overwritten), but without this
+        // entry there is no audit-log trace of what the price changed from/to.
+        systemAuditLogService.log("QUOTATION", "QUOTATION", saved.getQuotationId(), "REVISED", creator,
+                "version=" + parent.getVersion() + ", totalAmount=" + parent.getTotalAmount(),
+                "version=" + saved.getVersion() + ", totalAmount=" + saved.getTotalAmount(),
+                "parentQuotationId=" + parentId + ", changeReason=" + request.getChangeReason());
 
         return QuotationResponse.fromWithDetail(saved, (int) nights,
                 request.getNumberOfRooms(), request.getPricePerNight());

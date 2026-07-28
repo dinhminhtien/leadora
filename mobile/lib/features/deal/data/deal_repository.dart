@@ -70,6 +70,16 @@ class DealRepository {
       decode: (data) => Deal.fromJson(data as Map<String, dynamic>),
     );
   }
+
+  /// Where the deal stands in the Sales lifecycle. Read-only: the backend derives it
+  /// from the quotation → booking → payment chain, nothing here writes to the deal.
+  Future<DealWorkflowSummary> getWorkflowSummary(String dealId) {
+    return _client.get<DealWorkflowSummary>(
+      ApiPaths.dealWorkflow(dealId),
+      decode: (data) =>
+          DealWorkflowSummary.fromJson(data as Map<String, dynamic>),
+    );
+  }
 }
 
 final dealRepositoryProvider = Provider<DealRepository>((ref) {

@@ -118,4 +118,20 @@ public class DealWorkflowResolver {
         }
         return paymentRepository.existsByBooking_BookingIdAndStatus(activeBookingOpt.get().getBookingId(), PaymentStatus.PAID);
     }
+
+    public int getStageOrder(DealPipelineStage stage) {
+        if (stage == null) {
+            return 0;
+        }
+        return switch (stage) {
+            case INQUIRY -> 0;
+            case QUALIFICATION -> 1;
+            case QUOTATION_SENT -> 2;
+            case NEGOTIATION -> 3;
+            case PENDING_CONFIRMATION -> 4;
+            case BOOKING_CONFIRMED -> 5;
+            case CLOSED_WON, CLOSED_LOST -> 6;
+        };
+    }
 }
+

@@ -33,9 +33,5 @@ public class QuotationAvailabilityChecker {
             throw new BusinessException("INVALID_ROOM_TYPE",
                     "Room type \"" + roomType + "\" is not a valid, active room product", HttpStatus.BAD_REQUEST);
         }
-        if (!Boolean.TRUE.equals(match.getIsAvailable())) {
-            throw new BusinessException("ROOM_UNAVAILABLE",
-                    "No \"" + roomType + "\" rooms are available for the selected dates", HttpStatus.CONFLICT);
-        }
     }
 }

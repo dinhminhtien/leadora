@@ -10,6 +10,7 @@ import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 
@@ -19,16 +20,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * The summary tiles' backing query (UC-8.2).
  *
- * <p>Two things matter here and neither is arithmetic — that lives in {@code LeadStatsResponseTest}.
- * First, the counts must be pinned to the caller's own leads for a sales rep: an aggregate is still
- * information, and a total that includes records the user may not open would leak the size of the
- * team's pipeline (BR-02). Second, a rejected filter must be rejected here too, or the tiles would
+ * <p>
+ * Two things matter here and neither is arithmetic — that lives in
+ * {@code LeadStatsResponseTest}.
+ * First, the counts must be pinned to the caller's own leads for a sales rep:
+ * an aggregate is still
+ * information, and a total that includes records the user may not open would
+ * leak the size of the
+ * team's pipeline (BR-02). Second, a rejected filter must be rejected here too,
+ * or the tiles would
  * quietly summarise a wider set than the table beneath them.
  */
 class GetLeadStatsUseCaseTest {
@@ -41,7 +48,9 @@ class GetLeadStatsUseCaseTest {
         return UserEntity.builder().userId(UUID.randomUUID()).build();
     }
 
-    /** total, converted, lost, qualified — in the order the use case asks for them. */
+    /**
+     * total, converted, lost, qualified — in the order the use case asks for them.
+     */
     @SuppressWarnings("unchecked")
     private void stubCounts(long total, long converted, long lost, long qualified) {
         when(repository.count(any(Specification.class)))
@@ -76,7 +85,8 @@ class GetLeadStatsUseCaseTest {
 
         useCase.execute(null, null, null, null, null, null, "assigned", null);
 
-        // The policy decides the scope; the use case must consult it rather than counting freely.
+        // The policy decides the scope; the use case must consult it rather than
+        // counting freely.
         verify(policy).listScopeOwnerId(rep);
     }
 
@@ -130,7 +140,7 @@ class GetLeadStatsUseCaseTest {
                 "2026-01-01", "2026-12-31", "created", null);
 
         // Four counts: total, then one per terminal/qualified status.
-        verify(repository, org.mockito.Mockito.times(4)).count(any(Specification.class));
+        verify(repository, times(4)).count(ArgumentMatchers.<Specification<LeadEntity>>any());
     }
 
     /**

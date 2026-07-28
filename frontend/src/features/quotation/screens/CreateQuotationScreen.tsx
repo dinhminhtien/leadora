@@ -276,10 +276,10 @@ export function CreateQuotationScreen() {
                   <FieldLabel required>Price Per Night / Unit (VND)</FieldLabel>
                   <Input
                     {...register("pricePerNight")}
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    placeholder="0.00"
+                    type="text"
+                    inputMode="numeric"
+                    numericOnly
+                    placeholder="0"
                     error={errors.pricePerNight?.message}
                   />
                 </div>

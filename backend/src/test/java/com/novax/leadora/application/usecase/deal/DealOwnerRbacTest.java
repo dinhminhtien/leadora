@@ -164,7 +164,7 @@ class DealOwnerRbacTest {
                 .dealId(dealId)
                 .assignedUser(staffUser1)
                 .status(com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus.OPEN)
-                .pipelineStage(com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage.PROSPECTING)
+                .pipelineStage(com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage.INQUIRY)
                 .build();
 
         DealRequest request = new DealRequest();
@@ -192,7 +192,7 @@ class DealOwnerRbacTest {
                 .dealId(dealId)
                 .assignedUser(staffUser2)
                 .status(com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus.OPEN)
-                .pipelineStage(com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage.PROSPECTING)
+                .pipelineStage(com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage.INQUIRY)
                 .build();
 
         DealRequest request = new DealRequest();
@@ -220,7 +220,7 @@ class DealOwnerRbacTest {
                 .dealId(dealId)
                 .assignedUser(staffUser1)
                 .status(com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus.OPEN)
-                .pipelineStage(com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage.PROSPECTING)
+                .pipelineStage(com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage.INQUIRY)
                 .build();
 
         DealRequest request = new DealRequest();

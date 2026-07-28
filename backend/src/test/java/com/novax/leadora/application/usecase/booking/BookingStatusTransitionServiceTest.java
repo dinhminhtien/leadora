@@ -67,7 +67,8 @@ class BookingStatusTransitionServiceTest {
         when(bookingDetailRepository.findByBooking_BookingId(bookingId)).thenReturn(details);
         when(bookingRepository.save(any(BookingEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        BookingEntity result = service.transition(bookingId, BookingStatus.CANCELLED, false, "Customer changed mind");
+        BookingEntity result = service.transition(bookingId, BookingStatus.CANCELLED,
+                TransitionActor.SALES, "Customer changed mind");
 
         assertThat(result.getStatus()).isEqualTo(BookingStatus.CANCELLED);
         assertThat(result.getStatusReason()).isEqualTo("Customer changed mind");
@@ -79,11 +80,30 @@ class BookingStatusTransitionServiceTest {
     }
 
     @Test
+    @DisplayName("Should transition PENDING to CONFIRMED for the Reservation actor")
+    void testTransitionPendingToConfirmedSuccess() {
+        when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
+        when(bookingDetailRepository.findByBooking_BookingId(bookingId)).thenReturn(details);
+        when(bookingRepository.save(any(BookingEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Only the Reservation team may confirm — they are the ones who know the rooms exist.
+        BookingEntity result = service.transition(bookingId, BookingStatus.CONFIRMED,
+                TransitionActor.RESERVATION, "Approved booking");
+
+        assertThat(result.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(result.getStatusReason()).isEqualTo("Approved booking");
+
+        verify(bookingRepository).findByIdForUpdate(bookingId);
+        verify(bookingRepository).save(booking);
+    }
+
+    @Test
     @DisplayName("Should throw ResourceNotFoundException when booking is not found")
     void testTransitionBookingNotFound() {
         when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.transition(bookingId, BookingStatus.CANCELLED, false, "Test reason"))
+        assertThatThrownBy(() -> service.transition(bookingId, BookingStatus.CANCELLED,
+                TransitionActor.SALES, "Test reason"))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(bookingRepository).findByIdForUpdate(bookingId);
@@ -91,12 +111,13 @@ class BookingStatusTransitionServiceTest {
     }
 
     @Test
-    @DisplayName("Should throw BusinessException when transition is not allowed for CRM/Sales actor")
+    @DisplayName("Should throw BusinessException when transition is not allowed for Sales actor")
     void testTransitionInvalidCRM() {
-        // PENDING -> CHECKED_IN is not allowed in MANUAL_TRANSITIONS
+        // PENDING -> CHECKED_IN is not in SALES_TRANSITIONS
         when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
 
-        assertThatThrownBy(() -> service.transition(bookingId, BookingStatus.CHECKED_IN, false, "Invalid transition"))
+        assertThatThrownBy(() -> service.transition(bookingId, BookingStatus.CHECKED_IN,
+                TransitionActor.SALES, "Invalid transition"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Transition from PENDING to CHECKED_IN is not allowed for this actor")
                 .extracting(e -> ((BusinessException) e).getHttpStatus())
@@ -109,10 +130,11 @@ class BookingStatusTransitionServiceTest {
     @Test
     @DisplayName("Should throw BusinessException when transition is not allowed for FO actor")
     void testTransitionInvalidFO() {
-        // PENDING -> REJECTED is not allowed in FO_TRANSITIONS
+        // PENDING -> REJECTED is not in FRONT_OFFICE_TRANSITIONS
         when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
 
-        assertThatThrownBy(() -> service.transition(bookingId, BookingStatus.REJECTED, true, "Invalid transition"))
+        assertThatThrownBy(() -> service.transition(bookingId, BookingStatus.REJECTED,
+                TransitionActor.FRONT_OFFICE, "Invalid transition"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Transition from PENDING to REJECTED is not allowed for this actor")
                 .extracting(e -> ((BusinessException) e).getHttpStatus())
@@ -129,7 +151,8 @@ class BookingStatusTransitionServiceTest {
         when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
         when(paymentRepository.existsByBooking_BookingIdAndStatus(bookingId, PaymentStatus.PAID)).thenReturn(true);
 
-        assertThatThrownBy(() -> service.transition(bookingId, BookingStatus.CANCELLED, false, "Cancel paid booking"))
+        assertThatThrownBy(() -> service.transition(bookingId, BookingStatus.CANCELLED,
+                TransitionActor.SALES, "Cancel paid booking"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Không thể hủy booking đã thanh toán")
                 .extracting(e -> ((BusinessException) e).getHttpStatus())
@@ -148,7 +171,9 @@ class BookingStatusTransitionServiceTest {
         when(bookingDetailRepository.findByBooking_BookingId(bookingId)).thenReturn(details);
         when(bookingRepository.save(any(BookingEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        BookingEntity result = service.transition(bookingId, BookingStatus.NO_SHOW, false, "Guest did not show up");
+        // NO_SHOW belongs to the Reservation lane.
+        BookingEntity result = service.transition(bookingId, BookingStatus.NO_SHOW,
+                TransitionActor.RESERVATION, "Guest did not show up");
 
         assertThat(result.getStatus()).isEqualTo(BookingStatus.NO_SHOW);
         assertThat(details.get(0).getInventoryStatus()).isEqualTo(InventoryStatus.RELEASED);

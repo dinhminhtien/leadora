@@ -32,30 +32,31 @@ public class DealValidation {
             return;
         }
 
-        // BR-DEAL-WON-01/02: Won Immutability check
-        if (currentStage == DealPipelineStage.CLOSED_WON) {
-            throw new BusinessException("DEAL_STATE_CONFLICT", "A WON deal is immutable and cannot be transitioned to another stage.", HttpStatus.CONFLICT);
+        // BR-DEAL-WON-01/02: Closed Immutability check
+        if (currentStage == DealPipelineStage.CLOSED_WON || currentStage == DealPipelineStage.CLOSED_LOST) {
+            throw new BusinessException("DEAL_STATE_CONFLICT", "A closed deal is immutable and cannot be transitioned to another stage.", HttpStatus.CONFLICT);
         }
 
-        int currentIdx = getStageOrder(currentStage);
-        int targetIdx = getStageOrder(targetStage);
-
-        if (targetIdx > currentIdx) {
-            for (int i = currentIdx + 1; i <= targetIdx; i++) {
-                if (i == 4) {
-                    if (targetStage == DealPipelineStage.CLOSED_WON) {
-                        validateStep(i, deal, request);
-                    }
-                } else {
-                    validateStep(i, deal, request);
-                }
-            }
+        if (targetStage == DealPipelineStage.CLOSED_LOST) {
+            validateClosedLostRules(deal, request.getNotes());
+            return;
         }
 
         if (targetStage == DealPipelineStage.CLOSED_WON) {
-            validateClosedWonRules(deal, request.getNotes());
-        } else if (targetStage == DealPipelineStage.CLOSED_LOST) {
-            validateClosedLostRules(deal, request.getNotes());
+            validateClosedWonRules(deal, currentStage, request.getNotes());
+            return;
+        }
+
+        // Normal sequential flow for non-terminal stages
+        int currentIdx = getStageOrder(currentStage);
+        int targetIdx = getStageOrder(targetStage);
+
+        if (targetIdx < currentIdx) {
+            throw new BusinessRuleException("Cannot transition backwards in the pipeline.");
+        }
+
+        for (int i = currentIdx + 1; i <= targetIdx; i++) {
+            validateStep(i, deal, request);
         }
     }
 
@@ -64,38 +65,51 @@ public class DealValidation {
             return;
         }
 
-        // BR-DEAL-WON-01/02: Won Immutability check
-        if (currentStatus == DealStatus.WON) {
-            throw new BusinessException("DEAL_STATE_CONFLICT", "A WON deal is immutable and cannot be transitioned to another status.", HttpStatus.CONFLICT);
+        // BR-DEAL-WON-01/02: Closed Immutability check
+        if (currentStatus == DealStatus.WON || currentStatus == DealStatus.LOST) {
+            throw new BusinessException("DEAL_STATE_CONFLICT", "A closed deal is immutable and cannot be transitioned to another status.", HttpStatus.CONFLICT);
         }
 
         if (targetStatus == DealStatus.WON) {
-            validateClosedWonRules(deal, notes);
+            validateClosedWonRules(deal, deal.getPipelineStage(), notes);
         } else if (targetStatus == DealStatus.LOST) {
             validateClosedLostRules(deal, notes);
         }
     }
 
-    private void validateClosedWonRules(DealEntity deal, String notes) {
+    private void validateClosedWonRules(DealEntity deal, DealPipelineStage currentStage, String notes) {
         boolean hasConfirmedBooking = deal.getDealId() != null 
                 && bookingRepository.existsByQuotation_Deal_DealIdAndStatus(deal.getDealId(), BookingStatus.CONFIRMED);
-        if (!hasConfirmedBooking) {
-            UserEntity currentUser = currentUserProvider.resolve(null);
-            String role = currentUser != null && currentUser.getRole() != null && currentUser.getRole().getRoleName() != null
-                    ? currentUser.getRole().getRoleName().trim().toUpperCase() : "";
-            boolean isManager = "MANAGER".equals(role) || "ADMIN".equals(role);
-            
-            String reason = notes != null ? notes.trim() : "";
-            if (isManager && !reason.isEmpty() && reason.length() >= 5) {
-                // Log manager exception audit
-                auditLogService.log("DEAL", "Deal", deal.getDealId(), "CLOSED_WON_EXCEPTION", currentUser,
-                        deal.getStatus() != null ? deal.getStatus().name() : "OPEN", "WON", "Closed Won with manager exception: " + reason);
-            } else if (isManager) {
-                throw new BusinessRuleException("A manager exception reason (at least 5 characters) must be provided in the Notes to bypass confirmed booking verification.");
-            } else {
-                throw new BusinessRuleException("A confirmed booking is required to mark a deal as Closed Won.");
-            }
+        boolean hasPaidPayment = deal.getDealId() != null
+                && dealWorkflowResolver.hasPaidPaymentForActiveBooking(deal.getDealId());
+
+        boolean standardPathEligible = currentStage == DealPipelineStage.BOOKING_CONFIRMED
+                && hasConfirmedBooking
+                && hasPaidPayment;
+
+        if (standardPathEligible) {
+            return; // BR-14 standard path satisfied
         }
+
+        // Exception path
+        UserEntity currentUser = currentUserProvider.resolve(null);
+        String role = currentUser != null && currentUser.getRole() != null && currentUser.getRole().getRoleName() != null
+                ? currentUser.getRole().getRoleName().trim().toUpperCase() : "";
+
+        if (!"MANAGER".equals(role)) {
+            throw new BusinessRuleException(
+                    "Only Sales Manager may approve a Closed Won exception. Admin does not have this authority.");
+        }
+
+        String reason = notes != null ? notes.trim() : "";
+        if (reason.length() < 5) {
+            throw new BusinessRuleException(
+                    "Manager exception reason must be at least 5 characters in the Notes field.");
+        }
+
+        // Log manager exception audit
+        auditLogService.log("DEAL", "Deal", deal.getDealId(), "CLOSED_WON_EXCEPTION", currentUser,
+                deal.getStatus() != null ? deal.getStatus().name() : "OPEN", "WON", "Closed Won with manager exception: " + reason);
     }
 
     private void validateClosedLostRules(DealEntity deal, String notes) {
@@ -115,18 +129,21 @@ public class DealValidation {
             return 0;
         }
         switch (stage) {
-            case PROSPECTING:
+            case INQUIRY:
                 return 0;
             case QUALIFICATION:
                 return 1;
-            case PROPOSAL:
+            case QUOTATION_SENT:
                 return 2;
             case NEGOTIATION:
                 return 3;
+            case PENDING_CONFIRMATION:
+                return 4;
+            case BOOKING_CONFIRMED:
+                return 5;
             case CLOSED_WON:
-                return 4;
             case CLOSED_LOST:
-                return 4;
+                return 6;
             default:
                 return 0;
         }
@@ -134,7 +151,7 @@ public class DealValidation {
 
     private void validateStep(int stepIndex, DealEntity deal, DealRequest request) {
         switch (stepIndex) {
-            case 1: // Site Visit (QUALIFICATION)
+            case 1: // Site Visit (QUALIFIED_LEAD)
                 String email = request.getEmail() != null ? request.getEmail().trim() : "";
                 String phone = request.getPhone() != null ? request.getPhone().trim() : "";
                 if (email.isEmpty() && phone.isEmpty() && deal.getCustomer() != null) {
@@ -147,7 +164,7 @@ public class DealValidation {
                 }
                 break;
 
-            case 2: // Proposal (PROPOSAL)
+            case 2: // Proposal (QUOTATION_SENT)
                 BigDecimal value = request.getValue();
                 if (value == null) {
                     value = deal.getExpectedRevenue();
@@ -168,13 +185,21 @@ public class DealValidation {
                 }
                 break;
 
-            case 4: // Contract / Confirmed (CLOSED_WON)
+            case 4: // Contract (PENDING_CONFIRMATION)
                 LocalDate closeDate = request.getExpectedClose();
                 if (closeDate == null) {
                     closeDate = deal.getExpectedCloseDate();
                 }
                 if (closeDate == null) {
                     throw new BusinessRuleException("An Estimated Close Date must be set before drafting a Contract.");
+                }
+                break;
+
+            case 5: // Booking Confirmed (BOOKING_CONFIRMED)
+                boolean hasBooking = deal.getDealId() != null 
+                        && bookingRepository.existsByQuotation_Deal_DealIdAndStatus(deal.getDealId(), BookingStatus.CONFIRMED);
+                if (!hasBooking) {
+                    throw new BusinessRuleException("A confirmed booking is required before entering Booking Confirmed stage.");
                 }
                 break;
         }

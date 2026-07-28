@@ -9,7 +9,7 @@ export interface Deal {
   phone?: string;
   value: number;
   probability: number;
-  stage: "Inquiry" | "Site Visit" | "Proposal" | "Negotiation" | "Contract" | "Confirmed";
+  stage: "Inquiry" | "Qualification" | "Proposal" | "Negotiation" | "Contract" | "Confirmed";
   owner: string;
   ownerEmail?: string;
   status: "active" | "won" | "lost";
@@ -80,5 +80,13 @@ export const dealService = {
     );
     return response.data;
   },
+
+  async syncPipeline(id: string) {
+    const response = await apiClient.post<ApiResponse<Deal>>(
+      `${ENDPOINT}/${id}/sync-pipeline`
+    );
+    return response.data;
+  },
 };
+
 

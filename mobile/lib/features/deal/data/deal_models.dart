@@ -29,10 +29,12 @@ enum DealStatus {
 /// and CLOSED_LOST both serialize as "Confirmed"), so it must never drive logic.
 /// Tabs, funnel ordering and the Kanban board key off this enum instead.
 enum DealStage {
-  prospecting('PROSPECTING', 'New'),
-  qualification('QUALIFICATION', 'Qualified'),
-  proposal('PROPOSAL', 'Proposal'),
+  inquiry('INQUIRY', 'Inquiry'),
+  qualification('QUALIFICATION', 'Qualification'),
+  quotationSent('QUOTATION_SENT', 'Proposal'),
   negotiation('NEGOTIATION', 'Negotiation'),
+  pendingConfirmation('PENDING_CONFIRMATION', 'Contract'),
+  bookingConfirmed('BOOKING_CONFIRMED', 'Confirmed'),
   closedWon('CLOSED_WON', 'Won'),
   closedLost('CLOSED_LOST', 'Lost');
 
@@ -53,12 +55,14 @@ enum DealStage {
 
   /// Position in the sales funnel. Both terminal stages share the last slot.
   int get order => switch (this) {
-    DealStage.prospecting => 0,
+    DealStage.inquiry => 0,
     DealStage.qualification => 1,
-    DealStage.proposal => 2,
+    DealStage.quotationSent => 2,
     DealStage.negotiation => 3,
-    DealStage.closedWon => 4,
-    DealStage.closedLost => 4,
+    DealStage.pendingConfirmation => 4,
+    DealStage.bookingConfirmed => 5,
+    DealStage.closedWon => 6,
+    DealStage.closedLost => 6,
   };
 
   bool get isTerminal =>
@@ -66,18 +70,22 @@ enum DealStage {
 
   /// The next stage a user can advance to, or `null` once terminal.
   DealStage? get next => switch (this) {
-    DealStage.prospecting => DealStage.qualification,
-    DealStage.qualification => DealStage.proposal,
-    DealStage.proposal => DealStage.negotiation,
-    DealStage.negotiation => DealStage.closedWon,
+    DealStage.inquiry => DealStage.qualification,
+    DealStage.qualification => DealStage.quotationSent,
+    DealStage.quotationSent => DealStage.negotiation,
+    DealStage.negotiation => DealStage.pendingConfirmation,
+    DealStage.pendingConfirmation => DealStage.bookingConfirmed,
+    DealStage.bookingConfirmed => DealStage.closedWon,
     DealStage.closedWon || DealStage.closedLost => null,
   };
 
   StatusTone get tone => switch (this) {
-    DealStage.prospecting => StatusTone.neutral,
+    DealStage.inquiry => StatusTone.neutral,
     DealStage.qualification => StatusTone.info,
-    DealStage.proposal => StatusTone.brand,
+    DealStage.quotationSent => StatusTone.brand,
     DealStage.negotiation => StatusTone.warning,
+    DealStage.pendingConfirmation => StatusTone.brand,
+    DealStage.bookingConfirmed => StatusTone.success,
     DealStage.closedWon => StatusTone.success,
     DealStage.closedLost => StatusTone.danger,
   };
@@ -202,4 +210,61 @@ class DealPayload {
     if (notes != null) 'notes': notes,
     if (owner != null) 'owner': owner,
   };
+}
+
+/// Dart mirror of backend `DealWorkflowSummaryResponse` — where the deal stands in the
+/// Sales lifecycle, resolved server-side from the live quotation/booking/payment chain.
+///
+/// Wire-format trap: `GetDealWorkflowSummaryUseCase` serializes both enums with `.name()`,
+/// so [dealStatusRaw] is `OPEN | WON | LOST` and [pipelineStageRaw] is a [DealStage] wire
+/// value. That is **not** the same as `DealResponse.status`, which `DealMapper` lowercases
+/// to `active | won | lost` — do not reuse [DealStatus.fromWire] on this payload.
+class DealWorkflowSummary {
+  const DealWorkflowSummary({
+    required this.dealId,
+    required this.hasPaidPayment,
+    this.dealStatusRaw,
+    this.pipelineStageRaw,
+    this.activeQuotationId,
+    this.activeQuotationStatus,
+    this.activeBookingId,
+    this.activeBookingStatus,
+    this.currentPaymentStatus,
+  });
+
+  final String dealId;
+  final bool hasPaidPayment;
+
+  /// `OPEN | WON | LOST`.
+  final String? dealStatusRaw;
+  final String? pipelineStageRaw;
+  final String? activeQuotationId;
+  final String? activeQuotationStatus;
+  final String? activeBookingId;
+  final String? activeBookingStatus;
+  final String? currentPaymentStatus;
+
+  factory DealWorkflowSummary.fromJson(Map<String, dynamic> json) =>
+      DealWorkflowSummary(
+        dealId: json['dealId'] as String,
+        hasPaidPayment: json['hasPaidPayment'] as bool? ?? false,
+        dealStatusRaw: json['dealStatus'] as String?,
+        pipelineStageRaw: json['pipelineStage'] as String?,
+        activeQuotationId: json['activeQuotationId'] as String?,
+        activeQuotationStatus: json['activeQuotationStatus'] as String?,
+        activeBookingId: json['activeBookingId'] as String?,
+        activeBookingStatus: json['activeBookingStatus'] as String?,
+        currentPaymentStatus: json['currentPaymentStatus'] as String?,
+      );
+
+  /// Parsed stage, or `null` for a stage this build does not know.
+  DealStage? get stage => DealStage.fromWire(pipelineStageRaw?.toUpperCase());
+
+  String get displayStage => stage?.label ?? pipelineStageRaw ?? '—';
+
+  bool get isWon => dealStatusRaw?.toUpperCase() == 'WON';
+  bool get isLost => dealStatusRaw?.toUpperCase() == 'LOST';
+
+  /// Nothing is "in progress" on a deal that has already been decided.
+  bool get isClosed => isWon || isLost;
 }

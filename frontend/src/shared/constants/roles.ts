@@ -4,6 +4,7 @@ export const ROLE_OPTIONS: RoleOption[] = [
   { value: "ADMIN", label: "Admin" },
   { value: "MANAGER", label: "Manager" },
   { value: "SALES", label: "Sales" },
+  { value: "RESERVATION", label: "Reservation" },
   { value: "FRONT_OFFICE", label: "Front Office" },
   { value: "STAFF", label: "Staff" },
 ];

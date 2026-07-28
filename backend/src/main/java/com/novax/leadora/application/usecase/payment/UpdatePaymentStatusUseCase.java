@@ -2,7 +2,6 @@ package com.novax.leadora.application.usecase.payment;
 
 import com.novax.leadora.api.dto.request.UpdatePaymentStatusRequest;
 import com.novax.leadora.api.dto.response.PaymentResponse;
-import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.PaymentEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
@@ -12,7 +11,10 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingRepository
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
 import com.novax.leadora.application.usecase.deal.DealWorkflowResolver;
 import com.novax.leadora.application.usecase.deal.AutoWinDealByPaymentUseCase;
+import com.novax.leadora.application.usecase.roomrequest.RoomConfirmationReader;
+import com.novax.leadora.application.usecase.roomrequest.RoomRequestNotifier;
 import com.novax.leadora.common.exception.BusinessException;
+import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
@@ -23,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -40,11 +43,13 @@ public class UpdatePaymentStatusUseCase {
     private final DealRepository dealRepository;
     private final DealWorkflowResolver dealWorkflowResolver;
     private final AutoWinDealByPaymentUseCase autoWinDealByPaymentUseCase;
+    private final RoomConfirmationReader roomConfirmationReader;
+    private final RoomRequestNotifier roomRequestNotifier;
 
     @Transactional
     public PaymentResponse execute(UUID paymentId, UpdatePaymentStatusRequest request, UserEntity actor) {
         PaymentEntity payment = paymentRepository.findById(paymentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Payment record not found", paymentId));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment record not found."));
 
         BookingEntity booking = payment.getBooking();
         if (booking == null) {
@@ -69,6 +74,9 @@ public class UpdatePaymentStatusUseCase {
         String bStatus = booking.getStatus() != null ? booking.getStatus().name() : "";
         if (bStatus.equals("CANCELLED") || bStatus.equals("CHECKED_OUT")) {
             throw new IllegalStateException("Booking is cancelled or checked out, cannot update payment.");
+        }
+        if (bStatus.equals("REJECTED")) {
+            throw new IllegalStateException("Booking is rejected, cannot update payment.");
         }
 
         PaymentStatus oldStatus = payment.getStatus();
@@ -106,18 +114,25 @@ public class UpdatePaymentStatusUseCase {
         // BR-29 & E4-1.1: Missing verification note when updating to PAID (skip check for system actor == null)
         if (newStatus == PaymentStatus.PAID) {
             if (actor != null && !StringUtils.hasText(request.getVerificationNote())) {
-                throw new IllegalStateException("Missing verification note");
+                throw new IllegalStateException("Missing verification note.");
             }
             payment.setPaidAt(OffsetDateTime.now());
             payment.setVerificationNote(StringUtils.hasText(request.getVerificationNote()) 
                     ? request.getVerificationNote() 
                     : "Confirmed automatically by System.");
 
-            // POST-2: Update booking status to CONFIRMED if it was PENDING
+            // POST-2: a paid deposit confirms the booking. Room confirmation is advisory, so
+            // it does not hold the booking back — but when the Reservation team has not
+            // confirmed the rooms, they are told money has landed on it.
             if (booking.getStatus() == BookingStatus.PENDING) {
                 booking.setStatus(BookingStatus.CONFIRMED);
                 bookingRepository.save(booking);
-                log.info("Booking status updated to CONFIRMED for Booking: {} after payment success", booking.getBookingId());
+                log.info("Booking status updated to CONFIRMED for Booking: {} after payment success",
+                        booking.getBookingId());
+
+                if (!roomConfirmationReader.isRoomConfirmed(booking.getQuotation())) {
+                    roomRequestNotifier.paymentReceivedWithoutRoomConfirmation(booking);
+                }
             }
         }
 

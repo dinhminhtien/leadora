@@ -178,3 +178,4 @@ class BookingFilters {
 
   static const Object _sentinel = Object();
 }
+

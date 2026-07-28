@@ -29,30 +29,43 @@ public class BookingStatusTransitionService {
     private final BookingDetailRepository bookingDetailRepository;
     private final PaymentRepository paymentRepository;
 
-    // Allowed transitions for ProcessBookingUseCase (CRM/Sales actor — manual actions only)
-    private static final Map<BookingStatus, Set<BookingStatus>> MANUAL_TRANSITIONS = Map.of(
-        PENDING,    Set.of(REJECTED, CANCELLED),
+    // Sales owns the deal, not the room: they may withdraw a booking, never confirm one.
+    private static final Map<BookingStatus, Set<BookingStatus>> SALES_TRANSITIONS = Map.of(
+        PENDING,    Set.of(CANCELLED),
+        CONFIRMED,  Set.of(CANCELLED)
+    );
+
+    // The Reservation team decides whether the rooms exist, so only they may CONFIRM.
+    private static final Map<BookingStatus, Set<BookingStatus>> RESERVATION_TRANSITIONS = Map.of(
+        PENDING,    Set.of(CONFIRMED, REJECTED, CANCELLED),
         CONFIRMED,  Set.of(NO_SHOW, CANCELLED)
     );
 
-    // Allowed transitions for UpdateReservationStatusUseCase (Front Office actor)
-    private static final Map<BookingStatus, Set<BookingStatus>> FO_TRANSITIONS = Map.of(
+    // The arrival desk moves a confirmed booking through the stay.
+    private static final Map<BookingStatus, Set<BookingStatus>> FRONT_OFFICE_TRANSITIONS = Map.of(
         PENDING,    Set.of(CANCELLED),
         CONFIRMED,  Set.of(CHECKED_IN, CANCELLED),
         CHECKED_IN, Set.of(CHECKED_OUT)
     );
 
+    private static Map<BookingStatus, Set<BookingStatus>> laneFor(TransitionActor actor) {
+        return switch (actor) {
+            case RESERVATION -> RESERVATION_TRANSITIONS;
+            case FRONT_OFFICE -> FRONT_OFFICE_TRANSITIONS;
+            case SALES -> SALES_TRANSITIONS;
+        };
+    }
+
     @Transactional
-    public BookingEntity transition(UUID bookingId, BookingStatus newStatus, boolean isFrontOffice, String reason) {
+    public BookingEntity transition(UUID bookingId, BookingStatus newStatus, TransitionActor actor, String reason) {
         // 1. SELECT FOR UPDATE to prevent race conditions (C5)
         BookingEntity booking = bookingRepository.findByIdForUpdate(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
 
         BookingStatus oldStatus = booking.getStatus();
-        
-        // 2. Validate transition matrix
-        Map<BookingStatus, Set<BookingStatus>> allowedMap = isFrontOffice ? FO_TRANSITIONS : MANUAL_TRANSITIONS;
-        Set<BookingStatus> allowed = allowedMap.get(oldStatus);
+
+        // 2. Validate the transition against this actor's lane
+        Set<BookingStatus> allowed = laneFor(actor).get(oldStatus);
         if (allowed == null || !allowed.contains(newStatus)) {
             throw new BusinessException("BOOKING_TRANSITION_INVALID",
                 String.format("Transition from %s to %s is not allowed for this actor.", oldStatus, newStatus),

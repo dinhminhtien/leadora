@@ -1,5 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/app_dimens.dart';
@@ -116,6 +118,15 @@ class PaymentDetailScreen extends ConsumerWidget {
                   ],
                 ),
               ),
+              // VietQR for an unpaid transfer — the same thing the web app shows, so a
+              // rep with only the phone can put the code in front of the customer.
+              // Hidden once paid/cancelled: a stale QR invites a duplicate transfer.
+              if (payment.qrCodeUrl != null &&
+                  payment.qrCodeUrl!.trim().isNotEmpty &&
+                  payment.status == PaymentStatus.pending) ...[
+                const SizedBox(height: AppSpacing.md),
+                _QrCard(url: payment.qrCodeUrl!, amount: payment.amount),
+              ],
               if (payment.notes != null && payment.notes!.trim().isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.md),
                 SectionCard(
@@ -344,6 +355,92 @@ class _StickyActions extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// VietQR for an unpaid transfer, mirroring the web payment screen.
+///
+/// The URL is generated server-side by `GeneratePaymentRequestUseCase` and points at
+/// img.vietqr.io with the amount and the payment id in the memo, so the bank sweep
+/// (`PaymentCheckScheduler`) can match the incoming transfer back to this payment.
+/// Nothing is computed here — the widget only renders what the backend issued.
+class _QrCard extends StatelessWidget {
+  const _QrCard({required this.url, required this.amount});
+
+  final String url;
+  final double amount;
+
+  Future<void> _open(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final uri = Uri.tryParse(url);
+    if (uri == null || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not open the QR image.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return SectionCard(
+      title: 'Transfer QR',
+      icon: Icons.qr_code_2_rounded,
+      child: Column(
+        children: [
+          Text(
+            'Show this to the customer. The transfer is matched back to this payment '
+            'automatically once the bank clears it.',
+            style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadii.md),
+            child: CachedNetworkImage(
+              imageUrl: url,
+              width: 220,
+              height: 220,
+              fit: BoxFit.contain,
+              placeholder: (_, _) => const SizedBox(
+                width: 220,
+                height: 220,
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              // The QR is served by an external host, so a failure here is a network
+              // problem rather than a bad payment — say so instead of showing a broken box.
+              errorWidget: (_, _, _) => Container(
+                width: 220,
+                height: 220,
+                alignment: Alignment.center,
+                color: scheme.surfaceContainerHighest,
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  child: Text(
+                    'QR image could not be loaded. Check the connection, or open it in a '
+                    'browser.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            Formatters.money(amount),
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          OutlinedButton.icon(
+            onPressed: () => _open(context),
+            icon: const Icon(Icons.open_in_new_rounded, size: AppIconSize.md),
+            label: const Text('Open QR image'),
+          ),
+        ],
       ),
     );
   }
