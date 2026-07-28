@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Download, Search, Receipt, Calendar, User, Plus, Check, X, RefreshCw, AlertTriangle } from "lucide-react";
+import { Download, Search, Receipt, Plus, Check, X, RefreshCw, AlertTriangle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
+import { StatusPill } from "@/components/ui/status-pill";
+import { BookingDetailDrawer } from "@/features/booking_confirmation/components/BookingDetailDrawer";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { bookingConfirmationService, type Booking, type RoomAvailability } from "@/services/booking_confirmation_service";
@@ -14,10 +15,13 @@ import { customerProfileService, type CustomerProfile } from "@/services/custome
 import { quotationService, type Quotation } from "@/services/quotation_service";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 import { toast } from "@/stores/toast_store";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 type TabType = "queue" | "checker";
 
 export function BookingConfirmationScreen() {
+  // Design-system confirmation (§3.16) replacing the native window.confirm.
+  const { confirm, confirmElement } = useConfirm();
   const { highlightedId, setRowRef } = useHighlightRow();
   const [activeTab, setActiveTab] = useState<TabType>("queue");
   const [isNewRequestOpen, setIsNewRequestOpen] = useState(false);
@@ -143,9 +147,21 @@ export function BookingConfirmationScreen() {
     }
   };
 
-  // UC-18.5: Approve booking request via live API call
+  // UC-18.5: Approve booking request via live API call.
+  //
+  // The confirmation is a design-system modal rather than `window.confirm`
+  // (Blueprint §1.5 / §3.16) — a native dialog cannot be themed, cannot explain
+  // the consequence, and reads to the user as a browser error.
   const handleApprove = async (id: string) => {
-    if (!window.confirm("Are you sure you want to approve this booking request?")) return;
+    const { ok } = await confirm({
+      title: "Approve this booking request?",
+      description:
+        "The rooms will be committed and a confirmation email is sent to the guest.",
+      severity: "info",
+      confirmLabel: "Approve booking",
+    });
+    if (!ok) return;
+
     setActionLoading(true);
     try {
       const res = await bookingConfirmationService.processRequest(id, {
@@ -297,19 +313,6 @@ export function BookingConfirmationScreen() {
     return selectedProduct.unitPrice * formQuantity * formNights;
   }, [formProductId, formQuantity, formNights, roomProducts]);
 
-  const getBadgeVariant = (status: string) => {
-    switch (status.toUpperCase()) {
-      case "CONFIRMED":
-        return "success";
-      case "PENDING":
-        return "warning";
-      case "REJECTED":
-        return "danger";
-      default:
-        return "default";
-    }
-  };
-
   const handleDownload = (bNum: string) => {
     toast.success(`Generated PDF Booking Confirmation & Slip for reservation: ${bNum}`);
   };
@@ -453,9 +456,7 @@ export function BookingConfirmationScreen() {
                         </TableCell>
                         <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
                           <div className="flex justify-center">
-                            <Badge variant={getBadgeVariant(b.status)} className="font-bold text-[9px] uppercase min-w-22.5 justify-center text-center py-1">
-                              {b.status}
-                            </Badge>
+                            <StatusPill size="sm" domain="booking" value={b.status} />
                           </div>
                         </TableCell>
                       </TableRow>
@@ -723,161 +724,42 @@ export function BookingConfirmationScreen() {
         </div>
       )}
 
-      {/* UC-18.4 & UC-18.5: Selected Booking Request Detail Modal */}
-      {showDetailModal && selectedBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-background rounded-2xl border border-border shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            {/* Modal Header */}
-            <div className="p-5 border-b border-border flex justify-between items-center bg-muted/40">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Badge variant={getBadgeVariant(selectedBooking.status)} className="uppercase text-[9px] font-bold">
-                    {selectedBooking.status}
-                  </Badge>
-                  <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Reservation request</span>
-                </div>
-                <h3 className="text-lg font-bold text-foreground">{selectedBooking.bookingCode}</h3>
-              </div>
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="p-1 rounded-lg hover:bg-muted text-muted-foreground transition"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-6 flex-1 text-sm">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground block tracking-wider mb-1">Guest / Customer</span>
-                  <div className="flex items-center gap-1.5">
-                    <User className="size-4 text-muted-foreground/80" />
-                    <span className="font-semibold text-foreground">{selectedBooking.customerName}</span>
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground block tracking-wider mb-1">Linked Quotation Ref</span>
-                  <div className="flex items-center gap-1.5">
-                    <Receipt className="size-4 text-muted-foreground/80" />
-                    <span className="font-semibold text-foreground">Code: {String(selectedBooking.quotationId).substring(0, 8)}...</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground block tracking-wider mb-1">Check In</span>
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="size-4 text-muted-foreground/80" />
-                    <span className="font-semibold text-foreground">{selectedBooking.checkInDate}</span>
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground block tracking-wider mb-1">Check Out</span>
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="size-4 text-muted-foreground/80" />
-                    <span className="font-semibold text-foreground">{selectedBooking.checkOutDate}</span>
-                  </div>
-                </div>
-              </div>
-
-              {selectedBooking.specialRequests && (
-                <div className="border-t border-border pt-4">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground block tracking-wider mb-1">Special Requests</span>
-                  <p className="bg-muted/40 p-3 rounded-xl border border-border text-xs text-foreground italic">
-                    &quot;{selectedBooking.specialRequests}&quot;
-                  </p>
-                </div>
-              )}
-
-              {selectedBooking.status === "REJECTED" && selectedBooking.statusReason && (
-                <div className="border-t border-border pt-4">
-                  <span className="text-[10px] uppercase font-bold text-danger block tracking-wider mb-1">Rejection Reason</span>
-                  <p className="bg-red-50 dark:bg-red-950/20 p-3 rounded-xl border border-red-200 dark:border-red-900 text-xs text-danger font-semibold">
-                    {selectedBooking.statusReason}
-                  </p>
-                </div>
-              )}
-
-              <div className="border-t border-border pt-4">
-                <span className="text-[10px] uppercase font-bold text-muted-foreground block tracking-wider mb-2">Requested Allocation</span>
-                <div className="border border-border rounded-xl overflow-hidden bg-background">
-                  <Table>
-                    <TableHeader className="bg-muted/60">
-                      <TableRow hoverable={false}>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-32.5 whitespace-nowrap">Room Type</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-27.5 whitespace-nowrap">Room #</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-12.5 whitespace-nowrap">Qty</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-15 whitespace-nowrap">Nights</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 min-w-20 whitespace-nowrap">Rate</TableHead>
-                        <TableHead className="font-bold py-2 px-3 text-xs text-slate-500 text-right min-w-25 whitespace-nowrap">Line Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedBooking.details && selectedBooking.details.map((d, index) => (
-                        <TableRow key={index} hoverable={false}>
-                          <TableCell className="py-2.5 px-3 font-semibold text-xs text-foreground min-w-32.5 whitespace-nowrap">{d.productName}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs text-primary font-bold min-w-27.5 whitespace-nowrap">{d.roomNumber || "Pending Assignment"}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs min-w-12.5">{d.quantity}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs min-w-15">{d.nights}</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs min-w-20">{d.unitPrice.toLocaleString('vi-VN')} ₫</TableCell>
-                          <TableCell className="py-2.5 px-3 text-xs font-black text-right min-w-25 whitespace-nowrap">{d.lineTotal.toLocaleString("vi-VN")} ₫</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-border bg-muted/40 flex flex-col md:flex-row gap-3 justify-between items-center">
-              <div className="text-sm font-semibold text-foreground">
-                Total amount: <span className="text-lg font-black text-primary">{selectedBooking.totalAmount.toLocaleString("vi-VN")} ₫</span>
-              </div>
-
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowDetailModal(false)}>
-                  Close Details
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDownload(selectedBooking.bookingCode)}
-                  leftIcon={<Download className="size-3.5" />}
-                >
-                  Download Slip
-                </Button>
-                {selectedBooking.status === "PENDING" && (
-                  <>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      leftIcon={<X className="size-3.5" />}
-                      onClick={handleRejectClick}
-                      disabled={actionLoading}
-                    >
-                      Reject Request
-                    </Button>
-                    <Button
-                      variant="success"
-                      size="sm"
-                      leftIcon={<Check className="size-3.5" />}
-                      onClick={() => handleApprove(selectedBooking.bookingId)}
-                      isLoading={actionLoading}
-                    >
-                      Approve Booking
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <BookingDetailDrawer
+        booking={showDetailModal ? selectedBooking : null}
+        onOpenChange={(open) => !open && setShowDetailModal(false)}
+        actions={
+          selectedBooking
+            ? [
+                {
+                  label: "Download slip",
+                  icon: Download,
+                  variant: "outline" as const,
+                  onClick: () => handleDownload(selectedBooking.bookingCode),
+                },
+                // Approve/reject exist only on a PENDING request — the server
+                // refuses the transition from any other state (§12.13).
+                ...(selectedBooking.status === "PENDING"
+                  ? [
+                      {
+                        label: "Reject request",
+                        icon: X,
+                        variant: "danger" as const,
+                        disabled: actionLoading,
+                        onClick: handleRejectClick,
+                      },
+                      {
+                        label: "Approve booking",
+                        icon: Check,
+                        variant: "success" as const,
+                        disabled: actionLoading,
+                        onClick: () => handleApprove(selectedBooking.bookingId),
+                      },
+                    ]
+                  : []),
+              ]
+            : []
+        }
+      />
 
       {/* Reject Modal */}
       {showRejectModal && selectedBooking && (
@@ -908,6 +790,7 @@ export function BookingConfirmationScreen() {
           </div>
         </div>
       )}
+      {confirmElement}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ArrowLeft, AlertCircle, CheckCircle2, Calculator, User, Mail, Phone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -175,17 +176,47 @@ export function CreateQuotationScreen() {
                   <Select
                     {...register("dealId")}
                     error={errors.dealId?.message}
-                    disabled={dealsLoading}
+                    disabled={dealsLoading || deals.length === 0}
                   >
                     <option value="">
-                      {dealsLoading ? "Loading deals..." : "-- Select a deal --"}
+                      {dealsLoading
+                        ? "Loading deals…"
+                        : deals.length === 0
+                          ? "No eligible deals"
+                          : "-- Select a deal --"}
                     </option>
                     {deals.map((d) => (
                       <option key={d.id} value={d.id}>
+                        {/* Title alone is ambiguous when a customer has several
+                            deals — the contact and stage disambiguate them. */}
                         {d.title}
+                        {d.contactName ? ` · ${d.contactName}` : ""}
+                        {d.stage ? ` · ${d.stage}` : ""}
                       </option>
                     ))}
                   </Select>
+
+                  {/*
+                    An empty picker used to look identical to a loading one, so a
+                    rep could not tell "still fetching" from "nothing qualifies".
+                    Say which conditions a deal has to meet, and where to fix it.
+                  */}
+                  {!dealsLoading && deals.length === 0 && (
+                    <p className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-700 dark:text-warning">
+                      <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                      <span>
+                        No deal is ready to quote. A deal must still be open and
+                        have a linked customer.{" "}
+                        <Link
+                          href={ROUTE_PATHS.deals}
+                          className="font-semibold underline underline-offset-2"
+                        >
+                          Open Deals
+                        </Link>{" "}
+                        to create one or attach a customer.
+                      </span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Auto-filled customer info */}

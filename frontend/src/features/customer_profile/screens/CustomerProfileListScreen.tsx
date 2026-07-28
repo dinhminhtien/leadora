@@ -16,8 +16,9 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { StatusPill } from "@/components/ui/status-pill";
+import { CustomerDetailDrawer } from "@/features/customer_profile/components/CustomerDetailDrawer";
 import { Input } from "@/components/ui/Input";
-import { Badge } from "@/components/ui/Badge";
 import {
   Table,
   TableBody,
@@ -51,10 +52,6 @@ const TYPE_BADGE: Record<CustomerType, string> = {
 const TYPE_LABEL: Record<CustomerType, string> = {
   INDIVIDUAL: "Individual",
   CORPORATE: "Corporate",
-};
-const STATUS_BADGE: Record<"ACTIVE" | "INACTIVE", import("@/components/ui/Badge").BadgeVariant> = {
-  ACTIVE: "success",
-  INACTIVE: "default",
 };
 
 const AVATAR_COLORS = [
@@ -287,6 +284,8 @@ export function CustomerProfileListScreen() {
   const [statusFilter, setStatusFilter] = useState<"ACTIVE" | "INACTIVE" | "">("");
   const [page, setPage] = useState(0);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  // Peek at a customer without losing the list's filters, page or scroll (§2.11).
+  const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
 
   const debouncedSearch = useDebounce(search);
 
@@ -442,7 +441,7 @@ export function CustomerProfileListScreen() {
                 </TableCell>
               </TableRow>
             ) : (
-              customers.map(c => <CustomerRow key={c.customerId} customer={c} onClick={() => router.push(`/customer-profiles/${c.customerId}`)} />)
+              customers.map(c => <CustomerRow key={c.customerId} customer={c} onClick={() => setDetailCustomer(c)} />)
             )}
           </TableBody>
         </Table>
@@ -479,6 +478,12 @@ export function CustomerProfileListScreen() {
           users={users.map(u => ({ userId: u.userId, fullName: u.fullName }))}
         />
       )}
+
+      {/* Shared detail surface — identical behaviour to every other module. */}
+      <CustomerDetailDrawer
+        customer={detailCustomer}
+        onOpenChange={(open) => !open && setDetailCustomer(null)}
+      />
     </div>
   );
 }
@@ -546,9 +551,8 @@ function CustomerRow({ customer, onClick }: { customer: Customer; onClick: () =>
         )}
       </TableCell>
       <TableCell className="py-3">
-        <Badge variant={STATUS_BADGE[customer.status]} size="sm" className="text-[10px] font-bold">
-          {customer.status}
-        </Badge>
+        {/* Canonical customer status binding (Blueprint §2.7). */}
+        <StatusPill size="sm" domain="customer" value={customer.status} />
       </TableCell>
       <TableCell className="py-3 text-xs text-slate-500 whitespace-nowrap">{joined}</TableCell>
     </TableRow>

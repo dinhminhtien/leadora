@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -29,24 +30,6 @@ import { DealWorkflowStepper } from "@/features/deal/components/DealWorkflowStep
 
 const STAGES_ORDER: Deal["stage"][] = ["Inquiry", "Qualification", "Proposal", "Negotiation", "Contract", "Confirmed"];
 
-const getStageBadgeStyles = (stage: Deal["stage"]) => {
-  switch (stage) {
-    case "Inquiry":
-      return "!bg-slate-100 !text-slate-700 border !border-slate-200";
-    case "Qualification":
-      return "!bg-blue-50 !text-blue-700 border !border-blue-200/50";
-    case "Proposal":
-      return "!bg-amber-50 !text-amber-700 border !border-amber-200/50";
-    case "Negotiation":
-      return "!bg-orange-50 !text-orange-700 border !border-orange-200/50";
-    case "Contract":
-      return "!bg-indigo-50 !text-indigo-700 border !border-indigo-200/50";
-    case "Confirmed":
-      return "!bg-emerald-50 !text-emerald-700 border !border-emerald-200/50";
-    default:
-      return "!bg-slate-100 !text-slate-700 border !border-slate-200";
-  }
-};
 
 
 import { UserSelect } from "@/components/ui/UserSelect";
@@ -594,9 +577,8 @@ export function DealListScreen() {
                     <div className="text-[10px] text-slate-400 mt-0.5">{deal.email}</div>
                   </TableCell>
                   <TableCell className="py-3 px-4">
-                    <Badge variant="default" className={`font-bold text-[10px] ${getStageBadgeStyles(deal.stage)}`}>
-                      {deal.stage}
-                    </Badge>
+                    {/* Canonical pipeline-stage binding (Blueprint §2.7). */}
+                    <StatusPill size="sm" domain="dealStage" value={deal.stage} />
                   </TableCell>
                   <TableCell className="py-3 px-4 text-center">
                     <div className="inline-flex items-center justify-center gap-1 text-xs text-slate-700 font-bold w-full">

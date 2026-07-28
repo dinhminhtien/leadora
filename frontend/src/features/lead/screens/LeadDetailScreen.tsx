@@ -350,7 +350,7 @@ function QuickActionPanel({ lead, customerId, onClose }: QuickActionPanelProps) 
 
 // ── Convert Modal ─────────────────────────────────────────────────────────────
 
-function ConvertModal({
+export function ConvertModal({
   lead, onClose,
 }: {
   lead: Lead; onClose: () => void;
