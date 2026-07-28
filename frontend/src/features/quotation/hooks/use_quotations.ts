@@ -124,24 +124,74 @@ export type DealOption = {
   contactName: string;
   email: string;
   phone: string;
+  /** Wire value is lower-case: `active` | `won` | `lost` (see `DealMapper`). */
   status: string;
+  /** Friendly stage label: `Inquiry` … `Confirmed`. */
+  stage?: string;
   expectedClose: string | null;
 };
 
-// Fetch deals for the quotation deal selector — a quotation can only be raised
-// against a deal still open in the pipeline with an expected-close date that
-// hasn't already passed. Closed (WON/LOST) or overdue deals are hidden here so
-// the picker can't be pointed at a deal that no longer makes sense to quote.
+/**
+ * `DealMapper.mapStatusToString` emits **lower-case** display values —
+ * `OPEN → "active"`, `WON → "won"`, `LOST → "lost"` — not the enum name. The
+ * previous filter compared against `"OPEN"`, which never matched, so the picker
+ * silently returned an empty list and the Create Quotation form had nothing to
+ * select. Both spellings are accepted here so the picker keeps working if the
+ * mapper is ever changed to emit the enum directly.
+ */
+function isOpenDeal(deal: DealOption): boolean {
+  const status = (deal.status ?? "").toLowerCase();
+  return status === "active" || status === "open";
+}
+
+/**
+ * A quotation is built from the deal's linked customer:
+ * `CreateQuotationUseCase` reads `deal.getCustomer()` and rejects the request
+ * with *"The selected deal does not have a linked customer"* when it is absent.
+ * `DealMapper` writes the literal `"N/A"` into `contactName` for exactly that
+ * case, so a customer-less deal is detectable here and excluded — offering it
+ * would only produce a 400 the user cannot fix from the quotation form.
+ */
+function hasLinkedCustomer(deal: DealOption): boolean {
+  const contact = (deal.contactName ?? "").trim();
+  return contact.length > 0 && contact !== "N/A";
+}
+
+/**
+ * Deals eligible for a new quotation.
+ *
+ * **Owner scoping is not applied here on purpose.** `GET /deals` already runs
+ * through `DealAccessPolicy.listScopeOwnerId`, so a SALES user is served only
+ * the deals assigned to or created by them; MANAGER/ADMIN are unscoped.
+ * Re-filtering by owner in the browser would duplicate a server rule and, worse,
+ * would drift from it the moment the policy changes.
+ *
+ * Two conditions are applied, both mirroring the server:
+ *  1. the deal is still **open** — a WON/LOST deal is immutable
+ *     (`UpdateDealUseCase`: *"Closed deals cannot be modified."*), so raising a
+ *     fresh quotation against one makes no sense;
+ *  2. the deal has a **linked customer**, without which creation fails.
+ *
+ * The expected-close date is deliberately *not* a filter. The old code hid any
+ * deal whose close date had passed, which is backwards: a deal that slipped its
+ * date is usually the one most in need of a quotation. It is used for ordering
+ * instead — soonest close first — so the urgent deals surface at the top.
+ */
 export function useDealsForQuotation() {
   return useQuery({
     queryKey: ["deals-for-quotation"],
     queryFn: async () => {
       const res = await dealService.getList();
       const items = (res.data as unknown as DealOption[]) ?? [];
-      const today = new Date().toISOString().split("T")[0];
-      return items.filter(
-        (d) => d.status === "OPEN" && (!d.expectedClose || d.expectedClose >= today)
-      );
+
+      return items
+        .filter((d) => isOpenDeal(d) && hasLinkedCustomer(d))
+        .sort((a, b) => {
+          // Undated deals sort last; they carry no urgency signal.
+          const aDue = a.expectedClose ?? "9999-12-31";
+          const bDue = b.expectedClose ?? "9999-12-31";
+          return aDue.localeCompare(bDue);
+        });
     },
     staleTime: 60_000,
   });

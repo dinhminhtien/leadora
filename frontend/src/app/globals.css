@@ -123,13 +123,45 @@
 
   --color-chart-grid: var(--chart-grid);
 
-  /* Elevation (source) */
-  --shadow-elev-1: 0 1px 2px 0 rgb(15 23 42 / 0.04),
-    0 1px 3px 0 rgb(15 23 42 / 0.03);
-  --shadow-elev-2: 0 2px 4px -1px rgb(15 23 42 / 0.05),
-    0 4px 12px -2px rgb(15 23 42 / 0.06);
-  --shadow-elev-3: 0 8px 24px -6px rgb(15 23 42 / 0.10),
-    0 4px 12px -4px rgb(15 23 42 / 0.06);
+  /* ---- Blueprint §2.1.1 — brand ramp ---- */
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-300: var(--brand-300);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-foreground: var(--brand-foreground);
+
+  /* ---- Blueprint §2.1.2 — semantic surface pairs ---- */
+  --color-success-bg: var(--success-bg);
+  --color-warning-bg: var(--warning-bg);
+  --color-danger-bg: var(--danger-bg);
+  --color-info-bg: var(--info-bg);
+  --color-muted-bg: var(--muted-bg);
+  --color-surface-3: var(--surface-3);
+
+  /* ---- Blueprint §2.1.3 — colour-blind-safe chart palette ---- */
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+
+  /* ---- Blueprint §2.3 — radius ladder ---- */
+  --radius-xs: 4px;
+  --radius-pill: 999px;
+
+  /* ---- Blueprint §2.3 — elevation ---- */
+  --shadow-elev-0: none;
+  --shadow-elev-1: 0 1px 2px 0 color-mix(in oklab, var(--foreground) 6%, transparent);
+  --shadow-elev-2: 0 4px 12px -2px color-mix(in oklab, var(--foreground) 8%, transparent),
+    0 2px 4px -1px color-mix(in oklab, var(--foreground) 4%, transparent);
+  --shadow-elev-3: 0 12px 32px -8px color-mix(in oklab, var(--foreground) 12%, transparent),
+    0 4px 8px -2px color-mix(in oklab, var(--foreground) 6%, transparent);
+  --shadow-elev-4: 0 24px 64px -16px color-mix(in oklab, var(--foreground) 18%, transparent);
+
+  /* ---- Blueprint §2.3 — motion ---- */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+  --ease-decel: cubic-bezier(0, 0, 0.2, 1);
 }
 
 /* ---------- Light (default) ---------- */
@@ -393,6 +425,179 @@
   --chart-grid: #e2e8f0;
 }
 
+/* ============================================================
+ * Website UI Blueprint v2 — canonical token layer
+ * ------------------------------------------------------------
+ * Declared AFTER the v1 blocks so blueprint values win by cascade
+ * (Blueprint §2.1 is priority 1 over the leadora-flow proposal and
+ * the existing implementation). Adds the brand ramp, semantic
+ * surface pairs, the 8-step colour-blind-safe chart palette, the
+ * typography/spacing scales and the focus ring.
+ * ========================================================== */
+
+:root,
+:root.light {
+  /* §2.1.1 Brand ramp */
+  --brand-50: #eef5fc;
+  --brand-100: #d7e7f7;
+  --brand-300: #7eb2e5;
+  --brand-500: #185fa5;
+  --brand-600: #124a82;
+  --brand-700: #0d3762;
+  --brand-foreground: #ffffff;
+
+  /* §2.1.1 links / chart accent */
+  --accent: #3ba4f7;
+  --accent-foreground: #ffffff;
+
+  /* §2.1.1 neutral extension */
+  --surface-3: #e2e8f0;
+
+  /* §2.1.2 Semantic feedback + paired surfaces */
+  --success: #2e7d32;
+  --success-bg: #e8f5e9;
+  --warning: #b45309;
+  --warning-bg: #fef3c7;
+  --danger: #b91c1c;
+  --danger-bg: #fee2e2;
+  --destructive: #b91c1c;
+  --info: #1d9e75;
+  --info-bg: #ecfdf5;
+  --muted-bg: #f1f5f9;
+
+  /* §2.1.3 Chart palette — colour-blind safe, chart-1 reserved for brand */
+  --chart-1: #185fa5;
+  --chart-2: #1d9e75;
+  --chart-3: #b45309;
+  --chart-4: #b91c1c;
+  --chart-5: #7c3aed;
+  --chart-6: #0891b2;
+  --chart-7: #db2777;
+  --chart-8: #64748b;
+
+  /* §2.3 Focus ring */
+  --focus-ring: 0 0 0 2px var(--background), 0 0 0 4px var(--brand-500);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --brand-50: #0b1b2b;
+    --brand-100: #0f2740;
+    --brand-300: #2f6fb0;
+    --brand-500: #3ba4f7;
+    --brand-600: #1e7ed4;
+    --brand-700: #155c9e;
+    --brand-foreground: #001220;
+
+    --accent: #66b8ff;
+    --accent-foreground: #001220;
+
+    --surface-3: #1a1a1a;
+
+    --success: #4ade80;
+    --success-bg: #052e16;
+    --warning: #fbbf24;
+    --warning-bg: #422006;
+    --danger: #f87171;
+    --danger-bg: #450a0a;
+    --destructive: #f87171;
+    --info: #34d399;
+    --info-bg: #022c22;
+    --muted-bg: #171717;
+
+    --chart-1: #3ba4f7;
+    --chart-2: #34d399;
+    --chart-3: #fbbf24;
+    --chart-4: #f87171;
+    --chart-5: #a78bfa;
+    --chart-6: #22d3ee;
+    --chart-7: #f472b6;
+    --chart-8: #9ca3af;
+
+    --focus-ring: 0 0 0 2px var(--background), 0 0 0 4px var(--brand-500);
+  }
+}
+
+:root.dark {
+  --brand-50: #0b1b2b;
+  --brand-100: #0f2740;
+  --brand-300: #2f6fb0;
+  --brand-500: #3ba4f7;
+  --brand-600: #1e7ed4;
+  --brand-700: #155c9e;
+  --brand-foreground: #001220;
+
+  --accent: #66b8ff;
+  --accent-foreground: #001220;
+
+  --surface-3: #1a1a1a;
+
+  --success: #4ade80;
+  --success-bg: #052e16;
+  --warning: #fbbf24;
+  --warning-bg: #422006;
+  --danger: #f87171;
+  --danger-bg: #450a0a;
+  --destructive: #f87171;
+  --info: #34d399;
+  --info-bg: #022c22;
+  --muted-bg: #171717;
+
+  --chart-1: #3ba4f7;
+  --chart-2: #34d399;
+  --chart-3: #fbbf24;
+  --chart-4: #f87171;
+  --chart-5: #a78bfa;
+  --chart-6: #22d3ee;
+  --chart-7: #f472b6;
+  --chart-8: #9ca3af;
+
+  --focus-ring: 0 0 0 2px var(--background), 0 0 0 4px var(--brand-500);
+}
+
+/* §2.2 Typography scale · §2.3 spacing ladder — mode-independent */
+:root {
+  --text-display: 40px;
+  --text-display-lh: 48px;
+  --text-h1: 30px;
+  --text-h1-lh: 38px;
+  --text-h2: 24px;
+  --text-h2-lh: 32px;
+  --text-h3: 20px;
+  --text-h3-lh: 28px;
+  --text-h4: 16px;
+  --text-h4-lh: 24px;
+  --text-body: 14px;
+  --text-body-lh: 20px;
+  --text-body-sm: 13px;
+  --text-body-sm-lh: 18px;
+  --text-caption: 12px;
+  --text-caption-lh: 16px;
+  --text-micro: 11px;
+  --text-micro-lh: 14px;
+
+  --space-0: 0px;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 20px;
+  --space-7: 24px;
+  --space-8: 32px;
+  --space-9: 40px;
+  --space-10: 48px;
+  --space-11: 64px;
+  --space-12: 96px;
+
+  --motion-1: 120ms;
+  --motion-2: 180ms;
+  --motion-3: 240ms;
+  --motion-4: 360ms;
+
+  --gutter: 24px;
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
@@ -405,6 +610,29 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+
+  /* Blueprint §2.6 — numerics always align in tables */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Blueprint §6 — focus is never removed, only redirected to :focus-visible */
+  :focus-visible {
+    outline: 2px solid var(--brand-500);
+    outline-offset: 2px;
+  }
+}
+
+/* Blueprint §2.3 — reduced motion collapses to opacity-only transitions */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -432,6 +660,66 @@
 
 @utility gradient-brand {
   background-image: linear-gradient(135deg, #185FA5 0%, #3BA4F7 100%);
+}
+
+/* ---------- Blueprint v2 utilities ---------- */
+
+/* §2.3 keyboard focus ring — 2px outer + 2px offset */
+@utility focus-ring {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* §2.12 the canonical card surface */
+@utility card-surface {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elev-1);
+}
+
+/* §3.12 skeleton shimmer — 1500ms linear infinite */
+@utility shimmer {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--muted-foreground) 8%, transparent) 0%,
+    color-mix(in oklab, var(--muted-foreground) 16%, transparent) 50%,
+    color-mix(in oklab, var(--muted-foreground) 8%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: leadora-shimmer 1500ms linear infinite;
+}
+
+@keyframes leadora-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* §10.15.3 calendar OVERDUE pill pulses once on mount */
+@keyframes leadora-pulse-once {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--danger) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px color-mix(in oklab, var(--danger) 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--danger) 0%, transparent);
+  }
+}
+
+@utility pulse-once {
+  animation: leadora-pulse-once 1200ms var(--ease-decel) 1;
+}
+
+/* §2.6 tabular numerics for money, IDs and countdowns */
+@utility numeric {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 @utility ring-focus {

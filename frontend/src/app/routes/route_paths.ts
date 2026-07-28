@@ -14,6 +14,9 @@ export const ROUTE_PATHS = {
   customerProfiles: "/customer-profiles",
   followUpTasks: "/follow-up-tasks",
   manageFollowUpTasks: "/manage-follow-up-tasks",
+  // Blueprint §10.15 — the calendar is a first-class surface, not only the
+  // Tasks module's calendar view. Reads the existing task/reminder/booking APIs.
+  calendar: "/calendar",
   salesPipeline: "/sales-pipeline",
   deals: "/deals",
   interactionTimeline: "/interaction-timeline",

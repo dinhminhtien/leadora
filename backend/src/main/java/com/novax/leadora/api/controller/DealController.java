@@ -25,7 +25,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/deals")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+@PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('DEAL_VIEW')")
 public class DealController {
 
     private final GetDealListUseCase getDealListUseCase;
@@ -44,7 +44,9 @@ public class DealController {
         return ResponseEntity.ok(ApiResponse.success(deals));
     }
 
+    /** Feeds the Sales Pipeline board, which the sidebar gates on PIPELINE_VIEW (UC-11.1). */
     @GetMapping("/pipeline")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('PIPELINE_VIEW')")
     public ResponseEntity<ApiResponse<List<PipelineDealCardResponse>>> getPipelineDeals(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) UUID ownerId) {
@@ -65,12 +67,14 @@ public class DealController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('DEAL_WRITE')")
     public ResponseEntity<ApiResponse<DealResponse>> createDeal(@Valid @RequestBody DealRequest request) {
         DealResponse created = createDealUseCase.execute(request);
         return ResponseEntity.ok(ApiResponse.success(created));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('DEAL_WRITE')")
     public ResponseEntity<ApiResponse<DealResponse>> updateDeal(
             @PathVariable UUID id,
             @Valid @RequestBody DealRequest request) {
@@ -83,6 +87,7 @@ public class DealController {
      * validation, so marking a deal lost does not require an estimated close date.
      */
     @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('DEAL_WRITE')")
     public ResponseEntity<ApiResponse<DealResponse>> updateDealStatus(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateDealStatusRequest request) {
@@ -90,6 +95,7 @@ public class DealController {
         return ResponseEntity.ok(ApiResponse.success(updated, "Deal status updated successfully"));
     }
     @PostMapping("/{id}/sync-pipeline")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('DEAL_WRITE')")
     public ResponseEntity<ApiResponse<DealResponse>> syncPipeline(@PathVariable UUID id) {
         dealWorkflowSyncService.syncPipelineStage(id);
         DealResponse updated = getDealDetailUseCase.execute(id);

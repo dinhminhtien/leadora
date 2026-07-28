@@ -1,15 +1,43 @@
+"use client";
+
+/**
+ * Button — Website UI Blueprint §3.1 and §13 (interaction states).
+ *
+ * **What changed in the redesign.** The previous implementation hard-coded ~30
+ * hex literals (`bg-[#185FA5]`, `dark:bg-[#378ADD]`, …). §2.1 forbids that:
+ * *"Never hard-code hex values in components."* Every colour below now comes
+ * from a semantic token, so retheming happens in `globals.css` alone and dark
+ * mode stops needing a per-variant override list.
+ *
+ * **Backward compatibility is deliberate.** `danger`, `success`, `warning` and
+ * `outline` are not in the blueprint's six-variant list, but 40 files use them.
+ * Removing them would be a behavioural change to screens this redesign is not
+ * touching yet, so they are kept as *tonal* variants and re-expressed in tokens.
+ * The blueprint's `destructive` and `link` are added alongside.
+ *
+ * States per §13: hover fill −10%, active fill −18%, focus `--focus-ring`,
+ * disabled opacity .45 + `not-allowed`, loading swaps the leading icon for a
+ * spinner while the label stays put and clicks are blocked.
+ */
+
 import React from "react";
 
+import { cn } from "@/lib/utils";
+
 export type ButtonVariant =
+  // Blueprint §3.1
   | "primary"
   | "secondary"
+  | "outline"
+  | "ghost"
+  | "destructive"
+  | "link"
+  // Retained tonal variants (pre-existing call sites)
   | "danger"
   | "success"
-  | "warning"
-  | "ghost"
-  | "outline";
+  | "warning";
 
-export type ButtonSize = "sm" | "md" | "lg";
+export type ButtonSize = "xs" | "sm" | "md" | "lg" | "icon" | "icon-sm";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -17,45 +45,101 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   isLoading?: boolean;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
+  /** Stretches to the container width — common in dialog footers on mobile. */
+  fullWidth?: boolean;
 }
 
-// Leadora Design System — Button token spec (PDF §4)
 const variantStyles: Record<ButtonVariant, string> = {
-  // Create, Submit, Save — main CTA
-  primary:
-    "bg-[#185FA5] text-[#E6F1FB] border border-[#0C447C] hover:bg-[#0C447C] dark:bg-[#378ADD] dark:border-[#185FA5] dark:hover:bg-[#185FA5]",
+  // Solid brand — Create, Submit, Save.
+  primary: cn(
+    "bg-brand-500 text-brand-foreground border border-brand-600",
+    "hover:bg-brand-600 active:bg-brand-700",
+  ),
 
-  // Edit, View — secondary action (white bg, gray border)
-  secondary:
-    "bg-white text-[#222222] border border-[#888780] hover:bg-[#F1EFE8] dark:bg-zinc-800 dark:text-zinc-100 dark:border-zinc-600 dark:hover:bg-zinc-700",
+  // Neutral surface — Edit, View, Cancel-adjacent.
+  secondary: cn(
+    "bg-surface text-foreground border border-border",
+    "hover:bg-surface-2 active:bg-surface-3",
+  ),
 
-  // Delete, Remove — destructive action (light red bg per DS)
-  danger:
-    "bg-[#FCEBEB] text-[#A32D2D] border border-[#F7C1C1] hover:bg-[#F9D7D7] dark:bg-[#501313] dark:text-[#F09595] dark:border-[#791F1F] dark:hover:bg-[#791F1F]",
+  // Outline on the page background.
+  outline: cn(
+    "bg-transparent text-foreground border border-border",
+    "hover:bg-surface-2 active:bg-surface-3",
+  ),
 
-  // Approve, Confirm, Convert — positive outcome (light green bg per DS)
-  success:
-    "bg-[#EAF3DE] text-[#3B6D11] border border-[#C0DD97] hover:bg-[#DFF0D0] dark:bg-[#173404] dark:text-[#97C459] dark:border-[#3B6D11] dark:hover:bg-[#27500A]",
+  // Lowest emphasis — icon buttons, toolbar affordances.
+  ghost: cn(
+    "bg-transparent text-muted-foreground border border-transparent",
+    "hover:bg-surface-2 hover:text-foreground active:bg-surface-3",
+  ),
 
-  // Request Changes, Pending — caution action (light amber bg per DS)
-  warning:
-    "bg-[#FAEEDA] text-[#854F0B] border border-[#FAC775] hover:bg-[#F5E0C0] dark:bg-[#412402] dark:text-[#EF9F27] dark:border-[#BA7517] dark:hover:bg-[#854F0B]",
+  // Solid destructive — the confirm button in a §3.16 destructive dialog.
+  destructive: cn(
+    "bg-danger text-white border border-danger",
+    "hover:brightness-110 active:brightness-95",
+    "dark:text-danger-bg",
+  ),
 
-  // Cancel — low-emphasis (transparent bg per DS)
-  ghost:
-    "bg-transparent text-[#666666] border border-[#CCCCCC] hover:bg-[#F1EFE8] hover:text-[#222222] dark:text-zinc-400 dark:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100",
+  // Inline text action.
+  link: cn(
+    "bg-transparent border border-transparent text-brand-600 underline-offset-4",
+    "hover:underline active:text-brand-700 dark:text-brand-500",
+  ),
 
-  // Generic outline — kept for backward compatibility
-  outline:
-    "border border-border bg-background text-foreground hover:bg-muted shadow-sm",
+  // Tonal destructive — inline row actions where a solid red would shout.
+  danger: cn(
+    "bg-danger/10 text-danger border border-danger/25",
+    "hover:bg-danger/15 active:bg-danger/20",
+  ),
+
+  // Tonal positive — Approve, Confirm, Convert.
+  success: cn(
+    "bg-success/10 text-success border border-success/25",
+    "hover:bg-success/15 active:bg-success/20",
+  ),
+
+  // Tonal caution — Request changes, Pending.
+  warning: cn(
+    "bg-warning/12 text-warning border border-warning/30",
+    "hover:bg-warning/18 active:bg-warning/24",
+  ),
 };
 
-// Leadora Design System — Button size spec (PDF §4.1)
+/** Heights follow §3.1: xs 24 · sm 28 · md 36 · lg 40 · icon 36. */
 const sizeStyles: Record<ButtonSize, string> = {
-  sm: "px-3 py-1.5 rounded-lg text-xs font-semibold",    // 5px 12px, 11px/22 DXA
-  md: "px-4 py-2 rounded-lg text-sm font-semibold",      // 8px 18px, 13px/26 DXA
-  lg: "px-5 py-2.5 rounded-lg text-sm font-semibold",    // 10px 22px, 14px/28 DXA
+  xs: "h-6 gap-1 rounded-md px-2 text-[11px]",
+  sm: "h-7 gap-1.5 rounded-md px-2.5 text-[12px]",
+  md: "h-9 gap-1.5 rounded-md px-3.5 text-[13.5px]",
+  lg: "h-10 gap-2 rounded-md px-4 text-[14px]",
+  icon: "size-9 rounded-md p-0",
+  "icon-sm": "size-7 rounded-md p-0",
 };
+
+function Spinner({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      className={cn("animate-spin", className)}
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+      />
+    </svg>
+  );
+}
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
@@ -66,35 +150,56 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       isLoading = false,
       leftIcon,
       rightIcon,
+      fullWidth = false,
       disabled,
       children,
+      type = "button",
       ...props
     },
-    ref
+    ref,
   ) => {
+    const iconOnly = size === "icon" || size === "icon-sm";
+
     return (
       <button
         ref={ref}
+        type={type}
         disabled={disabled || isLoading}
-        className={`inline-flex items-center justify-center gap-1.5 font-medium whitespace-nowrap transition-all duration-150 ease-out hover:-translate-y-px active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 cursor-pointer ${variantStyles[variant]} ${sizeStyles[size]} ${className || ""}`}
+        // A loading button is busy, not broken — announce it rather than just
+        // dimming it, so a screen-reader user knows the click registered.
+        aria-busy={isLoading || undefined}
+        className={cn(
+          "inline-flex shrink-0 items-center justify-center whitespace-nowrap font-semibold",
+          "transition-[background-color,border-color,color,box-shadow,filter] duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)]",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-45",
+          "cursor-pointer select-none",
+          variantStyles[variant],
+          sizeStyles[size],
+          fullWidth && "w-full",
+          className,
+        )}
         {...props}
       >
-        {leftIcon && !isLoading && (
-          <span className="shrink-0 size-4 flex items-center justify-center">{leftIcon}</span>
+        {isLoading ? (
+          <Spinner className={cn(iconOnly ? "size-4" : "size-3.5", !iconOnly && "shrink-0")} />
+        ) : (
+          leftIcon && (
+            <span className="grid shrink-0 place-items-center [&_svg]:size-4">
+              {leftIcon}
+            </span>
+          )
         )}
-        {isLoading && (
-          <svg className="animate-spin -ml-0.5 mr-1 h-3.5 w-3.5 text-current" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-        )}
-        <span>{children}</span>
-        {rightIcon && !isLoading && (
-          <span className="shrink-0 size-4 flex items-center justify-center">{rightIcon}</span>
+        {!iconOnly && children != null && <span className="truncate">{children}</span>}
+        {iconOnly && !isLoading && children}
+        {!iconOnly && !isLoading && rightIcon && (
+          <span className="grid shrink-0 place-items-center [&_svg]:size-3.5">
+            {rightIcon}
+          </span>
         )}
       </button>
     );
-  }
+  },
 );
 
 Button.displayName = "Button";

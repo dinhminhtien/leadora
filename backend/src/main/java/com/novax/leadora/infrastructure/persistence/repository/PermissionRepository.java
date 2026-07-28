@@ -14,7 +14,11 @@ public interface PermissionRepository extends JpaRepository<PermissionEntity, In
 
     List<PermissionEntity> findAllByOrderByPermissionIdAsc();
 
-    /** All permission codes — the effective set for ADMIN (full access). */
+    /**
+     * All permission codes — the effective set for ADMIN (full access). Read per request like the
+     * per-role set, and left uncached for the same reason: a ~30-row scan is cheaper than a stale
+     * authorization decision.
+     */
     @Query("SELECT p.permissionCode FROM PermissionEntity p")
     List<String> findAllCodes();
 }

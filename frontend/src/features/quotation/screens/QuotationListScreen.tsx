@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { StatusPill } from "@/components/ui/status-pill";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { SendQuotationModal } from "@/features/quotation/components/SendQuotationModal";
 import { RecordResponseModal } from "@/features/quotation/components/RecordResponseModal";
@@ -497,9 +498,13 @@ export function QuotationListScreen() {
                     </span>
                   </TableCell>
                   <TableCell className="py-3 px-4">
-                    <Badge variant={statusBadgeVariant(q.status)} size="sm" className="font-bold text-[9px] uppercase">
-                      {statusLabel(q.status)}
-                    </Badge>
+                    {/*
+                      Canonical quotation binding (Blueprint §2.7). This also
+                      corrects a local divergence: EXPIRED / CLOSED / SUPERSEDED
+                      were rendered `danger` here, but the spec reserves danger
+                      for REJECTED — an expired quote is inert, not a failure.
+                    */}
+                    <StatusPill size="sm" domain="quotation" value={q.status} />
                   </TableCell>
                   <TableCell className="py-3 px-4">
                     <SlaStatusBadge entityId={q.id} entityType="QUOTATION" />

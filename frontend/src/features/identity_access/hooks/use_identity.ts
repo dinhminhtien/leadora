@@ -8,7 +8,6 @@ import {
   type UserListParams,
   type CreateUserPayload,
   type UpdateUserPayload,
-  type CreateRolePayload,
 } from "@/services/user_service";
 
 // ── Users (UC-6.1 / 6.2 / 6.3) ─────────────────────────────────────────────────
@@ -60,13 +59,6 @@ export function usePermissions() {
   });
 }
 
-export function useCreateRole() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: CreateRolePayload) => roleService.create(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["roles"] }),
-  });
-}
 
 export function useSetRolePermissions() {
   const qc = useQueryClient();

@@ -14,6 +14,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.server.ResponseStatusException;
@@ -37,6 +38,9 @@ public class GlobalExceptionHandler {
     }
 
     private static final UUID SYSTEM_UUID = new UUID(0L, 0L);
+
+    /** MSG-05, verbatim from the SRS application-messages catalogue (§5.3). */
+    private static final String MSG_05_ACCESS_DENIED = "You do not have permission to access this function.";
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidationException(MethodArgumentNotValidException ex) {
@@ -62,6 +66,19 @@ public class GlobalExceptionHandler {
      * Treating it as 404 lets the UI render a proper "not found" state instead of
      * hanging or showing a server-crash banner.
      */
+    /**
+     * A verb the route does not offer (e.g. POST to a read-only collection). Without this it fell
+     * into the catch-all below and surfaced as a 500 with a support reference, which reads as
+     * "the server broke" when the request was simply wrong.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+        log.warn("Method not allowed: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ApiResponse.businessError("METHOD_NOT_ALLOWED",
+                        "This action is not available on the requested resource.", ex.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         log.warn("Malformed path/parameter '{}': {}", ex.getName(), ex.getMessage());
@@ -71,10 +88,13 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Authorization failures raised in the service layer (e.g. a Sales Staff trying
-     * to open a lead that is not theirs). Method-security denials are handled by the
-     * security filter chain, but a manually thrown {@link AccessDeniedException} from
-     * a use case reaches here — map it to 403 so the UI can show "Access Denied".
+     * Authorization failures — both a {@code @PreAuthorize} denial (role or permission code, which
+     * arrives as Spring Security's own "Access Denied") and one thrown by a use case's access
+     * policy (e.g. a Sales Staff opening a lead that is not theirs).
+     *
+     * <p>The user-facing message is always MSG-05 verbatim, so every denial reads the same
+     * regardless of which rule failed; the specific reason goes to the log and to {@code details}
+     * for support, not into the headline message.
      */
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex, jakarta.servlet.http.HttpServletRequest request) {
@@ -93,9 +113,7 @@ public class GlobalExceptionHandler {
         securityAuditLogger.logAccessDeniedForUser(request, ex, userId, userName);
 
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(ApiResponse.businessError("ACCESS_DENIED",
-                        ex.getMessage() != null ? ex.getMessage()
-                                : "You do not have permission to access this resource.", null));
+                .body(ApiResponse.businessError("ACCESS_DENIED", MSG_05_ACCESS_DENIED, ex.getMessage()));
     }
 
     /**

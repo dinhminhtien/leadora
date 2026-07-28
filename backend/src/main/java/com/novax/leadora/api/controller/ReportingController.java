@@ -42,7 +42,11 @@ public class ReportingController {
     private final GetQuotationOutcomeReportUseCase getQuotationOutcomeReportUseCase;
     private final CurrentUserProvider currentUserProvider;
 
-    /** Dashboard KPI summary — all aggregation happens server-side */
+    /**
+     * Dashboard KPI summary — all aggregation happens server-side.
+     * Deliberately NOT gated on REPORTING_VIEW: this feeds every role's own home dashboard, which
+     * stays reachable even for a role that was never granted the Reporting screen.
+     */
     @GetMapping("/dashboard-summary")
     public ResponseEntity<ApiResponse<DashboardSummaryResponse>> getDashboardSummary() {
         UserEntity actor = currentUserProvider.resolve(null);
@@ -52,7 +56,7 @@ public class ReportingController {
 
     /** UC-23.1 — View Sales Performance Statistics Report (Sales Manager). */
     @GetMapping("/sales-performance")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN') and @access.can('REPORTING_VIEW')")
     public ResponseEntity<ApiResponse<SalesPerformanceReportResponse>> getSalesPerformance(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo
@@ -68,7 +72,7 @@ public class ReportingController {
      * Sales Manager / Admin see team-wide performance (scoping is applied in the use case).
      */
     @GetMapping("/task-performance")
-    @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN') and @access.can('REPORTING_VIEW')")
     public ResponseEntity<ApiResponse<TaskPerformanceReportResponse>> getTaskPerformance(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo
@@ -81,7 +85,7 @@ public class ReportingController {
 
     /** UC-23.4 — View Sales Pipeline Progression Report (Sales Manager). */
     @GetMapping("/pipeline-progression")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN') and @access.can('REPORTING_VIEW')")
     public ResponseEntity<ApiResponse<PipelineProgressionReportResponse>> getPipelineProgression(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo
@@ -94,7 +98,7 @@ public class ReportingController {
 
     /** UC-23.5 — View Quotation Outcome Report (Sales Manager). */
     @GetMapping("/quotation-outcome")
-    @PreAuthorize("hasAnyRole('MANAGER','ADMIN')")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN') and @access.can('REPORTING_VIEW')")
     public ResponseEntity<ApiResponse<QuotationOutcomeReportResponse>> getQuotationOutcome(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo

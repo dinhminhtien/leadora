@@ -3,7 +3,8 @@
 import React, { useState } from "react";
 import { BedDouble, CalendarDays, CheckCircle2, Clock, Send, XCircle } from "lucide-react";
 
-import { Badge, type BadgeVariant } from "@/components/ui/Badge";
+
+import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import {
@@ -29,12 +30,6 @@ import {
  * for how long they will hold it.
  */
 
-const STATUS_BADGE: Record<RoomRequestStatus, BadgeVariant> = {
-  PENDING: "warning",
-  CONFIRMED: "success",
-  REJECTED: "danger",
-  SUPERSEDED: "default",
-};
 
 const STATUS_FILTERS = ["PENDING", "CONFIRMED", "REJECTED", "all"] as const;
 
@@ -175,9 +170,10 @@ export function RoomRequestInboxScreen() {
                 <TableCell className="text-xs font-semibold">{r.quantity}</TableCell>
                 <TableCell className="text-xs">{r.requestedByName ?? "—"}</TableCell>
                 <TableCell>
-                  <Badge variant={STATUS_BADGE[r.status]} className="text-[9px] font-bold uppercase">
-                    {r.status}
-                  </Badge>
+                  {/* Canonical room-request binding (Blueprint §2.7):
+                      PENDING warning · CONFIRMED success · REJECTED danger ·
+                      SUPERSEDED muted. */}
+                  <StatusPill size="sm" domain="roomRequest" value={r.status} />
                   {r.status === "CONFIRMED" && r.heldUntil && (
                     <p className="mt-1 inline-flex items-center gap-1 text-[10px] text-slate-400">
                       <Clock className="size-3" />

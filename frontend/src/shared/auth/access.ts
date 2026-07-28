@@ -57,21 +57,31 @@ const ADMIN_ROUTES: string[] = [
   ROUTE_PATHS.activityLogs,
 ];
 
-// Front Office (role-based): a simple, focused desk — arrival handovers + their alerts only.
+// Front Office: a simple, focused desk — arrival handovers + their alerts only.
 const FO_ROUTES: string[] = [
   ROUTE_PATHS.frontOfficeHandover,
   ROUTE_PATHS.notifications,
 ];
 
-// Reservation (role-based): answer room requests, then confirm/reject the bookings that
-// follow. A narrow desk like Front Office, so it is gated by role rather than by the
-// permission matrix Sales/Manager screens use.
+// Reservation: answer room requests, then confirm/reject the bookings that follow.
 const RESERVATION_ROUTES: string[] = [
   ROUTE_PATHS.roomRequests,
   ROUTE_PATHS.bookingConfirmation,
   ROUTE_PATHS.depositPayment,
   ROUTE_PATHS.notifications,
 ];
+
+/**
+ * The desks are gated twice: the route must belong to the desk AND the user must hold the
+ * screen's permission. The route list is the fixed shape of the job; the permission is what an
+ * Admin can take away in UC-6.4. Checking only the route would let a revoked permission leave a
+ * nav link whose every request 403s — the same mismatch the handover screens used to have.
+ */
+function canAccessDeskRoute(routes: string[], pathname: string, permissions: string[]): boolean {
+  if (!matchesAny(routes, pathname)) return false;
+  const required = requiredPermissionFor(pathname);
+  return required == null || permissions.includes(required);
+}
 
 // Maps each protected route to the permission code that gates it (the screen's VIEW
 // permission; the quotation approvals queue needs the dedicated APPROVE permission).
@@ -82,6 +92,9 @@ const ROUTE_PERMISSION: Record<string, string> = {
   [ROUTE_PATHS.customerProfiles]: "CUSTOMER_VIEW",
   [ROUTE_PATHS.followUpTasks]: "TASK_VIEW",
   [ROUTE_PATHS.manageFollowUpTasks]: "TASK_VIEW",
+  // Blueprint §14 groups `/tasks` and `/calendar` under the same gate: the
+  // calendar renders tasks, so seeing it requires being allowed to see them.
+  [ROUTE_PATHS.calendar]: "TASK_VIEW",
   [ROUTE_PATHS.salesPipeline]: "PIPELINE_VIEW",
   [ROUTE_PATHS.deals]: "DEAL_VIEW",
   [ROUTE_PATHS.pendingApprovals]: "QUOTATION_APPROVE",
@@ -127,6 +140,9 @@ export function canAccessPath(
   permissions: string[] = [],
 ): boolean {
   if (pathname === ROUTE_PATHS.dashboard) return true;
+  // A role's own home stays reachable even if its permission was revoked. The layout guard
+  // redirects a denied route to this path, so gating it would spin in a redirect loop; the page
+  // loads and its data calls surface the 403 instead.
   if (pathname === DASHBOARD_PATHS[role]) return true;
 
   // Profile page is self-service — every authenticated user may access it regardless of role.
@@ -137,21 +153,31 @@ export function canAccessPath(
   }
 
   if (role === "FO") {
-    return matchesAny(FO_ROUTES, pathname);
+    return canAccessDeskRoute(FO_ROUTES, pathname, permissions);
   }
 
   if (role === "RESERVATION") {
-    return matchesAny(RESERVATION_ROUTES, pathname);
+    return canAccessDeskRoute(RESERVATION_ROUTES, pathname, permissions);
   }
 
   // SALES / MANAGER — permission driven.
   const required = requiredPermissionFor(pathname);
-  if (required === "HANDOVER_VIEW") return true; // Allowed by default for handover pages
-  // SLA monitoring must always work for every Sales/Manager user — it's basic
-  // operational visibility (view-only; Configure tab is separately gated to
-  // ADMIN/MANAGER), not something that should silently break if an Admin never
-  // granted the SLA_VIEW permission.
+  // HANDOVER_VIEW used to be a free pass here. It no longer can be: the handover APIs now
+  // enforce that permission server-side, so waving the route through would surface a nav link
+  // whose every request 403s. Front Office is unaffected — it returns above, via FO_ROUTES.
+  //
+  // SLA is the opposite case and stays a free pass: its monitoring reads are deliberately
+  // open to any authenticated user on the backend, so gating the route here would hide a
+  // screen the API would happily serve. Basic operational visibility (view-only; the
+  // Configure tab is separately gated to ADMIN/MANAGER).
   if (required === "SLA_VIEW") return true;
+  // Leads are role-gated on the backend (@PreAuthorize hasAnyRole('SALES','MANAGER')),
+  // not permission-gated. A Manager is authorised for every lead endpoint regardless
+  // of whether anyone ever granted LEAD_VIEW, and the Manager lead screen is a
+  // distinct surface — it assigns owners and spans the whole team rather than one
+  // rep's pipeline. Gating it on a permission the API ignores just hid a working
+  // screen, so the role decides here exactly as it does server-side.
+  if (required === "LEAD_VIEW" && role === "MANAGER") return true;
   // Quotation approval is Manager-only on the backend (@PreAuthorize hasRole('MANAGER'))
   // — enforce that here too, so a stray QUOTATION_APPROVE grant to a non-manager role
   // can't surface a nav link / route whose API calls would just 403 anyway.

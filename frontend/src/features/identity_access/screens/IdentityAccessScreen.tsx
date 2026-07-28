@@ -4,8 +4,12 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   Users, ShieldCheck, Search, UserPlus, X, AlertCircle, Loader2, ServerCrash,
   ChevronLeft, ChevronRight, Pencil, KeyRound, Check, Plus, Save,
+  Target, Building2, Briefcase, GitBranch, ClipboardList, FileText, MessagesSquare,
+  CalendarCheck, BedDouble, PackageCheck, CreditCard, Bell, AlarmClock, Timer,
+  BarChart3, Star, Bot, DoorOpen, type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -32,10 +36,13 @@ const STATUS_OPTIONS: UserStatus[] = ["ACTIVE", "INACTIVE", "LOCKED"];
 // Display label for the as-built DB role codes (ADMIN/SALES/MANAGER) → Admin/Staff/Manager.
 function roleLabel(roleName?: string | null): string {
   switch ((roleName ?? "").toUpperCase()) {
-    case "SALES":   return "Staff";
-    case "MANAGER": return "Manager";
-    case "ADMIN":   return "Admin";
-    default:        return roleName ?? "—";
+    case "SALES":        return "Staff";
+    case "MANAGER":      return "Manager";
+    case "ADMIN":        return "Admin";
+    case "FO":
+    case "FRONT_OFFICE": return "Front Office";
+    case "RESERVATION":  return "Reservation";
+    default:             return roleName ?? "—";
   }
 }
 
@@ -45,7 +52,23 @@ const NAME_ALLOWED = /^[\p{L}\s.'-]+$/u;
 // Rows per page + fixed column widths so the table height (and the pagination bar
 // below it) stays constant across pages — mirrors the Leads list.
 const PAGE_SIZE = 10;
-const COL_WIDTHS = ["24%", "28%", "13%", "12%", "13%", "10%"];
+const COL_WIDTHS = ["21%", "24%", "11%", "11%", "14%", "11%", "8%"];
+
+/** Short date, e.g. "28 Jul 2026". */
+function formatDate(value?: string | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+/**
+ * Last-login stamp (UC-6.1). Shows the time too — an Admin auditing accounts cares whether
+ * someone signed in this morning or three weeks ago, and "Never" is itself a finding.
+ */
+function formatLastLogin(value?: string | null) {
+  if (!value) return "Never";
+  const d = new Date(value);
+  return `${d.toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" })} · ${d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`;
+}
 
 function initials(name: string) {
   return (name || "?").split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
@@ -61,14 +84,25 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
+/**
+ * Account status via the canonical binding (Blueprint §2.7):
+ * ACTIVE success · INACTIVE muted · LOCKED danger.
+ * `STATUS_CONFIG` below is retained only for the filter dropdown's labels.
+ */
 function StatusBadge({ status }: { status: UserStatus }) {
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.INACTIVE;
-  return <Badge variant={cfg.variant} size="sm" className="font-bold text-[9px] uppercase">{cfg.label}</Badge>;
+  return <StatusPill size="sm" domain="user" value={status} />;
 }
 
-function FieldError({ msg }: { msg?: string }) {
-  if (!msg) return null;
-  return <p className="mt-1 text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{msg}</p>;
+/**
+ * Turns an axios-style rejection into the message to show. A 5xx is never surfaced verbatim —
+ * the user gets the generic line and the detail stays in the network log.
+ */
+function errorMessage(err: unknown, fallback = "Something went wrong. Please try again."): string {
+  const response = (err as { response?: { status?: number; data?: { message?: string } } })?.response;
+  if (typeof response?.status === "number" && response.status >= 500) {
+    return "Server error — please contact your Admin.";
+  }
+  return response?.data?.message ?? fallback;
 }
 
 // ── User form drawer (UC-6.2 create / UC-6.3 update) ────────────────────────────
@@ -144,10 +178,7 @@ function UserFormDrawer({
     setErrors({});
     setServerError("");
 
-    const onError = (err: any) => {
-      if (err?.response?.status >= 500) setServerError("Server error — please contact your Admin.");
-      else setServerError(err?.response?.data?.message || "Something went wrong. Please try again.");
-    };
+    const onError = (err: unknown) => setServerError(errorMessage(err));
 
     if (mode === "create") {
       const payload: CreateUserPayload = {
@@ -358,6 +389,7 @@ function UsersTab({ roles }: { roles: Role[] }) {
                 <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Email</TableHead>
                 <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Role</TableHead>
                 <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
+                <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Last Login</TableHead>
                 <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Created</TableHead>
                 <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-right">Actions</TableHead>
               </TableRow>
@@ -378,8 +410,13 @@ function UsersTab({ roles }: { roles: Role[] }) {
                     <Badge variant="primary" size="sm" className="font-bold text-[10px]">{roleLabel(u.roleName)}</Badge>
                   </TableCell>
                   <TableCell className="py-3 px-4 border-b-0"><StatusBadge status={u.status} /></TableCell>
+                  <TableCell className="py-3 px-4 text-xs whitespace-nowrap border-b-0">
+                    <span className={u.lastLoginAt ? "text-slate-500" : "text-slate-300 italic"}>
+                      {formatLastLogin(u.lastLoginAt)}
+                    </span>
+                  </TableCell>
                   <TableCell className="py-3 px-4 text-xs text-slate-400 whitespace-nowrap border-b-0">
-                    {u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                    {formatDate(u.createdAt)}
                   </TableCell>
                   <TableCell className="py-3 px-4 text-right border-b-0">
                     <Button variant="outline" size="sm" onClick={() => setDrawer({ mode: "edit", user: u })}
@@ -436,54 +473,175 @@ function UsersTab({ roles }: { roles: Role[] }) {
 
 // ── Roles & Permissions tab (UC-6.4) ────────────────────────────────────────────
 
-function RoleCard({ role, allPermissions }: { role: Role; allPermissions: Permission[] }) {
-  const assignedIds = useMemo(() => new Set(role.permissions.map(p => p.permissionId)), [role.permissions]);
-  const [selected, setSelected] = useState<Set<number>>(assignedIds);
-  const [saved, setSaved] = useState(false);
+/**
+ * Only Staff and Manager are permission-driven, so the screen shows them side by side as one
+ * matrix rather than as separate cards: with two columns the interesting question is almost
+ * always "what can a Manager do that Staff can't?", and a comparison view answers it at a glance.
+ * The server marks each role `configurable`, so this never hard-codes role names.
+ */
+
+const MODULE_META: Record<string, { label: string; Icon: LucideIcon; blurb: string }> = {
+  LEAD:         { label: "Leads",              Icon: Target,         blurb: "Inbound enquiries before they become customers" },
+  CUSTOMER:     { label: "Customers",          Icon: Building2,      blurb: "Customer and contact profiles" },
+  DEAL:         { label: "Deals",              Icon: Briefcase,      blurb: "Sales opportunities and their value" },
+  PIPELINE:     { label: "Sales Pipeline",     Icon: GitBranch,      blurb: "The stage board across all open deals" },
+  TASK:         { label: "Follow-up Tasks",    Icon: ClipboardList,  blurb: "Assigned follow-ups and their deadlines" },
+  QUOTATION:    { label: "Quotations",         Icon: FileText,       blurb: "Room quotations, versions and approvals" },
+  INTERACTION:  { label: "Interactions",       Icon: MessagesSquare, blurb: "The customer interaction timeline" },
+  BOOKING:      { label: "Bookings",           Icon: CalendarCheck,  blurb: "Booking requests and their processing" },
+  RESERVATION:  { label: "Reservations",       Icon: BedDouble,      blurb: "Confirmed reservations and cancellations" },
+  HANDOVER:     { label: "Handovers",          Icon: PackageCheck,   blurb: "Operational handover to the front desk" },
+  PAYMENT:      { label: "Payments",           Icon: CreditCard,     blurb: "Deposits, payment requests and status" },
+  NOTIFICATION: { label: "Notifications",      Icon: Bell,           blurb: "The in-app notification feed" },
+  REMINDER:     { label: "Reminders",          Icon: AlarmClock,     blurb: "Manual and automatic reminders" },
+  SLA:          { label: "SLA",                Icon: Timer,          blurb: "SLA monitoring and rule configuration" },
+  REPORTING:    { label: "Reporting",          Icon: BarChart3,      blurb: "Sales, task and pipeline reports" },
+  FEEDBACK:     { label: "Customer Feedback",  Icon: Star,           blurb: "Feedback records and their review status" },
+  CHAT:         { label: "AI Assistant",       Icon: Bot,            blurb: "The read-only internal chat assistant" },
+  ROOM_REQUEST: { label: "Room Requests",      Icon: DoorOpen,       blurb: "Room availability requests" },
+};
+
+const ACTION_ORDER: Record<string, number> = { VIEW: 0, WRITE: 1, APPROVE: 2 };
+
+const ACTION_STYLE: Record<string, { on: string; label: string }> = {
+  VIEW:    { on: "border-sky-500/70 bg-sky-50 text-sky-700",           label: "View" },
+  WRITE:   { on: "border-violet-500/70 bg-violet-50 text-violet-700",  label: "Edit" },
+  APPROVE: { on: "border-emerald-500/70 bg-emerald-50 text-emerald-700", label: "Approve" },
+};
+
+const OFF_STYLE = "border-slate-200 bg-white text-slate-300 hover:border-slate-300 hover:text-slate-500";
+
+const ROLE_COLUMN_ORDER = ["SALES", "MANAGER", "FO", "FRONT_OFFICE", "RESERVATION"];
+
+/** Column position for a role; anything unlisted sorts to the end rather than to the front. */
+function roleColumnRank(roleName: string): number {
+  const i = ROLE_COLUMN_ORDER.indexOf(roleName.toUpperCase());
+  return i === -1 ? ROLE_COLUMN_ORDER.length : i;
+}
+
+/** Accent per role column, so the desks read as a different kind of role from the sales pair. */
+function roleAccent(roleName: string): string {
+  switch (roleName.toUpperCase()) {
+    case "MANAGER":                 return "bg-violet-50 text-violet-600";
+    case "FO": case "FRONT_OFFICE": return "bg-amber-50 text-amber-600";
+    case "RESERVATION":             return "bg-teal-50 text-teal-600";
+    default:                        return "bg-sky-50 text-sky-600";
+  }
+}
+
+function moduleMeta(module: string) {
+  return MODULE_META[module] ?? { label: module.replace(/_/g, " ").toLowerCase(), Icon: ShieldCheck, blurb: "" };
+}
+
+function setsEqual(a: Set<number>, b: Set<number>) {
+  if (a.size !== b.size) return false;
+  for (const v of a) if (!b.has(v)) return false;
+  return true;
+}
+
+/** One View/Edit/Approve chip. */
+function PermissionChip({
+  permission, checked, changed, onToggle,
+}: {
+  permission: Permission;
+  checked: boolean;
+  changed: boolean;
+  onToggle: () => void;
+}) {
+  const action = permission.action ?? "VIEW";
+  const style = ACTION_STYLE[action] ?? ACTION_STYLE.VIEW;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={checked}
+      title={`${permission.label ?? permission.permissionCode}${changed ? " · unsaved" : ""}`}
+      className={`relative inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-semibold
+        transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400
+        ${checked ? style.on : OFF_STYLE}
+        ${changed ? "ring-2 ring-amber-300 ring-offset-1" : ""}`}
+    >
+      {checked ? <Check className="size-3" strokeWidth={3} /> : <Plus className="size-3" />}
+      {style.label}
+    </button>
+  );
+}
+
+/** The two-column comparison grid, one row per module. */
+function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: Permission[] }) {
+  const byId = useMemo(() => new Map(permissions.map(p => [p.permissionId, p])), [permissions]);
+
+  const serverSets = useMemo(() => {
+    const m = new Map<number, Set<number>>();
+    roles.forEach(r => m.set(r.roleId, new Set(r.permissions.map(p => p.permissionId))));
+    return m;
+  }, [roles]);
+
+  const [draft, setDraft] = useState<Map<number, Set<number>>>(serverSets);
+  const [query, setQuery] = useState("");
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [serverError, setServerError] = useState("");
   const setPermissions = useSetRolePermissions();
 
-  // Re-sync when server data changes (e.g. after a successful save / refetch).
-  useEffect(() => { setSelected(new Set(role.permissions.map(p => p.permissionId))); }, [role.permissions]);
+  // Re-sync when the server data changes (after a save, or a refetch). Adjusting state during
+  // render rather than in an effect means the grid never paints the stale set first.
+  const [syncedFrom, setSyncedFrom] = useState(serverSets);
+  if (syncedFrom !== serverSets) {
+    setSyncedFrom(serverSets);
+    setDraft(serverSets);
+  }
 
-  const dirty = useMemo(() => {
-    if (selected.size !== assignedIds.size) return true;
-    for (const id of selected) if (!assignedIds.has(id)) return true;
-    return false;
-  }, [selected, assignedIds]);
+  const dirtyRoleIds = useMemo(
+    () => roles.filter(r => !setsEqual(draft.get(r.roleId) ?? new Set(), serverSets.get(r.roleId) ?? new Set()))
+               .map(r => r.roleId),
+    [roles, draft, serverSets],
+  );
 
-  const byId = useMemo(() => new Map(allPermissions.map(p => [p.permissionId, p])), [allPermissions]);
+  const changedCount = useMemo(() => {
+    let n = 0;
+    for (const role of roles) {
+      const now = draft.get(role.roleId) ?? new Set<number>();
+      const was = serverSets.get(role.roleId) ?? new Set<number>();
+      permissions.forEach(p => { if (now.has(p.permissionId) !== was.has(p.permissionId)) n++; });
+    }
+    return n;
+  }, [roles, draft, serverSets, permissions]);
 
-  // Toggle with dependency cascade:
-  //  • turning a permission OFF also removes everything that depends on it
-  //    (e.g. removing LEAD_VIEW removes LEAD_WRITE).
-  //  • turning a permission ON also adds its prerequisite chain
-  //    (e.g. enabling LEAD_WRITE enables LEAD_VIEW).
-  const toggle = (perm: Permission) => {
-    setSaved(false);
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(perm.permissionId)) {
+  const isChanged = (roleId: number, permissionId: number) =>
+    (draft.get(roleId)?.has(permissionId) ?? false) !== (serverSets.get(roleId)?.has(permissionId) ?? false);
+
+  /**
+   * Toggle with the dependency cascade: granting an Edit/Approve pulls in its View, and revoking a
+   * View drops everything that depends on it. The server prunes the same way, so this only keeps
+   * the UI from showing a state the API would silently reject.
+   */
+  const toggle = (roleId: number, permission: Permission) => {
+    setSavedAt(null);
+    setServerError("");
+    setDraft(prev => {
+      const next = new Map(prev);
+      const current = new Set(next.get(roleId) ?? []);
+      if (current.has(permission.permissionId)) {
         const removeWithDependents = (id: number) => {
-          next.delete(id);
-          allPermissions.filter(p => p.dependsOnId === id).forEach(child => removeWithDependents(child.permissionId));
+          current.delete(id);
+          permissions.filter(p => p.dependsOnId === id).forEach(c => removeWithDependents(c.permissionId));
         };
-        removeWithDependents(perm.permissionId);
+        removeWithDependents(permission.permissionId);
       } else {
-        let cur: Permission | undefined = perm;
+        let cur: Permission | undefined = permission;
         while (cur) {
-          next.add(cur.permissionId);
+          current.add(cur.permissionId);
           cur = cur.dependsOnId != null ? byId.get(cur.dependsOnId) : undefined;
         }
       }
+      next.set(roleId, current);
       return next;
     });
   };
 
-  // Group permissions by module, ordered VIEW → WRITE → APPROVE within each module.
-  const ACTION_ORDER: Record<string, number> = { VIEW: 0, WRITE: 1, APPROVE: 2 };
   const groups = useMemo(() => {
     const m = new Map<string, Permission[]>();
-    for (const p of allPermissions) {
+    for (const p of permissions) {
       const key = p.module ?? "OTHER";
       if (!m.has(key)) m.set(key, []);
       m.get(key)!.push(p);
@@ -491,75 +649,214 @@ function RoleCard({ role, allPermissions }: { role: Role; allPermissions: Permis
     for (const arr of m.values()) {
       arr.sort((a, b) => (ACTION_ORDER[a.action ?? ""] ?? 9) - (ACTION_ORDER[b.action ?? ""] ?? 9));
     }
-    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allPermissions]);
+    const q = query.trim().toLowerCase();
+    return Array.from(m.entries())
+      .filter(([module]) => !q || moduleMeta(module).label.toLowerCase().includes(q) || module.toLowerCase().includes(q))
+      .sort((a, b) => moduleMeta(a[0]).label.localeCompare(moduleMeta(b[0]).label));
+  }, [permissions, query]);
 
-  const handleSave = () => {
-    setPermissions.mutate(
-      { roleId: role.roleId, permissionIds: Array.from(selected) },
-      { onSuccess: () => { setSaved(true); setTimeout(() => setSaved(false), 2000); } }
-    );
+  const discard = () => { setDraft(serverSets); setServerError(""); setSavedAt(null); };
+
+  const save = async () => {
+    setServerError("");
+    try {
+      for (const roleId of dirtyRoleIds) {
+        await setPermissions.mutateAsync({ roleId, permissionIds: Array.from(draft.get(roleId) ?? []) });
+      }
+      setSavedAt(Date.now());
+    } catch (err) {
+      setServerError(errorMessage(err));
+    }
   };
 
   return (
-    <Card className="border-slate-100 shadow-sm bg-white">
-      <CardContent className="p-0">
-        <div className="flex items-start justify-between px-5 py-4 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <span className="size-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-              <ShieldCheck className="size-4.5" />
-            </span>
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">{role.roleName}</h3>
-              <p className="text-[11px] text-slate-400">{role.description ?? "No description"} · {role.userCount} user{role.userCount === 1 ? "" : "s"}</p>
-            </div>
-          </div>
-          <Button variant="primary" size="sm" onClick={handleSave} disabled={!dirty}
-            isLoading={setPermissions.isPending}
-            leftIcon={saved ? <Check className="size-3.5" /> : <Save className="size-3.5" />}
-            className={`text-xs font-semibold ${saved ? "bg-emerald-600 hover:bg-emerald-600" : "bg-primary hover:bg-primary/90"} text-white disabled:opacity-40`}>
-            {saved ? "Saved" : "Save"}
-          </Button>
+    <div className="space-y-4">
+      {/* Explainer */}
+      <div className="flex items-start gap-2.5 px-3.5 py-3 bg-gradient-to-r from-blue-50/80 to-transparent border border-blue-100 rounded-xl">
+        <ShieldCheck className="size-4 text-blue-500 shrink-0 mt-0.5" />
+        <div className="text-[11px] leading-relaxed text-slate-500">
+          <p>
+            Every job role is configured here except <strong className="text-slate-700">Admin</strong>, which holds
+            each permission by default. <strong className="text-slate-700">Front Office</strong> and{" "}
+            <strong className="text-slate-700">Reservation</strong> are narrow desks — a module left blank for them is
+            simply not part of that job.
+          </p>
+          <p className="mt-1">
+            Turning off <span className="font-semibold text-sky-700">View</span> also removes{" "}
+            <span className="font-semibold text-violet-700">Edit</span> and{" "}
+            <span className="font-semibold text-emerald-700">Approve</span> for that module. Saved changes take effect
+            on the next request each affected user makes — no sign-out required.
+          </p>
         </div>
-        <div className="divide-y divide-slate-50">
-          {allPermissions.length === 0 && <p className="px-5 py-4 text-xs text-slate-400">No permissions defined.</p>}
-          {groups.map(([module, perms]) => (
-            <div key={module} className="flex items-center justify-between gap-4 px-5 py-3">
-              <span className="text-xs font-bold text-slate-600 capitalize w-32 shrink-0">{module.toLowerCase()}</span>
-              <div className="flex flex-wrap gap-2 justify-end flex-1">
-                {perms.map(p => {
-                  const on = selected.has(p.permissionId);
-                  const actionLabel = (p.action ?? p.permissionCode).charAt(0) + (p.action ?? "").slice(1).toLowerCase();
+      </div>
+
+      {/* Sticky action bar */}
+      <div className="sticky top-0 z-20 -mx-1 px-1">
+        <div className="flex flex-wrap items-center gap-3 px-3.5 py-2.5 bg-white/95 backdrop-blur border border-slate-200 rounded-xl shadow-sm">
+          <div className="relative flex-1 min-w-45 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400 pointer-events-none" />
+            <input
+              type="text" value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Filter modules…"
+              className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50
+                         focus:bg-white focus:border-blue-400 focus:outline-none transition"
+            />
+          </div>
+
+          <div className="ml-auto flex items-center gap-2.5">
+            {serverError && (
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-rose-600">
+                <ServerCrash className="size-3.5" />{serverError}
+              </span>
+            )}
+            {!serverError && savedAt && changedCount === 0 && (
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600">
+                <Check className="size-3.5" strokeWidth={3} /> All changes saved
+              </span>
+            )}
+            {changedCount > 0 && (
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600">
+                <AlertCircle className="size-3.5" />
+                {changedCount} unsaved change{changedCount === 1 ? "" : "s"}
+              </span>
+            )}
+            <Button
+              variant="ghost" size="sm" onClick={discard} disabled={changedCount === 0 || setPermissions.isPending}
+              className="text-xs"
+            >
+              Discard
+            </Button>
+            <Button
+              variant="primary" size="sm" onClick={save}
+              disabled={changedCount === 0} isLoading={setPermissions.isPending}
+              leftIcon={<Save className="size-3.5" />}
+              className="text-xs"
+            >
+              Save changes
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Matrix */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          {/* Wide enough that four role columns keep their chips on one line; the wrapper scrolls. */}
+          <table className="w-full min-w-260 border-collapse">
+            <thead>
+              <tr className="bg-slate-50/80 border-b border-slate-200">
+                <th className="text-left py-3 px-4 w-[24%] min-w-56">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Module</span>
+                </th>
+                {roles.map(role => {
+                  const granted = draft.get(role.roleId)?.size ?? 0;
+                  const dirty = dirtyRoleIds.includes(role.roleId);
                   return (
-                    <button key={p.permissionId} type="button" onClick={() => toggle(p)}
-                      title={p.label ?? p.description ?? p.permissionCode}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold border transition
-                        ${on
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-600"}`}>
-                      {on ? <Check className="size-3" /> : <Plus className="size-3" />}
-                      {actionLabel || p.permissionCode}
-                    </button>
+                    <th key={role.roleId} className="text-left py-2.5 px-4 border-l border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <span className={`size-7 rounded-lg flex items-center justify-center shrink-0
+                          ${roleAccent(role.roleName)}`}>
+                          <ShieldCheck className="size-3.5" />
+                        </span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-slate-800">{roleLabel(role.roleName)}</span>
+                            {dirty && <span className="size-1.5 rounded-full bg-amber-400" title="Unsaved changes" />}
+                          </div>
+                          <span className="block text-[10px] text-slate-400 font-medium">
+                            {role.userCount} user{role.userCount === 1 ? "" : "s"} · {granted} permission{granted === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                      </div>
+                    </th>
                   );
                 })}
-              </div>
-            </div>
-          ))}
+              </tr>
+            </thead>
+            <tbody>
+              {groups.length === 0 && (
+                <tr>
+                  <td colSpan={roles.length + 1} className="py-14 text-center text-sm text-slate-400">
+                    No module matches “{query}”.
+                  </td>
+                </tr>
+              )}
+              {groups.map(([module, perms], i) => {
+                const meta = moduleMeta(module);
+                return (
+                  <tr key={module}
+                      className={`border-b border-slate-100 last:border-b-0 transition-colors hover:bg-slate-50/60
+                                  ${i % 2 === 1 ? "bg-slate-50/30" : ""}`}>
+                    <td className="py-2.5 px-4 align-middle">
+                      <div className="flex items-center gap-2.5">
+                        <span className="size-7 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                          <meta.Icon className="size-3.5" />
+                        </span>
+                        <div className="min-w-0">
+                          <span className="block text-xs font-semibold text-slate-700 truncate">{meta.label}</span>
+                          {meta.blurb && (
+                            <span className="block text-[10px] text-slate-400 truncate">{meta.blurb}</span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    {roles.map(role => (
+                      <td key={role.roleId} className="py-2.5 px-4 align-middle border-l border-slate-100">
+                        <div className="flex flex-wrap gap-1.5">
+                          {perms.map(p => (
+                            <PermissionChip
+                              key={p.permissionId}
+                              permission={p}
+                              checked={draft.get(role.roleId)?.has(p.permissionId) ?? false}
+                              changed={isChanged(role.roleId, p.permissionId)}
+                              onToggle={() => toggle(role.roleId, p)}
+                            />
+                          ))}
+                        </div>
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      </CardContent>
-    </Card>
+
+        {/* Legend */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Legend</span>
+          {(["VIEW", "WRITE", "APPROVE"] as const).map(a => (
+            <span key={a} className="flex items-center gap-1.5 text-[11px] text-slate-500">
+              <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-semibold ${ACTION_STYLE[a].on}`}>
+                <Check className="size-2.5" strokeWidth={3} />{ACTION_STYLE[a].label}
+              </span>
+              {a === "VIEW" ? "open the screen" : a === "WRITE" ? "create & edit records" : "approve or reject"}
+            </span>
+          ))}
+          <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <span className="inline-block size-3 rounded ring-2 ring-amber-300" /> unsaved
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
 
 function RolesTab() {
   const { data: rolesResp, isLoading, isError } = useRoles();
-  const { data: permsResp } = usePermissions();
-  // Admin is full-access by default — it is never configured here.
-  const roles = (rolesResp?.data ?? []).filter(r => r.roleName.toUpperCase() !== "ADMIN");
+  const { data: permsResp, isLoading: permsLoading } = usePermissions();
+
+  // The API marks which roles are permission-driven. Sales sits leftmost and Manager next, so the
+  // first two columns read as "base set → what Manager adds on top"; the operational desks follow.
+  const roles = useMemo(
+    () => (rolesResp?.data ?? [])
+      .filter(r => r.configurable)
+      .sort((a, b) => roleColumnRank(a.roleName) - roleColumnRank(b.roleName)),
+    [rolesResp],
+  );
   const permissions = permsResp?.data ?? [];
 
-  if (isLoading) return (
+  if (isLoading || permsLoading) return (
     <div className="flex items-center justify-center py-20 gap-2 text-slate-400">
       <Loader2 className="size-5 animate-spin" /> Loading…
     </div>
@@ -570,19 +867,14 @@ function RolesTab() {
       <p className="text-sm font-semibold">Server error — please contact your Admin.</p>
     </div>
   );
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-start gap-2 px-3 py-2.5 bg-blue-50/60 border border-blue-100 rounded-xl text-[11px] text-slate-500">
-        <ShieldCheck className="size-4 text-blue-500 shrink-0 mt-px" />
-        <span>
-          <strong className="text-slate-700">Admin</strong> has full access by default and isn&apos;t listed here.
-          Toggle a permission then press <strong className="text-slate-600">Save</strong> — changes apply immediately to every user holding the role.
-        </span>
-      </div>
-      {roles.map(role => <RoleCard key={role.roleId} role={role} allPermissions={permissions} />)}
+  if (roles.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+      <ShieldCheck className="size-10 mb-3 opacity-30" />
+      <p className="text-sm font-medium">No configurable role found</p>
     </div>
   );
+
+  return <PermissionMatrix roles={roles} permissions={permissions} />;
 }
 
 // ── Screen ──────────────────────────────────────────────────────────────────────

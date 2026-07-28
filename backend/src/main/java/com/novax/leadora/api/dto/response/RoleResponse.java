@@ -1,5 +1,6 @@
 package com.novax.leadora.api.dto.response;
 
+import com.novax.leadora.common.security.RbacRoles;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import lombok.Builder;
 import lombok.Getter;
@@ -20,6 +21,13 @@ public class RoleResponse {
     private long userCount;
     private List<PermissionResponse> permissions;
 
+    /**
+     * Whether an Admin may grant/revoke this role's permissions — true only for Staff and Manager
+     * ({@link com.novax.leadora.common.security.RbacRoles}). The screen reads this instead of
+     * hard-coding role names, so the two sides can never drift apart.
+     */
+    private boolean configurable;
+
     public static RoleResponse from(RoleEntity role, List<PermissionResponse> permissions, long userCount) {
         return RoleResponse.builder()
                 .roleId(role.getRoleId())
@@ -27,6 +35,7 @@ public class RoleResponse {
                 .description(role.getDescription())
                 .userCount(userCount)
                 .permissions(permissions)
+                .configurable(RbacRoles.isConfigurable(role.getRoleName()))
                 .build();
     }
 }

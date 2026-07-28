@@ -2,7 +2,9 @@ package com.novax.leadora.application.usecase.identity;
 
 import com.novax.leadora.api.dto.request.CreateUserRequest;
 import com.novax.leadora.api.dto.response.UserAccountResponse;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
@@ -32,6 +34,8 @@ public class CreateUserUseCase {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final ActivityLogPublisher activityLogPublisher;
+    private final SystemAuditLogService systemAuditLogService;
+    private final CurrentUserProvider currentUserProvider;
 
     @Transactional
     @org.springframework.cache.annotation.CacheEvict(value = "user-roles", key = "#request.email.toLowerCase()")
@@ -67,6 +71,7 @@ public class CreateUserUseCase {
 
         UserEntity savedUser = userRepository.save(user);
 
+        // Publish activity log for compliance audit dashboard
         activityLogPublisher.publish(ActivityLogCommand.builder()
                 .activityType(ActivityLogType.USER_ACCOUNT_CREATED)
                 .entityType(EntityType.USER)
@@ -74,6 +79,13 @@ public class CreateUserUseCase {
                 .summary("User account created for " + savedUser.getFullName() + " (" + savedUser.getEmail()
                         + ") with role " + savedUser.getRole().getRoleName() + ".")
                 .build());
+
+        // BR-03 / BR-37 — every account change is logged with actor, target and new value.
+        // The password is never part of the audit payload.
+        systemAuditLogService.log("IDENTITY", "USER", savedUser.getUserId(), "CREATED",
+                currentUserProvider.resolveQuietly(), null,
+                "email=" + savedUser.getEmail() + ", role=" + role.getRoleName() + ", status=" + savedUser.getStatus(),
+                null);
 
         return UserAccountResponse.from(savedUser);
     }

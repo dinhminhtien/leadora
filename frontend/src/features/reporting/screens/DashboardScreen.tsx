@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   TrendingUp,
   TrendingDown,
@@ -30,6 +31,28 @@ import { taskService } from "@/services/follow_up_task_service";
 import { interactionTimelineService } from "@/services/interaction_timeline_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { apiClient, type ApiResponse } from "@/services/api_client";
+import { GreetingBar, KpiCard } from "@/components/ui/kpi-card";
+import { KpiSkeleton, CardSkeleton } from "@/components/ui/skeletons";
+import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { getUserRole } from "@/shared/auth/access";
+
+/** VND, compacted so a 9-figure pipeline still fits a KPI card. */
+function formatVnd(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  if (Math.abs(value) >= 1_000_000_000)
+    return `${(value / 1_000_000_000).toFixed(1)}B ₫`;
+  if (Math.abs(value) >= 1_000_000)
+    return `${(value / 1_000_000).toFixed(1)}M ₫`;
+  return `${value.toLocaleString("vi-VN")} ₫`;
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN: "Administrator",
+  MANAGER: "Sales Manager",
+  SALES: "Sales Staff",
+  FO: "Front Office",
+  RESERVATION: "Reservation",
+};
 
 export type FollowUpTask = {
   id: string;
@@ -72,6 +95,7 @@ export function DashboardScreen() {
     transitionMutation.mutate({ taskId, status: newStatus });
   };
 
+  const router = useRouter();
   const { user } = useAuthStore();
   const userName = user?.name || "User";
 
@@ -116,11 +140,22 @@ export function DashboardScreen() {
 
   const isLoading = loadingSummary || loadingTasks;
 
+  // §3.12 / §12.2 — a skeleton that mirrors the final layout, so nothing shifts
+  // when the data lands. The previous full-page spinner collapsed to zero height
+  // and then pushed the whole dashboard down on arrival.
   if (isLoading) {
     return (
-      <div className="card-elev flex flex-col items-center justify-center py-24">
-        <Loader2 className="size-8 text-primary animate-spin mb-3" />
-        <p className="text-xs text-muted-foreground font-bold">Loading dashboard analytics...</p>
+      <div className="space-y-6">
+        <div className="h-[104px] animate-pulse rounded-lg border border-border bg-surface" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <KpiSkeleton key={i} />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <CardSkeleton className="lg:col-span-2" />
+          <CardSkeleton />
+        </div>
       </div>
     );
   }
@@ -131,109 +166,76 @@ export function DashboardScreen() {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Banner: v2 elevated surface with brand glow */}
-      <div className="card-elev relative overflow-hidden p-6">
-        <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-primary/8 blur-[80px] pointer-events-none" />
-        <div className="absolute -bottom-20 -left-20 w-60 h-60 rounded-full bg-teal/8 blur-[80px] pointer-events-none" />
+      {/* Greeting bar — §2.15: every dashboard opens with one. */}
+      <GreetingBar
+        name={userName}
+        roleLabel={ROLE_LABEL[getUserRole(user)] ?? "Workspace"}
+        subtitle="Here is your hotel sales pipeline and follow-up activity for today."
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => router.push(ROUTE_PATHS.calendar)}
+              leftIcon={<Calendar className="size-4" />}
+            >
+              Calendar
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => router.push(`${ROUTE_PATHS.manageFollowUpTasks}?new=1`)}
+              leftIcon={<Plus className="size-4" />}
+            >
+              New task
+            </Button>
+          </>
+        }
+      />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary tracking-wider uppercase mb-3">
-              <Sparkles className="size-3" />
-              <span>Direct Sales Active</span>
-            </div>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-foreground">Welcome back, {userName}!</h1>
-            <p className="text-xs text-muted-foreground mt-1">
-              Here is the status of your hotel sales pipeline and follow-up activities for today.
-            </p>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <span className="text-xs text-muted-foreground font-semibold bg-muted border border-border px-2.5 py-1 rounded-lg">
-              {currentDateString}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1 */}
-        <Card className="hover:-translate-y-0.5 transition-all duration-300">
-          <CardContent className="pt-5">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Leads</p>
-                <h3 className="text-2xl font-bold text-foreground mt-1.5">{activeLeadsCount} Leads</h3>
-                <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-0.5 mt-1.5">
-                  <TrendingUp className="size-3" /> +{summary?.activeLeadsGrowthPct ?? 12.5}% this week
-                </span>
-              </div>
-              <div className="p-2 bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground rounded-lg animate-pulse-slow">
-                <Users className="size-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* KPI 2 */}
-        <Card className="hover:-translate-y-0.5 transition-all duration-300">
-          <CardContent className="pt-5">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Deals Pipeline</p>
-                <h3 className="text-2xl font-bold text-foreground mt-1.5">
-                  {activeDealsValue.toLocaleString("vi-VN")} ₫
-                </h3>
-                <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-0.5 mt-1.5">
-                  <TrendingUp className="size-3" /> {activeDealsCount} active deals
-                </span>
-              </div>
-              <div className="p-2 bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20 dark:text-emerald-400 rounded-lg">
-                <Briefcase className="size-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* KPI 3 */}
-        <Card className="hover:-translate-y-0.5 transition-all duration-300">
-          <CardContent className="pt-5">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Pending Activities</p>
-                <h3 className="text-2xl font-bold text-foreground mt-1.5">{pendingTasksCount} Tasks</h3>
-                {overdueTasksCount > 0 ? (
-                  <span className="text-[10px] bg-danger/10 text-danger px-1.5 py-0.5 rounded-md font-semibold inline-block mt-1.5 border border-danger/15">
-                    {overdueTasksCount} overdue
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-zinc-400 font-semibold inline-block mt-1.5">All on track</span>
-                )}
-              </div>
-              <div className="p-2 bg-amber-500/10 text-amber-500 dark:bg-amber-500/20 dark:text-amber-400 rounded-lg">
-                <AlertCircle className="size-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* KPI 4 */}
-        <Card className="hover:-translate-y-0.5 transition-all duration-300">
-          <CardContent className="pt-5">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">SLA Compliance Rate</p>
-                <h3 className="text-2xl font-bold text-foreground mt-1.5">{summary?.slaComplianceRatePct ?? 91.8}%</h3>
-                <span className="text-[10px] text-primary font-semibold flex items-center gap-0.5 mt-1.5">
-                  Target threshold 90%
-                </span>
-              </div>
-              <div className="p-2 bg-indigo-500/10 text-indigo-500 dark:bg-indigo-500/20 dark:text-indigo-400 rounded-lg">
-                <Clock className="size-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* KPI row — §2.15. Four cards, one component, tokens throughout. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          label="Active leads"
+          value={activeLeadsCount.toLocaleString()}
+          delta={summary?.activeLeadsGrowthPct}
+          deltaLabel="vs last week"
+          hint={`${(summary?.totalLeadsCount ?? 0).toLocaleString()} total`}
+          icon={Users}
+          tone="brand"
+          href={ROUTE_PATHS.leads}
+        />
+        <KpiCard
+          label="Active pipeline"
+          value={formatVnd(activeDealsValue)}
+          hint={`${activeDealsCount} open ${activeDealsCount === 1 ? "deal" : "deals"}`}
+          icon={Briefcase}
+          tone="teal"
+          href={ROUTE_PATHS.deals}
+        />
+        <KpiCard
+          label="Tasks due"
+          value={pendingTasksCount.toLocaleString()}
+          // A rise in overdue work is bad news, so the chip inverts.
+          hint={
+            overdueTasksCount > 0
+              ? `${overdueTasksCount} overdue`
+              : "Nothing overdue"
+          }
+          icon={CheckCircle2}
+          tone={overdueTasksCount > 0 ? "danger" : "success"}
+          href={ROUTE_PATHS.manageFollowUpTasks}
+        />
+        <KpiCard
+          label="SLA compliance"
+          value={`${(summary?.slaComplianceRatePct ?? 0).toFixed(1)}%`}
+          hint="Target 90%"
+          icon={Clock}
+          tone={
+            (summary?.slaComplianceRatePct ?? 0) >= 90 ? "success" : "warning"
+          }
+          href={ROUTE_PATHS.sla}
+        />
       </div>
 
       {/* Main Charts & Visualizations Section */}

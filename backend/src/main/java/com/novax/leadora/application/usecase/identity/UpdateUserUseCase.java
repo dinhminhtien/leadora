@@ -2,7 +2,9 @@ package com.novax.leadora.application.usecase.identity;
 
 import com.novax.leadora.api.dto.request.UpdateUserRequest;
 import com.novax.leadora.api.dto.response.UserAccountResponse;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.UserStatus;
@@ -22,9 +24,12 @@ import java.util.UUID;
 
 /**
  * UC-6.3 — Update User Account.
- * Partial update: only non-null fields are applied. Enforces email uniqueness (E5), a valid role
- * (E6), and a safety guard that the system can never lose its last active Admin (BR-03 spirit —
- * prevents an Admin from accidentally locking everyone out by demoting/deactivating themselves).
+ * Partial update: only non-null fields are applied. Enforces email uniqueness
+ * (E5), a valid role
+ * (E6), and a safety guard that the system can never lose its last active Admin
+ * (BR-03 spirit —
+ * prevents an Admin from accidentally locking everyone out by
+ * demoting/deactivating themselves).
  */
 @Service
 @RequiredArgsConstructor
@@ -36,12 +41,19 @@ public class UpdateUserUseCase {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final ActivityLogPublisher activityLogPublisher;
+    private final SystemAuditLogService systemAuditLogService;
+    private final CurrentUserProvider currentUserProvider;
 
     @Transactional
     @org.springframework.cache.annotation.CacheEvict(value = "user-roles", allEntries = true)
     public UserAccountResponse execute(UUID userId, UpdateUserRequest request) {
         UserEntity user = userRepository.findWithRoleByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+
+        // Snapshot BEFORE any setter runs — the entity is mutated in place below, so an
+        // "old value" read afterwards would already be the new one (BR-37).
+        String oldValue = snapshot(user);
+        boolean passwordChanged = StringUtils.hasText(request.getPassword());
 
         if (StringUtils.hasText(request.getFullName())) {
             user.setFullName(request.getFullName().trim());
@@ -68,7 +80,8 @@ public class UpdateUserUseCase {
             user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         }
 
-        // Resolve the role + status the account WOULD have after this update, then guard the
+        // Resolve the role + status the account WOULD have after this update, then
+        // guard the
         // "last active Admin" invariant before mutating.
         RoleEntity newRole = user.getRole();
         if (request.getRoleId() != null && !request.getRoleId().equals(user.getRole().getRoleId())) {
@@ -77,7 +90,8 @@ public class UpdateUserUseCase {
         }
         UserStatus newStatus = request.getStatus() != null ? request.getStatus() : user.getStatus();
 
-        // A non-admin cannot be promoted to Admin through this form (existing admins keep their role).
+        // A non-admin cannot be promoted to Admin through this form (existing admins
+        // keep their role).
         boolean promotingToAdmin = ADMIN_ROLE.equalsIgnoreCase(newRole.getRoleName())
                 && !ADMIN_ROLE.equalsIgnoreCase(user.getRole().getRoleName());
         if (promotingToAdmin) {
@@ -91,28 +105,45 @@ public class UpdateUserUseCase {
 
         UserEntity savedUser = userRepository.save(user);
 
+        // Publish activity log for compliance audit dashboard
         activityLogPublisher.publish(ActivityLogCommand.builder()
                 .activityType(ActivityLogType.USER_ACCOUNT_UPDATED)
                 .entityType(EntityType.USER)
                 .entityId(savedUser.getUserId())
-                .summary("User account updated for " + savedUser.getFullName() + " (" + savedUser.getEmail() + "). Status: " + savedUser.getStatus() + ", Role: " + savedUser.getRole().getRoleName())
+                .summary("User account updated for " + savedUser.getFullName() + " (" + savedUser.getEmail()
+                        + "). Status: " + savedUser.getStatus() + ", Role: " + savedUser.getRole().getRoleName())
                 .build());
+
+        // BR-03 / BR-37 — role, status and profile changes are recorded with old → new
+        // values.
+        systemAuditLogService.log("IDENTITY", "USER", savedUser.getUserId(), "UPDATED",
+                currentUserProvider.resolveQuietly(), oldValue, snapshot(savedUser),
+                passwordChanged ? "Password was reset by an administrator." : null);
 
         return UserAccountResponse.from(savedUser);
     }
 
+    /** Auditable view of an account — deliberately excludes the password hash. */
+    private String snapshot(UserEntity user) {
+        return "fullName=" + user.getFullName()
+                + ", email=" + user.getEmail()
+                + ", phone=" + user.getPhone()
+                + ", role=" + (user.getRole() != null ? user.getRole().getRoleName() : null)
+                + ", status=" + user.getStatus();
+    }
+
     /**
-     * Block the change if {@code user} is currently the only ACTIVE Admin and the update would stop
+     * Block the change if {@code user} is currently the only ACTIVE Admin and the
+     * update would stop
      * it from being one (demotion off ADMIN, or deactivation/lock).
      */
     private void guardLastActiveAdmin(UserEntity user, RoleEntity newRole, UserStatus newStatus) {
-        boolean currentlyActiveAdmin =
-                ADMIN_ROLE.equalsIgnoreCase(user.getRole().getRoleName()) && user.getStatus() == UserStatus.ACTIVE;
+        boolean currentlyActiveAdmin = ADMIN_ROLE.equalsIgnoreCase(user.getRole().getRoleName())
+                && user.getStatus() == UserStatus.ACTIVE;
         if (!currentlyActiveAdmin) {
             return;
         }
-        boolean staysActiveAdmin =
-                ADMIN_ROLE.equalsIgnoreCase(newRole.getRoleName()) && newStatus == UserStatus.ACTIVE;
+        boolean staysActiveAdmin = ADMIN_ROLE.equalsIgnoreCase(newRole.getRoleName()) && newStatus == UserStatus.ACTIVE;
         if (staysActiveAdmin) {
             return;
         }
@@ -130,10 +161,12 @@ public class UpdateUserUseCase {
         boolean hasUppercase = password.chars().anyMatch(Character::isUpperCase);
         boolean hasLowercase = password.chars().anyMatch(Character::isLowerCase);
         boolean hasDigit = password.chars().anyMatch(Character::isDigit);
-        boolean hasSymbol = password.chars().anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
+        boolean hasSymbol = password.chars()
+                .anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
 
         if (!hasUppercase || !hasLowercase || !hasDigit || !hasSymbol) {
-            throw new IllegalStateException("Password must contain at least one lowercase letter, one uppercase letter, one digit, and one symbol.");
+            throw new IllegalStateException(
+                    "Password must contain at least one lowercase letter, one uppercase letter, one digit, and one symbol.");
         }
     }
 }
