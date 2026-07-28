@@ -14,7 +14,13 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +29,7 @@ import org.springframework.util.StringUtils;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ConvertLeadUseCase {
@@ -31,6 +38,8 @@ public class ConvertLeadUseCase {
     private final CustomerRepository customerRepository;
     private final LeadAccessPolicy leadAccessPolicy;
     private final CustomerDuplicatePolicy customerDuplicatePolicy;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public ConvertLeadResponse execute(UUID leadId, ConvertLeadRequest request) {
@@ -123,6 +132,28 @@ public class ConvertLeadUseCase {
         lead.setCustomer(savedCustomer);
 
         LeadEntity savedLead = leadRepository.save(lead);
+
+        // Publish Activity Log event
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("customerId", savedCustomer.getCustomerId().toString())
+                    .put("customerType", savedCustomer.getCustomerType().name())
+                    .put("fullName", savedCustomer.getFullName())
+                    .put("email", savedCustomer.getEmail())
+                    .put("phone", savedCustomer.getPhone());
+            if (request.getReason() != null) {
+                payload.put("reason", request.getReason());
+            }
+            activityLogPublisher.publish(
+                    ActivityLogType.LEAD_CONVERTED,
+                    EntityType.LEAD,
+                    savedLead.getLeadId(),
+                    "Lead converted to customer: " + savedCustomer.getFullName(),
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish lead conversion activity: {}", e.getMessage());
+        }
 
         return ConvertLeadResponse.builder()
                 .customerId(savedCustomer.getCustomerId())

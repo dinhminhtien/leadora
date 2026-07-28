@@ -10,6 +10,8 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.PaymentStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,6 +42,11 @@ class BookingStatusTransitionServiceTest {
     @Mock
     private PaymentRepository paymentRepository;
 
+    @Mock
+    private ActivityLogPublisher activityLogPublisher;
+
+    private ObjectMapper objectMapper = new ObjectMapper();
+
     private BookingStatusTransitionService service;
 
     private UUID bookingId;
@@ -48,7 +55,7 @@ class BookingStatusTransitionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new BookingStatusTransitionService(bookingRepository, bookingDetailRepository, paymentRepository);
+        service = new BookingStatusTransitionService(bookingRepository, bookingDetailRepository, paymentRepository, activityLogPublisher, objectMapper);
         bookingId = UUID.randomUUID();
         booking = BookingEntity.builder()
                 .bookingId(bookingId)

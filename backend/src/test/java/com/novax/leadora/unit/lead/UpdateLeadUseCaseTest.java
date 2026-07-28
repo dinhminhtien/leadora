@@ -51,6 +51,8 @@ class UpdateLeadUseCaseTest {
     @Mock private StartSlaTrackingUseCase startSlaTrackingUseCase;
     @Mock private NotificationRepository notificationRepository;
     @Mock private LeadAccessPolicy leadAccessPolicy;
+    @Mock private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
+    @Mock private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     @InjectMocks private UpdateLeadUseCase useCase;
 
@@ -66,6 +68,7 @@ class UpdateLeadUseCaseTest {
                 .thenReturn(Optional.empty());
         when(leadRepository.findFirstByPhoneOrderByCreatedAtDesc(anyString()))
                 .thenReturn(Optional.empty());
+        when(objectMapper.createObjectNode()).thenAnswer(inv -> new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode());
     }
 
     /** A lead that satisfies BR-05, so a test can change one thing at a time. */

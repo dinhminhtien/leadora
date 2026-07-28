@@ -41,6 +41,7 @@ import {
   User,
   Settings,
   Sparkles,
+  History,
   type LucideIcon,
 } from "lucide-react";
 
@@ -111,6 +112,7 @@ const navigationGroups: NavGroup[] = [
       { href: ROUTE_PATHS.customerFeedback, label: "Feedback", Icon: MessageSquareText },
       { href: ROUTE_PATHS.notifications, label: "Alerts", Icon: Bell },
       { href: ROUTE_PATHS.identityAccess, label: "User Access", Icon: KeyRound },
+      { href: ROUTE_PATHS.activityLogs, label: "Activity Log", Icon: History },
     ],
   },
 ];

@@ -14,6 +14,11 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -38,6 +43,8 @@ public class UpdateLeadUseCase {
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
     private final NotificationRepository notificationRepository;
     private final LeadAccessPolicy leadAccessPolicy;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public LeadResponse execute(UUID leadId, UpdateLeadRequest request) {
@@ -62,32 +69,62 @@ public class UpdateLeadUseCase {
         // detection guarding only the front door.
         assertNotDuplicate(request, lead);
 
-        if (StringUtils.hasText(request.getFullName())) {
+        ObjectNode updatePayload = objectMapper.createObjectNode();
+        boolean detailsChanged = false;
+
+        if (StringUtils.hasText(request.getFullName()) && !request.getFullName().equals(lead.getFullName())) {
+            updatePayload.put("previousFullName", lead.getFullName());
+            updatePayload.put("newFullName", request.getFullName());
             lead.setFullName(request.getFullName());
+            detailsChanged = true;
         }
-        if (request.getEmail() != null) {
+        if (request.getEmail() != null && !request.getEmail().equals(lead.getEmail())) {
+            updatePayload.put("previousEmail", lead.getEmail());
+            updatePayload.put("newEmail", request.getEmail());
             lead.setEmail(request.getEmail());
+            detailsChanged = true;
         }
-        if (request.getPhone() != null) {
+        if (request.getPhone() != null && !request.getPhone().equals(lead.getPhone())) {
+            updatePayload.put("previousPhone", lead.getPhone());
+            updatePayload.put("newPhone", request.getPhone());
             lead.setPhone(request.getPhone());
+            detailsChanged = true;
         }
-        if (request.getCompanyName() != null) {
+        if (request.getCompanyName() != null && !request.getCompanyName().equals(lead.getCompanyName())) {
+            updatePayload.put("previousCompanyName", lead.getCompanyName());
+            updatePayload.put("newCompanyName", request.getCompanyName());
             lead.setCompanyName(request.getCompanyName());
+            detailsChanged = true;
         }
-        if (request.getAddress() != null) {
+        if (request.getAddress() != null && !request.getAddress().equals(lead.getAddress())) {
+            updatePayload.put("previousAddress", lead.getAddress());
+            updatePayload.put("newAddress", request.getAddress());
             lead.setAddress(request.getAddress());
+            detailsChanged = true;
         }
-        if (request.getIsCorporate() != null) {
+        if (request.getIsCorporate() != null && !request.getIsCorporate().equals(lead.getIsCorporate())) {
+            updatePayload.put("previousIsCorporate", lead.getIsCorporate());
+            updatePayload.put("newIsCorporate", request.getIsCorporate());
             lead.setIsCorporate(request.getIsCorporate());
+            detailsChanged = true;
         }
-        if (request.getSource() != null) {
+        if (request.getSource() != null && !request.getSource().equals(lead.getSource())) {
+            updatePayload.put("previousSource", lead.getSource());
+            updatePayload.put("newSource", request.getSource());
             lead.setSource(request.getSource());
+            detailsChanged = true;
         }
-        if (request.getInterestedService() != null) {
+        if (request.getInterestedService() != null && !request.getInterestedService().equals(lead.getInterestedService())) {
+            updatePayload.put("previousInterestedService", lead.getInterestedService());
+            updatePayload.put("newInterestedService", request.getInterestedService());
             lead.setInterestedService(request.getInterestedService());
+            detailsChanged = true;
         }
-        if (request.getNotes() != null) {
+        if (request.getNotes() != null && !request.getNotes().equals(lead.getNotes())) {
+            updatePayload.put("previousNotes", lead.getNotes());
+            updatePayload.put("newNotes", request.getNotes());
             lead.setNotes(request.getNotes());
+            detailsChanged = true;
         }
         // Apply (re)assignment BEFORE the status check, so assigning and advancing a
         // lead in the same request is allowed (the assignee is already set when the
@@ -101,6 +138,10 @@ public class UpdateLeadUseCase {
             lead.setAssignedUser(assignedUser);
 
             if (!assignedUser.getUserId().equals(previousAssigneeId)) {
+                updatePayload.put("previousAssignedUserId", previousAssigneeId != null ? previousAssigneeId.toString() : null);
+                updatePayload.put("newAssignedUserId", request.getAssignedUserId().toString());
+                detailsChanged = true;
+
                 // UC-15.1: notify the newly (re)assigned sales rep
                 notifyLeadAssigned(lead, assignedUser);
 
@@ -134,6 +175,23 @@ public class UpdateLeadUseCase {
                 lead.setConvertedAt(OffsetDateTime.now());
             }
 
+            if (newStatus != previousStatus) {
+                try {
+                    ObjectNode payload = objectMapper.createObjectNode()
+                            .put("previousStatus", previousStatus.name())
+                            .put("newStatus", newStatus.name());
+                    activityLogPublisher.publish(
+                            ActivityLogType.LEAD_STATUS_UPDATED,
+                            EntityType.LEAD,
+                            lead.getLeadId(),
+                            "Lead status updated from " + previousStatus + " to " + newStatus,
+                            payload
+                    );
+                } catch (Exception e) {
+                    log.warn("Failed to publish lead status update activity: {}", e.getMessage());
+                }
+            }
+
             // UC-17.2: leaving NEW means the sales rep has responded to the lead — auto-resolve
             // the LEAD_RESPONSE SLA tracking. Non-fatal if no rule was ever configured.
             if (previousStatus == LeadStatus.NEW && newStatus != LeadStatus.NEW) {
@@ -145,13 +203,28 @@ public class UpdateLeadUseCase {
             }
         }
 
+        // BR-05: validate active follow-up details are present on the resulting state
+        assertQualifyingDetailsPresent(lead);
+
         // BR: an organization lead must name its company. Validate the resulting state,
         // since either isCorporate or companyName may have just changed.
         if (Boolean.TRUE.equals(lead.getIsCorporate()) && !StringUtils.hasText(lead.getCompanyName())) {
             throw new IllegalArgumentException("Company name is required for an organization lead.");
         }
 
-        assertQualifyingDetailsPresent(lead);
+        if (detailsChanged) {
+            try {
+                activityLogPublisher.publish(
+                        ActivityLogType.LEAD_UPDATED,
+                        EntityType.LEAD,
+                        lead.getLeadId(),
+                        "Lead details updated",
+                        updatePayload
+                );
+            } catch (Exception e) {
+                log.warn("Failed to publish lead update activity: {}", e.getMessage());
+            }
+        }
 
         return LeadResponse.from(leadRepository.save(lead));
     }

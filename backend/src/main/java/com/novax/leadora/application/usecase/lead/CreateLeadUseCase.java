@@ -13,6 +13,11 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,6 +34,8 @@ public class CreateLeadUseCase {
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
     private final CurrentUserProvider currentUserProvider;
     private final NotificationRepository notificationRepository;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public LeadResponse execute(CreateLeadRequest request) {
@@ -81,6 +88,29 @@ public class CreateLeadUseCase {
                 .build();
 
         LeadEntity saved = leadRepository.save(lead);
+
+        // Publish Activity Log event
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("fullName", saved.getFullName())
+                    .put("email", saved.getEmail())
+                    .put("phone", saved.getPhone())
+                    .put("companyName", saved.getCompanyName())
+                    .put("source", saved.getSource())
+                    .put("interestedService", saved.getInterestedService());
+            if (saved.getAssignedUser() != null) {
+                payload.put("assignedUserId", saved.getAssignedUser().getUserId().toString());
+            }
+            activityLogPublisher.publish(
+                    ActivityLogType.LEAD_CREATED,
+                    EntityType.LEAD,
+                    saved.getLeadId(),
+                    "Lead created: " + saved.getFullName(),
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish lead creation activity: {}", e.getMessage());
+        }
 
         // BR-06: SLA/follow-up enforcement begins only once a lead is assigned to a
         // sales rep. An unassigned draft starts no SLA timer (hence no warning/breach/
