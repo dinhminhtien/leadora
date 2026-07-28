@@ -57,7 +57,8 @@ public final class LeadSpecification {
             OffsetDateTime dateTo,
             boolean unscoped,
             UUID ownerId,
-            boolean createdByMe
+            boolean createdByMe,
+            boolean unassignedOnly
     ) {
         return (root, query, cb) -> {
 
@@ -79,6 +80,11 @@ public final class LeadSpecification {
                         cb.like(cb.lower(root.get("companyName")), pattern)
                 ));
             }
+
+            // "Assignment needed": leads nobody owns yet. These are invisible to a sales rep's
+            // own list by definition — an unassigned lead is assigned to no one — so this is the
+            // Manager's queue of work still to be distributed (BR-06: nothing starts until it is).
+            if (unassignedOnly)                  predicates.add(cb.isNull(root.get("assignedUser")));
 
             if (status     != null)              predicates.add(cb.equal(root.get("status"),      status));
             if (source     != null && !source.isBlank()) predicates.add(cb.equal(root.get("source"), source));

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -33,6 +34,12 @@ class DealWorkflowSyncServiceTest {
 
     @Mock
     private DealValidation dealValidation;
+
+    @Mock
+    private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
+
+    @Spy
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
     @InjectMocks
     private DealWorkflowSyncService dealWorkflowSyncService;
@@ -74,7 +81,7 @@ class DealWorkflowSyncServiceTest {
 
         dealWorkflowSyncService.syncPipelineStage(deal);
 
-        verify(dealRepository).save(argThat(d -> d.getPipelineStage() == DealPipelineStage.QUOTATION_SENT 
+        verify(dealRepository).save(argThat(d -> d.getPipelineStage() == DealPipelineStage.QUOTATION_SENT
                 && d.getExpectedRevenue().compareTo(BigDecimal.valueOf(50000000)) == 0));
     }
 
@@ -89,14 +96,15 @@ class DealWorkflowSyncServiceTest {
         activeBooking.setStatus(BookingStatus.PENDING);
 
         when(dealWorkflowResolver.resolveActiveQuotation(dealId)).thenReturn(Optional.of(activeQuot));
-        when(dealWorkflowResolver.resolveActiveBooking(activeQuot.getQuotationId())).thenReturn(Optional.of(activeBooking));
+        when(dealWorkflowResolver.resolveActiveBooking(activeQuot.getQuotationId()))
+                .thenReturn(Optional.of(activeBooking));
         when(dealWorkflowResolver.getStageOrder(DealPipelineStage.INQUIRY)).thenReturn(0);
         when(dealWorkflowResolver.getStageOrder(DealPipelineStage.PENDING_CONFIRMATION)).thenReturn(4);
 
         dealWorkflowSyncService.syncPipelineStage(deal);
 
-        verify(dealRepository).save(argThat(d -> d.getPipelineStage() == DealPipelineStage.PENDING_CONFIRMATION 
-                && d.getNotes() != null 
+        verify(dealRepository).save(argThat(d -> d.getPipelineStage() == DealPipelineStage.PENDING_CONFIRMATION
+                && d.getNotes() != null
                 && d.getExpectedCloseDate() != null));
     }
 
@@ -111,7 +119,8 @@ class DealWorkflowSyncServiceTest {
         activeBooking.setStatus(BookingStatus.CONFIRMED);
 
         when(dealWorkflowResolver.resolveActiveQuotation(dealId)).thenReturn(Optional.of(activeQuot));
-        when(dealWorkflowResolver.resolveActiveBooking(activeQuot.getQuotationId())).thenReturn(Optional.of(activeBooking));
+        when(dealWorkflowResolver.resolveActiveBooking(activeQuot.getQuotationId()))
+                .thenReturn(Optional.of(activeBooking));
         when(dealWorkflowResolver.getStageOrder(DealPipelineStage.INQUIRY)).thenReturn(0);
         when(dealWorkflowResolver.getStageOrder(DealPipelineStage.BOOKING_CONFIRMED)).thenReturn(5);
 

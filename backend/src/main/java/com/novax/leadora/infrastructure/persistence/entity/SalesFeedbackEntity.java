@@ -35,6 +35,15 @@ public class SalesFeedbackEntity extends BaseEntity {
     @Column(name = "rating")
     private Short rating;
 
+    @Column(name = "rating_attitude")
+    private Short ratingAttitude;
+
+    @Column(name = "rating_speed")
+    private Short ratingSpeed;
+
+    @Column(name = "rating_accuracy")
+    private Short ratingAccuracy;
+
     @Column(name = "comment", columnDefinition = "TEXT")
     private String comment;
 

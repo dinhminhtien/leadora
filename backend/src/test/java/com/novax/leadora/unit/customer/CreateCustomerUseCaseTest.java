@@ -31,17 +31,16 @@ class CreateCustomerUseCaseTest {
     @Mock
     private UserRepository userRepository;
 
-    /**
-     * Built by hand so the real CustomerDuplicatePolicy runs over the mocked
-     * repository — the duplicate rule moved there, and mocking it out would
-     * leave these cases asserting nothing.
-     */
+    /** Built by hand so the real CustomerDuplicatePolicy and CustomerProfilePolicy run over the
+     *  mocked repository — the duplicate and BR-09 rules moved there, and mocking them out would
+     *  leave these cases asserting nothing. */
     private CreateCustomerUseCase createCustomerUseCase;
 
     @org.junit.jupiter.api.BeforeEach
     void wireUseCase() {
         createCustomerUseCase = new CreateCustomerUseCase(customerRepository, userRepository,
-                new CustomerDuplicatePolicy(customerRepository));
+                new CustomerDuplicatePolicy(customerRepository),
+                new com.novax.leadora.application.usecase.customer.CustomerProfilePolicy());
     }
 
     private CreateCustomerRequest buildValidRequest() {

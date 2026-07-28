@@ -13,12 +13,14 @@ import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRe
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -53,16 +55,21 @@ class SubmitQuotationUseCaseTest {
     @Mock
     private StartSlaTrackingUseCase startSlaTrackingUseCase;
 
+    @Mock
+    private ActivityLogPublisher activityLogPublisher;
+
+    @Spy
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
     @InjectMocks
     private SubmitQuotationUseCase submitQuotationUseCase;
 
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(
-            submitQuotationUseCase,
-            "discountApprovalThreshold",
-            java.math.BigDecimal.valueOf(10)
-        );
+                submitQuotationUseCase,
+                "discountApprovalThreshold",
+                java.math.BigDecimal.valueOf(10));
     }
 
     @Test
@@ -125,7 +132,8 @@ class SubmitQuotationUseCaseTest {
         when(quotationAccessPolicy.currentUser()).thenReturn(new UserEntity());
         when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(approvedQuotation));
 
-        assertThrows(IllegalStateException.class, () -> submitQuotationUseCase.execute(quotationId, new SubmitQuotationRequest()));
+        assertThrows(IllegalStateException.class,
+                () -> submitQuotationUseCase.execute(quotationId, new SubmitQuotationRequest()));
         verify(quotationRepository, never()).save(any());
     }
 
@@ -135,6 +143,7 @@ class SubmitQuotationUseCaseTest {
         UUID id = UUID.randomUUID();
         when(quotationRepository.findById(id)).thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class, () -> submitQuotationUseCase.execute(id, new SubmitQuotationRequest()));
+        assertThrows(ResourceNotFoundException.class,
+                () -> submitQuotationUseCase.execute(id, new SubmitQuotationRequest()));
     }
 }

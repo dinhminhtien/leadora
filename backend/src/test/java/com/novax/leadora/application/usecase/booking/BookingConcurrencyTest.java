@@ -18,6 +18,8 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepo
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -62,6 +64,11 @@ class BookingConcurrencyTest {
         @Mock
         private RoomRequestNotifier roomRequestNotifier;
 
+        @Mock
+        private ActivityLogPublisher activityLogPublisher;
+
+        private ObjectMapper objectMapper = new ObjectMapper();
+
         private BookingStatusTransitionService bookingStatusTransitionService;
         private UpdatePaymentStatusUseCase updatePaymentStatusUseCase;
 
@@ -76,7 +83,7 @@ class BookingConcurrencyTest {
         @BeforeEach
         void setUp() {
                 bookingStatusTransitionService = new BookingStatusTransitionService(bookingRepository,
-                                bookingDetailRepository, paymentRepository);
+                                bookingDetailRepository, paymentRepository, activityLogPublisher, objectMapper);
                 updatePaymentStatusUseCase = new UpdatePaymentStatusUseCase(
                                 paymentRepository,
                                 bookingRepository,

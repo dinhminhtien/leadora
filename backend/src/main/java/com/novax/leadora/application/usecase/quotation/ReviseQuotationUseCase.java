@@ -2,6 +2,7 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.ReviseQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
@@ -11,6 +12,11 @@ import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -32,16 +38,17 @@ public class ReviseQuotationUseCase {
     // the frontend already shows the Revise action for (QuotationListScreen.tsx).
     private static final Set<QuotationStatus> REVISABLE_STATUSES = Set.of(
             QuotationStatus.DRAFT, QuotationStatus.SENT, QuotationStatus.INTERESTED,
-            QuotationStatus.REJECTED, QuotationStatus.PENDING_REVISION,
-            // ACCEPTED is revisable so a quotation whose rooms the Reservation team could
-            // not confirm has a way forward (new dates / room type) instead of only Close.
-            QuotationStatus.ACCEPTED
+            QuotationStatus.REJECTED, QuotationStatus.PENDING_REVISION
     );
 
     private final QuotationRepository quotationRepository;
     private final QuotationDetailRepository quotationDetailRepository;
     private final CurrentUserProvider currentUserProvider;
     private final QuotationAccessPolicy quotationAccessPolicy;
+    private final QuotationAvailabilityChecker availabilityChecker;
+    private final SystemAuditLogService systemAuditLogService;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public QuotationResponse execute(UUID parentId, ReviseQuotationRequest request) {
@@ -61,9 +68,8 @@ public class ReviseQuotationUseCase {
                     "Quotation cannot be revised from status " + parent.getStatus().name(), HttpStatus.CONFLICT);
         }
 
-        // No availability gate here: this CRM owns no room inventory, so it must never
-        // block a revision on a number it invented. Availability is confirmed by the
-        // Reservation team and surfaced on the quotation — never enforced as a precondition.
+        // E2: room type must exist and be available for the requested dates (BR-24)
+        availabilityChecker.assertRoomAvailable(request.getCheckInDate(), request.getCheckOutDate(), request.getRoomType());
 
         // Pricing calculations
         long nights = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
@@ -128,6 +134,48 @@ public class ReviseQuotationUseCase {
         // new version exists, instead of leaving both live simultaneously.
         parent.setStatus(QuotationStatus.SUPERSEDED);
         quotationRepository.save(parent);
+
+        // BR-37/BR-22: record the price change in the audit trail — the parent row
+        // itself is preserved (SUPERSEDED, not deleted/overwritten), but without this
+        // entry there is no audit-log trace of what the price changed from/to.
+        systemAuditLogService.log("QUOTATION", "QUOTATION", saved.getQuotationId(), "REVISED", creator,
+                "version=" + parent.getVersion() + ", totalAmount=" + parent.getTotalAmount(),
+                "version=" + saved.getVersion() + ", totalAmount=" + saved.getTotalAmount(),
+                "parentQuotationId=" + parentId + ", changeReason=" + request.getChangeReason());
+
+        // Publish Activity Log for the new version
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("parentQuotationId", parentId.toString())
+                    .put("changeReason", request.getChangeReason())
+                    .put("version", saved.getVersion())
+                    .put("totalAmount", saved.getTotalAmount().toString());
+            activityLogPublisher.publish(
+                    ActivityLogType.QUOTATION_CREATED,
+                    EntityType.QUOTATION,
+                    saved.getQuotationId(),
+                    "Quotation revised (new version created)",
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish revision quotation creation activity: {}", e.getMessage());
+        }
+
+        // Publish Activity Log for the superseded parent
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("previousStatus", QuotationStatus.SUPERSEDED.name())
+                    .put("newStatus", QuotationStatus.SUPERSEDED.name());
+            activityLogPublisher.publish(
+                    ActivityLogType.QUOTATION_UPDATED,
+                    EntityType.QUOTATION,
+                    parent.getQuotationId(),
+                    "Quotation superseded by version " + saved.getVersion(),
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish parent quotation supersede activity: {}", e.getMessage());
+        }
 
         return QuotationResponse.fromWithDetail(saved, (int) nights,
                 request.getNumberOfRooms(), request.getPricePerNight());

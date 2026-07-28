@@ -19,7 +19,7 @@ export function CustomerFeedbackListScreen() {
 
   const [feedbacks, setFeedbacks] = useState<CustomerFeedback[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Filtering & Pagination state
   const [search, setSearch] = useState("");
   const [ratingFilter, setRatingFilter] = useState<string>("all");
@@ -138,7 +138,7 @@ export function CustomerFeedbackListScreen() {
       {/* Title */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Guest Reviews & Feedback</h1>
+          <h1 className="text-xl font-bold text-slate-800">Customer Reviews & Feedback</h1>
           <p className="text-xs text-slate-400">Monitor Sales Staff service quality and track customer satisfaction levels</p>
         </div>
         <Badge variant="success" className="text-xs px-2.5 font-bold uppercase bg-emerald-100 text-emerald-800 border-none">
@@ -163,7 +163,7 @@ export function CustomerFeedbackListScreen() {
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Satisfaction Rate (Good/Excellent)</span>
           <span className="text-lg font-bold text-blue-600 mt-1 flex items-center gap-1">
             <ThumbsUp className="size-4 text-blue-500 fill-blue-500" />
-            {stats.positivePct}% satisfied guests
+            {stats.positivePct}% satisfied customers
           </span>
         </div>
       </div>
@@ -374,11 +374,10 @@ export function CustomerFeedbackListScreen() {
                     {[1, 2, 3, 4, 5].map(star => (
                       <Star
                         key={star}
-                        className={`size-5 ${
-                          star <= selectedFeedback.rating
-                            ? "text-amber-400 fill-amber-400"
-                            : "text-slate-200"
-                        }`}
+                        className={`size-5 ${star <= selectedFeedback.rating
+                          ? "text-amber-400 fill-amber-400"
+                          : "text-slate-200"
+                          }`}
                       />
                     ))}
                     <span className="text-xs font-bold text-slate-700 ml-1.5">{selectedFeedback.rating}.0 / 5.0</span>
@@ -388,9 +387,33 @@ export function CustomerFeedbackListScreen() {
                 )}
               </div>
 
+              {/* Detailed Star Ratings */}
+              {(selectedFeedback.ratingAttitude || selectedFeedback.ratingSpeed || selectedFeedback.ratingAccuracy) && (
+                <div className="grid grid-cols-3 gap-2.5 pt-3 border-t border-slate-100">
+                  <div className="text-center bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Attitude</span>
+                    <span className="text-xs font-black text-slate-800 mt-1 block">
+                      {selectedFeedback.ratingAttitude ? `${selectedFeedback.ratingAttitude} ★` : "—"}
+                    </span>
+                  </div>
+                  <div className="text-center bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Speed</span>
+                    <span className="text-xs font-black text-slate-800 mt-1 block">
+                      {selectedFeedback.ratingSpeed ? `${selectedFeedback.ratingSpeed} ★` : "—"}
+                    </span>
+                  </div>
+                  <div className="text-center bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Accuracy</span>
+                    <span className="text-xs font-black text-slate-800 mt-1 block">
+                      {selectedFeedback.ratingAccuracy ? `${selectedFeedback.ratingAccuracy} ★` : "—"}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Feedback Comment */}
               <div className="space-y-1.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Comments from Guest</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Comments from Customer</span>
                 <div className="bg-slate-50/50 border border-slate-150 p-4 rounded-xl text-xs text-slate-700 font-medium italic leading-relaxed">
                   {selectedFeedback.comment ? `"${selectedFeedback.comment}"` : <span className="text-slate-350 italic">No detailed comments provided.</span>}
                 </div>
