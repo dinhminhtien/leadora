@@ -18,6 +18,7 @@ import com.novax.leadora.infrastructure.persistence.repository.CustomerRepositor
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -61,7 +62,7 @@ class CreateLeadUseCaseTest {
     @Mock private StartSlaTrackingUseCase startSlaTrackingUseCase;
     @Mock private CurrentUserProvider currentUserProvider;
     @Mock private NotificationRepository notificationRepository;
-    @Mock private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
+    @Mock private ActivityLogPublisher activityLogPublisher;
     @Mock private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     private CreateLeadUseCase useCase;

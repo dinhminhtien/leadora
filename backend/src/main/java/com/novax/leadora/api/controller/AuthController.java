@@ -9,15 +9,20 @@ import com.novax.leadora.application.usecase.identity.LoginActivityService;
 import com.novax.leadora.application.usecase.identity.EffectivePermissionsService;
 import com.novax.leadora.application.usecase.identity.ForgotPasswordUseCase;
 import com.novax.leadora.application.usecase.identity.ResetPasswordUseCase;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.common.response.ApiResponse;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.common.security.TokenBlacklistService;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActorType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 
 @RestController
@@ -32,6 +37,7 @@ public class AuthController {
     private final TokenBlacklistService tokenBlacklistService;
     private final LoginActivityService loginActivityService;
     private final EffectivePermissionsService effectivePermissionsService;
+    private final ActivityLogPublisher activityLogPublisher;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
@@ -39,11 +45,31 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+    public ResponseEntity<ApiResponse<Void>> logout(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        UserEntity user = null;
+        try {
+            user = currentUserProvider.resolve(null);
+        } catch (Exception ignored) {
+        }
+
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7).trim();
             tokenBlacklistService.blacklistToken(token);
         }
+
+        if (user != null) {
+            activityLogPublisher.publish(ActivityLogCommand.builder()
+                    .actorType(ActorType.USER)
+                    .actorUserId(user.getUserId())
+                    .actorRoleSnapshot(user.getRole() != null ? user.getRole().getRoleName() : null)
+                    .activityType(ActivityLogType.USER_LOGGED_OUT)
+                    .entityType(EntityType.USER)
+                    .entityId(user.getUserId())
+                    .summary(user.getFullName() + " (" + user.getEmail() + ") logged out successfully.")
+                    .build());
+        }
+
         return ResponseEntity.ok(ApiResponse.success(null, "Logged out successfully."));
     }
 
@@ -65,11 +91,14 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(buildUserInfo(currentUserProvider.resolve(userId))));
     }
 
-    /** Called after Google OAuth callback — rejects emails not provisioned by Admin. */
+    /**
+     * Called after Google OAuth callback — rejects emails not provisioned by Admin.
+     */
     @GetMapping("/oauth/verify")
     public ResponseEntity<ApiResponse<LoginResponse.UserInfo>> verifyOAuthAccess() {
         UserEntity user = currentUserProvider.resolve(null);
-        // Same sign-in policy as email login: LOCKED → reject, INACTIVE → reactivate, stamp last-login.
+        // Same sign-in policy as email login: LOCKED → reject, INACTIVE → reactivate,
+        // stamp last-login.
         loginActivityService.recordLogin(user.getUserId());
         return ResponseEntity.ok(ApiResponse.success(buildUserInfo(user)));
     }
