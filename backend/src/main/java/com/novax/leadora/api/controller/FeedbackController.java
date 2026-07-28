@@ -48,7 +48,7 @@ public class FeedbackController {
     // --- Management/Internal Dashboard Endpoints ---
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SALES', 'MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES', 'MANAGER', 'ADMIN') and @access.can('FEEDBACK_VIEW')")
     public ResponseEntity<ApiResponse<Page<FeedbackResponse>>> getFeedbacks(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) ReviewStatus reviewStatus,
@@ -64,7 +64,7 @@ public class FeedbackController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALES', 'MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES', 'MANAGER', 'ADMIN') and @access.can('FEEDBACK_VIEW')")
     public ResponseEntity<ApiResponse<FeedbackResponse>> getFeedbackDetail(
             @PathVariable UUID id,
             @RequestHeader(value = "X-User-Id", required = false) String headerUserId
@@ -74,7 +74,7 @@ public class FeedbackController {
     }
 
     @PatchMapping("/{id}/review-status")
-    @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN') and @access.can('FEEDBACK_WRITE')")
     public ResponseEntity<ApiResponse<Void>> updateReviewStatus(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateReviewStatusRequest request,

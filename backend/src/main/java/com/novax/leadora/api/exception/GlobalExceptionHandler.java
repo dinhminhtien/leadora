@@ -25,6 +25,9 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /** MSG-05, verbatim from the SRS application-messages catalogue (§5.3). */
+    private static final String MSG_05_ACCESS_DENIED = "You do not have permission to access this function.";
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidationException(MethodArgumentNotValidException ex) {
         String errorMessage = ex.getBindingResult().getFieldErrors().stream()
@@ -58,18 +61,19 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Authorization failures raised in the service layer (e.g. a Sales Staff trying
-     * to open a lead that is not theirs). Method-security denials are handled by the
-     * security filter chain, but a manually thrown {@link AccessDeniedException} from
-     * a use case reaches here — map it to 403 so the UI can show "Access Denied".
+     * Authorization failures — both a {@code @PreAuthorize} denial (role or permission code, which
+     * arrives as Spring Security's own "Access Denied") and one thrown by a use case's access
+     * policy (e.g. a Sales Staff opening a lead that is not theirs).
+     *
+     * <p>The user-facing message is always MSG-05 verbatim, so every denial reads the same
+     * regardless of which rule failed; the specific reason goes to the log and to {@code details}
+     * for support, not into the headline message.
      */
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
         log.warn("Access denied: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(ApiResponse.businessError("ACCESS_DENIED",
-                        ex.getMessage() != null ? ex.getMessage()
-                                : "You do not have permission to access this resource.", null));
+                .body(ApiResponse.businessError("ACCESS_DENIED", MSG_05_ACCESS_DENIED, ex.getMessage()));
     }
 
     /**

@@ -2,7 +2,9 @@ package com.novax.leadora.application.usecase.identity;
 
 import com.novax.leadora.api.dto.request.CreateUserRequest;
 import com.novax.leadora.api.dto.response.UserAccountResponse;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.UserStatus;
@@ -27,6 +29,8 @@ public class CreateUserUseCase {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final SystemAuditLogService systemAuditLogService;
+    private final CurrentUserProvider currentUserProvider;
 
     @Transactional
     @org.springframework.cache.annotation.CacheEvict(value = "user-roles", key = "#request.email.toLowerCase()")
@@ -59,7 +63,16 @@ public class CreateUserUseCase {
                 .avatarUrl(request.getAvatarUrl())
                 .build();
 
-        return UserAccountResponse.from(userRepository.save(user));
+        UserEntity saved = userRepository.save(user);
+
+        // BR-03 / BR-37 — every account change is logged with actor, target and new value.
+        // The password is never part of the audit payload.
+        systemAuditLogService.log("IDENTITY", "USER", saved.getUserId(), "CREATED",
+                currentUserProvider.resolveQuietly(), null,
+                "email=" + saved.getEmail() + ", role=" + role.getRoleName() + ", status=" + saved.getStatus(),
+                null);
+
+        return UserAccountResponse.from(saved);
     }
 
     private void validatePasswordComplexity(String password) {

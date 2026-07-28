@@ -28,7 +28,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/leads")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+@PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('LEAD_VIEW')")
 public class LeadController {
 
     private final CreateLeadUseCase createLeadUseCase;
@@ -41,6 +41,7 @@ public class LeadController {
 
     /** UC-8.1 — Create Lead */
     @PostMapping
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('LEAD_WRITE')")
     public ResponseEntity<ApiResponse<LeadResponse>> createLead(@Valid @RequestBody CreateLeadRequest request) {
         LeadResponse lead = createLeadUseCase.execute(request);
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -98,6 +99,7 @@ public class LeadController {
 
     /** UC-8.4 — Update Lead */
     @PutMapping("/{leadId}")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('LEAD_WRITE')")
     public ResponseEntity<ApiResponse<LeadResponse>> updateLead(
             @PathVariable UUID leadId,
             @Valid @RequestBody UpdateLeadRequest request
@@ -108,6 +110,7 @@ public class LeadController {
 
     /** UC-8.5 — Convert Lead to Customer */
     @PostMapping("/{leadId}/convert")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('LEAD_WRITE')")
     public ResponseEntity<ApiResponse<ConvertLeadResponse>> convertLead(
             @PathVariable UUID leadId,
             @Valid @RequestBody ConvertLeadRequest request
@@ -122,6 +125,7 @@ public class LeadController {
      * {@link #convertLead} returns, which carries the matching customer's id.
      */
     @PostMapping("/{leadId}/link-customer")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('LEAD_WRITE')")
     public ResponseEntity<ApiResponse<ConvertLeadResponse>> linkLeadToCustomer(
             @PathVariable UUID leadId,
             @Valid @RequestBody LinkLeadToCustomerRequest request

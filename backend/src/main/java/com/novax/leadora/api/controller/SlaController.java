@@ -67,7 +67,7 @@ public class SlaController {
 
     /** UC-17.1 — Create new SLA rule (Admin/Manager only) */
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER') and @access.can('SLA_WRITE')")
     public ResponseEntity<ApiResponse<SlaRuleResponse>> create(@Valid @RequestBody SlaRuleRequest request) {
         SlaRuleResponse response = createSlaRuleUseCase.execute(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response, "SLA rule created"));
@@ -75,7 +75,7 @@ public class SlaController {
 
     /** UC-17.1 — Update existing SLA rule (Admin/Manager only) */
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER') and @access.can('SLA_WRITE')")
     public ResponseEntity<ApiResponse<SlaRuleResponse>> update(
             @PathVariable UUID id,
             @Valid @RequestBody SlaRuleRequest request) {
@@ -84,7 +84,7 @@ public class SlaController {
 
     /** UC-17.1 — Delete SLA rule (Admin/Manager only) */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER') and @access.can('SLA_WRITE')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
         deleteSlaRuleUseCase.execute(id);
         return ResponseEntity.ok(ApiResponse.success(null, "SLA rule deleted"));
@@ -106,7 +106,7 @@ public class SlaController {
      * (the report aggregates team-wide SLA warnings/violations).
      */
     @GetMapping("/report")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER') and @access.can('SLA_VIEW')")
     public ResponseEntity<ApiResponse<SlaReportResponse>> getReport(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,

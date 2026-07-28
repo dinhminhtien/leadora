@@ -2,8 +2,10 @@ package com.novax.leadora.unit.identity;
 
 import com.novax.leadora.api.dto.request.CreateUserRequest;
 import com.novax.leadora.api.dto.response.UserAccountResponse;
+import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.application.usecase.identity.CreateUserUseCase;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.RoleRepository;
@@ -11,6 +13,7 @@ import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -34,6 +37,12 @@ class CreateUserUseCaseTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private SystemAuditLogService systemAuditLogService;
+
+    @Mock
+    private CurrentUserProvider currentUserProvider;
 
     @InjectMocks
     private CreateUserUseCase createUserUseCase;
@@ -67,6 +76,44 @@ class CreateUserUseCaseTest {
 
         assertNotNull(response);
         verify(userRepository).save(any(UserEntity.class));
+    }
+
+    @Test
+    @DisplayName("UT-CREATEUSER-06: Account creation is written to the audit trail (BR-03)")
+    void testCreateUserIsAudited() {
+        CreateUserRequest request = buildValidRequest();
+        RoleEntity staffRole = RoleEntity.builder().roleId(2).roleName("STAFF").build();
+
+        when(userRepository.existsByEmailIgnoreCase("nguyenvana@leadora.vn")).thenReturn(false);
+        when(roleRepository.findById(2)).thenReturn(Optional.of(staffRole));
+        when(passwordEncoder.encode("StrongPass1!")).thenReturn("$2a$10$encoded");
+        when(userRepository.save(any(UserEntity.class))).thenAnswer(inv -> {
+            UserEntity u = inv.getArgument(0);
+            u.setUserId(UUID.randomUUID());
+            return u;
+        });
+
+        createUserUseCase.execute(request);
+
+        ArgumentCaptor<String> newValue = ArgumentCaptor.forClass(String.class);
+        verify(systemAuditLogService).log(eq("IDENTITY"), eq("USER"), any(UUID.class), eq("CREATED"),
+                any(), isNull(), newValue.capture(), isNull());
+        // The audit payload names the account and its role — and never the credential.
+        assertTrue(newValue.getValue().contains("nguyenvana@leadora.vn"));
+        assertTrue(newValue.getValue().contains("STAFF"));
+        assertFalse(newValue.getValue().contains("StrongPass1!"));
+        assertFalse(newValue.getValue().contains("$2a$10$encoded"));
+    }
+
+    @Test
+    @DisplayName("UT-CREATEUSER-07: A rejected creation writes no audit row")
+    void testRejectedCreateIsNotAudited() {
+        CreateUserRequest request = buildValidRequest();
+
+        when(userRepository.existsByEmailIgnoreCase("nguyenvana@leadora.vn")).thenReturn(true);
+
+        assertThrows(IllegalStateException.class, () -> createUserUseCase.execute(request));
+        verifyNoInteractions(systemAuditLogService);
     }
 
     @Test
