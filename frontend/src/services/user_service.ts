@@ -13,6 +13,8 @@ export type UserAccount = {
   roleName: string | null;
   status: UserStatus;
   avatarUrl: string | null;
+  /** UC-6.1 "last login activity" — null until the account has signed in once. */
+  lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -71,6 +73,11 @@ export type Role = {
   description: string | null;
   userCount: number;
   permissions: Permission[];
+  /**
+   * Whether an Admin may grant/revoke this role's permissions (UC-6.4) — true for Staff and
+   * Manager only. Decided by the server so the screen never hard-codes role names.
+   */
+  configurable: boolean;
 };
 
 export type CreateRolePayload = {
