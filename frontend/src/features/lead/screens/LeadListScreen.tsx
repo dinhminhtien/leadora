@@ -19,7 +19,7 @@ import { useUsers } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import type { UserSummary } from "@/services/follow_up_task_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
-import type { LeadStatus, CreateLeadPayload, UpdateLeadPayload } from "@/services/lead_service";
+import type { Lead, LeadStatus, CreateLeadPayload, UpdateLeadPayload } from "@/services/lead_service";
 import {
   LeadEditDrawer, validateLeadForm, seedLeadForm, leadApiError, leadApiStatus,
   type LeadEditErrors,
@@ -480,7 +480,7 @@ function UnassignedLeadDrawer({ leadId, onClose }: { leadId: string; onClose: ()
 
 function LeadTable({
   isLoading, isError, leads, totalPages, totalElements, page, onPageChange, onClearFilters, hasFilters,
-  editMode, onEditLead,
+  editMode, onEditLead, onOpenLead,
 }: {
   isLoading: boolean; isError: boolean;
   leads: Lead[]; totalPages: number; totalElements: number;
@@ -489,6 +489,9 @@ function LeadTable({
   // When true (staff viewing "Created by me"), a row opens the edit drawer instead of navigating.
   editMode: boolean;
   onEditLead?: (leadId: string) => void;
+  // Row click peeks at the record in the detail drawer without losing the list's
+  // filters, page or scroll. The name cell still links to the full page.
+  onOpenLead: (lead: Lead) => void;
 }) {
   if (isLoading) return (
     <div className="flex items-center justify-center py-20 gap-2 text-muted-foreground">
@@ -558,7 +561,10 @@ function LeadTable({
           {leads.map((lead, idx) => (
             <TableRow
               key={lead.leadId}
-              onClick={() => onOpenLead(lead)}
+              // In editMode the row belongs to a lead this staff member created
+              // but does not own — editing is the only thing they can do with it,
+              // so the row goes straight there instead of to a read-only drawer.
+              onClick={() => (editMode ? onEditLead?.(lead.leadId) : onOpenLead(lead))}
               className="group cursor-pointer border-b border-border transition-colors hover:bg-surface-2"
             >
               <TableCell className="py-3 px-4 text-xs text-muted-foreground font-mono border-b-0">
@@ -694,6 +700,9 @@ export function LeadListScreen() {
   const [page,        setPage]        = useState(0);
   const [drawerOpen,  setDrawer]      = useState(false);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  // The row the detail drawer is showing. Holding the record rather than an id
+  // lets the drawer paint immediately from the list data it already has.
+  const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const sortRef = useRef<HTMLDivElement>(null);
 
   // Block an inverted range (From later than To). Date inputs hold "YYYY-MM-DD",
@@ -1047,6 +1056,7 @@ export function LeadListScreen() {
           onClearFilters={clearAll} hasFilters={hasFilters}
           editMode={isStaff && ownerView === "created"}
           onEditLead={setEditingLeadId}
+          onOpenLead={setDetailLead}
         />
       </div>
 
@@ -1059,6 +1069,14 @@ export function LeadListScreen() {
         <UnassignedLeadDrawer key={editingLeadId} leadId={editingLeadId}
           onClose={() => setEditingLeadId(null)} />
       )}
+
+      {/* Full lead detail — Overview / Edit / Activity, plus Convert and the
+          status ladder. Keyed by id so switching rows resets the edit form. */}
+      <LeadDetailDrawer
+        key={detailLead?.leadId ?? "none"}
+        lead={detailLead}
+        onOpenChange={(open) => !open && setDetailLead(null)}
+      />
     </div>
   );
 }
