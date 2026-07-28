@@ -57,9 +57,26 @@ class AccessExpressionsTest {
     }
 
     @Test
-    @DisplayName("An unmanaged operational role falls back to its role check instead of being locked out")
-    void unmanagedRoleIsGrandfathered() {
-        authenticateWith("ROLE_FRONT_OFFICE");
+    @DisplayName("Front Office is permission-managed: it holds its own set and nothing more")
+    void frontOfficeIsGatedOnItsOwnSet() {
+        authenticateWith("ROLE_FO", "HANDOVER_VIEW", "HANDOVER_WRITE", "PAYMENT_VIEW", "NOTIFICATION_VIEW");
+        assertTrue(access.can("HANDOVER_WRITE"));
+        assertFalse(access.can("LEAD_VIEW"));
+        assertFalse(access.can("ROOM_REQUEST_APPROVE"));
+    }
+
+    @Test
+    @DisplayName("Reservation is permission-managed and answers room requests; Front Office does not")
+    void reservationHoldsTheRoomRequestQueue() {
+        authenticateWith("ROLE_RESERVATION", "ROOM_REQUEST_VIEW", "ROOM_REQUEST_APPROVE", "BOOKING_VIEW");
+        assertTrue(access.can("ROOM_REQUEST_APPROVE"));
+        assertFalse(access.can("HANDOVER_WRITE"));
+    }
+
+    @Test
+    @DisplayName("A role outside the model falls back to its role check instead of being locked out")
+    void unmodelledRoleIsGrandfathered() {
+        authenticateWith("ROLE_SOME_FUTURE_DESK");
         assertTrue(access.can("HANDOVER_VIEW"));
     }
 

@@ -2,6 +2,7 @@ package com.novax.leadora.common.security;
 
 import com.novax.leadora.application.usecase.identity.EffectivePermissionsService;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.UserStatus;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
@@ -43,6 +44,12 @@ public class JwtAuthoritiesResolver {
         }
         return userRepository.findWithRoleByEmailIgnoreCase(email)
                 .filter(user -> user.getRole() != null)
+                // BR-04 — a locked account gets no authorities at all, so its still-valid token
+                // fails every @PreAuthorize. Relying on the use cases to reject it is not enough:
+                // an endpoint that never resolves the caller (a plain catalogue read, say) would
+                // happily serve a locked user. INACTIVE deliberately passes — it is the reversible
+                // "dormant" state set by the idle-account job, not a suspension.
+                .filter(user -> user.getStatus() != UserStatus.LOCKED)
                 .map(this::authoritiesFor)
                 .orElseGet(() -> List.of(FALLBACK));
     }

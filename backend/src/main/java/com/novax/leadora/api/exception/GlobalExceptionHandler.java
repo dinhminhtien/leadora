@@ -14,6 +14,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.server.ResponseStatusException;
@@ -52,6 +53,19 @@ public class GlobalExceptionHandler {
      * Treating it as 404 lets the UI render a proper "not found" state instead of
      * hanging or showing a server-crash banner.
      */
+    /**
+     * A verb the route does not offer (e.g. POST to a read-only collection). Without this it fell
+     * into the catch-all below and surfaced as a 500 with a support reference, which reads as
+     * "the server broke" when the request was simply wrong.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+        log.warn("Method not allowed: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ApiResponse.businessError("METHOD_NOT_ALLOWED",
+                        "This action is not available on the requested resource.", ex.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         log.warn("Malformed path/parameter '{}': {}", ex.getName(), ex.getMessage());

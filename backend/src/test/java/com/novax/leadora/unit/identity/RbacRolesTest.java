@@ -11,14 +11,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RbacRolesTest {
 
     @Test
-    @DisplayName("Only Staff and Manager can have their permissions configured")
-    void onlyStaffAndManagerAreConfigurable() {
+    @DisplayName("Every job role except Admin can have its permissions configured")
+    void allJobRolesAreConfigurable() {
         assertTrue(RbacRoles.isConfigurable("SALES"));
         assertTrue(RbacRoles.isConfigurable("MANAGER"));
+        assertTrue(RbacRoles.isConfigurable("FO"));
+        assertTrue(RbacRoles.isConfigurable("FRONT_OFFICE"));
+        assertTrue(RbacRoles.isConfigurable("RESERVATION"));
         assertFalse(RbacRoles.isConfigurable("ADMIN"));
-        assertFalse(RbacRoles.isConfigurable("FO"));
-        assertFalse(RbacRoles.isConfigurable("FRONT_OFFICE"));
-        assertFalse(RbacRoles.isConfigurable("RESERVATION"));
         assertFalse(RbacRoles.isConfigurable("SOME_CUSTOM_ROLE"));
     }
 
@@ -31,10 +31,17 @@ class RbacRolesTest {
     }
 
     @Test
-    @DisplayName("The operational desks stay outside the permission model, so they are never locked out")
-    void operationalDesksAreNotPermissionManaged() {
-        assertFalse(RbacRoles.isPermissionManaged("FO"));
-        assertFalse(RbacRoles.isPermissionManaged("RESERVATION"));
+    @DisplayName("The operational desks are permission-managed too — each with its own narrow set")
+    void operationalDesksArePermissionManaged() {
+        assertTrue(RbacRoles.isPermissionManaged("FO"));
+        assertTrue(RbacRoles.isPermissionManaged("FRONT_OFFICE"));
+        assertTrue(RbacRoles.isPermissionManaged("RESERVATION"));
+    }
+
+    @Test
+    @DisplayName("A role invented outside the model still falls through to its hasAnyRole check")
+    void unmodelledRoleIsNotLockedOut() {
+        assertFalse(RbacRoles.isPermissionManaged("SOME_CUSTOM_ROLE"));
     }
 
     @Test

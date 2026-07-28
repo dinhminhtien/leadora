@@ -54,7 +54,7 @@ public class ConfigureRolePermissionsUseCase {
         if (!RbacRoles.isConfigurable(role.getRoleName())) {
             throw new IllegalStateException(RbacRoles.isAdmin(role.getRoleName())
                     ? "The Admin role has full access by default and cannot be reconfigured."
-                    : "Permissions can only be configured for the Staff and Manager roles.");
+                    : "This role is not part of the permission model and cannot be configured.");
         }
 
         Set<Integer> requested = new HashSet<>(request.getPermissionIds());
@@ -116,7 +116,7 @@ public class ConfigureRolePermissionsUseCase {
      * {@code system_audit_logs.entity_id} is a non-null UUID, but roles use an INTEGER identity.
      * Derive a stable UUID from the role id so role rows are still addressable and greppable.
      */
-    static UUID auditEntityId(Integer roleId) {
+    private static UUID auditEntityId(Integer roleId) {
         return UUID.nameUUIDFromBytes(("ROLE:" + roleId).getBytes(StandardCharsets.UTF_8));
     }
 
