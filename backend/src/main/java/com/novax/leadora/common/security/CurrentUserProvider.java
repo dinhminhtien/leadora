@@ -111,6 +111,20 @@ public class CurrentUserProvider {
                 "Could not resolve an authenticated user. Please provide a valid Bearer token.");
     }
 
+    /**
+     * Same as {@link #resolve(String)} but returns {@code null} instead of throwing.
+     *
+     * <p>For audit-trail writers only: failing to name the actor must never turn a successful
+     * business operation into an error response. The audit row is still written, with a null actor.
+     */
+    public UserEntity resolveQuietly() {
+        try {
+            return resolve(null);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
     private UserEntity tryLoad(String rawId) {
         try {
             return userRepository.findWithRoleByUserId(UUID.fromString(rawId.trim())).orElse(null);

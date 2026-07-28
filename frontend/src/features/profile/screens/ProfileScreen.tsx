@@ -24,7 +24,9 @@ import {
 import { useMyProfile, useUpdateProfile, useChangePassword } from "@/features/profile/hooks/use_profile";
 import { useAuthStore } from "@/stores/auth_store";
 import { toast } from "@/stores/toast_store";
+import { getAvatarSource } from "@/shared/utils/avatar";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -106,21 +108,7 @@ function formatRoleName(role: string | null | undefined): string {
   return map[role.toUpperCase()] ?? role;
 }
 
-function getStatusVariant(status: string): "success" | "warning" | "danger" {
-  if (status === "ACTIVE") return "success";
-  if (status === "INACTIVE") return "warning";
-  return "danger";
-}
 
-function getAvatarSource(avatarUrl: string | null | undefined, userId: string | null | undefined): string | null {
-  if (!avatarUrl) return null;
-  if (avatarUrl.startsWith("local-storage-avatar://") && userId) {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(`local_avatar_${userId}`) || null;
-    }
-  }
-  return avatarUrl;
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -364,10 +352,10 @@ export function ProfileScreen() {
                   <Badge variant="primary" className="text-[9px] px-2 py-0.5 font-bold uppercase tracking-wider scale-95">
                     {formatRoleName(profile?.roleName)}
                   </Badge>
+                  {/* Canonical account-status binding (Blueprint §2.7) — the
+                      same pill the Identity & Access list renders. */}
                   {profile?.status && (
-                    <Badge variant={getStatusVariant(profile.status)} className="text-[9px] px-2 py-0.5 font-bold uppercase tracking-wider scale-95">
-                      {profile.status}
-                    </Badge>
+                    <StatusPill size="sm" domain="user" value={profile.status} />
                   )}
                 </div>
               </div>

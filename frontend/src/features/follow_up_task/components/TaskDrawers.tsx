@@ -1,23 +1,24 @@
 "use client";
-
-import React, { useState, useMemo } from "react";
+/**
+ * Task create / detail / reassign drawers — Website UI Blueprint §10.14.3, §10.14.5.
+ *
+ * Extracted verbatim from the former `FollowUpTaskListScreen` so the task module
+ * has exactly ONE screen. The list shell that wrapped these is replaced by
+ * `TaskWorkspaceScreen` (eight views, bulk actions); the forms already carried
+ * real validation, so they moved rather than being rewritten. No field, rule or
+ * endpoint changed in the move.
+ */
+import React, { useState } from "react";
 import {
   CalendarCheck,
-  CalendarDays,
-  LayoutList,
-  Plus,
   Search,
-  CheckCircle2,
   Clock,
   AlertCircle,
   X,
-  Calendar,
   Briefcase,
   User,
   RefreshCw,
   Loader2,
-  ChevronLeft,
-  ChevronRight,
   UserCog,
   Phone,
   Mail,
@@ -27,23 +28,33 @@ import {
   Building2,
   ArrowRight,
 } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import {
-  useTasks,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerBody,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import {
   useTaskDetail,
   useCreateTask,
   useUpdateTask,
   useResignTask,
-  useUsers,
 } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
-import { useAuthStore } from "@/stores/auth_store";
-import { hasFullAccess } from "@/shared/auth/access";
 import {
-  taskService,
   type Task,
   type TaskPriority,
   type TaskStatus,
@@ -51,7 +62,6 @@ import {
   type CreateTaskPayload,
   type UpdateTaskPayload,
   type ResignTaskPayload,
-  type TaskListParams,
 } from "@/services/follow_up_task_service";
 import { toast } from "@/stores/toast_store";
 import { getApiErrorMessage } from "@/lib/api_error";
@@ -60,10 +70,7 @@ import { leadService, type Lead } from "@/services/lead_service";
 import { customerProfileService } from "@/services/customer_profile_service";
 import { dealService } from "@/services/deal_service";
 import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
-import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
-
 // ── Activity Types (Pipedrive-style) ─────────────────────────────────────────
-
 const ACTIVITY_TYPES = [
   { type: "CALL", label: "Call", Icon: Phone, activeClass: "border-green-400 bg-green-50 text-green-700", idleClass: "border-slate-200 bg-white text-slate-500 hover:border-green-300 hover:text-green-600" },
   { type: "EMAIL", label: "Email", Icon: Mail, activeClass: "border-blue-400 bg-blue-50 text-blue-700", idleClass: "border-slate-200 bg-white text-slate-500 hover:border-blue-300 hover:text-blue-600" },
@@ -72,7 +79,6 @@ const ACTIVITY_TYPES = [
   { type: "FOLLOW_UP", label: "Follow-up", Icon: RefreshCw, activeClass: "border-teal-400 bg-teal-50 text-teal-700", idleClass: "border-slate-200 bg-white text-slate-500 hover:border-teal-300 hover:text-teal-600" },
   { type: "TASK", label: "Task", Icon: CheckSquare2, activeClass: "border-slate-500 bg-slate-100 text-slate-700", idleClass: "border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700" },
 ] as const satisfies readonly { type: ActivityType; label: string; [k: string]: unknown }[];
-
 /**
  * The task's activity type, as told to us by the server.
  *
@@ -83,26 +89,17 @@ const ACTIVITY_TYPES = [
 function activityTypeOf(task: Task): ActivityType {
   return task.activityType ?? "TASK";
 }
-
 /** UI metadata (label / icon / colours) for a type. Always resolves. */
 function activityInfo(type: ActivityType) {
   return ACTIVITY_TYPES.find(a => a.type === type) ?? ACTIVITY_TYPES[5]; // TASK
 }
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
 function isOverdue(task: Task): boolean {
   if (task.status === "COMPLETED" || task.status === "CANCELLED") return false;
   if (task.endAt) return new Date(task.endAt) < new Date();
   return false;
 }
-
 /** Primary date for agenda/calendar grouping — uses startAt date. */
-function taskDateKey(task: Task): string | null {
-  if (task.startAt) return extractLocalDate(task.startAt);
-  return null;
-}
-
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-GB", {
@@ -111,12 +108,10 @@ function formatDate(iso: string | null | undefined): string {
     year: "numeric",
   });
 }
-
 function formatTime(iso: string | null | undefined): string {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
-
 /** Build a local ISO datetime string from a date string "YYYY-MM-DD" and time "HH:mm". */
 function buildISODateTime(date: string, time: string): string {
   if (!date || !time) return "";
@@ -126,32 +121,27 @@ function buildISODateTime(date: string, time: string): string {
   const absM = String(Math.abs(offset) % 60).padStart(2, "0");
   return `${date}T${time}:00${sign}${absH}:${absM}`;
 }
-
 function addDays(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-
 function formatShortDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", "");
 }
-
 /** Extract local date "YYYY-MM-DD" from any ISO datetime string (handles UTC and offset). */
 function extractLocalDate(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-
 /** Extract local time "HH:mm" from any ISO datetime string (handles UTC and offset). */
 function extractLocalTime(iso: string | null | undefined): string {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
-
 function linkedEntityLabel(task: Task): string {
   if (task.dealName) return task.dealName;
   if (task.customerName) return task.customerName;
@@ -159,14 +149,12 @@ function linkedEntityLabel(task: Task): string {
   if (task.primaryContactName) return task.primaryContactName;
   return "—";
 }
-
 function linkedEntityType(task: Task): string {
   if (task.dealId) return "Deal";
   if (task.customerId) return "Customer";
   if (task.leadId) return "Lead";
   return "General";
 }
-
 function humanizeEnum(raw?: string | null): string {
   if (!raw) return "—";
   return raw
@@ -175,7 +163,6 @@ function humanizeEnum(raw?: string | null): string {
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
 }
-
 /**
  * Business-context card at the top of Task Detail — tells the user at a glance
  * which Deal / Customer / Lead this task serves, shows that record's key fields,
@@ -184,7 +171,6 @@ function humanizeEnum(raw?: string | null): string {
  */
 function RelatedRecordCard({ task }: { task: Task }) {
   const router = useRouter();
-
   const kind: "deal" | "customer" | "lead" | null = task.dealId
     ? "deal"
     : task.customerId
@@ -192,7 +178,6 @@ function RelatedRecordCard({ task }: { task: Task }) {
       : task.leadId
         ? "lead"
         : null;
-
   if (!kind) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-400">
@@ -200,10 +185,8 @@ function RelatedRecordCard({ task }: { task: Task }) {
       </div>
     );
   }
-
   const money = (v?: number | null) =>
     v == null ? null : v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-
   const config = {
     deal: {
       Icon: Briefcase,
@@ -250,9 +233,7 @@ function RelatedRecordCard({ task }: { task: Task }) {
       href: `/leads/${task.leadId}`,
     },
   }[kind];
-
   const { Icon } = config;
-
   return (
     <div className={`rounded-xl border ${config.ringClass} p-4`}>
       <div className="flex items-center justify-between gap-3">
@@ -262,7 +243,6 @@ function RelatedRecordCard({ task }: { task: Task }) {
           {config.typeLabel}
         </span>
       </div>
-
       <div className="mt-2 flex items-start gap-3">
         <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${config.badgeClass}`}>
           <Icon className="size-5" />
@@ -279,7 +259,6 @@ function RelatedRecordCard({ task }: { task: Task }) {
           </div>
         </div>
       </div>
-
       <button
         type="button"
         onClick={() => router.push(config.href)}
@@ -291,39 +270,25 @@ function RelatedRecordCard({ task }: { task: Task }) {
     </div>
   );
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
-
 const PRIORITY_BADGE: Record<TaskPriority, "danger" | "warning" | "default"> = {
   CRITICAL: "danger",
   HIGH: "danger",
   MEDIUM: "warning",
   LOW: "default",
 };
-
-const PRIORITY_DOT: Record<TaskPriority, string> = {
-  CRITICAL: "bg-red-600",
-  HIGH: "bg-red-400",
-  MEDIUM: "bg-amber-400",
-  LOW: "bg-slate-300",
-};
-
 const STATUS_BADGE: Record<TaskStatus, "primary" | "warning" | "success" | "default"> = {
   OPEN: "primary",
   COMPLETED: "success",
   CANCELLED: "default",
 };
-
 const STATUS_LABEL: Record<TaskStatus, string> = {
   OPEN: "Open",
   COMPLETED: "Completed",
   CANCELLED: "Cancelled",
 };
-
 type UserOption = { userId: string; fullName: string };
-
 // ── Info Row ──────────────────────────────────────────────────────────────────
-
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="flex items-start gap-2">
@@ -335,10 +300,8 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
     </div>
   );
 }
-
 // ── Reassign Follow-up Modal ──────────────────────────────────────────────────
-
-function ReassignFollowUpModal({
+export function ReassignFollowUpModal({
   task,
   onClose,
   users,
@@ -359,13 +322,10 @@ function ReassignFollowUpModal({
     note: "",
   });
   const [validationError, setValidationError] = useState<string | null>(null);
-
   const resignMutation = useResignTask(task.taskId);
-
   function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
     setValidationError(null);
-
     if (!form.assignedUserId) {
       setValidationError("Please select a staff member to reassign to.");
       return;
@@ -385,7 +345,6 @@ function ReassignFollowUpModal({
       setValidationError("End time must be after start time.");
       return;
     }
-
     const toUser = users.find(u => u.userId === form.assignedUserId);
     const toName = toUser?.fullName ?? "Unknown";
     const fromName = task.assignedUserName ?? "Unassigned";
@@ -393,7 +352,6 @@ function ReassignFollowUpModal({
       ? `${formatShortDateTime(task.startAt)} → ${formatShortDateTime(task.endAt)}`
       : "not set";
     const newSchedule = `${formatShortDateTime(newStartAt)} → ${formatShortDateTime(newEndAt)}`;
-
     const lines = [
       "[Reassigned]",
       `${fromName} → ${toName}`,
@@ -402,7 +360,6 @@ function ReassignFollowUpModal({
     ];
     if (form.note.trim()) lines.push(`Note: ${form.note.trim()}`);
     const resignNote = lines.join("\n");
-
     resignMutation.mutate(
       { title: form.title, description: form.description || undefined, priority: form.priority, assignedUserId: form.assignedUserId, resignNote, startAt: newStartAt, endAt: newEndAt } satisfies ResignTaskPayload,
       {
@@ -411,30 +368,20 @@ function ReassignFollowUpModal({
       }
     );
   }
-
   const apiError = resignMutation.error
     ? getApiErrorMessage(resignMutation.error, "Failed to reassign. Please try again.")
     : null;
-
   return (
-    <>
-      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[90vh] overflow-y-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
-            <div>
-              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <UserCog className="size-5 text-blue-600" />
-                Reassign Follow-up
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5 truncate max-w-[320px]">{task.title}</p>
-            </div>
-            <button onClick={onClose} className="p-2 rounded-full text-slate-400 hover:bg-slate-100 transition">
-              <X className="size-5" />
-            </button>
-          </div>
-
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent size="lg" className="gap-0">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-[16px] leading-6">
+            <UserCog className="size-5 text-brand-600 dark:text-brand-500" />
+            Reassign follow-up
+          </DialogTitle>
+          <DialogDescription className="truncate">{task.title}</DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {/* Form */}
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             {/* Current assignment */}
@@ -446,7 +393,6 @@ function ReassignFollowUpModal({
                 )}
               </div>
             )}
-
             {/* Title */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-600">Title *</label>
@@ -458,7 +404,6 @@ function ReassignFollowUpModal({
                 placeholder="Task title…"
               />
             </div>
-
             {/* Description */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-600">Description</label>
@@ -470,7 +415,6 @@ function ReassignFollowUpModal({
                 placeholder="Description…"
               />
             </div>
-
             {/* Priority */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-600">Priority</label>
@@ -480,7 +424,6 @@ function ReassignFollowUpModal({
                 <option value="HIGH">High</option>
               </Select>
             </div>
-
             {/* New assignee */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-600">Reassign To *</label>
@@ -496,7 +439,6 @@ function ReassignFollowUpModal({
                 ))}
               </Select>
             </div>
-
             {/* New schedule — start and end each with date + time */}
             <div className="space-y-2">
               <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
@@ -544,7 +486,6 @@ function ReassignFollowUpModal({
                 </div>
               </div>
             </div>
-
             {/* Note */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-600">Reason / Note</label>
@@ -556,14 +497,12 @@ function ReassignFollowUpModal({
                 placeholder="Reason for reassignment…"
               />
             </div>
-
             {(validationError || apiError) && (
               <p className="text-sm text-red-500 flex items-start gap-2">
                 <AlertCircle className="size-4 shrink-0 mt-0.5" />
                 {validationError ?? apiError}
               </p>
             )}
-
             <div className="flex gap-3 pt-2">
               <Button
                 type="submit"
@@ -587,14 +526,12 @@ function ReassignFollowUpModal({
             </div>
           </form>
         </div>
-      </div>
-    </>
+      </DialogContent>
+    </Dialog>
   );
 }
-
 // ── Task Detail / Edit Drawer ─────────────────────────────────────────────────
-
-function TaskDetailDrawer({
+export function TaskDetailDrawer({
   task,
   onClose,
   users,
@@ -616,7 +553,6 @@ function TaskDetailDrawer({
   // populated instead of showing dashes.
   const { data: detailResp } = useTaskDetail(task.taskId);
   const relatedTask = detailResp?.data ?? task;
-
   const [editing, setEditing] = useState(initialEditing);
   const [form, setForm] = useState<UpdateTaskPayload>({
     title: task.title,
@@ -665,7 +601,6 @@ function TaskDetailDrawer({
       detail: null,
     } : null
   );
-
   function handleSelectLead(lead: Lead | null) {
     setSelectedLead(lead);
     setSelectedCustomer(null);
@@ -679,7 +614,6 @@ function TaskDetailDrawer({
       primaryContactPhone: lead?.phone ?? f.primaryContactPhone,
     }));
   }
-
   function handleSelectCustomer(customer: CustomerResult | null) {
     setSelectedCustomer(customer);
     setSelectedLead(null);
@@ -693,7 +627,6 @@ function TaskDetailDrawer({
       primaryContactPhone: customer?.phone ?? f.primaryContactPhone,
     }));
   }
-
   function handleSelectDeal(deal: DealResult | null) {
     setSelectedDeal(deal);
     setSelectedLead(null);
@@ -705,12 +638,10 @@ function TaskDetailDrawer({
       customerId: undefined,
     }));
   }
-
   const updateMutation = useUpdateTask(task.taskId);
   const taskOverdue = isOverdue(task);
   const actType = activityTypeOf(task);
   const typeInfo = activityInfo(actType);
-
   function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
     if (form.status === "COMPLETED" && !form.resultNote?.trim()) {
@@ -722,30 +653,25 @@ function TaskDetailDrawer({
       onError: (error) => { toast.error(getApiErrorMessage(error, "Failed to update task.")); },
     });
   }
-
   return (
-    <>
-      <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 w-full max-w-xl bg-white shadow-2xl border-l border-slate-200 z-50 flex flex-col animate-in slide-in-from-right duration-300">
-
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
-          <div className="flex items-center gap-2.5 min-w-0">
+    <Drawer open onOpenChange={(next) => !next && onClose()}>
+      <DrawerContent size="lg" className="gap-0" showClose={false}>
+        <DrawerHeader className="flex-row items-center justify-between gap-3 pr-5">
+          <div className="flex min-w-0 items-center gap-2.5">
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold shrink-0 ${ACTIVITY_CHIP[actType]}`}>
               <typeInfo.Icon className="size-3" />
               {typeInfo.label}
             </span>
             <div className="min-w-0">
-              <h3 className="text-sm font-bold text-slate-800 truncate">
+              <DrawerTitle className="truncate text-[15px] leading-5">
                 {editing ? "Edit Task" : task.title}
-              </h3>
-              <p className="text-[10px] text-slate-400">
+              </DrawerTitle>
+              <DrawerDescription className="text-[11px]">
                 {linkedEntityType(task)} · {task.assignedUserName ?? "Unassigned"}
-              </p>
+              </DrawerDescription>
             </div>
           </div>
-
-          <div className="flex items-center gap-1.5 shrink-0 ml-3">
+          <div className="ml-3 flex shrink-0 items-center gap-1.5">
             {!editing && task.status !== "CANCELLED" && canAssignOthers && (
               <button
                 onClick={() => { onClose(); onReassign(); }}
@@ -771,13 +697,11 @@ function TaskDetailDrawer({
               <X className="size-4" />
             </button>
           </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        </DrawerHeader>
+        <DrawerBody className="px-6 py-5">
           {editing ? (
             /* ── Edit Form ── */
             <form onSubmit={handleSubmit} className="space-y-5">
-
               {/* Activity type — a real field now. These buttons used to overwrite the
                   title with "Meeting: ", which threw away whatever the user had
                   written; they now set the type and leave the title alone. */}
@@ -800,7 +724,6 @@ function TaskDetailDrawer({
                   })}
                 </div>
               </div>
-
               {/* Title — just the subject of the work. */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-600">Title *</label>
@@ -811,7 +734,6 @@ function TaskDetailDrawer({
                   className="py-2 text-sm"
                 />
               </div>
-
               {/* Description */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-600">Description</label>
@@ -822,7 +744,6 @@ function TaskDetailDrawer({
                   className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 focus:outline-none focus:border-blue-400 focus:bg-white transition resize-none"
                 />
               </div>
-
               {/* Priority + Status */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -844,7 +765,6 @@ function TaskDetailDrawer({
                   </Select>
                 </div>
               </div>
-
               {/* Assigned Staff — staff see who owns the task, managers can move it. */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-600">Assigned Staff *</label>
@@ -863,14 +783,12 @@ function TaskDetailDrawer({
                   </>
                 )}
               </div>
-
               {/* Schedule — Start at / End at */}
               <div className="space-y-3">
                 <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
                   <Clock className="size-3.5 text-blue-500" />
                   Schedule
                 </label>
-
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Start at</p>
                   <div className="grid grid-cols-2 gap-2">
@@ -897,7 +815,6 @@ function TaskDetailDrawer({
                     />
                   </div>
                 </div>
-
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">End at</p>
                   <div className="grid grid-cols-2 gap-2">
@@ -925,7 +842,6 @@ function TaskDetailDrawer({
                   </div>
                 </div>
               </div>
-
               {/* Link to Entity. Re-pointing a task at a different lead/customer/deal
                   rewrites its business context, so UpdateTaskUseCase restricts that to
                   a manager — staff see the link they're working against, read-only. */}
@@ -948,7 +864,6 @@ function TaskDetailDrawer({
                   <p className="text-[11px] text-slate-400">Only a manager can link this task to a different record.</p>
                 </div>
               )}
-
               {/* Primary Contact */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-600">Primary Contact</label>
@@ -968,7 +883,6 @@ function TaskDetailDrawer({
                   />
                 </div>
               </div>
-
               {/* Result Note */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-600">Result / Notes</label>
@@ -980,8 +894,6 @@ function TaskDetailDrawer({
                   placeholder="Outcome or notes after completing this task…"
                 />
               </div>
-
-
               <div className="pt-4 flex gap-3 border-t border-slate-100">
                 <Button type="submit" variant="primary" disabled={updateMutation.isPending} className="flex-1 py-2.5 text-sm font-semibold">
                   {updateMutation.isPending
@@ -994,7 +906,6 @@ function TaskDetailDrawer({
           ) : (
             /* ── View Mode ── */
             <div className="space-y-5">
-
               {/* Badges row */}
               <div className="flex flex-wrap gap-2">
                 <Badge variant={PRIORITY_BADGE[task.priority]} size="sm" className="text-[10px] uppercase font-bold px-2 py-0.5">
@@ -1015,7 +926,6 @@ function TaskDetailDrawer({
                 )}
                 <SlaStatusBadge entityId={task.taskId} entityType="TASK" />
               </div>
-
               {/* Overdue warning banner */}
               {taskOverdue && (
                 <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200">
@@ -1028,7 +938,6 @@ function TaskDetailDrawer({
                   </div>
                 </div>
               )}
-
               {/* Schedule card */}
               <div className="rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-1.5">
@@ -1069,7 +978,6 @@ function TaskDetailDrawer({
                           )}
                         </div>
                       </div>
-
                       {/* Duration + active indicator */}
                       {task.startAt && task.endAt && (() => {
                         const start = new Date(task.startAt);
@@ -1098,16 +1006,13 @@ function TaskDetailDrawer({
                   )}
                 </div>
               </div>
-
               {/* Business context — which record this task serves + navigation */}
               <RelatedRecordCard task={relatedTask} />
-
               {/* Staff grid */}
               <div className="grid grid-cols-2 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
                 <InfoRow icon={<User className="size-4 text-slate-400" />} label="Assigned To" value={task.assignedUserName ?? "—"} />
                 <InfoRow icon={<User className="size-4 text-slate-400" />} label="Created By" value={task.createdByName ?? "—"} />
               </div>
-
               {/* Lead / Customer contact card */}
               {(task.leadId || task.customerId) && (() => {
                 const isLead = !!task.leadId;
@@ -1155,7 +1060,6 @@ function TaskDetailDrawer({
                   </div>
                 );
               })()}
-
               {/* Primary Contact (override / manual entry) */}
               {(task.primaryContactName || task.primaryContactPhone) && (
                 <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-100">
@@ -1176,7 +1080,6 @@ function TaskDetailDrawer({
                   </div>
                 </div>
               )}
-
               {/* Description */}
               {task.description && (
                 <div className="space-y-1.5">
@@ -1184,7 +1087,6 @@ function TaskDetailDrawer({
                   <p className="text-sm text-slate-700 leading-relaxed">{task.description}</p>
                 </div>
               )}
-
               {/* Result Notes */}
               {task.resultNote && (
                 <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 space-y-1.5">
@@ -1192,7 +1094,6 @@ function TaskDetailDrawer({
                   <p className="text-sm text-emerald-800 leading-relaxed whitespace-pre-line">{task.resultNote}</p>
                 </div>
               )}
-
               {/* Timestamps */}
               <div className="pt-3 border-t border-slate-100 text-xs text-slate-400 space-y-1">
                 <p>Created: <span className="text-slate-600 font-medium">{formatDate(task.createdAt)}</span></p>
@@ -1202,16 +1103,12 @@ function TaskDetailDrawer({
               </div>
             </div>
           )}
-        </div>
-      </div>
-    </>
+        </DrawerBody>
+      </DrawerContent>
+    </Drawer>
   );
 }
-
-
-
 // ── Entity Search Picker ──────────────────────────────────────────────────────
-
 type CustomerResult = {
   customerId: string;
   fullName: string;
@@ -1219,14 +1116,12 @@ type CustomerResult = {
   phone?: string | null;
   companyName?: string | null;
 };
-
 type DealResult = {
   dealId: string;
   title: string;
   detail?: string | null;
 };
-
-function EntitySearchPicker({
+export function EntitySearchPicker({
   selectedLead,
   selectedCustomer,
   selectedDeal = null,
@@ -1245,34 +1140,29 @@ function EntitySearchPicker({
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [open, setOpen] = useState(false);
-
   // Debounce input
   React.useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query.trim()), 320);
     return () => clearTimeout(t);
   }, [query]);
-
   const leadSearch = useQuery({
     queryKey: ["entity-search-lead", debouncedQuery],
     queryFn: () => leadService.getList({ search: debouncedQuery, size: 8 }),
     enabled: tab === "lead" && debouncedQuery.length >= 1,
     staleTime: 30_000,
   });
-
   const customerSearch = useQuery({
     queryKey: ["entity-search-customer", debouncedQuery],
     queryFn: () => customerProfileService.getList({ search: debouncedQuery, size: 8 }),
     enabled: tab === "customer" && debouncedQuery.length >= 1,
     staleTime: 30_000,
   });
-
   const dealSearch = useQuery({
     queryKey: ["entity-search-deal", debouncedQuery],
     queryFn: () => dealService.getList({ search: debouncedQuery, size: 8 }),
     enabled: tab === "deal" && !!onSelectDeal && debouncedQuery.length >= 1,
     staleTime: 30_000,
   });
-
   const leadResults: Lead[] = leadSearch.data?.data?.content ?? [];
   const customerResults: CustomerResult[] = (customerSearch.data?.data ?? []).map(c => ({
     customerId: c.id,
@@ -1291,14 +1181,11 @@ function EntitySearchPicker({
       detail: [contact, stage].filter(Boolean).join(" · ") || null,
     };
   });
-
   const getEntityDetail = (item: { email?: string | null; phone?: string | null; companyName?: string | null }) => {
     return [item.email, item.phone, item.companyName].filter(Boolean).join(" · ");
   };
-
   const hasSelection =
     tab === "lead" ? !!selectedLead : tab === "customer" ? !!selectedCustomer : !!selectedDeal;
-
   return (
     <div className="border border-slate-200 rounded-xl">
       {/* Header row with tab toggle */}
@@ -1336,7 +1223,6 @@ function EntitySearchPicker({
         </div>
         <p className="mt-2 text-[10px] text-slate-500">Search by name, email, phone, or company to link the correct lead, customer, or deal for this activity.</p>
       </div>
-
       <div className="px-4 py-3 space-y-2">
         {/* Selected chip */}
         {hasSelection && (
@@ -1376,7 +1262,6 @@ function EntitySearchPicker({
             </button>
           </div>
         )}
-
         {/* Search input — hidden once entity is selected */}
         {!hasSelection && (
           <div className="relative">
@@ -1390,7 +1275,6 @@ function EntitySearchPicker({
               placeholder={tab === "lead" ? "Search lead by name, email, company…" : tab === "customer" ? "Search customer by name, email, company…" : "Search deal by title or contact…"}
               className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 transition placeholder:text-slate-400"
             />
-
             {/* Dropdown results */}
             {open && debouncedQuery.length >= 1 && (
               <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-52 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
@@ -1398,7 +1282,7 @@ function EntitySearchPicker({
                   leadSearch.isFetching
                     ? <p className="py-4 text-center text-xs text-slate-400">Searching leads…</p>
                     : leadResults.length === 0
-                      ? <p className="py-4 text-center text-xs text-slate-400">No leads found for "{debouncedQuery}"</p>
+                      ? <p className="py-4 text-center text-xs text-slate-400">No leads found for &ldquo;{debouncedQuery}&rdquo;</p>
                       : leadResults.map(lead => (
                         <button
                           key={lead.leadId}
@@ -1417,12 +1301,11 @@ function EntitySearchPicker({
                         </button>
                       ))
                 )}
-
                 {tab === "customer" && (
                   customerSearch.isFetching
                     ? <p className="py-4 text-center text-xs text-slate-400">Searching customers…</p>
                     : customerResults.length === 0
-                      ? <p className="py-4 text-center text-xs text-slate-400">No customers found for "{debouncedQuery}"</p>
+                      ? <p className="py-4 text-center text-xs text-slate-400">No customers found for &ldquo;{debouncedQuery}&rdquo;</p>
                       : customerResults.map(c => (
                         <button
                           key={c.customerId}
@@ -1441,12 +1324,11 @@ function EntitySearchPicker({
                         </button>
                       ))
                 )}
-
                 {tab === "deal" && (
                   dealSearch.isFetching
                     ? <p className="py-4 text-center text-xs text-slate-400">Searching deals…</p>
                     : dealResults.length === 0
-                      ? <p className="py-4 text-center text-xs text-slate-400">No deals found for "{debouncedQuery}"</p>
+                      ? <p className="py-4 text-center text-xs text-slate-400">No deals found for &ldquo;{debouncedQuery}&rdquo;</p>
                       : dealResults.map(d => (
                         <button
                           key={d.dealId}
@@ -1473,10 +1355,8 @@ function EntitySearchPicker({
     </div>
   );
 }
-
 // ── Create Task Drawer (Pipedrive-style) ──────────────────────────────────────
-
-function CreateTaskDrawer({
+export function CreateTaskDrawer({
   onClose,
   users,
   initialDueDate,
@@ -1513,7 +1393,6 @@ function CreateTaskDrawer({
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerResult | null>(null);
   const [selectedDeal, setSelectedDeal] = useState<DealResult | null>(null);
   const createMutation = useCreateTask();
-
   // Linking a record seeds an *empty* title with that record's name, and fills in
   // the contact. It no longer prepends "Call: " — the activity type is a field of
   // its own now, and the title is only ever what the task is about.
@@ -1530,7 +1409,6 @@ function CreateTaskDrawer({
     }));
     if (lead) { setSelectedCustomer(null); setSelectedDeal(null); }
   }
-
   function handleSelectCustomer(customer: CustomerResult | null) {
     setSelectedCustomer(customer);
     setForm(f => ({
@@ -1544,7 +1422,6 @@ function CreateTaskDrawer({
     }));
     if (customer) { setSelectedLead(null); setSelectedDeal(null); }
   }
-
   function handleSelectDeal(deal: DealResult | null) {
     setSelectedDeal(deal);
     setForm(f => ({
@@ -1556,12 +1433,10 @@ function CreateTaskDrawer({
     }));
     if (deal) { setSelectedLead(null); setSelectedCustomer(null); }
   }
-
   /** Picking a type changes only the type. The title is the user's to write. */
   function handleActivityTypeChange(type: ActivityType) {
     setActivityType(type);
   }
-
   function applyDatePreset(days: number) {
     const date = addDays(days);
     const startTime = extractLocalTime(form.startAt) || "09:00";
@@ -1572,7 +1447,6 @@ function CreateTaskDrawer({
       endAt: buildISODateTime(date, endTime),
     }));
   }
-
   function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
     if (!form.title.trim() || !form.assignedUserId || !form.startAt) return;
@@ -1588,30 +1462,17 @@ function CreateTaskDrawer({
       onError: (error) => { toast.error(getApiErrorMessage(error, "Failed to create task.")); },
     });
   }
-
   return (
-    <>
-      <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 w-full max-w-lg bg-white shadow-2xl border-l border-slate-200 z-50 flex flex-col animate-in slide-in-from-right duration-300">
-        {/* Header */}
-        <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100 shrink-0">
-          <div>
-            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <CalendarCheck className="size-5 text-blue-600" />
-              Create Follow-up Task
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">Assign follow-up actions to the sales team</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
-          >
-            <X className="size-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-7 py-5 space-y-5">
-
+    <Drawer open onOpenChange={(next) => !next && onClose()}>
+      <DrawerContent size="lg" className="gap-0">
+        <DrawerHeader>
+          <DrawerTitle className="flex items-center gap-2 text-[16px] leading-6">
+            <CalendarCheck className="size-5 text-brand-600 dark:text-brand-500" />
+            Create follow-up task
+          </DrawerTitle>
+          <DrawerDescription>Assign follow-up actions to the sales team</DrawerDescription>
+        </DrawerHeader>
+        <form onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-7 py-5">
           {/* Activity Type — compact quick-select chips (one tap, no dialog) */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Activity Type</label>
@@ -1630,7 +1491,6 @@ function CreateTaskDrawer({
               ))}
             </div>
           </div>
-
           {/* Title */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-600">Activity Title *</label>
@@ -1642,7 +1502,6 @@ function CreateTaskDrawer({
               className="py-2 text-sm"
             />
           </div>
-
           {/* Description */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-600">Description / Goal</label>
@@ -1654,7 +1513,6 @@ function CreateTaskDrawer({
               className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition resize-none"
             />
           </div>
-
           {/* Timeline Schedule — required */}
           <div className="space-y-2.5">
             <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
@@ -1747,7 +1605,6 @@ function CreateTaskDrawer({
               </div>
             </div>
           </div>
-
           {/* Priority & Assignee */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -1791,7 +1648,6 @@ function CreateTaskDrawer({
               )}
             </div>
           </div>
-
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-600">Primary Contact</label>
             <div className="grid grid-cols-2 gap-3">
@@ -1810,7 +1666,6 @@ function CreateTaskDrawer({
               />
             </div>
           </div>
-
           {/* Entity Link — searchable picker */}
           <EntitySearchPicker
             selectedLead={selectedLead}
@@ -1820,7 +1675,6 @@ function CreateTaskDrawer({
             onSelectCustomer={handleSelectCustomer}
             onSelectDeal={handleSelectDeal}
           />
-
           {(selectedLead || selectedCustomer) && (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 mb-3">Quick action</p>
@@ -1846,7 +1700,6 @@ function CreateTaskDrawer({
               </div>
             </div>
           )}
-
           <div className="pt-4 flex gap-3 border-t border-slate-100">
             <Button
               type="submit"
@@ -1870,45 +1723,15 @@ function CreateTaskDrawer({
             </Button>
           </div>
         </form>
-      </div>
-    </>
+      </DrawerContent>
+    </Drawer>
   );
 }
-
-// ── Main Screen ───────────────────────────────────────────────────────────────
-
-type ViewMode = "list" | "calendar";
-type TabId = "all" | "today" | "upcoming" | "overdue" | "completed";
-
 // Calendar helpers — Monday-first week
-function getWeekStart(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function getWeekDays(ws: Date): Date[] {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(ws);
-    d.setDate(d.getDate() + i);
-    return d;
-  });
-}
-
 function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-
 /** Returns true when the task's scheduled window covers the given date string. */
-function taskCoversDay(task: Task, ds: string): boolean {
-  const start = task.startAt ? extractLocalDate(task.startAt) : null;
-  const end   = task.endAt   ? extractLocalDate(task.endAt)   : start;
-  if (!start) return false;
-  return start <= ds && (end ?? start) >= ds;
-}
-
 // Calendar chip color per activity type
 const ACTIVITY_CHIP: Record<ActivityType, string> = {
   CALL: "bg-green-50 border-green-200 text-green-700",
@@ -1918,742 +1741,3 @@ const ACTIVITY_CHIP: Record<ActivityType, string> = {
   FOLLOW_UP: "bg-teal-50 border-teal-200 text-teal-700",
   TASK: "bg-slate-50 border-slate-200 text-slate-600",
 };
-
-export function FollowUpTaskListScreen() {
-  const { highlightedId, setRowRef } = useHighlightRow();
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [activeTab, setActiveTab] = useState<TabId>("all");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("");
-  const [assigneeFilter, setAssigneeFilter] = useState("");
-  const [activityTypeFilter, setActivityTypeFilter] = useState<ActivityType | "">("");
-  const [page, setPage] = useState(0);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createDueDate, setCreateDueDate] = useState<string | undefined>(undefined);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [openTaskInEdit, setOpenTaskInEdit] = useState(false);
-  const [reassignTask, setReassignTask] = useState<Task | null>(null);
-  const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
-
-  const queryClient = useQueryClient();
-  const { data: usersData } = useUsers();
-  const users = useMemo(() => usersData?.data ?? [], [usersData]);
-
-  // BR-18: routing work to somebody else — on create, on edit, or by reassigning —
-  // is a Manager/Admin action, enforced by CreateTaskUseCase / UpdateTaskUseCase /
-  // ResignTaskUseCase. Staff raise and work their own tasks, so the controls that
-  // would only come back 403 are not shown to them.
-  const currentUser = useAuthStore(s => s.user);
-  const canAssignOthers = hasFullAccess(currentUser);
-
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: TaskStatus }) =>
-      taskService.update(id, { status }),
-    onMutate: async ({ id, status }) => {
-      await queryClient.cancelQueries({ queryKey: ["tasks"] });
-      const snapshot = queryClient.getQueriesData({ queryKey: ["tasks"] });
-      queryClient.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) => {
-        if (!old || typeof old !== "object") return old;
-        const root = old as { data?: { content?: { taskId: string; status: TaskStatus }[] } };
-        if (!root.data?.content) return old;
-        return { ...root, data: { ...root.data, content: root.data.content.map(t => t.taskId === id ? { ...t, status } : t) } };
-      });
-      return { snapshot };
-    },
-    onError: (_e, _v, ctx) => ctx?.snapshot?.forEach(([k, d]) => queryClient.setQueryData(k, d)),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
-  });
-
-  // List query
-  const listParams = useMemo<TaskListParams>(() => {
-    const params: TaskListParams = { page, size: 20 };
-    if (searchTerm.trim()) params.search = searchTerm.trim();
-    if (priorityFilter) params.priority = priorityFilter;
-    if (assigneeFilter) params.assignedUserId = assigneeFilter;
-    if (activeTab === "overdue") params.overdue = true;
-    if (activeTab === "completed") params.status = "COMPLETED";
-    return params;
-  }, [activeTab, searchTerm, priorityFilter, assigneeFilter, page]);
-
-  const { data, isLoading, isError, refetch } = useTasks(listParams);
-
-  // Calendar query — large batch, filter client-side
-  const calParams = useMemo<TaskListParams>(() => ({
-    page: 0,
-    size: 200,
-    ...(assigneeFilter ? { assignedUserId: assigneeFilter } : {}),
-  }), [assigneeFilter]);
-
-  const { data: calData, isLoading: calLoading } = useTasks(
-    viewMode === "calendar" ? calParams : { page: 0, size: 1 }
-  );
-
-  const allTasks: Task[] = data?.data?.content ?? [];
-  const totalPages = (data?.data?.page && typeof data.data.page === "object") ? data.data.page.totalPages : (data?.data?.totalPages ?? 1);
-  const totalElements = (data?.data?.page && typeof data.data.page === "object") ? data.data.page.totalElements : (data?.data?.totalElements ?? 0);
-  const calTasks: Task[] = calData?.data?.content ?? [];
-
-  const filteredTasks = useMemo(() => {
-    let filtered = allTasks;
-    const today = toDateStr(new Date());
-
-    if (activeTab === "today") {
-      filtered = filtered.filter(t => taskDateKey(t) === today && t.status !== "COMPLETED" && t.status !== "CANCELLED");
-    } else if (activeTab === "upcoming") {
-      filtered = filtered.filter(t => {
-        const d = taskDateKey(t) ?? "";
-        return d > today && t.status !== "COMPLETED" && t.status !== "CANCELLED" && !isOverdue(t);
-      });
-    }
-
-    if (activityTypeFilter) {
-      filtered = filtered.filter(t => activityTypeOf(t) === activityTypeFilter);
-    }
-
-    return filtered;
-  }, [allTasks, activeTab, activityTypeFilter]);
-
-  const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
-  const todayStr = toDateStr(new Date());
-  const tabs: { id: TabId; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "today", label: "Today" },
-    { id: "upcoming", label: "Upcoming" },
-    { id: "overdue", label: "Overdue" },
-    { id: "completed", label: "Completed" },
-  ];
-
-  // ── Pipedrive-style table row ────────────────────────────────────────────
-  function TaskRow({ task }: { task: Task }) {
-    const overdue = isOverdue(task);
-    const done = task.status === "COMPLETED";
-    const actType = activityTypeOf(task);
-    const typeInfo = activityInfo(actType);
-    // Customer / Lead / Deal name — prominently shown
-    const contactName = task.customerName ?? task.leadName ?? task.primaryContactName ?? null;
-    const entityName = linkedEntityLabel(task);
-    const entityType = linkedEntityType(task);
-
-    return (
-      <tr
-        ref={setRowRef(task.taskId)}
-        className={`group border-b border-slate-200 dark:border-slate-700 transition-colors cursor-pointer ${done ? "opacity-60" : task.status === "CANCELLED" ? "opacity-40" : ""} ${overdue ? "hover:bg-[#4F1B1C]/40 dark:hover:bg-[#4F1B1C]/40" : "hover:bg-slate-100/60 dark:hover:bg-slate-800/80"} ${highlightedId === task.taskId ? "bg-amber-50! dark:bg-amber-500/10! ring-2 ring-inset ring-amber-400" : ""}`}
-        onClick={() => setSelectedTask(task)}
-      >
-        {/* Done toggle */}
-        <td className="w-10 px-3 py-3" onClick={e => e.stopPropagation()}>
-          <button
-            onClick={() => {
-              if (!done) {
-                toggleMutation.mutate({ id: task.taskId, status: "COMPLETED" });
-              }
-            }}
-            title={done ? "Task completed" : "Mark complete"}
-            className="block focus:outline-none"
-          >
-            <CheckCircle2 className={`size-4.5 transition ${done ? "text-[#3B6D11] fill-[#EAF3DE]" :
-                overdue ? "text-[#E24B4A] hover:text-[#A32D2D]" :
-                  "text-slate-200 hover:text-[#185FA5]"
-              }`} />
-          </button>
-        </td>
-
-        {/* Activity type icon */}
-        <td className="w-10 px-1 py-3">
-          <div className={`size-7 rounded-lg flex items-center justify-center border ${typeInfo.activeClass}`}>
-            <typeInfo.Icon className="size-3.5" />
-          </div>
-        </td>
-
-        {/* Subject + description */}
-        <td className="px-3 py-3 min-w-45 max-w-xs">
-          <p className={`text-xs font-bold truncate leading-snug ${done ? "line-through text-slate-400" : overdue ? "text-[#A32D2D]" : "text-slate-800"
-            }`}>
-            {task.title}
-          </p>
-          {task.description && (
-            <p className="text-[10px] text-slate-400 truncate mt-0.5 leading-tight">{task.description}</p>
-          )}
-        </td>
-
-        {/* Contact person — Lead or Customer name (key column) */}
-        <td className="px-3 py-3 min-w-30 max-w-40">
-          {contactName ? (
-            <div className="flex items-center gap-1.5">
-              <div className="size-5 rounded-full bg-[#FAEEDA] flex items-center justify-center text-[9px] font-bold text-[#854F0B] shrink-0">
-                {contactName.charAt(0).toUpperCase()}
-              </div>
-              <span className="text-xs font-semibold text-slate-700 truncate dark:text-slate-100">{contactName}</span>
-            </div>
-          ) : (
-            <span className="text-slate-300 text-xs">—</span>
-          )}
-        </td>
-
-        {/* Deal / Entity link */}
-        <td className="px-3 py-3 w-35 max-w-35">
-          {entityName !== "—" ? (
-            <div className="flex items-start gap-1.5 w-full overflow-hidden">
-              <Briefcase className="size-3 text-slate-400 shrink-0 mt-0.5" />
-              <div className="min-w-0 flex-1 overflow-hidden">
-                <p className="text-[9px] uppercase tracking-[0.12em] text-slate-400 font-semibold mb-0.5 dark:text-slate-500">
-                  {entityType !== "General" ? entityType : "Entity"}
-                </p>
-                <p className="text-[11px] font-semibold text-slate-800 truncate dark:text-slate-200 leading-tight">
-                  {entityName}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <span className="text-slate-300 text-xs">—</span>
-          )}
-        </td>
-
-        {/* Schedule — start at / end at */}
-        <td className="w-27.5 px-3 py-3 whitespace-nowrap">
-          <p className={`text-xs font-semibold ${overdue ? "text-[#A32D2D]" : "text-slate-600 dark:text-slate-300"}`}>
-            {formatDate(task.startAt)}
-          </p>
-          {task.startAt && (
-            <p className="text-[9px] text-slate-400 font-medium mt-0.5 flex items-center gap-0.5">
-              <Clock className="size-2.5" />
-              {formatTime(task.startAt)}
-              {task.endAt && <> – {formatTime(task.endAt)}</>}
-            </p>
-          )}
-          {overdue && <p className="text-[9px] text-[#E24B4A] font-bold mt-0.5">OVERDUE</p>}
-        </td>
-
-        {/* Assigned to */}
-        <td className="px-3 py-3 whitespace-nowrap">
-          {task.assignedUserName ? (
-            <div className="flex items-center gap-1.5">
-              <div className="size-5 rounded-full bg-[#E6F1FB] flex items-center justify-center text-[9px] font-bold text-[#0C447C] shrink-0">
-                {task.assignedUserName.charAt(0).toUpperCase()}
-              </div>
-              <span className="text-[10px] text-slate-600 font-medium max-w-22.5 truncate">{task.assignedUserName}</span>
-            </div>
-          ) : (
-            <span className="text-slate-300 text-xs">—</span>
-          )}
-        </td>
-
-        {/* Priority + Status */}
-        <td className="px-3 py-3 whitespace-nowrap">
-          <div className="flex flex-col gap-1">
-            <Badge variant={PRIORITY_BADGE[task.priority]} size="sm" className="text-[9px] uppercase font-bold px-1.5 w-fit">
-              {task.priority}
-            </Badge>
-            <Badge variant={STATUS_BADGE[task.status]} size="sm" className="text-[9px] font-bold px-1.5 w-fit">
-              {STATUS_LABEL[task.status]}
-            </Badge>
-          </div>
-        </td>
-
-        {/* SLA */}
-        <td className="px-3 py-3 whitespace-nowrap">
-          <SlaStatusBadge entityId={task.taskId} entityType="TASK" />
-        </td>
-
-        {/* Row actions — appear on hover */}
-        <td className="px-3 py-3 w-30" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
-            <Button variant="secondary" size="sm" onClick={() => { setSelectedTask(task); setOpenTaskInEdit(true); }}>Edit</Button>
-            {task.status !== "CANCELLED" && task.status !== "COMPLETED" && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setReassignTask(task)}
-                leftIcon={<UserCog className="size-3" />}
-              >
-                Reassign
-              </Button>
-            )}
-          </div>
-        </td>
-      </tr>
-    );
-  }
-
-  // ── Week Timeline View (Google Calendar / Pipedrive style) ─────────────────
-  function WeekCalendarView() {
-    const nowMs = Date.now();
-    const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    const weekStartStr = toDateStr(weekDays[0]);
-    const weekEndStr   = toDateStr(weekDays[6]);
-
-    // Separate multi-day tasks (span ≥2 days) from single-day tasks
-    const filteredCalTasks = calTasks.filter(
-      t => !activityTypeFilter || activityTypeOf(t) === activityTypeFilter
-    );
-
-    const multiDayTasks = filteredCalTasks.filter(t => {
-      if (!t.startAt || !t.endAt) return false;
-      return extractLocalDate(t.startAt) !== extractLocalDate(t.endAt);
-    });
-
-    const singleDayTasks = filteredCalTasks.filter(t => !multiDayTasks.includes(t));
-
-    // Compute grid column spans for multi-day tasks (clipped to current week)
-    type MultiDayEvent = { task: Task; colStart: number; colEnd: number; clippedLeft: boolean; clippedRight: boolean };
-    const multiDayEvents: MultiDayEvent[] = multiDayTasks.flatMap(task => {
-      const spanStart = extractLocalDate(task.startAt);
-      const spanEnd   = extractLocalDate(task.endAt);
-      if (spanEnd < weekStartStr || spanStart > weekEndStr) return [];
-      const effectiveStart = spanStart < weekStartStr ? weekStartStr : spanStart;
-      const effectiveEnd   = spanEnd   > weekEndStr   ? weekEndStr   : spanEnd;
-      const colStart = weekDays.findIndex(d => toDateStr(d) === effectiveStart);
-      const colEnd   = weekDays.findIndex(d => toDateStr(d) === effectiveEnd);
-      if (colStart === -1 || colEnd === -1) return [];
-      return [{ task, colStart, colEnd, clippedLeft: spanStart < weekStartStr, clippedRight: spanEnd > weekEndStr }];
-    });
-
-    // Simple track assignment: greedy row packing for multi-day events
-    const tracks: MultiDayEvent[][] = [];
-    multiDayEvents.forEach(evt => {
-      const trackIdx = tracks.findIndex(track =>
-        !track.some(e => e.colStart <= evt.colEnd && e.colEnd >= evt.colStart)
-      );
-      if (trackIdx === -1) tracks.push([evt]);
-      else tracks[trackIdx].push(evt);
-    });
-
-    return (
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        {/* Day header row */}
-        <div className="grid grid-cols-7 border-b border-slate-200">
-          {weekDays.map((day) => {
-            const ds = toDateStr(day);
-            const isToday = ds === todayStr;
-            const dayIdx = (day.getDay() + 6) % 7;
-            const totalCount = filteredCalTasks.filter(t => taskCoversDay(t, ds)).length;
-            return (
-              <div key={ds} className={`px-2 py-3 text-center border-r border-slate-100 last:border-r-0 ${isToday ? "bg-[#185FA5]" : "bg-slate-50/80"}`}>
-                <p className={`text-[9px] font-bold uppercase tracking-widest ${isToday ? "text-blue-100" : "text-slate-400"}`}>
-                  {DAY_LABELS[dayIdx]}
-                </p>
-                <p className={`text-base font-bold leading-tight mt-0.5 ${isToday ? "text-white" : "text-slate-700"}`}>
-                  {day.getDate()}
-                </p>
-                {totalCount > 0 && (
-                  <span className={`inline-block mt-1 text-[8px] font-bold px-1.5 py-0.5 rounded-full ${isToday ? "bg-white/20 text-white" : "bg-slate-200 text-slate-500"}`}>
-                    {totalCount}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Multi-day spanning event strip */}
-        {tracks.length > 0 && (
-          <div
-            className="grid grid-cols-7 border-b border-slate-100 bg-white px-0.5 gap-y-0.5 py-1"
-            style={{ minHeight: `${tracks.length * 30 + 8}px` }}
-          >
-            {tracks.map((track, rowIdx) =>
-              track.map(({ task, colStart, colEnd, clippedLeft, clippedRight }) => {
-                const done = task.status === "COMPLETED";
-                const overdue = isOverdue(task);
-                const isActive = !done && task.startAt && task.endAt
-                  && new Date(task.startAt).getTime() <= nowMs
-                  && new Date(task.endAt).getTime() >= nowMs;
-                const actType = activityTypeOf(task);
-                const chipCls = done
-                  ? "bg-slate-100 border-slate-200 text-slate-400"
-                  : overdue
-                    ? "bg-[#FCEBEB] border-[#F7C1C1] text-[#791F1F]"
-                    : ACTIVITY_CHIP[actType];
-                const typeInfo = activityInfo(actType);
-                return (
-                  <button
-                    key={task.taskId}
-                    style={{
-                      gridColumn: `${colStart + 1} / ${colEnd + 2}`,
-                      gridRow: rowIdx + 1,
-                      marginTop: rowIdx === 0 ? 0 : undefined,
-                    }}
-                    onClick={() => setSelectedTask(task)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-semibold border transition hover:brightness-95 active:scale-[0.99] ${done ? "line-through opacity-60" : ""} ${clippedLeft ? "rounded-l-none border-l-2 border-l-dashed" : "rounded-l-md"} ${clippedRight ? "rounded-r-none border-r-2 border-r-dashed" : "rounded-r-md"} ${chipCls}`}
-                  >
-                    {isActive && (
-                      <span className="size-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
-                    )}
-                    <typeInfo.Icon className="size-3 shrink-0" />
-                    {!done && (
-                      <span className={`size-1.5 rounded-full shrink-0 ${PRIORITY_DOT[task.priority]}`} title={task.priority} />
-                    )}
-                    <span className="truncate leading-tight">
-                      {task.title.replace(/^[^:]+:\s*/, "") || task.title}
-                    </span>
-                    {task.startAt && (
-                      <span className="ml-auto shrink-0 text-[9px] opacity-60 font-medium">
-                        {formatTime(task.startAt)}
-                        {task.endAt && <> – {formatTime(task.endAt)}</>}
-                      </span>
-                    )}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        )}
-
-        {/* Single-day event columns */}
-        <div className="grid grid-cols-7">
-          {weekDays.map(day => {
-            const ds = toDateStr(day);
-            const isToday = ds === todayStr;
-            const dayTasks = singleDayTasks
-              .filter(t => taskCoversDay(t, ds))
-              .sort((a, b) => {
-                if (a.startAt && b.startAt) return a.startAt.localeCompare(b.startAt);
-                if (a.startAt) return -1;
-                if (b.startAt) return 1;
-                return (isOverdue(b) ? 1 : 0) - (isOverdue(a) ? 1 : 0);
-              });
-
-            return (
-              <div key={ds} className={`flex flex-col border-r border-slate-100 last:border-r-0 ${isToday ? "bg-[#E6F1FB]/20" : ""}`}>
-                <div className="flex-1 px-1.5 py-2 space-y-1.5 overflow-y-auto min-h-40 max-h-90">
-                  {dayTasks.map(task => {
-                    const actType = activityTypeOf(task);
-                    const chipCls = ACTIVITY_CHIP[actType];
-                    const typeInfo = activityInfo(actType);
-                    const done = task.status === "COMPLETED";
-                    const overdue = isOverdue(task);
-                    const contact = task.customerName ?? task.leadName ?? task.primaryContactName;
-                    const isActive = !done && task.startAt && task.endAt
-                      && new Date(task.startAt).getTime() <= nowMs
-                      && new Date(task.endAt).getTime() >= nowMs;
-
-                    return (
-                      <button
-                        key={task.taskId}
-                        onClick={() => setSelectedTask(task)}
-                        className={`w-full text-left px-2 py-2 rounded-lg border text-[10px] font-semibold transition hover:shadow-sm active:scale-[0.98] ${done ? "opacity-50 line-through bg-slate-50 border-slate-100 text-slate-400" : overdue ? "bg-[#FCEBEB] border-[#F7C1C1] text-[#791F1F]" : chipCls}`}
-                      >
-                        <span className="flex items-center gap-1.5 min-w-0">
-                          {isActive && <span className="size-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />}
-                          <typeInfo.Icon className="size-3 shrink-0" />
-                          {!done && (
-                            <span className={`size-1.5 rounded-full shrink-0 ${PRIORITY_DOT[task.priority]}`} title={task.priority} />
-                          )}
-                          <span className="truncate leading-tight">
-                            {task.title.replace(/^[^:]+:\s*/, "") || task.title}
-                          </span>
-                        </span>
-                        {task.startAt && (
-                          <span className="flex items-center gap-0.5 mt-0.5 text-[9px] opacity-70 font-medium">
-                            <Clock className="size-2.5 shrink-0" />
-                            {formatTime(task.startAt)}
-                            {task.endAt && <> – {formatTime(task.endAt)}</>}
-                          </span>
-                        )}
-                        {contact && (
-                          <span className="flex items-center gap-1 mt-0.5 text-[9px] opacity-70 font-medium truncate">
-                            <User className="size-2.5 shrink-0" />{contact}
-                          </span>
-                        )}
-                        {task.assignedUserName && (
-                          <span className="block mt-0.5 text-[9px] opacity-60 truncate">{task.assignedUserName}</span>
-                        )}
-                      </button>
-                    );
-                  })}
-
-                  <button
-                    onClick={() => { setCreateDueDate(ds); setIsCreateOpen(true); }}
-                    className="w-full text-center py-1.5 text-[9px] text-slate-300 hover:text-[#185FA5] hover:bg-[#E6F1FB] rounded-lg transition"
-                  >
-                    + Add
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* ── Top bar ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <CalendarCheck className="size-5 text-[#185FA5]" />
-            Manage Follow-up Tasks
-          </h1>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
-            Track lead contacts · customer clarifications · deal confirmations
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* List / Calendar toggle */}
-          <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-            <button
-              onClick={() => setViewMode("list")}
-              title="Table view"
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition ${viewMode === "list" ? "bg-[#185FA5] text-white" : "bg-white text-slate-500 hover:bg-slate-50"
-                }`}
-            >
-              <LayoutList className="size-3.5" /> List
-            </button>
-            <button
-              onClick={() => setViewMode("calendar")}
-              title="Calendar view"
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition ${viewMode === "calendar" ? "bg-[#185FA5] text-white" : "bg-white text-slate-500 hover:bg-slate-50"
-                }`}
-            >
-              <CalendarDays className="size-3.5" /> Calendar
-            </button>
-          </div>
-
-
-          <Button variant="primary" size="sm" onClick={() => { setCreateDueDate(undefined); setIsCreateOpen(true); }} leftIcon={<Plus className="size-4" />}>
-            Tasks
-          </Button>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          LIST VIEW — Pipedrive-style data table
-      ═══════════════════════════════════════════════════════════════════ */}
-      {viewMode === "list" && (
-        <>
-          {/* Combined filter + tab bar */}
-          <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-100 bg-white shadow-xs dark:border-slate-700/80 dark:bg-slate-900/80">
-            {/* Status tabs as pill buttons */}
-            <div className="flex rounded-lg border border-slate-200 overflow-hidden shrink-0 dark:border-slate-700">
-              {tabs.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => { setActiveTab(tab.id); setPage(0); }}
-                  className={`px-3 py-1.5 text-[10px] font-bold transition ${activeTab === tab.id ? "bg-[#185FA5] text-white" : "bg-white text-slate-500 hover:bg-slate-50 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
-                    }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Activity type quick-filter chips */}
-            <div className="hidden lg:flex items-center gap-1">
-              {ACTIVITY_TYPES.map(a => {
-                const active = activityTypeFilter === a.type;
-                return (
-                  <button
-                    key={a.type}
-                    type="button"
-                    onClick={() => setActivityTypeFilter(active ? "" : a.type)}
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-semibold transition ${active ? "bg-slate-900 text-white border-slate-900" : a.idleClass}`}
-                  >
-                    <a.Icon className="size-2.5" />{a.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Search */}
-            <div className="relative flex-1 min-w-40 max-w-56">
-              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search tasks…"
-                value={searchTerm}
-                onChange={e => { setSearchTerm(e.target.value); setPage(0); }}
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-900 focus:outline-none focus:border-[#185FA5] focus:bg-white transition dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:bg-slate-900"
-              />
-            </div>
-
-            <Select value={priorityFilter} onChange={e => { setPriorityFilter(e.target.value); setPage(0); }} className="py-1.5 text-xs w-28 shrink-0">
-              <option value="">All Priority</option>
-              <option value="HIGH">High</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="LOW">Low</option>
-            </Select>
-
-            <Select value={assigneeFilter} onChange={e => { setAssigneeFilter(e.target.value); setPage(0); }} className="py-1.5 text-xs w-36 shrink-0">
-              <option value="">All Staff</option>
-              {users.map(u => <option key={u.userId} value={u.userId}>{u.fullName}</option>)}
-            </Select>
-
-            <p className="ml-auto text-[10px] text-slate-400 shrink-0">
-              <strong className="text-slate-600">{filteredTasks.length}</strong>
-              {totalElements > 0 ? <> / <strong className="text-slate-600">{totalElements}</strong></> : ""} tasks
-            </p>
-          </div>
-
-          {/* Pipedrive-style table */}
-          <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-x-auto dark:border-slate-700/80 dark:bg-slate-950 dark:shadow-none">
-            {isLoading ? (
-              <div className="py-16 flex justify-center text-slate-300"><Loader2 className="size-7 animate-spin" /></div>
-            ) : isError ? (
-              <div className="py-10 text-center text-sm text-[#A32D2D]">
-                <AlertCircle className="size-5 mx-auto mb-2" />
-                Failed to load.{" "}
-                <button onClick={() => refetch()} className="underline font-semibold">Retry</button>
-              </div>
-            ) : filteredTasks.length === 0 ? (
-              <div className="py-16 text-center text-slate-400 text-sm">
-                <CalendarCheck className="size-10 mx-auto mb-3 text-slate-200" />
-                No activities match the current filters.
-              </div>
-            ) : (
-              <table className="w-full text-left text-slate-900 dark:text-slate-100">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700/80 dark:bg-slate-900/95">
-                    <th className="w-10 px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Done</th>
-                    <th className="w-10 px-1 py-2.5" />
-                    <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Subject</th>
-                    <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Contact</th>
-                    <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Deal / Entity</th>
-                    <th className="w-22.5 px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Schedule</th>
-                    <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Assigned To</th>
-                    <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">Priority / Status</th>
-                    <th className="px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide dark:text-slate-400">SLA</th>
-                    <th className="w-30 px-3 py-2.5" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTasks.map(task => <TaskRow key={task.taskId} task={task} />)}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex justify-center items-center gap-3">
-              <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 transition">
-                <ChevronLeft className="size-4" />
-              </button>
-              <span className="text-xs text-slate-500">Page <strong>{page + 1}</strong> / <strong>{totalPages}</strong></span>
-              <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 transition">
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          CALENDAR VIEW — Weekly grid
-      ═══════════════════════════════════════════════════════════════════ */}
-      {viewMode === "calendar" && (
-        <>
-          {/* Calendar toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-slate-100 bg-white shadow-xs">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setWeekStart(w => { const d = new Date(w); d.setDate(d.getDate() - 7); return d; })}
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-              <button
-                onClick={() => setWeekStart(getWeekStart(new Date()))}
-                className="px-3 py-1 text-[10px] font-bold text-[#185FA5] border border-[#185FA5]/30 rounded-lg hover:bg-[#E6F1FB] transition"
-              >
-                Today
-              </button>
-              <button
-                onClick={() => setWeekStart(w => { const d = new Date(w); d.setDate(d.getDate() + 7); return d; })}
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-              <span className="text-xs font-bold text-slate-700">
-                {weekStart.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
-                {" – "}
-                {weekDays[6].toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <Select value={assigneeFilter} onChange={e => setAssigneeFilter(e.target.value)} className="py-1.5 text-xs w-36">
-                <option value="">All Staff</option>
-                {users.map(u => <option key={u.userId} value={u.userId}>{u.fullName}</option>)}
-              </Select>
-              {/* Legend / activity type filter */}
-              <div className="hidden xl:flex flex-wrap items-center gap-1.5">
-                {ACTIVITY_TYPES.map(a => {
-                  const active = activityTypeFilter === a.type;
-                  return (
-                    <button
-                      key={a.type}
-                      type="button"
-                      onClick={() => setActivityTypeFilter(active ? "" : a.type)}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-semibold transition ${active ? "bg-slate-900 text-white border-slate-900" : ACTIVITY_CHIP[a.type]}`}
-                    >
-                      <a.Icon className="size-2.5" />{a.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Weekly grid */}
-          <div className="rounded-xl border border-slate-100 bg-white shadow-xs overflow-hidden">
-            {calLoading ? (
-              <div className="py-16 flex justify-center text-slate-300"><Loader2 className="size-7 animate-spin" /></div>
-            ) : (
-              <WeekCalendarView />
-            )}
-          </div>
-
-          {/* Overdue alert banner */}
-          {calTasks.filter(isOverdue).length > 0 && (
-            <div className="px-4 py-3 rounded-xl border border-[#F7C1C1] bg-[#FCEBEB] flex items-start gap-3">
-              <AlertCircle className="size-4 text-[#A32D2D] shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-[#A32D2D]">
-                  {calTasks.filter(isOverdue).length} overdue {calTasks.filter(isOverdue).length === 1 ? "task" : "tasks"} need attention
-                </p>
-                <button
-                  onClick={() => { setViewMode("list"); setActiveTab("overdue"); }}
-                  className="text-[10px] text-[#A32D2D] underline font-semibold"
-                >
-                  Switch to list view → Overdue
-                </button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ── Shared drawers ───────────────────────────────────────────────── */}
-      {isCreateOpen && (
-        <CreateTaskDrawer
-          onClose={() => { setIsCreateOpen(false); setCreateDueDate(undefined); }}
-          users={users}
-          initialDueDate={createDueDate}
-          canAssignOthers={canAssignOthers}
-          currentUserId={currentUser?.id ?? ""}
-          currentUserName={currentUser?.name ?? "You"}
-        />
-      )}
-      {selectedTask && (
-        <TaskDetailDrawer
-          task={selectedTask}
-          onClose={() => { setSelectedTask(null); setOpenTaskInEdit(false); }}
-          users={users}
-          onReassign={() => { setReassignTask(selectedTask); setSelectedTask(null); setOpenTaskInEdit(false); }}
-          initialEditing={openTaskInEdit}
-          canAssignOthers={canAssignOthers}
-        />
-      )}
-      {/* Guarded twice over: the trigger is hidden for staff, and the modal itself
-          refuses to mount without the authority to use it. */}
-      {reassignTask && canAssignOthers && (
-        <ReassignFollowUpModal task={reassignTask} onClose={() => setReassignTask(null)} users={users} />
-      )}
-    </div>
-  );
-}

@@ -34,7 +34,7 @@ public class ReminderController {
 
     /** UC-16.1 / UC-16.2: List reminders — filter by userId, status, date range; sort by date or priority */
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("isAuthenticated() and @access.can('REMINDER_VIEW')")
     public ResponseEntity<ApiResponse<List<ReminderResponse>>> getAll(
             @RequestParam(required = false) UUID userId,
             @RequestParam(required = false) String status,
@@ -47,7 +47,7 @@ public class ReminderController {
 
     /** UC-16.1: Create a manual reminder (Sales Staff / Manager / Admin) */
     @PostMapping
-    @PreAuthorize("hasAnyRole('SALES', 'MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES', 'MANAGER', 'ADMIN') and @access.can('REMINDER_WRITE')")
     public ResponseEntity<ApiResponse<ReminderResponse>> create(
             @Valid @RequestBody CreateReminderRequest request) {
         ReminderResponse response = createReminderUseCase.execute(request);
@@ -57,7 +57,7 @@ public class ReminderController {
 
     /** UC-16.1: Dismiss (complete) a reminder — caller resolved from JWT */
     @PatchMapping("/{reminderId}/dismiss")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("isAuthenticated() and @access.can('REMINDER_WRITE')")
     public ResponseEntity<ApiResponse<Void>> dismiss(@PathVariable UUID reminderId) {
         dismissReminderUseCase.execute(reminderId);
         return ResponseEntity.ok(ApiResponse.success(null, "Reminder dismissed"));
@@ -65,7 +65,7 @@ public class ReminderController {
 
     /** UC-16.3: Update reminder details, mark done, or extend deadline — caller resolved from JWT */
     @PutMapping("/{reminderId}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("isAuthenticated() and @access.can('REMINDER_WRITE')")
     public ResponseEntity<ApiResponse<ReminderResponse>> update(
             @PathVariable UUID reminderId,
             @Valid @RequestBody UpdateReminderRequest request) {
@@ -74,7 +74,7 @@ public class ReminderController {
 
     /** UC-16.4: Escalate overdue reminder to manager — caller resolved from JWT */
     @PostMapping("/{reminderId}/escalate")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("isAuthenticated() and @access.can('REMINDER_WRITE')")
     public ResponseEntity<ApiResponse<Void>> escalate(@PathVariable UUID reminderId) {
         escalateReminderUseCase.execute(reminderId);
         return ResponseEntity.ok(ApiResponse.success(null, "Reminder escalated to manager"));

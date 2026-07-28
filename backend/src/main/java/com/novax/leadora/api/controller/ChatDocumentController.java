@@ -27,7 +27,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/chat/documents")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('MANAGER')")
+@PreAuthorize("hasRole('MANAGER') and @access.can('CHAT_VIEW')")
 public class ChatDocumentController {
 
     private final CurrentUserProvider currentUserProvider;
