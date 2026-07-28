@@ -5,7 +5,6 @@ import com.novax.leadora.api.dto.response.LeadResponse;
 import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.common.exception.BusinessException;
-import com.novax.leadora.common.exception.DuplicateLeadException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
@@ -27,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static com.novax.leadora.common.util.TextUtils.blankToNull;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -38,6 +39,7 @@ public class UpdateLeadUseCase {
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
     private final NotificationRepository notificationRepository;
     private final LeadAccessPolicy leadAccessPolicy;
+    private final LeadContactPolicy leadContactPolicy;
 
     @Transactional
     public LeadResponse execute(UUID leadId, UpdateLeadRequest request) {
@@ -57,37 +59,49 @@ public class UpdateLeadUseCase {
                     HttpStatus.UNPROCESSABLE_ENTITY);
         }
 
-        // Creation refuses a lead whose email or phone already exists (UC-8.1), but editing did
-        // not — so the same collision could simply be typed in afterwards, which left duplicate
-        // detection guarding only the front door.
-        assertNotDuplicate(request, lead);
+        // Editing is held to exactly the same contact rules as creating — the same policy object,
+        // so the two cannot drift apart again. Editing used to check only against other LEADS,
+        // which meant the collision with an existing CUSTOMER that creation refuses could still be
+        // typed in afterwards through this path.
+        //
+        // Both rules are resolved against the record as it will be AFTER the edit, not against the
+        // request: a request that only touches `notes` carries no contact fields at all, and
+        // validating those nulls would report a perfectly reachable lead as unreachable.
+        String resolvedEmail = request.getEmail() != null ? request.getEmail() : lead.getEmail();
+        String resolvedPhone = request.getPhone() != null ? request.getPhone() : lead.getPhone();
+        leadContactPolicy.assertReachable(resolvedEmail, resolvedPhone);
+        leadContactPolicy.assertNoDuplicate(resolvedEmail, resolvedPhone, lead.getLeadId());
 
+        // A null field means "leave unchanged"; a blank one means "clear it". Clearing must write
+        // NULL rather than "" — the partial unique indexes on lower(email) and phone cover every
+        // non-null value, so a cleared field stored as "" keeps occupying the index and collides
+        // with the next record cleared the same way. See TextUtils.blankToNull.
         if (StringUtils.hasText(request.getFullName())) {
-            lead.setFullName(request.getFullName());
+            lead.setFullName(request.getFullName().trim());
         }
         if (request.getEmail() != null) {
-            lead.setEmail(request.getEmail());
+            lead.setEmail(blankToNull(request.getEmail()));
         }
         if (request.getPhone() != null) {
-            lead.setPhone(request.getPhone());
+            lead.setPhone(blankToNull(request.getPhone()));
         }
         if (request.getCompanyName() != null) {
-            lead.setCompanyName(request.getCompanyName());
+            lead.setCompanyName(blankToNull(request.getCompanyName()));
         }
         if (request.getAddress() != null) {
-            lead.setAddress(request.getAddress());
+            lead.setAddress(blankToNull(request.getAddress()));
         }
         if (request.getIsCorporate() != null) {
             lead.setIsCorporate(request.getIsCorporate());
         }
         if (request.getSource() != null) {
-            lead.setSource(request.getSource());
+            lead.setSource(blankToNull(request.getSource()));
         }
         if (request.getInterestedService() != null) {
-            lead.setInterestedService(request.getInterestedService());
+            lead.setInterestedService(blankToNull(request.getInterestedService()));
         }
         if (request.getNotes() != null) {
-            lead.setNotes(request.getNotes());
+            lead.setNotes(blankToNull(request.getNotes()));
         }
         // Apply (re)assignment BEFORE the status check, so assigning and advancing a
         // lead in the same request is allowed (the assignee is already set when the
@@ -178,10 +192,10 @@ public class UpdateLeadUseCase {
         if (lead.getStatus() != LeadStatus.CONTACTED && lead.getStatus() != LeadStatus.QUALIFIED) {
             return;
         }
+        // The phone-or-email half of BR-05 is no longer checked here: LeadContactPolicy enforces
+        // it on every write, so by the time a lead reaches any status it already has one. What
+        // remains are the two fields that are genuinely only needed once follow-up starts.
         List<String> missing = new ArrayList<>();
-        if (!StringUtils.hasText(lead.getEmail()) && !StringUtils.hasText(lead.getPhone())) {
-            missing.add("phoneOrEmail");
-        }
         if (!StringUtils.hasText(lead.getSource())) {
             missing.add("source");
         }
@@ -203,7 +217,6 @@ public class UpdateLeadUseCase {
     private static String describe(List<String> missing) {
         List<String> labels = missing.stream()
                 .map(f -> switch (f) {
-                    case "phoneOrEmail" -> "a phone number or email";
                     case "source" -> "an inquiry source";
                     case "interestedService" -> "an interested service";
                     default -> f;
@@ -213,36 +226,6 @@ public class UpdateLeadUseCase {
                 ? labels.get(0)
                 : String.join(", ", labels.subList(0, labels.size() - 1))
                         + " and " + labels.get(labels.size() - 1);
-    }
-
-    /**
-     * Rejects an edit that would move this lead's email or phone onto one another lead already has.
-     *
-     * <p>Mirrors {@code CreateLeadUseCase.assertNotDuplicate} — same repository lookups, same
-     * exception carrying the existing lead's id so the UI can link to it — with one addition: a
-     * match on the lead being edited is ignored. Re-saving a form without touching the contact
-     * fields must not report the record as a duplicate of itself.
-     *
-     * <p>A blank value clears the field rather than claiming an identity, so it is skipped.
-     */
-    private void assertNotDuplicate(UpdateLeadRequest request, LeadEntity lead) {
-        UUID selfId = lead.getLeadId();
-        if (StringUtils.hasText(request.getEmail())) {
-            String email = request.getEmail().trim();
-            leadRepository.findFirstByEmailIgnoreCaseOrderByCreatedAtDesc(email)
-                    .filter(other -> !selfId.equals(other.getLeadId()))
-                    .ifPresent(other -> {
-                        throw new DuplicateLeadException("email", email, other.getLeadId());
-                    });
-        }
-        if (StringUtils.hasText(request.getPhone())) {
-            String phone = request.getPhone().trim();
-            leadRepository.findFirstByPhoneOrderByCreatedAtDesc(phone)
-                    .filter(other -> !selfId.equals(other.getLeadId()))
-                    .ifPresent(other -> {
-                        throw new DuplicateLeadException("phone number", phone, other.getLeadId());
-                    });
-        }
     }
 
     /**

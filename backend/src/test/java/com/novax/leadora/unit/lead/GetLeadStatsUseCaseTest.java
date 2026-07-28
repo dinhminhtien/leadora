@@ -2,6 +2,7 @@ package com.novax.leadora.unit.lead;
 
 import com.novax.leadora.api.dto.response.LeadStatsResponse;
 import com.novax.leadora.application.usecase.lead.GetLeadStatsUseCase;
+import com.novax.leadora.application.usecase.lead.LeadFilterParams;
 import com.novax.leadora.application.usecase.lead.LeadAccessPolicy;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
@@ -64,7 +65,8 @@ class GetLeadStatsUseCaseTest {
         when(policy.listScopeOwnerId(caller)).thenReturn(null); // manager
         stubCounts(32, 12, 5, 7);
 
-        LeadStatsResponse stats = useCase.execute(null, null, null, null, null, null, "assigned");
+        LeadStatsResponse stats =
+                useCase.execute(null, null, null, null, null, null, "assigned", null);
 
         assertThat(stats.getTotal()).isEqualTo(32);
         assertThat(stats.getConverted()).isEqualTo(12);
@@ -81,7 +83,7 @@ class GetLeadStatsUseCaseTest {
         when(policy.listScopeOwnerId(rep)).thenReturn(rep.getUserId());
         stubCounts(3, 1, 1, 1);
 
-        useCase.execute(null, null, null, null, null, null, "assigned");
+        useCase.execute(null, null, null, null, null, null, "assigned", null);
 
         // The policy decides the scope; the use case must consult it rather than
         // counting freely.
@@ -96,14 +98,16 @@ class GetLeadStatsUseCaseTest {
         when(policy.listScopeOwnerId(outsider))
                 .thenThrow(new AccessDeniedException("no access"));
 
-        assertThatThrownBy(() -> useCase.execute(null, null, null, null, null, null, "assigned"))
+        assertThatThrownBy(() ->
+                useCase.execute(null, null, null, null, null, null, "assigned", null))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
     @DisplayName("an unreadable filter is refused before any counting happens")
     void refusesAnInvalidFilter() {
-        assertThatThrownBy(() -> useCase.execute(null, "NOT_A_STATUS", null, null, null, null, "assigned"))
+        assertThatThrownBy(() ->
+                useCase.execute(null, "NOT_A_STATUS", null, null, null, null, "assigned", null))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo("INVALID_FILTER");
@@ -117,7 +121,8 @@ class GetLeadStatsUseCaseTest {
         when(policy.listScopeOwnerId(caller)).thenReturn(null);
         stubCounts(0, 0, 0, 0);
 
-        LeadStatsResponse stats = useCase.execute(null, null, null, null, null, null, "assigned");
+        LeadStatsResponse stats =
+                useCase.execute(null, null, null, null, null, null, "assigned", null);
 
         assertThat(stats.getConvertedRate()).isNull();
         assertThat(stats.getLostRate()).isNull();
@@ -132,9 +137,29 @@ class GetLeadStatsUseCaseTest {
         stubCounts(1, 0, 0, 0);
 
         useCase.execute("hotel", "NEW", "Referral", true,
-                "2026-01-01", "2026-12-31", "created");
+                "2026-01-01", "2026-12-31", "created", null);
 
         // Four counts: total, then one per terminal/qualified status.
         verify(repository, times(4)).count(ArgumentMatchers.<Specification<LeadEntity>>any());
+    }
+
+    /**
+     * The tiles and the table must describe the same rows. "Assignment needed" narrows the list, so
+     * it has to narrow the counts too — a filter applied to one and not the other is the exact
+     * failure LeadFilterParams exists to prevent, and it would look like nothing was wrong.
+     */
+    @Test
+    @DisplayName("the assignment-needed filter reaches the counts, not just the list")
+    void assignmentNeededNarrowsTheCounts() {
+        stubCounts(3, 0, 0, 1);
+
+        assertThat(LeadFilterParams.parse(null, null, null, null, null, null, true).unassignedOnly())
+                .isTrue();
+        assertThat(LeadFilterParams.parse(null, null, null, null, null, null, null).unassignedOnly())
+                .isFalse();
+
+        useCase.execute(null, null, null, null, null, null, "assigned", true);
+
+        verify(repository, org.mockito.Mockito.times(4)).count(any(Specification.class));
     }
 }

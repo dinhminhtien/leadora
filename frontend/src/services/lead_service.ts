@@ -55,15 +55,23 @@ export type UpdateLeadPayload = {
   assignedUserId?: string;
 };
 
+/**
+ * UC-8.5 step 6 — the customer profile is built server-side from the lead, so the identity fields
+ * are no longer sent. They used to be, copied straight off the lead by this client, which meant the
+ * server trusted a payload it never checked against the record being converted.
+ */
 export type ConvertLeadPayload = {
-  customerType: CustomerType;
-  fullName: string;
-  email?: string;
-  phone?: string;
-  companyName?: string;
+  /** BR-09. Omit to inherit the lead's `isCorporate` flag. */
+  customerType?: CustomerType;
+  /** The one field with no counterpart on the lead. */
   taxCode?: string;
-  address?: string;
   /** BR-07: Sales Manager approval reason when converting a non-QUALIFIED lead. */
+  reason?: string;
+};
+
+/** UC-8.5 exception E6 — attach the lead to a customer profile that already exists. */
+export type LinkLeadToCustomerPayload = {
+  customerId: string;
   reason?: string;
 };
 
@@ -87,6 +95,11 @@ export type LeadListParams = {
    *   "created"            → leads I created (incl. the unassigned ones I just added)
    */
   scope?: "assigned" | "created";
+  /**
+   * Manager-only: restrict to leads with no owner yet — the queue still to be distributed.
+   * Omitted rather than sent as `false` when off, so it never appears in the query string.
+   */
+  unassigned?: boolean;
   page?: number;
   size?: number;
 };
@@ -147,6 +160,11 @@ export const leadService = {
 
   async convert(id: string, payload: ConvertLeadPayload): Promise<ApiResponse<ConvertLeadResponse>> {
     const { data } = await apiClient.post<ApiResponse<ConvertLeadResponse>>(`${ENDPOINT}/${id}/convert`, payload);
+    return data;
+  },
+
+  async linkCustomer(id: string, payload: LinkLeadToCustomerPayload): Promise<ApiResponse<ConvertLeadResponse>> {
+    const { data } = await apiClient.post<ApiResponse<ConvertLeadResponse>>(`${ENDPOINT}/${id}/link-customer`, payload);
     return data;
   },
 };

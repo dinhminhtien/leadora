@@ -3,7 +3,6 @@ package com.novax.leadora.application.usecase.lead;
 import com.novax.leadora.api.dto.request.CreateLeadRequest;
 import com.novax.leadora.api.dto.response.LeadResponse;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
-import com.novax.leadora.common.exception.DuplicateLeadException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
@@ -19,6 +18,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import static com.novax.leadora.common.util.TextUtils.blankToNull;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -29,6 +30,7 @@ public class CreateLeadUseCase {
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
     private final CurrentUserProvider currentUserProvider;
     private final NotificationRepository notificationRepository;
+    private final LeadContactPolicy leadContactPolicy;
 
     @Transactional
     public LeadResponse execute(CreateLeadRequest request) {
@@ -37,9 +39,12 @@ public class CreateLeadUseCase {
             throw new IllegalArgumentException("Company name is required for an organization lead.");
         }
 
-        // UC-8.1 duplicate detection — surface a clear 409 (with the existing lead id)
-        // so the UI can warn and link to it, instead of silently creating a duplicate.
-        assertNotDuplicate(request);
+        // A lead must be contactable, and must not duplicate a lead or a customer. Both rules are
+        // shared with UpdateLeadUseCase — see LeadContactPolicy for why they are not written out
+        // here. Reachability is checked first: "you left both contact fields empty" is a more
+        // useful answer than a duplicate report on whichever one field was filled in.
+        leadContactPolicy.assertReachable(request.getEmail(), request.getPhone());
+        leadContactPolicy.assertNoDuplicate(request.getEmail(), request.getPhone(), null);
 
         UserEntity assignedUser = null;
         if (request.getAssignedUserId() != null) {
@@ -49,7 +54,16 @@ public class CreateLeadUseCase {
                     .orElseThrow(() -> new ResourceNotFoundException("User", request.getAssignedUserId()));
         }
 
-        // The creator owns the lead (drives SALES_STAFF owner-scoping). Non-fatal if unresolved.
+        // Who typed it in. Non-fatal if unresolved.
+        //
+        // Creating a lead does NOT make you its owner. A sales rep who records a walk-in used to be
+        // auto-assigned it, which quietly handed out work that is a Manager's to distribute: the
+        // rep's own queue grew by whatever they happened to type in, the lead started an SLA clock
+        // nobody had accepted, and the distribution step the process is built around never
+        // happened. `created_by` alone still lets them find and correct their own entry
+        // (LeadAccessPolicy.owns treats creator and assignee alike for read/edit), which is the
+        // access they actually need — everything that requires ownership (status changes,
+        // conversion) stays blocked until a Manager assigns it.
         UserEntity creator = null;
         try {
             creator = currentUserProvider.resolve(null);
@@ -57,25 +71,22 @@ public class CreateLeadUseCase {
             log.warn("Could not resolve creator for new lead: {}", e.getMessage());
         }
 
-        // When a sales rep creates their own (quick) lead with no explicit assignee,
-        // they own it: assign it to themselves so it shows in their "assigned to me"
-        // list and its status can advance (an unassigned lead is locked at NEW until a
-        // Manager assigns it). Managers/Admins still create unassigned drafts to distribute.
-        if (assignedUser == null && creator != null && isSalesRep(creator)) {
-            assignedUser = creator;
-        }
-
+        // Every optional column is normalised — a blank form field is "not provided", not the
+        // value "". See TextUtils.blankToNull: `leads` carries partial unique indexes on
+        // lower(email) and phone WHERE the column IS NOT NULL, and "" is not null, so the first
+        // lead saved without an email claimed that slot and every later one collided with it. The
+        // user saw "a lead with this email already exists" for a field they had left empty.
         LeadEntity lead = LeadEntity.builder()
-                .fullName(request.getFullName())
-                .email(request.getEmail())
-                .phone(request.getPhone())
-                .companyName(request.getCompanyName())
-                .address(request.getAddress())
+                .fullName(request.getFullName().trim())
+                .email(blankToNull(request.getEmail()))
+                .phone(blankToNull(request.getPhone()))
+                .companyName(blankToNull(request.getCompanyName()))
+                .address(blankToNull(request.getAddress()))
                 .isCorporate(Boolean.TRUE.equals(request.getIsCorporate()))
-                .source(request.getSource())
-                .interestedService(request.getInterestedService())
+                .source(blankToNull(request.getSource()))
+                .interestedService(blankToNull(request.getInterestedService()))
                 .status(LeadStatus.NEW)
-                .notes(request.getNotes())
+                .notes(blankToNull(request.getNotes()))
                 .assignedUser(assignedUser)
                 .createdBy(creator)
                 .build();
@@ -104,34 +115,6 @@ public class CreateLeadUseCase {
         return LeadResponse.from(saved);
     }
 
-    /** True when the user's role is a sales-rep role (owner-scoped), per the access policy. */
-    private static boolean isSalesRep(UserEntity user) {
-        String role = user.getRole() != null && user.getRole().getRoleName() != null
-                ? user.getRole().getRoleName().trim().toUpperCase()
-                : "";
-        return role.equals("SALES") || role.equals("SALES_STAFF");
-    }
-
-    /**
-     * Rejects a create that would duplicate an existing lead's email or phone.
-     * Email takes precedence (more reliable identity) and is matched case-insensitively.
-     */
-    private void assertNotDuplicate(CreateLeadRequest request) {
-        if (StringUtils.hasText(request.getEmail())) {
-            String email = request.getEmail().trim();
-            leadRepository.findFirstByEmailIgnoreCaseOrderByCreatedAtDesc(email)
-                    .ifPresent(existing -> {
-                        throw new DuplicateLeadException("email", email, existing.getLeadId());
-                    });
-        }
-        if (StringUtils.hasText(request.getPhone())) {
-            String phone = request.getPhone().trim();
-            leadRepository.findFirstByPhoneOrderByCreatedAtDesc(phone)
-                    .ifPresent(existing -> {
-                        throw new DuplicateLeadException("phone number", phone, existing.getLeadId());
-                    });
-        }
-    }
 
     private void notifyLeadAssigned(LeadEntity lead, UserEntity assignedUser) {
         try {
