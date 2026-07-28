@@ -4,6 +4,7 @@ import com.novax.leadora.application.usecase.chat.dto.RepLeadCount;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.specification.LeadSpecification;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -12,6 +13,7 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -23,107 +25,127 @@ import java.util.UUID;
 
 @Repository
 public interface LeadRepository
-        extends JpaRepository<LeadEntity, UUID>,
+                extends JpaRepository<LeadEntity, UUID>,
                 JpaSpecificationExecutor<LeadEntity> {
 
-    // ── Single-entity fetch with associations ─────────────────────────────────
+        // ── Single-entity fetch with associations ─────────────────────────────────
 
-    @EntityGraph(attributePaths = {"assignedUser", "createdBy", "customer"})
-    @Query("SELECT l FROM LeadEntity l WHERE l.leadId = :leadId")
-    Optional<LeadEntity> findWithUsersById(@Param("leadId") UUID leadId);
+        @EntityGraph(attributePaths = { "assignedUser", "createdBy", "customer" })
+        @Query("SELECT l FROM LeadEntity l WHERE l.leadId = :leadId")
+        Optional<LeadEntity> findWithUsersById(@Param("leadId") UUID leadId);
 
-    // ── Search (delegates to LeadSpecification) ──────────────────────────
+        @Lock(LockModeType.PESSIMISTIC_WRITE)
+        @EntityGraph(attributePaths = { "assignedUser", "createdBy", "customer" })
+        @Query("SELECT l FROM LeadEntity l WHERE l.leadId = :leadId")
+        Optional<LeadEntity> findWithUsersByIdForUpdate(@Param("leadId") UUID leadId);
 
-    /**
-     * Filtered, paginated search with standard column-based sort from {@code pageable}.
-     *
-     * <p>Takes the built {@link Specification} rather than re-listing every filter. The parameter
-     * list used to mirror {@code LeadSpecification.filter} field for field — ten positional
-     * arguments including three adjacent booleans — repeated at each call site, where swapping two
-     * of them compiles cleanly and silently returns the wrong rows. {@link LeadFilterParams}
-     * already owns the job of turning a query string into a specification; this only runs it.
-     */
-    default Page<LeadEntity> searchLeads(Specification<LeadEntity> spec, Pageable pageable) {
-        return findAll(spec, pageable);
-    }
+        // ── Search (delegates to LeadSpecification) ──────────────────────────
 
-    /**
-     * Same filters, but ordered by pipeline status priority
-     * (Converted → Qualified → Contacted → New → Lost), then {@code createdAt} DESC.
-     *
-     * <p>Status is stored as STRING so alphabetical DB ordering is meaningless.
-     * Priority is applied in-memory after fetching the filtered result set;
-     * acceptable for typical CRM volumes (&lt; 50k leads).
-     */
-    default Page<LeadEntity> searchLeadsByStatusPriority(
-            Specification<LeadEntity> spec, Pageable pageable
-    ) {
-        List<LeadEntity> all = findAll(spec, Sort.unsorted());
+        /**
+         * Filtered, paginated search with standard column-based sort from
+         * {@code pageable}.
+         *
+         * <p>
+         * Takes the built {@link Specification} rather than re-listing every filter.
+         * The parameter
+         * list used to mirror {@code LeadSpecification.filter} field for field — ten
+         * positional
+         * arguments including three adjacent booleans — repeated at each call site,
+         * where swapping two
+         * of them compiles cleanly and silently returns the wrong rows.
+         * {@link LeadFilterParams}
+         * already owns the job of turning a query string into a specification; this
+         * only runs it.
+         */
+        default Page<LeadEntity> searchLeads(Specification<LeadEntity> spec, Pageable pageable) {
+                return findAll(spec, pageable);
+        }
 
-        List<LeadEntity> sorted = all.stream()
-                .sorted(LeadSpecification.STATUS_PRIORITY_COMPARATOR)
-                .toList();
+        /**
+         * Same filters, but ordered by pipeline status priority
+         * (Converted → Qualified → Contacted → New → Lost), then {@code createdAt}
+         * DESC.
+         *
+         * <p>
+         * Status is stored as STRING so alphabetical DB ordering is meaningless.
+         * Priority is applied in-memory after fetching the filtered result set;
+         * acceptable for typical CRM volumes (&lt; 50k leads).
+         */
+        default Page<LeadEntity> searchLeadsByStatusPriority(
+                        Specification<LeadEntity> spec, Pageable pageable) {
+                List<LeadEntity> all = findAll(spec, Sort.unsorted());
 
-        int total   = sorted.size();
-        int offset  = (int) pageable.getOffset();
-        int size    = pageable.getPageSize();
-        return new PageImpl<>(
-                sorted.subList(Math.min(offset, total), Math.min(offset + size, total)),
-                pageable,
-                total
-        );
-    }
+                List<LeadEntity> sorted = all.stream()
+                                .sorted(LeadSpecification.STATUS_PRIORITY_COMPARATOR)
+                                .toList();
 
-    // ── Duplicate detection (UC-8.1) ──────────────────────────────────────────
-    // Newest match wins so the UI can deep-link to the most recent existing lead.
+                int total = sorted.size();
+                int offset = (int) pageable.getOffset();
+                int size = pageable.getPageSize();
+                return new PageImpl<>(
+                                sorted.subList(Math.min(offset, total), Math.min(offset + size, total)),
+                                pageable,
+                                total);
+        }
 
-    Optional<LeadEntity> findFirstByEmailIgnoreCaseOrderByCreatedAtDesc(String email);
+        // ── Duplicate detection (UC-8.1) ──────────────────────────────────────────
+        // Newest match wins so the UI can deep-link to the most recent existing lead.
 
-    Optional<LeadEntity> findFirstByPhoneOrderByCreatedAtDesc(String phone);
+        Optional<LeadEntity> findFirstByEmailIgnoreCaseOrderByCreatedAtDesc(String email);
 
-    // ── Assignment & status helpers ───────────────────────────────────────────
+        Optional<LeadEntity> findFirstByPhoneOrderByCreatedAtDesc(String phone);
 
-    @EntityGraph(attributePaths = {"assignedUser"})
-    List<LeadEntity> findByAssignedUser_UserId(UUID assignedUserId);
+        // ── Assignment & status helpers ───────────────────────────────────────────
 
-    List<LeadEntity> findByStatus(LeadStatus status);
+        @EntityGraph(attributePaths = { "assignedUser" })
+        List<LeadEntity> findByAssignedUser_UserId(UUID assignedUserId);
 
-    long countByStatus(LeadStatus status);
+        List<LeadEntity> findByStatus(LeadStatus status);
 
-    // ── Performance report query (eliminates N+1 and filters at DB level) ──
-    @EntityGraph(attributePaths = {"assignedUser"})
-    @Query("""
-            SELECT l FROM LeadEntity l
-            WHERE l.createdAt >= :startDate
-              AND l.createdAt <= :endDate
-            """)
-    List<LeadEntity> findByCreatedAtRange(
-            @Param("startDate") OffsetDateTime startDate,
-            @Param("endDate") OffsetDateTime endDate);
+        long countByStatus(LeadStatus status);
 
-    // ── Chat-assistant snapshot ───────────────────────────────────────────────
-    // A null :userId means "every lead" (Manager/Admin scope); a non-null value restricts to that
-    // user's records. One parameterised query serves both scopes, so the BR-36 scope filter is
-    // always applied in SQL and can never be forgotten by a caller branching in Java.
+        // ── Performance report query (eliminates N+1 and filters at DB level) ──
+        @EntityGraph(attributePaths = { "assignedUser" })
+        @Query("""
+                        SELECT l FROM LeadEntity l
+                        WHERE l.createdAt >= :startDate
+                          AND l.createdAt <= :endDate
+                        """)
+        List<LeadEntity> findByCreatedAtRange(
+                        @Param("startDate") OffsetDateTime startDate,
+                        @Param("endDate") OffsetDateTime endDate);
 
-    /** Newest leads only — the assistant lists at most a couple of dozen, so never fetch more. */
-    @EntityGraph(attributePaths = {"assignedUser"})
-    @Query("""
-            SELECT l FROM LeadEntity l
-            WHERE (:userId IS NULL OR l.assignedUser.userId = :userId)
-            ORDER BY l.createdAt DESC
-            """)
-    List<LeadEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
+        // ── Chat-assistant snapshot ───────────────────────────────────────────────
+        // A null :userId means "every lead" (Manager/Admin scope); a non-null value
+        // restricts to that
+        // user's records. One parameterised query serves both scopes, so the BR-36
+        // scope filter is
+        // always applied in SQL and can never be forgotten by a caller branching in
+        // Java.
 
-    /**
-     * Lead counts per assignee, for the "ask about someone else's leads instead" suggestion.
-     * Callers must gate this on the caller being allowed to see all records (BR-36).
-     */
-    @Query("""
-            SELECT new com.novax.leadora.application.usecase.chat.dto.RepLeadCount(u.fullName, COUNT(l))
-            FROM LeadEntity l JOIN l.assignedUser u
-            GROUP BY u.fullName
-            ORDER BY COUNT(l) DESC
-            """)
-    List<RepLeadCount> countPerAssignee(Pageable pageable);
+        /**
+         * Newest leads only — the assistant lists at most a couple of dozen, so never
+         * fetch more.
+         */
+        @EntityGraph(attributePaths = { "assignedUser" })
+        @Query("""
+                        SELECT l FROM LeadEntity l
+                        WHERE (:userId IS NULL OR l.assignedUser.userId = :userId)
+                        ORDER BY l.createdAt DESC
+                        """)
+        List<LeadEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
+
+        /**
+         * Lead counts per assignee, for the "ask about someone else's leads instead"
+         * suggestion.
+         * Callers must gate this on the caller being allowed to see all records
+         * (BR-36).
+         */
+        @Query("""
+                        SELECT new com.novax.leadora.application.usecase.chat.dto.RepLeadCount(u.fullName, COUNT(l))
+                        FROM LeadEntity l JOIN l.assignedUser u
+                        GROUP BY u.fullName
+                        ORDER BY COUNT(l) DESC
+                        """)
+        List<RepLeadCount> countPerAssignee(Pageable pageable);
 }

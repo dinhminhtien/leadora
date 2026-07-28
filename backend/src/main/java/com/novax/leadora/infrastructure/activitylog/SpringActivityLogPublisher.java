@@ -1,10 +1,12 @@
 package com.novax.leadora.infrastructure.activitylog;
 
+import com.novax.leadora.application.event.AuditCorrectionEvent;
 import com.novax.leadora.application.event.BusinessActivityEvent;
 import com.novax.leadora.application.event.SecurityAuditEvent;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.RecordOperation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
@@ -17,8 +19,14 @@ public class SpringActivityLogPublisher implements ActivityLogPublisher {
 
     @Override
     public void publish(ActivityLogCommand command) {
-        if (command != null && command.getActivityType() != null && isSecurityEvent(command.getActivityType())) {
+        if (command == null) {
+            return;
+        }
+        if (command.getActivityType() != null && isSecurityEvent(command.getActivityType())) {
             eventPublisher.publishEvent(new SecurityAuditEvent(command));
+        } else if (command.getRecordOperation() == RecordOperation.CORRECTED
+                || command.getRecordOperation() == RecordOperation.VOIDED) {
+            eventPublisher.publishEvent(new AuditCorrectionEvent(command));
         } else {
             eventPublisher.publishEvent(new BusinessActivityEvent(command));
         }

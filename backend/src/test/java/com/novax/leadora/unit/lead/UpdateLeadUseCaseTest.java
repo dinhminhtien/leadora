@@ -16,7 +16,7 @@ import com.novax.leadora.infrastructure.persistence.repository.CustomerRepositor
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
-import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.application.usecase.activitylog.AuditCorrectionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -66,7 +66,7 @@ class UpdateLeadUseCaseTest {
     @Mock
     private LeadAccessPolicy leadAccessPolicy;
     @Mock
-    private ActivityLogPublisher activityLogPublisher;
+    private AuditCorrectionService auditCorrectionService;
     @Mock
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     @Mock
@@ -88,7 +88,7 @@ class UpdateLeadUseCaseTest {
         owner = UserEntity.builder().userId(UUID.randomUUID()).fullName("Rep").build();
         useCase = new UpdateLeadUseCase(leadRepository, userRepository, resolveSlaBreachUseCase,
                 startSlaTrackingUseCase, notificationRepository, leadAccessPolicy,
-                activityLogPublisher, objectMapper,
+                auditCorrectionService, objectMapper,
                 new LeadContactPolicy(leadRepository, new CustomerDuplicatePolicy(customerRepository)));
         when(leadRepository.save(any(LeadEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         when(leadRepository.findFirstByEmailIgnoreCaseOrderByCreatedAtDesc(anyString()))
@@ -114,7 +114,7 @@ class UpdateLeadUseCaseTest {
                 .assignedUser(owner)
                 .createdBy(owner)
                 .build();
-        when(leadRepository.findWithUsersById(leadId)).thenReturn(Optional.of(lead));
+        when(leadRepository.findWithUsersByIdForUpdate(leadId)).thenReturn(Optional.of(lead));
         return lead;
     }
 

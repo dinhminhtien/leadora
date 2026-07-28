@@ -15,7 +15,8 @@ import com.novax.leadora.infrastructure.persistence.repository.NotificationRepos
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
+import com.novax.leadora.application.usecase.activitylog.AuditCorrectionService;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import lombok.RequiredArgsConstructor;
@@ -44,13 +45,19 @@ public class UpdateLeadUseCase {
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
     private final NotificationRepository notificationRepository;
     private final LeadAccessPolicy leadAccessPolicy;
-    private final ActivityLogPublisher activityLogPublisher;
+    private final AuditCorrectionService auditCorrectionService;
     private final ObjectMapper objectMapper;
     private final LeadContactPolicy leadContactPolicy;
 
+    private static final List<ActivityLogType> LEAD_FAMILY_TYPES = List.of(
+            ActivityLogType.LEAD_CREATED,
+            ActivityLogType.LEAD_STATUS_UPDATED,
+            ActivityLogType.LEAD_CONVERTED,
+            ActivityLogType.LEAD_UPDATED);
+
     @Transactional
     public LeadResponse execute(UUID leadId, UpdateLeadRequest request) {
-        LeadEntity lead = leadRepository.findWithUsersById(leadId)
+        LeadEntity lead = leadRepository.findWithUsersByIdForUpdate(leadId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead", leadId));
 
         // UC-8.4 RBAC: same owner-scoping as viewing — a Sales Staff may only
@@ -205,12 +212,14 @@ public class UpdateLeadUseCase {
                     ObjectNode payload = objectMapper.createObjectNode()
                             .put("previousStatus", previousStatus.name())
                             .put("newStatus", newStatus.name());
-                    activityLogPublisher.publish(
-                            ActivityLogType.LEAD_STATUS_UPDATED,
-                            EntityType.LEAD,
-                            lead.getLeadId(),
-                            "Lead status updated from " + previousStatus + " to " + newStatus,
-                            payload);
+                    ActivityLogCommand command = ActivityLogCommand.builder()
+                            .activityType(ActivityLogType.LEAD_STATUS_UPDATED)
+                            .entityType(EntityType.LEAD)
+                            .entityId(lead.getLeadId())
+                            .summary("Lead status updated from " + previousStatus + " to " + newStatus)
+                            .payload(payload)
+                            .build();
+                    auditCorrectionService.correctPriorActivity(lead.getLeadId(), LEAD_FAMILY_TYPES, command);
                 } catch (Exception e) {
                     log.warn("Failed to publish lead status update activity: {}", e.getMessage());
                 }
@@ -239,12 +248,14 @@ public class UpdateLeadUseCase {
 
         if (detailsChanged) {
             try {
-                activityLogPublisher.publish(
-                        ActivityLogType.LEAD_UPDATED,
-                        EntityType.LEAD,
-                        lead.getLeadId(),
-                        "Lead details updated",
-                        updatePayload);
+                ActivityLogCommand command = ActivityLogCommand.builder()
+                        .activityType(ActivityLogType.LEAD_UPDATED)
+                        .entityType(EntityType.LEAD)
+                        .entityId(lead.getLeadId())
+                        .summary("Lead details updated")
+                        .payload(updatePayload)
+                        .build();
+                auditCorrectionService.correctPriorActivity(lead.getLeadId(), LEAD_FAMILY_TYPES, command);
             } catch (Exception e) {
                 log.warn("Failed to publish lead update activity: {}", e.getMessage());
             }
