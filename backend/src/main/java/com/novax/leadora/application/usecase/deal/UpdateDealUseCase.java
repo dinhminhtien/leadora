@@ -14,7 +14,8 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
-import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
+import com.novax.leadora.application.usecase.activitylog.AuditCorrectionService;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -37,8 +39,13 @@ public class UpdateDealUseCase {
     private final DealMapper dealMapper;
     private final DealValidation dealValidation;
     private final DealAccessPolicy dealAccessPolicy;
-    private final ActivityLogPublisher activityLogPublisher;
+    private final AuditCorrectionService auditCorrectionService;
     private final ObjectMapper objectMapper;
+
+    private static final List<ActivityLogType> DEAL_FAMILY_TYPES = List.of(
+            ActivityLogType.DEAL_CREATED,
+            ActivityLogType.DEAL_UPDATED,
+            ActivityLogType.DEAL_STAGE_UPDATED);
 
     @Transactional
     public DealResponse execute(UUID id, DealRequest request) {
@@ -100,8 +107,10 @@ public class UpdateDealUseCase {
             customerRepository.save(customer);
         }
 
-        if (request.getValue() != null && (deal.getExpectedRevenue() == null || request.getValue().compareTo(deal.getExpectedRevenue()) != 0)) {
-            updatePayload.put("previousValue", deal.getExpectedRevenue() != null ? deal.getExpectedRevenue().toString() : null);
+        if (request.getValue() != null && (deal.getExpectedRevenue() == null
+                || request.getValue().compareTo(deal.getExpectedRevenue()) != 0)) {
+            updatePayload.put("previousValue",
+                    deal.getExpectedRevenue() != null ? deal.getExpectedRevenue().toString() : null);
             updatePayload.put("newValue", request.getValue().toString());
             deal.setExpectedRevenue(request.getValue());
             detailsChanged = true;
@@ -117,7 +126,8 @@ public class UpdateDealUseCase {
             }
         }
         if (request.getExpectedClose() != null && !request.getExpectedClose().equals(deal.getExpectedCloseDate())) {
-            updatePayload.put("previousExpectedClose", deal.getExpectedCloseDate() != null ? deal.getExpectedCloseDate().toString() : null);
+            updatePayload.put("previousExpectedClose",
+                    deal.getExpectedCloseDate() != null ? deal.getExpectedCloseDate().toString() : null);
             updatePayload.put("newExpectedClose", request.getExpectedClose().toString());
             deal.setExpectedCloseDate(request.getExpectedClose());
             detailsChanged = true;
@@ -136,16 +146,21 @@ public class UpdateDealUseCase {
                 boolean isChanging = currentAssigned == null || !currentAssigned.getUserId().equals(owner.getUserId());
                 if (isChanging) {
                     UserEntity currentUser = dealAccessPolicy.currentUser();
-                    boolean isAssigningToSelf = currentUser != null && currentUser.getUserId().equals(owner.getUserId());
+                    boolean isAssigningToSelf = currentUser != null
+                            && currentUser.getUserId().equals(owner.getUserId());
                     if (!isAssigningToSelf) {
-                        String role = currentUser != null && currentUser.getRole() != null && currentUser.getRole().getRoleName() != null
-                                ? currentUser.getRole().getRoleName().trim().toUpperCase() : "";
+                        String role = currentUser != null && currentUser.getRole() != null
+                                && currentUser.getRole().getRoleName() != null
+                                        ? currentUser.getRole().getRoleName().trim().toUpperCase()
+                                        : "";
                         boolean isManager = "MANAGER".equals(role) || "ADMIN".equals(role);
                         if (!isManager) {
-                            throw new BusinessException("ROLE_RESTRICTION", "Only a manager or admin can assign a deal to another user.", HttpStatus.FORBIDDEN);
+                            throw new BusinessException("ROLE_RESTRICTION",
+                                    "Only a manager or admin can assign a deal to another user.", HttpStatus.FORBIDDEN);
                         }
                     }
-                    updatePayload.put("previousOwnerId", currentAssigned != null ? currentAssigned.getUserId().toString() : null);
+                    updatePayload.put("previousOwnerId",
+                            currentAssigned != null ? currentAssigned.getUserId().toString() : null);
                     updatePayload.put("newOwnerId", owner.getUserId().toString());
                     deal.setAssignedUser(owner);
                     detailsChanged = true;
@@ -157,25 +172,27 @@ public class UpdateDealUseCase {
 
         if (stageChanged) {
             try {
-                activityLogPublisher.publish(
-                        ActivityLogType.DEAL_STAGE_UPDATED,
-                        EntityType.DEAL,
-                        updatedDeal.getDealId(),
-                        "Deal pipeline stage updated to " + updatedDeal.getPipelineStage(),
-                        updatePayload
-                );
+                ActivityLogCommand command = ActivityLogCommand.builder()
+                        .activityType(ActivityLogType.DEAL_STAGE_UPDATED)
+                        .entityType(EntityType.DEAL)
+                        .entityId(updatedDeal.getDealId())
+                        .summary("Deal pipeline stage updated to " + updatedDeal.getPipelineStage())
+                        .payload(updatePayload)
+                        .build();
+                auditCorrectionService.correctPriorActivity(updatedDeal.getDealId(), DEAL_FAMILY_TYPES, command);
             } catch (Exception e) {
                 log.warn("Failed to publish deal stage update activity: {}", e.getMessage());
             }
         } else if (detailsChanged) {
             try {
-                activityLogPublisher.publish(
-                        ActivityLogType.DEAL_UPDATED,
-                        EntityType.DEAL,
-                        updatedDeal.getDealId(),
-                        "Deal details updated",
-                        updatePayload
-                );
+                ActivityLogCommand command = ActivityLogCommand.builder()
+                        .activityType(ActivityLogType.DEAL_UPDATED)
+                        .entityType(EntityType.DEAL)
+                        .entityId(updatedDeal.getDealId())
+                        .summary("Deal details updated")
+                        .payload(updatePayload)
+                        .build();
+                auditCorrectionService.correctPriorActivity(updatedDeal.getDealId(), DEAL_FAMILY_TYPES, command);
             } catch (Exception e) {
                 log.warn("Failed to publish deal update activity: {}", e.getMessage());
             }
@@ -215,13 +232,15 @@ public class UpdateDealUseCase {
                 if (notes != null) {
                     payload.put("notes", notes);
                 }
-                activityLogPublisher.publish(
-                        ActivityLogType.DEAL_UPDATED,
-                        EntityType.DEAL,
-                        updatedDeal.getDealId(),
-                        "Deal status updated from " + previousStatus + " to " + enumStatus,
-                        payload
-                );
+                ActivityLogCommand command = ActivityLogCommand.builder()
+                        .activityType(ActivityLogType.DEAL_UPDATED)
+                        .entityType(EntityType.DEAL)
+                        .entityId(updatedDeal.getDealId())
+                        .summary("Deal status updated from " + previousStatus + " to " + enumStatus)
+                        .payload(payload)
+                        .reason(notes)
+                        .build();
+                auditCorrectionService.correctPriorActivity(updatedDeal.getDealId(), DEAL_FAMILY_TYPES, command);
             } catch (Exception e) {
                 log.warn("Failed to publish deal status update activity: {}", e.getMessage());
             }

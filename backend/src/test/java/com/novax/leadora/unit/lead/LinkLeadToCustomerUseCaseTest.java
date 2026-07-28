@@ -93,7 +93,7 @@ class LinkLeadToCustomerUseCaseTest {
                 .assignedUser(salesRep)
                 .createdBy(salesRep)
                 .build();
-        when(leadRepository.findWithUsersById(leadId)).thenReturn(Optional.of(lead));
+        when(leadRepository.findWithUsersByIdForUpdate(leadId)).thenReturn(Optional.of(lead));
         return lead;
     }
 
