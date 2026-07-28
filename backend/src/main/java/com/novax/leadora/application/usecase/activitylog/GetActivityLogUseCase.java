@@ -42,6 +42,7 @@ public class GetActivityLogUseCase {
         private OffsetDateTime startDate;
         private OffsetDateTime endDate;
         private String view; // "RAW" or "EFFECTIVE"
+        private String category; // "BUSINESS" or "SECURITY"
     }
 
     @Transactional(readOnly = true)
@@ -77,6 +78,12 @@ public class GetActivityLogUseCase {
             }
             if (query.getEntityType() != null) {
                 predicates.add(cb.equal(root.get("entityType"), query.getEntityType()));
+            }
+
+            if ("SECURITY".equalsIgnoreCase(query.getCategory())) {
+                predicates.add(cb.equal(root.get("entityType"), EntityType.USER));
+            } else if ("BUSINESS".equalsIgnoreCase(query.getCategory())) {
+                predicates.add(cb.notEqual(root.get("entityType"), EntityType.USER));
             }
             if (query.getEntityId() != null) {
                 predicates.add(cb.equal(root.get("entityId"), query.getEntityId()));

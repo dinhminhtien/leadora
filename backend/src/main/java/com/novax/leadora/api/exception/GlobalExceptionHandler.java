@@ -22,9 +22,22 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.novax.leadora.infrastructure.security.audit.SecurityAuditLogger;
+import com.novax.leadora.common.security.CurrentUserProvider;
+
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private final SecurityAuditLogger securityAuditLogger;
+    private final CurrentUserProvider currentUserProvider;
+
+    public GlobalExceptionHandler(SecurityAuditLogger securityAuditLogger, CurrentUserProvider currentUserProvider) {
+        this.securityAuditLogger = securityAuditLogger;
+        this.currentUserProvider = currentUserProvider;
+    }
+
+    private static final UUID SYSTEM_UUID = new UUID(0L, 0L);
 
     /** MSG-05, verbatim from the SRS application-messages catalogue (§5.3). */
     private static final String MSG_05_ACCESS_DENIED = "You do not have permission to access this function.";
@@ -84,8 +97,21 @@ public class GlobalExceptionHandler {
      * for support, not into the headline message.
      */
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex, jakarta.servlet.http.HttpServletRequest request) {
         log.warn("Access denied: {}", ex.getMessage());
+
+        UUID userId = SYSTEM_UUID;
+        String userName = "Unauthenticated User";
+        try {
+            com.novax.leadora.infrastructure.persistence.entity.UserEntity user = currentUserProvider.resolve(null);
+            if (user != null) {
+                userId = user.getUserId();
+                userName = user.getFullName() + " (" + user.getEmail() + ")";
+            }
+        } catch (Exception ignored) {}
+
+        securityAuditLogger.logAccessDeniedForUser(request, ex, userId, userName);
+
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.businessError("ACCESS_DENIED", MSG_05_ACCESS_DENIED, ex.getMessage()));
     }
@@ -103,8 +129,15 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException ex, jakarta.servlet.http.HttpServletRequest request) {
         log.warn("Business rule violation [{}]: {}", ex.getErrorCode(), ex.getMessage());
+
+        if ("ACCOUNT_NOT_PROVISIONED".equals(ex.getErrorCode())) {
+            securityAuditLogger.logUnprovisionedAccount(request, ex);
+        } else if ("ACCOUNT_LOCKED".equals(ex.getErrorCode())) {
+            securityAuditLogger.logLockedAccount(request, ex);
+        }
+
         return ResponseEntity.status(ex.getHttpStatus())
                 .body(ApiResponse.businessError(ex.getErrorCode(), ex.getMessage(), ex.getDetails()));
     }

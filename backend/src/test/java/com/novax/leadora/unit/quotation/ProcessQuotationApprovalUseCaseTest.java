@@ -12,6 +12,8 @@ import com.novax.leadora.infrastructure.persistence.repository.QuotationReposito
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -47,10 +49,10 @@ class ProcessQuotationApprovalUseCaseTest {
     private SystemAuditLogService systemAuditLogService;
 
     @Mock
-    private com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase startSlaTrackingUseCase;
+    private StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Mock
-    private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
+    private ActivityLogPublisher activityLogPublisher;
 
     @Spy
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();

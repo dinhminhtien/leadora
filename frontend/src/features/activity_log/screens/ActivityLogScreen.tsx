@@ -35,11 +35,42 @@ function formatDateTime(isoString: string): string {
 
 function getActionCategory(activityType: string) {
   const type = (activityType || "").toUpperCase();
+  if (type === "USER_LOGGED_IN") {
+    return { label: "Login Success", color: "bg-teal-50 text-teal-700 dark:bg-teal-950/20 dark:text-teal-400 border border-teal-200 dark:border-teal-900" };
+  }
+  if (type === "USER_LOGGED_OUT") {
+    return { label: "Logout", color: "bg-zinc-100 text-zinc-650 dark:bg-zinc-900 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800" };
+  }
+  if (type === "PASSWORD_CHANGED" || type === "PASSWORD_RESET_COMPLETED") {
+    return { label: "Password Change", color: "bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-300 dark:border-amber-900" };
+  }
+  if (type === "PASSWORD_RESET_REQUESTED") {
+    return { label: "Reset Request", color: "bg-orange-50 text-orange-700 dark:bg-orange-950/20 dark:text-orange-400 border border-orange-200 dark:border-orange-900" };
+  }
+  if (type === "USER_ACCOUNT_CREATED") {
+    return { label: "Account Created", color: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900" };
+  }
+  if (type === "USER_ACCOUNT_UPDATED") {
+    return { label: "Account Updated", color: "bg-blue-50 text-blue-750 dark:bg-blue-950/20 dark:text-blue-400 border border-blue-200 dark:border-blue-900" };
+  }
+  if (type === "LOGIN_FAILED") {
+    return { label: "Login Failed", color: "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400 border border-red-200 dark:border-red-900 font-medium" };
+  }
+  if (type === "ACCESS_DENIED_EVENT") {
+    return { label: "Access Denied", color: "bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-300 dark:border-rose-800 font-semibold" };
+  }
+  if (type === "INVALID_TOKEN_ACCESS") {
+    return { label: "Invalid Token", color: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300 border border-red-300 dark:border-red-800 font-semibold" };
+  }
+  if (type === "FEEDBACK_LINK_EXPIRED") {
+    return { label: "Feedback Expired", color: "bg-amber-100 text-amber-850 dark:bg-amber-950/30 dark:text-amber-300 border border-amber-300 dark:border-amber-800" };
+  }
+
   if (type.includes("CREATE")) {
     return { label: "Create", color: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900" };
   }
   if (type.includes("STATUS_UPDATED") || type.includes("STAGE_UPDATED")) {
-    return { label: "Status Transition", color: "bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-450 border border-amber-200 dark:border-amber-900" };
+    return { label: "Status Transition", color: "bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-455 border border-amber-200 dark:border-amber-900" };
   }
   if (type.includes("UPDATE")) {
     return { label: "Update", color: "bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border border-blue-200 dark:border-blue-900" };
@@ -68,6 +99,12 @@ function getActionCategory(activityType: string) {
 function getEntityStyle(entityType: string) {
   const type = (entityType || "").toUpperCase();
   switch (type) {
+    case "USER":
+      return {
+        color: "bg-rose-50/30 text-rose-700 dark:bg-rose-950/10 dark:text-rose-400 border-rose-200 dark:border-rose-900",
+        badge: "bg-rose-100/70 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300 border border-rose-200/50 dark:border-rose-800/40",
+        iconBg: "bg-rose-500 text-white"
+      };
     case "LEAD":
       return {
         color: "bg-emerald-50/50 text-emerald-700 dark:bg-emerald-950/10 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900",
@@ -151,6 +188,7 @@ function renderPayloadSummary(payload: any) {
 }
 
 export function ActivityLogScreen() {
+  const [categoryTab, setCategoryTab] = useState<"BUSINESS" | "SECURITY">("BUSINESS");
   const [viewMode, setViewMode] = useState<"table" | "timeline">("table");
   const [dataView, setDataView] = useState<"RAW" | "EFFECTIVE">("EFFECTIVE");
   const [searchInput, setSearchInput] = useState("");
@@ -194,6 +232,7 @@ export function ActivityLogScreen() {
         startDate: startDate ? new Date(startDate).toISOString() : undefined,
         endDate: endDate ? new Date(endDate).toISOString() : undefined,
         view: dataView,
+        category: categoryTab,
         page,
         size: PAGE_SIZE,
       };
@@ -222,7 +261,7 @@ export function ActivityLogScreen() {
 
   useEffect(() => {
     fetchLogs();
-  }, [keyword, actorType, activityType, entityType, startDate, endDate, dataView, page]);
+  }, [keyword, actorType, activityType, entityType, startDate, endDate, dataView, page, categoryTab]);
 
   // Fetch detailed Activity Log payload when selectedId changes
   useEffect(() => {
@@ -274,7 +313,7 @@ export function ActivityLogScreen() {
             Activity Log & Audit Trail
           </h1>
           <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
-            Immutable audit logging for CRM actions to guarantee data compliance and traceability.
+            Immutable audit logging for CRM actions and identity operations to guarantee compliance.
           </p>
         </div>
 
@@ -330,6 +369,32 @@ export function ActivityLogScreen() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex border-b border-zinc-200 dark:border-zinc-800 gap-4">
+        <button
+          onClick={() => { setCategoryTab("BUSINESS"); setPage(0); handleClearFilters(); }}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition ${
+            categoryTab === "BUSINESS"
+              ? "border-primary text-primary"
+              : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-350"
+          }`}
+        >
+          <LayoutGrid className="size-4" />
+          Business Audit Logs
+        </button>
+        <button
+          onClick={() => { setCategoryTab("SECURITY"); setPage(0); handleClearFilters(); }}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition ${
+            categoryTab === "SECURITY"
+              ? "border-rose-500 text-rose-600 dark:text-rose-400"
+              : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-350"
+          }`}
+        >
+          <ShieldAlert className="size-4 text-rose-500" />
+          Security Audit Logs
+        </button>
+      </div>
+
       {/* Advanced Filters Panel */}
       <Card className="border-zinc-200 dark:border-zinc-800 shadow-sm bg-zinc-50/50 dark:bg-zinc-950/20">
         <CardContent className="p-4 flex flex-wrap gap-4 items-center">
@@ -363,35 +428,59 @@ export function ActivityLogScreen() {
             className="px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-primary cursor-pointer shadow-sm"
           >
             <option value="">All Actions</option>
-            <optgroup label="Lead Actions">
-              <option value="LEAD_CREATED">Lead Created</option>
-              <option value="LEAD_UPDATED">Lead Updated</option>
-              <option value="LEAD_STATUS_UPDATED">Lead Status Updated</option>
-              <option value="LEAD_CONVERTED">Lead Converted</option>
-            </optgroup>
-            <optgroup label="Deal Actions">
-              <option value="DEAL_CREATED">Deal Created</option>
-              <option value="DEAL_UPDATED">Deal Updated</option>
-              <option value="DEAL_STAGE_UPDATED">Deal Stage Updated</option>
-              <option value="DEAL_AUTO_WON">Deal Auto Won</option>
-            </optgroup>
-            <optgroup label="Quotation Actions">
-              <option value="QUOTATION_CREATED">Quotation Created</option>
-              <option value="QUOTATION_UPDATED">Quotation Updated</option>
-              <option value="QUOTATION_SUBMITTED">Quotation Submitted</option>
-              <option value="QUOTATION_APPROVED">Quotation Approved</option>
-              <option value="QUOTATION_REJECTED">Quotation Rejected</option>
-            </optgroup>
-            <optgroup label="Booking Actions">
-              <option value="BOOKING_CREATED">Booking Created</option>
-              <option value="BOOKING_UPDATED">Booking Updated</option>
-              <option value="BOOKING_CONFIRMED">Booking Confirmed</option>
-              <option value="BOOKING_CANCELLED">Booking Cancelled</option>
-            </optgroup>
-            <optgroup label="Task Actions">
-              <option value="TASK_CREATED">Task Created</option>
-              <option value="TASK_COMPLETED">Task Completed</option>
-            </optgroup>
+            {categoryTab === "BUSINESS" ? (
+              <>
+                <optgroup label="Lead Actions">
+                  <option value="LEAD_CREATED">Lead Created</option>
+                  <option value="LEAD_UPDATED">Lead Updated</option>
+                  <option value="LEAD_STATUS_UPDATED">Lead Status Updated</option>
+                  <option value="LEAD_CONVERTED">Lead Converted</option>
+                </optgroup>
+                <optgroup label="Deal Actions">
+                  <option value="DEAL_CREATED">Deal Created</option>
+                  <option value="DEAL_UPDATED">Deal Updated</option>
+                  <option value="DEAL_STAGE_UPDATED">Deal Stage Updated</option>
+                  <option value="DEAL_AUTO_WON">Deal Auto Won</option>
+                </optgroup>
+                <optgroup label="Quotation Actions">
+                  <option value="QUOTATION_CREATED">Quotation Created</option>
+                  <option value="QUOTATION_UPDATED">Quotation Updated</option>
+                  <option value="QUOTATION_SUBMITTED">Quotation Submitted</option>
+                  <option value="QUOTATION_APPROVED">Quotation Approved</option>
+                  <option value="QUOTATION_REJECTED">Quotation Rejected</option>
+                </optgroup>
+                <optgroup label="Booking Actions">
+                  <option value="BOOKING_CREATED">Booking Created</option>
+                  <option value="BOOKING_UPDATED">Booking Updated</option>
+                  <option value="BOOKING_CONFIRMED">Booking Confirmed</option>
+                  <option value="BOOKING_CANCELLED">Booking Cancelled</option>
+                </optgroup>
+                <optgroup label="Task Actions">
+                  <option value="TASK_CREATED">Task Created</option>
+                  <option value="TASK_COMPLETED">Task Completed</option>
+                </optgroup>
+              </>
+            ) : (
+              <>
+                <optgroup label="Security & Identity">
+                  <option value="USER_LOGGED_IN">User Login Success</option>
+                  <option value="USER_LOGGED_OUT">User Logout</option>
+                  <option value="PASSWORD_CHANGED">Password Changed</option>
+                  <option value="PASSWORD_RESET_REQUESTED">Reset Password Request</option>
+                  <option value="PASSWORD_RESET_COMPLETED">Reset Password Complete</option>
+                </optgroup>
+                <optgroup label="User Lifecycle">
+                  <option value="USER_ACCOUNT_CREATED">User Account Created</option>
+                  <option value="USER_ACCOUNT_UPDATED">User Account Updated</option>
+                </optgroup>
+                <optgroup label="Access & Authorization Audit">
+                  <option value="LOGIN_FAILED">Login Failed</option>
+                  <option value="ACCESS_DENIED_EVENT">Access Denied</option>
+                  <option value="INVALID_TOKEN_ACCESS">Invalid/Expired Token Attempt</option>
+                  <option value="FEEDBACK_LINK_EXPIRED">Expired Feedback Link Access</option>
+                </optgroup>
+              </>
+            )}
           </select>
 
           {/* Entity Type */}
@@ -401,12 +490,18 @@ export function ActivityLogScreen() {
             className="px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-primary cursor-pointer shadow-sm"
           >
             <option value="">All Entities</option>
-            <option value="LEAD">Lead</option>
-            <option value="DEAL">Deal</option>
-            <option value="QUOTATION">Quotation</option>
-            <option value="BOOKING">Booking</option>
-            <option value="TASK">Task</option>
-            <option value="PAYMENT">Payment</option>
+            {categoryTab === "BUSINESS" ? (
+              <>
+                <option value="LEAD">Lead</option>
+                <option value="DEAL">Deal</option>
+                <option value="QUOTATION">Quotation</option>
+                <option value="BOOKING">Booking</option>
+                <option value="TASK">Task</option>
+                <option value="PAYMENT">Payment</option>
+              </>
+            ) : (
+              <option value="USER">User</option>
+            )}
           </select>
 
           {/* Start Date */}
