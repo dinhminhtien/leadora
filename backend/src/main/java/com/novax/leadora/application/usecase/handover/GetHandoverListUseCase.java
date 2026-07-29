@@ -9,13 +9,10 @@ import com.novax.leadora.infrastructure.persistence.repository.OpHandoverReposit
 import com.novax.leadora.infrastructure.persistence.specification.OpHandoverSpecification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.util.Collections;
@@ -33,18 +30,22 @@ public class GetHandoverListUseCase {
 
     private final OpHandoverRepository opHandoverRepository;
     private final BookingDetailRepository bookingDetailRepository;
+    private final HandoverAccessPolicy handoverAccessPolicy;
 
     @Transactional(readOnly = true)
     public Page<ArrivalHandoverResponse> execute(String search, String status, String arrivalDate,
                                                  String sortBy, String sortDir, int page, int size) {
-        String sortField = StringUtils.hasText(sortBy) ? sortBy : "createdAt";
-        Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
+        Pageable pageable = HandoverListQuery.pageable(
+                sortBy, sortDir, page, size, HandoverListQuery.SORTABLE, "createdAt");
 
-        HandoverStatus statusFilter = parseStatus(status);
-        LocalDate arrivalFilter = parseDate(arrivalDate);
+        HandoverStatus statusFilter = HandoverListQuery.enumFilter(HandoverStatus.class, status, "status");
+        LocalDate arrivalFilter = HandoverListQuery.dateFilter(arrivalDate, "arrivalDate");
+        // BR-01 / BR-02 — Sales and Reservation see their own handovers, Manager/Admin see all.
+        // Resolved here rather than trusted from a request parameter, so a caller cannot widen
+        // its own scope by passing somebody else's id.
+        UUID ownerId = handoverAccessPolicy.listScopeOwnerId(handoverAccessPolicy.currentUser());
         Specification<OpHandoverEntity> spec =
-                OpHandoverSpecification.forOperations(search, statusFilter, arrivalFilter);
+                OpHandoverSpecification.forOperations(search, statusFilter, arrivalFilter, ownerId);
 
         Page<OpHandoverEntity> handovers = opHandoverRepository.findAll(spec, pageable);
 
@@ -66,25 +67,4 @@ public class GetHandoverListUseCase {
         });
     }
 
-    private HandoverStatus parseStatus(String value) {
-        if (!StringUtils.hasText(value)) {
-            return null;
-        }
-        try {
-            return HandoverStatus.valueOf(value.trim().toUpperCase());
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
-    }
-
-    private LocalDate parseDate(String value) {
-        if (!StringUtils.hasText(value)) {
-            return null;
-        }
-        try {
-            return LocalDate.parse(value.trim());
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
 }

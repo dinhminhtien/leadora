@@ -187,5 +187,18 @@ export function canAccessPath(
   // the page stays hidden for them even if someone grants ROOM_REQUEST_VIEW. Sales still
   // sees a quotation's own room state through the panel inside the quotation.
   if (required === "ROOM_REQUEST_VIEW") return false;
+  // Two different screens map to HANDOVER_VIEW, so the permission alone cannot tell them apart:
+  // `/operational-handover` (Sales/Reservation author the handover) and `/front-office-handover`
+  // (the arrival desk). The arrival desk is Front Office's surface — rbac-matrix §2 lists it
+  // under FO only, and the backend gates /api/v1/arrival-handovers on
+  // hasAnyRole('FO','FRONT_OFFICE','MANAGER','ADMIN').
+  //
+  // Sales holds HANDOVER_VIEW for its own screen and so reached this one too, where every
+  // request 403'd. Worse, the desk rendered those 403s as "No arrival requests yet" — a Sales
+  // user saw an empty front desk rather than a refusal. A Manager supervises the desk and stays
+  // allowed; Front Office itself never reaches here (it returns above, via FO_ROUTES).
+  if (matchesAny([ROUTE_PATHS.frontOfficeHandover], pathname)) {
+    return role === "MANAGER";
+  }
   return required != null && permissions.includes(required);
 }

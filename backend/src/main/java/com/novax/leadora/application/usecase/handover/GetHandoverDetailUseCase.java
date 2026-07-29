@@ -24,11 +24,16 @@ public class GetHandoverDetailUseCase {
     private final OpHandoverRepository opHandoverRepository;
     private final BookingDetailRepository bookingDetailRepository;
     private final PaymentRepository paymentRepository;
+    private final HandoverAccessPolicy handoverAccessPolicy;
 
     @Transactional(readOnly = true)
     public ArrivalHandoverResponse execute(UUID handoverId) {
         OpHandoverEntity handover = opHandoverRepository.findById(handoverId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Handover not found."));
+
+        // BR-01 / BR-02 — scoping the list is not enough on its own: without the same check here,
+        // guessing or replaying a UUID read any rep's handover straight out of the detail endpoint.
+        handoverAccessPolicy.assertCanView(handoverAccessPolicy.currentUser(), handover);
 
         UUID bookingId = handover.getBooking() != null ? handover.getBooking().getBookingId() : null;
         var details = bookingId != null
