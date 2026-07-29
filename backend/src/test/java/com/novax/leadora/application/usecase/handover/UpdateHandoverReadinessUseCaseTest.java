@@ -2,6 +2,7 @@ package com.novax.leadora.application.usecase.handover;
 
 import com.novax.leadora.api.dto.request.UpdateReadinessStatusRequest;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
+import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.OpHandoverEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -231,6 +233,47 @@ class UpdateHandoverReadinessUseCaseTest {
 
         useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
 
+        verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Amending the note does not notify again — a few typo fixes were a stack of alerts")
+    void doesNotRenotifyWhenOnlyTheNoteChanges() {
+        handoverAt(ReadinessStatus.NEED_CLARIFICATION, BookingStatus.CONFIRMED);
+
+        useCase.execute(handoverId, request("NEED_CLARIFICATION", "clearer wording"), actor);
+
+        verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("POST-3 falls back to the booking owner when created_by is null")
+    void notifiesBookingOwnerWhenCreatorIsMissing() {
+        OpHandoverEntity handover = handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+        handover.setCreatedBy(null);
+        UserEntity bookingOwner = UserEntity.builder()
+                .userId(UUID.randomUUID()).fullName("Booking Owner").build();
+        handover.getBooking().setAssignedUser(bookingOwner);
+
+        useCase.execute(handoverId, request("NEED_CLARIFICATION", "who owns this?"), actor);
+
+        ArgumentCaptor<NotificationEntity> sent = ArgumentCaptor.forClass(NotificationEntity.class);
+        verify(notificationRepository).save(sent.capture());
+        assertThat(sent.getValue().getUser().getUserId()).isEqualTo(bookingOwner.getUserId());
+    }
+
+    @Test
+    @DisplayName("With no recipient at all the readiness still saves — but nothing is silently lost")
+    void savesButSkipsNotificationWhenNobodyCanBeNotified() {
+        OpHandoverEntity handover = handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+        handover.setCreatedBy(null);
+        handover.getBooking().setAssignedUser(null);
+
+        // The business operation must not fail because there is no one to tell; the use case logs
+        // a warning instead of the old silent `return`.
+        var response = useCase.execute(handoverId, request("NEED_CLARIFICATION", "orphan"), actor);
+
+        assertThat(response.getReadinessStatus()).isEqualTo("NEED_CLARIFICATION");
         verify(notificationRepository, never()).save(any());
     }
 

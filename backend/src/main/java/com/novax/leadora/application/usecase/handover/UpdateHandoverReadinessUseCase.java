@@ -71,15 +71,6 @@ public class UpdateHandoverReadinessUseCase {
             ReadinessStatus.NEED_CLARIFICATION, EnumSet.of(
                     ReadinessStatus.NEED_CLARIFICATION));
 
-    /**
-     * Booking states that still accept a readiness change (BR-44: cancelled / closed records are
-     * not editable). Mirrors the whitelist the Front Office list filters on, and the equivalent
-     * check the Sales side already had in {@code UpdateHandoverUseCase} — without it, Front Office
-     * could mark a room READY_FOR_ARRIVAL for a guest who had already cancelled.
-     */
-    private static final Set<BookingStatus> UPDATABLE_BOOKING_STATUSES =
-            EnumSet.of(BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN);
-
     private final OpHandoverRepository opHandoverRepository;
     private final NotificationRepository notificationRepository;
 
@@ -96,7 +87,7 @@ public class UpdateHandoverReadinessUseCase {
         // BR-44 — a cancelled / rejected / no-show / checked-out booking is closed. Preparing a
         // room for it is meaningless, so the readiness of its handover is frozen.
         BookingEntity booking = handover.getBooking();
-        if (booking != null && !UPDATABLE_BOOKING_STATUSES.contains(booking.getStatus())) {
+        if (booking != null && !BookingStatus.LIVE_FOR_ARRIVAL.contains(booking.getStatus())) {
             throw new IllegalStateException(
                     "This booking is no longer active (" + booking.getStatus()
                             + "), so its arrival readiness can't be changed.");
@@ -131,7 +122,10 @@ public class UpdateHandoverReadinessUseCase {
         OpHandoverEntity saved = opHandoverRepository.save(handover);
 
         // Step 9 / POST-3 — notify the originating Sales/Reservation user on NEED_CLARIFICATION.
-        if (newReadiness == ReadinessStatus.NEED_CLARIFICATION) {
+        // Only on *entering* the state: amending the note is still a NEED_CLARIFICATION write, and
+        // notifying again each time turned a couple of typo fixes into a stack of identical alerts.
+        if (newReadiness == ReadinessStatus.NEED_CLARIFICATION
+                && previousReadiness != ReadinessStatus.NEED_CLARIFICATION) {
             notifyClarificationNeeded(saved, actor);
         }
 
@@ -144,11 +138,23 @@ public class UpdateHandoverReadinessUseCase {
     }
 
     private void notifyClarificationNeeded(OpHandoverEntity handover, UserEntity actor) {
-        UserEntity recipient = handover.getCreatedBy();
-        if (recipient == null) {
-            return; // no originating user recorded — nothing to notify
-        }
         BookingEntity booking = handover.getBooking();
+
+        // The originating Sales/Reservation user, or failing that whoever owns the booking.
+        // `created_by` is nullable, and the old code returned silently when it was null: Front
+        // Office saw "Updated." while nobody was told, leaving the handover waiting on a question
+        // no one had been asked. POST-3 must not fail quietly.
+        UserEntity recipient = handover.getCreatedBy();
+        if (recipient == null && booking != null) {
+            recipient = booking.getAssignedUser();
+        }
+        if (recipient == null) {
+            log.warn("Handover {} needs clarification but has no recipient (created_by and "
+                            + "booking.assigned_user are both null) — POST-3 notification skipped",
+                    handover.getHandoverId());
+            return;
+        }
+
         String bookingCode = booking != null ? booking.getBookingCode() : "";
         String by = actor != null && actor.getFullName() != null ? actor.getFullName() : "Front Office";
 

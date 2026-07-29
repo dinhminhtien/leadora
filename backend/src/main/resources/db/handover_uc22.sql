@@ -39,6 +39,13 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_op_handovers_assigned_fo_user
     ON op_handovers (assigned_fo_user_id);
 
+-- OpHandoverEntity.version — @Version optimistic lock. Two Front Office staff saving different
+-- readiness values for the same arrival were previously last-write-wins with neither one told.
+ALTER TABLE op_handovers ADD COLUMN IF NOT EXISTS version INTEGER;
+UPDATE op_handovers SET version = 0 WHERE version IS NULL;
+ALTER TABLE op_handovers ALTER COLUMN version SET DEFAULT 0;
+ALTER TABLE op_handovers ALTER COLUMN version SET NOT NULL;
+
 -- ----------------------------------------------------------------------------
 -- 2) ReadinessStatus: 3-state → 4-state (commit 2b798a0)
 -- ----------------------------------------------------------------------------

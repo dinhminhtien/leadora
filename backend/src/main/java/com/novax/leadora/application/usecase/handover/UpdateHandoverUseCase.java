@@ -8,6 +8,7 @@ import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.OpHandoverEntity;
 import com.novax.leadora.infrastructure.persistence.entity.PaymentEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.HandoverStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ReadinessStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
@@ -43,21 +44,25 @@ public class UpdateHandoverUseCase {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
+    private final HandoverAccessPolicy handoverAccessPolicy;
 
     @Transactional
     public ArrivalHandoverResponse execute(UUID handoverId, UpdateHandoverRequest request, UserEntity actor) {
         OpHandoverEntity handover = opHandoverRepository.findById(handoverId)
                 .orElseThrow(() -> new ResourceNotFoundException("Operational handover", handoverId));
 
-        // PRE-4 & E6-4.1: Unauthorized Update check
-        if (actor != null && actor.getRole() != null) {
-            String roleName = actor.getRole().getRoleName();
-            boolean isAdmin = "ADMIN".equalsIgnoreCase(roleName);
-            boolean isOwner = handover.getCreatedBy() != null && handover.getCreatedBy().getUserId().equals(actor.getUserId());
-            if (!isAdmin && !isOwner) {
-                throw new AccessDeniedException("Access Denied.");
-            }
+        // PRE-4 & E6-4.1: Unauthorized Update check.
+        //
+        // Delegated to the same policy the read path uses, for two reasons. The old inline check
+        // was wrapped in `if (actor != null && actor.getRole() != null)`, so a caller with no role
+        // skipped authorization altogether — it failed open, which is the one direction an
+        // authorization check must never fail. And it allowed only ADMIN or the creator, so a
+        // MANAGER was refused a record they are allowed to read, and a colleague could not touch a
+        // handover on a booking assigned to them.
+        if (actor == null) {
+            throw new AccessDeniedException("Access Denied.");
         }
+        handoverAccessPolicy.assertCanView(actor, handover);
 
         BookingEntity booking = handover.getBooking();
 
@@ -66,12 +71,14 @@ public class UpdateHandoverUseCase {
             throw new IllegalStateException("Cannot update past handovers.");
         }
 
-        // BR-44: Booking is closed/cancelled/rejected
-        if (booking != null) {
-            String bStatus = booking.getStatus() != null ? booking.getStatus().name() : "";
-            if (bStatus.equals("CANCELLED") || bStatus.equals("REJECTED") || bStatus.equals("CHECKED_OUT")) {
-                throw new IllegalStateException("Booking is cancelled or completed, cannot update operational handover.");
-            }
+        // BR-44: booking is closed / cancelled / rejected. Whitelist rather than blacklist so a
+        // BookingStatus added later is treated as "not editable" until somebody decides otherwise
+        // — the old list missed NO_SHOW and PENDING. Matches UPDATABLE_BOOKING_STATUSES on the
+        // Front Office side.
+        if (booking != null && !BookingStatus.LIVE_FOR_ARRIVAL.contains(booking.getStatus())) {
+            throw new IllegalStateException(
+                    "This booking is " + booking.getStatus()
+                            + ", so its operational handover can no longer be updated.");
         }
 
         HandoverStatus newStatus;

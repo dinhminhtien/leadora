@@ -23,18 +23,6 @@ public final class OpHandoverSpecification {
     private OpHandoverSpecification() {}
 
     /**
-     * The booking states an arrival is still worth preparing for (UC-22.1 step 3: the list must
-     * exclude handovers that have been "cancelled or removed").
-     *
-     * <p>Deliberately a whitelist rather than a "not cancelled" blacklist: a {@link BookingStatus}
-     * added later then defaults to <em>hidden</em> from the front desk instead of silently
-     * appearing on it. CANCELLED / REJECTED / NO_SHOW are gone, and CHECKED_OUT is finished — the
-     * guest has left, so keeping it on the arrival desk only grows the list without bound.
-     */
-    private static final Set<BookingStatus> ARRIVAL_RELEVANT_BOOKING_STATUSES =
-            EnumSet.of(BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN);
-
-    /**
      * Handovers visible to Front Office: everything that has been submitted (i.e. NOT a DRAFT
      * still owned by Sales/Reservation) <em>and</em> whose booking is still live, optionally
      * filtered by readiness, arrival date, assignee, and a free-text search over booking code /
@@ -76,7 +64,7 @@ public final class OpHandoverSpecification {
             // Always joined now: the booking's own status decides whether the arrival is still
             // real. `booking_id` is NOT NULL, so an inner join cannot drop a legitimate row.
             Join<?, ?> booking = root.join("booking", JoinType.INNER);
-            predicates.add(booking.get("status").in(ARRIVAL_RELEVANT_BOOKING_STATUSES));
+            predicates.add(booking.get("status").in(BookingStatus.LIVE_FOR_ARRIVAL));
 
             if (arrivalDate != null) {
                 predicates.add(cb.equal(booking.get("checkInDate"), arrivalDate));

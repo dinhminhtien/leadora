@@ -65,4 +65,17 @@ public class OpHandoverEntity extends BaseEntity {
 
     @Column(name = "assigned_fo_user_id")
     private UUID assignedFoUserId;
+
+    /**
+     * Optimistic lock. Two Front Office staff opening the same arrival and saving different
+     * readiness values used to be last-write-wins, with neither of them told — one would see
+     * "Updated." and walk away believing the room was marked ready.
+     *
+     * <p>{@code GlobalExceptionHandler} already maps {@code OptimisticLockingFailureException} to
+     * HTTP 409, so this field is the whole fix.
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    @Builder.Default
+    private Integer version = 0;
 }
