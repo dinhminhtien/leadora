@@ -47,11 +47,11 @@ import { ROUTE_PATHS } from "@/app/routes/route_paths";
 
 const TYPE_BADGE: Record<CustomerType, string> = {
   INDIVIDUAL: "bg-blue-100 text-blue-700 border-blue-200",
-  CORPORATE:  "bg-purple-100 text-purple-700 border-purple-200",
+  CORPORATE: "bg-purple-100 text-purple-700 border-purple-200",
 };
 const TYPE_LABEL: Record<CustomerType, string> = {
   INDIVIDUAL: "Individual",
-  CORPORATE:  "Corporate",
+  CORPORATE: "Corporate",
 };
 
 function initials(name: string) {
@@ -154,11 +154,10 @@ function EditCustomerDrawer({
                   key={type}
                   type="button"
                   onClick={() => set("customerType", type)}
-                  className={`py-2 rounded-xl text-xs font-semibold border transition ${
-                    form.customerType === type
+                  className={`py-2 rounded-xl text-xs font-semibold border transition ${form.customerType === type
                       ? "border-blue-500 bg-blue-50 text-blue-700"
                       : "border-slate-200 text-slate-600 hover:border-slate-300"
-                  }`}
+                    }`}
                 >
                   {type === "INDIVIDUAL" ? "Individual" : "Corporate / Org"}
                 </button>
@@ -265,10 +264,10 @@ function TaskCard({ task }: { task: Task }) {
   const statusColor = overdue
     ? "bg-red-100 text-red-700"
     : task.status === "COMPLETED"
-    ? "bg-green-100 text-green-700"
-    : task.status === "CANCELLED"
-    ? "bg-slate-100 text-slate-500"
-    : "bg-yellow-100 text-yellow-700";
+      ? "bg-green-100 text-green-700"
+      : task.status === "CANCELLED"
+        ? "bg-slate-100 text-slate-500"
+        : "bg-yellow-100 text-yellow-700";
 
   const statusLabel = overdue ? "Overdue" : task.status === "OPEN" ? "Open" : task.status === "COMPLETED" ? "Completed" : "Cancelled";
 
@@ -340,8 +339,8 @@ export function CustomerProfileDetailScreen({ customerId }: { customerId: string
     cancelled: tasks.filter(t => t.status === "CANCELLED").length,
   }), [tasks]);
 
-  const openTasks     = useMemo(() => tasks.filter(t => t.status === "OPEN" && !isOverdue(t)), [tasks]);
-  const overdueTasks  = useMemo(() => tasks.filter(isOverdue), [tasks]);
+  const openTasks = useMemo(() => tasks.filter(t => t.status === "OPEN" && !isOverdue(t)), [tasks]);
+  const overdueTasks = useMemo(() => tasks.filter(isOverdue), [tasks]);
   const completedTasks = useMemo(() => tasks.filter(t => t.status === "COMPLETED"), [tasks]);
   const allSortedTasks = useMemo(() =>
     [...tasks].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
@@ -395,9 +394,8 @@ export function CustomerProfileDetailScreen({ customerId }: { customerId: string
         <div className="px-6 py-5">
           <div className="flex items-start gap-5">
             {/* Avatar */}
-            <div className={`size-16 rounded-2xl flex items-center justify-center text-xl font-bold shrink-0 ${
-              isCorporate ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
-            }`}>
+            <div className={`size-16 rounded-2xl flex items-center justify-center text-xl font-bold shrink-0 ${isCorporate ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
+              }`}>
               {initials(customer.fullName)}
             </div>
 
@@ -440,7 +438,7 @@ export function CustomerProfileDetailScreen({ customerId }: { customerId: string
                 {customer.address && (
                   <div className="flex items-center gap-1.5 text-sm text-slate-500">
                     <MapPin className="size-3.5 text-slate-400" />
-                    <span className="truncate max-w-[240px]">{customer.address}</span>
+                    <span className="truncate max-w-60">{customer.address}</span>
                   </div>
                 )}
               </div>
@@ -633,16 +631,16 @@ const HISTORY_CONFIG: Record<CustomerHistoryItem["type"], {
   badgeCls: string;
   icon: React.ReactNode;
 }> = {
-  DEAL:      { label: "Deal",      iconBg: "bg-indigo-100", badgeCls: "bg-indigo-100 text-indigo-700", icon: <Briefcase className="size-3.5 text-indigo-600" /> },
-  BOOKING:   { label: "Booking",   iconBg: "bg-teal-100",   badgeCls: "bg-teal-100 text-teal-700",     icon: <BookOpen  className="size-3.5 text-teal-600" /> },
-  QUOTATION: { label: "Quotation", iconBg: "bg-amber-100",  badgeCls: "bg-amber-100 text-amber-700",   icon: <FileText  className="size-3.5 text-amber-600" /> },
+  DEAL: { label: "Deal", iconBg: "bg-indigo-100", badgeCls: "bg-indigo-100 text-indigo-700", icon: <Briefcase className="size-3.5 text-indigo-600" /> },
+  BOOKING: { label: "Booking", iconBg: "bg-teal-100", badgeCls: "bg-teal-100 text-teal-700", icon: <BookOpen className="size-3.5 text-teal-600" /> },
+  QUOTATION: { label: "Quotation", iconBg: "bg-amber-100", badgeCls: "bg-amber-100 text-amber-700", icon: <FileText className="size-3.5 text-amber-600" /> },
 };
 
 const TASK_STATUS_CFG: Record<string, string> = {
   COMPLETED: "bg-green-100 text-green-700",
   CANCELLED: "bg-slate-100 text-slate-500",
-  OPEN:      "bg-yellow-100 text-yellow-700",
-  OVERDUE:   "bg-red-100 text-red-700",
+  OPEN: "bg-yellow-100 text-yellow-700",
+  OVERDUE: "bg-red-100 text-red-700",
 };
 
 function statusLabel(raw: string | null) {
