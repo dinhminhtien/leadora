@@ -139,6 +139,55 @@ export function isLeadLocked(status?: string | null): boolean {
 }
 
 /**
+ * BR-05 / BR-06 — whether this lead may advance a stage right now, and what is stopping it.
+ *
+ * <p>Two surfaces ask the same question from different sources. The Edit form asks about the
+ * *form*, so the answer changes as the user types and the status option unlocks under their
+ * fingers; the Overview quick-action asks about the *saved lead*, because there is no form open to
+ * fix anything in. Feeding both from one function is the point: they were about to be a fourth and
+ * fifth copy of "a lead needs a source and an interested service", which is the drift this file
+ * exists to stop.
+ *
+ * <p>The refusals mirror `UpdateLeadUseCase` exactly — `LEAD_UNASSIGNED` (dòng 198) and
+ * `LEAD_NOT_READY_FOR_FOLLOW_UP` (`assertQualifyingDetailsPresent`). Anything this returns as
+ * allowed, the server accepts.
+ */
+export type LeadStatusGate = {
+  /** The one stage the lead may move to, or `null` when it is at the end of the ladder. */
+  next: LeadStatus | null;
+  /** BR-05 fields still missing, in the wording used inside the UI copy. */
+  missingForFollowUp: string[];
+  /** BR-06 — a lead nobody owns is a draft and cannot change status at all. */
+  unassigned: boolean;
+  /** True when a *forward* move would be refused. Marking Lost is never blocked. */
+  forwardBlocked: boolean;
+};
+
+export function leadStatusGate(lead: {
+  status: LeadStatus;
+  email?: string | null;
+  phone?: string | null;
+  source?: string | null;
+  interestedService?: string | null;
+  assignedUserId?: string | null;
+}): LeadStatusGate {
+  const missingForFollowUp = [
+    !lead.phone?.trim() && !lead.email?.trim() ? "phone or email" : null,
+    !lead.source?.trim() ? "source" : null,
+    !lead.interestedService?.trim() ? "interested service" : null,
+  ].filter(Boolean) as string[];
+
+  const unassigned = !lead.assignedUserId;
+
+  return {
+    next: NEXT_STATUS[lead.status],
+    missingForFollowUp,
+    unassigned,
+    forwardBlocked: unassigned || missingForFollowUp.length > 0,
+  };
+}
+
+/**
  * BR-06 / the assignment gate: an unassigned lead is a draft that stays `NEW`
  * until a manager assigns it, and it cannot be converted
  * (`LEAD_UNASSIGNED`, 422).

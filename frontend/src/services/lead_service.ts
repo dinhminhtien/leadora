@@ -75,6 +75,17 @@ export type LinkLeadToCustomerPayload = {
   reason?: string;
 };
 
+/**
+ * UC-8.4 — put a lead closed as LOST back into the pipeline, as NEW.
+ *
+ * The reason is required, not optional as it is on conversion: reopening changes a recorded
+ * outcome (the Lost tile, the conversion-rate denominator) rather than a field, so the record has
+ * to carry who decided it and why.
+ */
+export type ReopenLeadPayload = {
+  reason: string;
+};
+
 export type ConvertLeadResponse = {
   customerId: string;
   lead: Lead;
@@ -155,6 +166,11 @@ export const leadService = {
 
   async update(id: string, payload: UpdateLeadPayload): Promise<ApiResponse<Lead>> {
     const { data } = await apiClient.put<ApiResponse<Lead>>(`${ENDPOINT}/${id}`, payload);
+    return data;
+  },
+
+  async reopen(id: string, payload: ReopenLeadPayload): Promise<ApiResponse<Lead>> {
+    const { data } = await apiClient.post<ApiResponse<Lead>>(`${ENDPOINT}/${id}/reopen`, payload);
     return data;
   },
 

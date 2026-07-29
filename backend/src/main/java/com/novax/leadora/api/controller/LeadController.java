@@ -3,6 +3,7 @@ package com.novax.leadora.api.controller;
 import com.novax.leadora.api.dto.request.ConvertLeadRequest;
 import com.novax.leadora.api.dto.request.CreateLeadRequest;
 import com.novax.leadora.api.dto.request.LinkLeadToCustomerRequest;
+import com.novax.leadora.api.dto.request.ReopenLeadRequest;
 import com.novax.leadora.api.dto.request.UpdateLeadRequest;
 import com.novax.leadora.api.dto.response.ConvertLeadResponse;
 import com.novax.leadora.api.dto.response.LeadResponse;
@@ -13,6 +14,7 @@ import com.novax.leadora.application.usecase.lead.GetLeadDetailUseCase;
 import com.novax.leadora.application.usecase.lead.GetLeadListUseCase;
 import com.novax.leadora.application.usecase.lead.GetLeadStatsUseCase;
 import com.novax.leadora.application.usecase.lead.LinkLeadToCustomerUseCase;
+import com.novax.leadora.application.usecase.lead.ReopenLeadUseCase;
 import com.novax.leadora.application.usecase.lead.UpdateLeadUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -38,6 +40,7 @@ public class LeadController {
     private final UpdateLeadUseCase updateLeadUseCase;
     private final ConvertLeadUseCase convertLeadUseCase;
     private final LinkLeadToCustomerUseCase linkLeadToCustomerUseCase;
+    private final ReopenLeadUseCase reopenLeadUseCase;
 
     /** UC-8.1 — Create Lead */
     @PostMapping
@@ -106,6 +109,24 @@ public class LeadController {
     ) {
         LeadResponse lead = updateLeadUseCase.execute(leadId, request);
         return ResponseEntity.ok(ApiResponse.success(lead, "Lead updated successfully"));
+    }
+
+    /**
+     * UC-8.4 — put a lead closed as LOST back into the pipeline (as NEW).
+     *
+     * <p>Manager-only, and narrower than the class-level rule on purpose: {@code LOST} is the one
+     * status the ordinary update path refuses to move, because reopening rewrites a recorded
+     * outcome rather than correcting a field. {@code ReopenLeadUseCase} re-checks the same gate —
+     * the annotation guards the route, the use case guards the operation.
+     */
+    @PostMapping("/{leadId}/reopen")
+    @PreAuthorize("hasRole('MANAGER') and @access.can('LEAD_WRITE')")
+    public ResponseEntity<ApiResponse<LeadResponse>> reopenLead(
+            @PathVariable UUID leadId,
+            @Valid @RequestBody ReopenLeadRequest request
+    ) {
+        LeadResponse lead = reopenLeadUseCase.execute(leadId, request);
+        return ResponseEntity.ok(ApiResponse.success(lead, "Lead reopened successfully"));
     }
 
     /** UC-8.5 — Convert Lead to Customer */

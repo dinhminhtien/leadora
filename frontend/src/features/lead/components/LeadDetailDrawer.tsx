@@ -50,6 +50,7 @@ import {
   OverviewTab,
   type TabId,
 } from "@/features/lead/components/lead-detail-parts";
+import { useLeadDetail } from "@/features/lead/hooks/use_leads";
 import { canConvertLead, isLeadLocked } from "@/features/lead/lib/lead-rules";
 import type { Lead } from "@/services/lead_service";
 import type { UserSummary } from "@/services/follow_up_task_service";
@@ -67,19 +68,36 @@ export function LeadDetailDrawer({
         {/* Keyed by id so switching leads resets tab and form state — otherwise
             a half-typed edit would carry over onto the next record. */}
         {lead && (
-          <LeadDetailBody key={lead.leadId} lead={lead} onClose={() => onOpenChange(false)} />
+          <LeadDetailBody key={lead.leadId} row={lead} onClose={() => onOpenChange(false)} />
         )}
       </DrawerContent>
     </Drawer>
   );
 }
 
-function LeadDetailBody({ lead, onClose }: { lead: Lead; onClose: () => void }) {
+/**
+ * `row` is the record as the *list* had it when the user clicked — a snapshot, and the reason an
+ * edit used to need a close-and-reopen to show up. Saving invalidates the queries, the table
+ * behind repaints, but a plain object held in the caller's state cannot: it is not subscribed to
+ * anything. So the body reads the lead from the cache instead and keeps the row only as the first
+ * paint, which is what makes the drawer open with content rather than a spinner.
+ */
+function LeadDetailBody({ row, onClose }: { row: Lead; onClose: () => void }) {
   const [tab, setTab] = React.useState<TabId>("overview");
   const [convertOpen, setConvertOpen] = React.useState(false);
 
+  // A 403/404 here (reassigned away, deleted under us) leaves `data` undefined and simply falls
+  // back to the row — the drawer keeps showing what the list showed rather than blanking out.
+  const { data: detail } = useLeadDetail(row.leadId);
+  const lead = detail?.data ?? row;
+
   const role = getUserRole(useAuthStore((s) => s.user));
   const canAssign = role === "MANAGER" || role === "ADMIN";
+  // Narrower than `canAssign` on purpose: `POST /leads/{id}/reopen` is
+  // `hasRole('MANAGER')`, and an Admin has no business in the sales screens
+  // (see `AccessExpressions`). Offering the button to a role the route refuses
+  // would put a control on screen whose only outcome is a 403.
+  const canReopen = role === "MANAGER";
 
   const { data: usersResp } = useUsers();
   const salesUsers: UserSummary[] = (usersResp?.data ?? []).filter(
@@ -142,6 +160,7 @@ function LeadDetailBody({ lead, onClose }: { lead: Lead; onClose: () => void }) 
             lead={lead}
             locked={locked}
             convertible={convertible}
+            canReopen={canReopen}
             onEdit={() => setTab("edit")}
             onConvert={() => setConvertOpen(true)}
           />
