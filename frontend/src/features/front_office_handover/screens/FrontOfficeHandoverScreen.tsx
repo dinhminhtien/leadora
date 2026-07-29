@@ -159,7 +159,13 @@ export function FrontOfficeHandoverScreen() {
     size: PAGE_SIZE,
   });
 
-  const summaryQuery = useArrivalHandoverSummary(deskWide);
+  // Same filters as the list minus readinessStatus — see the service for why.
+  const summaryQuery = useArrivalHandoverSummary({
+    search: search || undefined,
+    arrivalDate: arrivalDate || undefined,
+    assignedFoUserId: assignedFoUserId || undefined,
+    deskWide: deskWide || undefined,
+  });
   const summary = summaryQuery.data;
 
   const rows: ArrivalHandover[] = useMemo(
@@ -442,8 +448,10 @@ export function FrontOfficeHandoverScreen() {
           >
             Previous
           </Button>
+          {/* Was "Trang {n}/{m}" / "Sau" next to an English "Previous" — every other label on this
+              screen is English, so the two Vietnamese ones were the odd pair out. */}
           <span className="text-slate-500">
-            Trang {page + 1}/{totalPages}
+            Page {page + 1} of {totalPages}
           </span>
           <Button
             variant="outline"
@@ -451,7 +459,7 @@ export function FrontOfficeHandoverScreen() {
             disabled={page >= totalPages - 1}
             onClick={() => setPage((p) => p + 1)}
           >
-            Sau
+            Next
           </Button>
         </div>
       )}

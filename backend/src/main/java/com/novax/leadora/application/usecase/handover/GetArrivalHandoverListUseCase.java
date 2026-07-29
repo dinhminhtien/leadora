@@ -40,7 +40,10 @@ public class GetArrivalHandoverListUseCase {
     public Page<ArrivalHandoverResponse> execute(String search, String readinessStatus, String arrivalDate,
                                                  String assignedFoUserId, boolean deskWide,
                                                  String sortBy, String sortDir, int page, int size) {
-        Pageable pageable = HandoverListQuery.pageable(sortBy, sortDir, page, size, HandoverListQuery.SORTABLE, "createdAt");
+        // Fallback matches the controller's default: soonest arrival first. (The operational list
+        // keeps createdAt — that one is a log of what Sales wrote, not a queue of who is arriving.)
+        Pageable pageable = HandoverListQuery.pageable(
+                sortBy, sortDir, page, size, HandoverListQuery.SORTABLE, "arrivalDate");
 
         ReadinessStatus readinessFilter =
                 HandoverListQuery.enumFilter(ReadinessStatus.class, readinessStatus, "readinessStatus");

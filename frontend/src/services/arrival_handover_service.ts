@@ -91,11 +91,15 @@ export type ArrivalHandoverSummary = {
 const ENDPOINT = "/arrival-handovers";
 
 export const arrivalHandoverService = {
-  /** `deskWide` must match the list's, or the KPI cards count rows the table cannot show. */
-  async getSummary(deskWide?: boolean) {
+  /**
+   * Counts for the KPI cards. The filters must match the list's, or the cards count rows the
+   * table cannot show — except `readinessStatus`, which is deliberately not sent: the cards are
+   * how you apply that filter, so counting under it would zero the other three.
+   */
+  async getSummary(params?: Pick<ArrivalHandoverQuery, "search" | "arrivalDate" | "assignedFoUserId" | "deskWide">) {
     const response = await apiClient.get<ApiResponse<ArrivalHandoverSummary>>(
       `${ENDPOINT}/summary`,
-      { params: deskWide ? { deskWide: true } : undefined },
+      { params },
     );
     return response.data;
   },

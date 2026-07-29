@@ -17,12 +17,17 @@ export function useArrivalHandovers(params?: ArrivalHandoverQuery) {
   });
 }
 
-export function useArrivalHandoverSummary(deskWide?: boolean) {
+type SummaryParams = Pick<
+  ArrivalHandoverQuery,
+  "search" | "arrivalDate" | "assignedFoUserId" | "deskWide"
+>;
+
+export function useArrivalHandoverSummary(params?: SummaryParams) {
   return useQuery({
-    // deskWide is part of the key: the counts differ per scope, so a shared cache entry would
-    // show one scope's numbers above the other scope's rows.
-    queryKey: [LIST_KEY, "summary", { deskWide: !!deskWide }],
-    queryFn: () => arrivalHandoverService.getSummary(deskWide),
+    // The filters are part of the key: the counts differ per scope and per filter, so a shared
+    // cache entry would show one query's numbers above another query's rows.
+    queryKey: [LIST_KEY, "summary", params ?? {}],
+    queryFn: () => arrivalHandoverService.getSummary(params),
     select: (res) => res.data,
     staleTime: 15_000,
   });
