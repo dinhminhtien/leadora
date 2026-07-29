@@ -11,6 +11,7 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepo
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.application.usecase.activitylog.AuditCorrectionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -45,6 +46,9 @@ class BookingStatusTransitionServiceTest {
     @Mock
     private ActivityLogPublisher activityLogPublisher;
 
+    @Mock
+    private AuditCorrectionService auditCorrectionService;
+
     private ObjectMapper objectMapper = new ObjectMapper();
 
     private BookingStatusTransitionService service;
@@ -55,7 +59,7 @@ class BookingStatusTransitionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new BookingStatusTransitionService(bookingRepository, bookingDetailRepository, paymentRepository, activityLogPublisher, objectMapper);
+        service = new BookingStatusTransitionService(bookingRepository, bookingDetailRepository, paymentRepository, auditCorrectionService, objectMapper);
         bookingId = UUID.randomUUID();
         booking = BookingEntity.builder()
                 .bookingId(bookingId)

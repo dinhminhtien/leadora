@@ -6,6 +6,7 @@ import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,9 @@ class ChangePasswordUseCaseTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private ActivityLogPublisher activityLogPublisher;
 
     @InjectMocks
     private ChangePasswordUseCase changePasswordUseCase;

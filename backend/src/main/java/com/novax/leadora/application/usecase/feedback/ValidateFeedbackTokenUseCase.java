@@ -7,6 +7,12 @@ import com.novax.leadora.infrastructure.persistence.entity.SalesFeedbackEntity;
 import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActorType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import java.util.UUID;
 
 import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
@@ -17,20 +23,48 @@ import java.time.OffsetDateTime;
 public class ValidateFeedbackTokenUseCase {
 
     private final SalesFeedbackRepository salesFeedbackRepository;
+    private final ActivityLogPublisher activityLogPublisher;
+
+    private static final UUID SYSTEM_UUID = new UUID(0L, 0L);
 
     public FeedbackTokenValidationResponse execute(String token) {
         SalesFeedbackEntity feedback = salesFeedbackRepository.findByFeedbackToken(token)
-                .orElseThrow(() -> new ResourceNotFoundException("Feedback invitation", token));
+                .orElse(null);
+        if (feedback == null) {
+            activityLogPublisher.publish(ActivityLogCommand.builder()
+                    .actorType(ActorType.SYSTEM)
+                    .activityType(ActivityLogType.INVALID_TOKEN_ACCESS)
+                    .entityType(EntityType.USER)
+                    .entityId(SYSTEM_UUID)
+                    .summary("Access denied: Invalid feedback token attempted: " + token)
+                    .build());
+            throw new ResourceNotFoundException("Feedback invitation", token);
+        }
 
         // Use constant-time comparison to prevent timing attacks
         byte[] tokenBytes = token.getBytes(StandardCharsets.UTF_8);
         byte[] dbTokenBytes = feedback.getFeedbackToken().getBytes(StandardCharsets.UTF_8);
         if (!MessageDigest.isEqual(tokenBytes, dbTokenBytes)) {
+            activityLogPublisher.publish(ActivityLogCommand.builder()
+                    .actorType(ActorType.SYSTEM)
+                    .activityType(ActivityLogType.INVALID_TOKEN_ACCESS)
+                    .entityType(EntityType.USER)
+                    .entityId(SYSTEM_UUID)
+                    .summary("Access denied: Feedback token comparison failed.")
+                    .build());
             throw new BusinessRuleException("Invalid feedback token");
         }
 
         // Check if token has expired
         if (feedback.getTokenExpiresAt() != null && feedback.getTokenExpiresAt().isBefore(OffsetDateTime.now())) {
+            String bookingCode = feedback.getBooking() != null ? feedback.getBooking().getBookingCode() : "N/A";
+            activityLogPublisher.publish(ActivityLogCommand.builder()
+                    .actorType(ActorType.SYSTEM)
+                    .activityType(ActivityLogType.FEEDBACK_LINK_EXPIRED)
+                    .entityType(EntityType.USER)
+                    .entityId(SYSTEM_UUID)
+                    .summary("Access denied: Feedback link has expired for booking code: " + bookingCode + ". Expired at: " + feedback.getTokenExpiresAt())
+                    .build());
             throw new BusinessRuleException("Feedback link has expired (only valid for 30 days)");
         }
 

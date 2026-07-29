@@ -19,6 +19,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
+import com.novax.leadora.application.usecase.activitylog.AuditCorrectionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -45,28 +46,43 @@ import static org.mockito.Mockito.when;
 /**
  * UC-8.5 — Convert Lead to Customer Profile.
  *
- * <p>Replaces {@code integration/lead/ConvertLeadIntegrationTest}, which was a Mockito unit test
- * filed under {@code integration} — the name promised a coverage level (Spring context, real
- * repositories, actual column constraints) that nothing in it delivered, which is worse than having
+ * <p>
+ * Replaces {@code integration/lead/ConvertLeadIntegrationTest}, which was a
+ * Mockito unit test
+ * filed under {@code integration} — the name promised a coverage level (Spring
+ * context, real
+ * repositories, actual column constraints) that nothing in it delivered, which
+ * is worse than having
  * no integration test at all because it looks like one exists.
  *
- * <p>The collaborators that carry real logic — {@link LeadConversionPolicy} and
- * {@link LeadConversionCompleter} — are built for real here rather than mocked, with only their own
- * repository/service dependencies stubbed. Mocking them would have meant asserting that this use
- * case calls a method, not that a lead actually ends up converted, audited and off the SLA clock,
+ * <p>
+ * The collaborators that carry real logic — {@link LeadConversionPolicy} and
+ * {@link LeadConversionCompleter} — are built for real here rather than mocked,
+ * with only their own
+ * repository/service dependencies stubbed. Mocking them would have meant
+ * asserting that this use
+ * case calls a method, not that a lead actually ends up converted, audited and
+ * off the SLA clock,
  * which is the part that was silently broken before.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ConvertLeadUseCaseTest {
 
-    @Mock private LeadRepository leadRepository;
-    @Mock private CustomerRepository customerRepository;
-    @Mock private LeadAccessPolicy leadAccessPolicy;
-    @Mock private ResolveSlaBreachUseCase resolveSlaBreachUseCase;
-    @Mock private SystemAuditLogService systemAuditLogService;
-    @Mock private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
-    @Mock private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    @Mock
+    private LeadRepository leadRepository;
+    @Mock
+    private CustomerRepository customerRepository;
+    @Mock
+    private LeadAccessPolicy leadAccessPolicy;
+    @Mock
+    private ResolveSlaBreachUseCase resolveSlaBreachUseCase;
+    @Mock
+    private SystemAuditLogService systemAuditLogService;
+    @Mock
+    private AuditCorrectionService auditCorrectionService;
+    @Mock
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     private ConvertLeadUseCase useCase;
 
@@ -87,9 +103,11 @@ class ConvertLeadUseCaseTest {
                 leadRepository, resolveSlaBreachUseCase, systemAuditLogService);
 
         useCase = new ConvertLeadUseCase(leadRepository, customerRepository, leadAccessPolicy,
-                conversionPolicy, duplicatePolicy, activityLogPublisher, objectMapper, profilePolicy, completer);
+                conversionPolicy, duplicatePolicy, auditCorrectionService, objectMapper,
+                profilePolicy, completer);
 
-        when(objectMapper.createObjectNode()).thenAnswer(inv -> new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode());
+        when(objectMapper.createObjectNode())
+                .thenAnswer(inv -> new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode());
         when(leadRepository.save(any(LeadEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         when(customerRepository.save(any(CustomerEntity.class))).thenAnswer(inv -> {
             CustomerEntity c = inv.getArgument(0);
@@ -109,7 +127,10 @@ class ConvertLeadUseCaseTest {
                 .build();
     }
 
-    /** A lead that satisfies every conversion precondition, so a test can change one thing. */
+    /**
+     * A lead that satisfies every conversion precondition, so a test can change one
+     * thing.
+     */
     private LeadEntity qualifiedLead() {
         LeadEntity lead = LeadEntity.builder()
                 .leadId(leadId)
@@ -122,7 +143,7 @@ class ConvertLeadUseCaseTest {
                 .assignedUser(salesRep)
                 .createdBy(salesRep)
                 .build();
-        when(leadRepository.findWithUsersById(leadId)).thenReturn(Optional.of(lead));
+        when(leadRepository.findWithUsersByIdForUpdate(leadId)).thenReturn(Optional.of(lead));
         return lead;
     }
 
@@ -148,7 +169,8 @@ class ConvertLeadUseCaseTest {
         assertThat(response.getCustomerId()).isNotNull();
         assertThat(lead.getStatus()).isEqualTo(LeadStatus.CONVERTED);
         assertThat(lead.getConvertedAt()).isNotNull();
-        // POST-1/BR-07: the link exists in both directions, or the audit trail has only one half.
+        // POST-1/BR-07: the link exists in both directions, or the audit trail has only
+        // one half.
         assertThat(lead.getCustomer()).isNotNull();
         assertThat(savedCustomer().getLeadId()).isEqualTo(leadId);
     }
@@ -329,7 +351,8 @@ class ConvertLeadUseCaseTest {
             assertThat(lead.getStatus()).isEqualTo(LeadStatus.CONVERTED);
             assertThat(lead.getNotes()).contains("Walk-in guest with a confirmed booking")
                     .contains("Sales Manager");
-            // The override reason belongs in the audit trail, not only in a free-text field.
+            // The override reason belongs in the audit trail, not only in a free-text
+            // field.
             verify(systemAuditLogService).log(any(), any(), any(), any(), any(), any(), any(),
                     org.mockito.ArgumentMatchers.contains("managerOverride="));
         }
@@ -382,7 +405,7 @@ class ConvertLeadUseCaseTest {
     @DisplayName("UT-CONVERT-17: a lead with neither phone nor email cannot become a customer")
     void unreachableLeadRefused() {
         LeadEntity lead = qualifiedLead();
-        lead.setStatus(LeadStatus.NEW);   // BR-05 is waived here — which is exactly the gap
+        lead.setStatus(LeadStatus.NEW); // BR-05 is waived here — which is exactly the gap
         lead.setEmail(null);
         lead.setPhone("");
         when(leadAccessPolicy.currentUser()).thenReturn(manager);

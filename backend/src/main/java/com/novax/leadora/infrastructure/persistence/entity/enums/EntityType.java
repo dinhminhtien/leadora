@@ -7,6 +7,7 @@ public enum EntityType {
     QUOTATION,
     BOOKING,
     PAYMENT,
+    USER,
     /** Operational / arrival handover (UC-20.x, UC-22.x). */
     HANDOVER
 }

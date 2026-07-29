@@ -4,6 +4,11 @@ import com.novax.leadora.infrastructure.persistence.entity.PasswordResetTokenEnt
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.PasswordResetTokenRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActorType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,6 +23,7 @@ public class ResetPasswordUseCase {
     private final PasswordResetTokenRepository tokenRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ActivityLogPublisher activityLogPublisher;
 
     @Transactional
     @org.springframework.cache.annotation.CacheEvict(value = "user-roles", allEntries = true)
@@ -44,6 +50,16 @@ public class ResetPasswordUseCase {
         // Mark token as used
         resetToken.setUsed(true);
         tokenRepository.save(resetToken);
+
+        activityLogPublisher.publish(ActivityLogCommand.builder()
+                .actorType(ActorType.USER)
+                .actorUserId(user.getUserId())
+                .actorRoleSnapshot(user.getRole() != null ? user.getRole().getRoleName() : null)
+                .activityType(ActivityLogType.PASSWORD_RESET_COMPLETED)
+                .entityType(EntityType.USER)
+                .entityId(user.getUserId())
+                .summary(user.getFullName() + " (" + user.getEmail() + ") reset their password successfully via token.")
+                .build());
     }
 
     private void validatePasswordComplexity(String password) {
@@ -53,10 +69,12 @@ public class ResetPasswordUseCase {
         boolean hasUppercase = password.chars().anyMatch(Character::isUpperCase);
         boolean hasLowercase = password.chars().anyMatch(Character::isLowerCase);
         boolean hasDigit = password.chars().anyMatch(Character::isDigit);
-        boolean hasSymbol = password.chars().anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
+        boolean hasSymbol = password.chars()
+                .anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
 
         if (!hasUppercase || !hasLowercase || !hasDigit || !hasSymbol) {
-            throw new IllegalStateException("Password must contain at least one lowercase letter, one uppercase letter, one digit, and one symbol.");
+            throw new IllegalStateException(
+                    "Password must contain at least one lowercase letter, one uppercase letter, one digit, and one symbol.");
         }
     }
 }

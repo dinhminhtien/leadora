@@ -7,7 +7,6 @@ import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.common.security.RbacRoles;
-import com.novax.leadora.infrastructure.persistence.entity.PermissionEntity;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.RolePermissionEntity;
 import com.novax.leadora.infrastructure.persistence.repository.PermissionRepository;
@@ -27,9 +26,12 @@ import java.util.stream.Collectors;
 
 /**
  * UC-6.4 — Configure Role Permissions (replace semantics).
- * Computes the diff between the role's current and requested permission sets, so unchanged grants
- * keep their original {@code granted_at} (audit-friendly). Validates every permission id (E6).
- * Changes apply immediately to all users holding the role (POST-2) — no per-user copy exists.
+ * Computes the diff between the role's current and requested permission sets,
+ * so unchanged grants
+ * keep their original {@code granted_at} (audit-friendly). Validates every
+ * permission id (E6).
+ * Changes apply immediately to all users holding the role (POST-2) — no
+ * per-user copy exists.
  */
 @Service
 @RequiredArgsConstructor
@@ -48,8 +50,10 @@ public class ConfigureRolePermissionsUseCase {
         RoleEntity role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
 
-        // Only the two permission-driven job roles can be reconfigured. Admin is refused with its
-        // own message because the reason differs: it is not "unsupported", it already holds
+        // Only the two permission-driven job roles can be reconfigured. Admin is
+        // refused with its
+        // own message because the reason differs: it is not "unsupported", it already
+        // holds
         // everything. See RbacRoles for why the operational desks are excluded.
         if (!RbacRoles.isConfigurable(role.getRoleName())) {
             throw new IllegalStateException(RbacRoles.isAdmin(role.getRoleName())
@@ -102,7 +106,8 @@ public class ConfigureRolePermissionsUseCase {
 
         long userCount = userRepository.countByRole_RoleId(roleId);
 
-        // BR-03 / BR-37 — permission changes are logged with the before/after code sets, so an
+        // BR-03 / BR-37 — permission changes are logged with the before/after code
+        // sets, so an
         // auditor can see exactly which grants an Admin added or removed and when.
         systemAuditLogService.log("IDENTITY", "ROLE", auditEntityId(roleId), "PERMISSIONS_CONFIGURED",
                 currentUserProvider.resolveQuietly(),
@@ -113,18 +118,23 @@ public class ConfigureRolePermissionsUseCase {
     }
 
     /**
-     * {@code system_audit_logs.entity_id} is a non-null UUID, but roles use an INTEGER identity.
-     * Derive a stable UUID from the role id so role rows are still addressable and greppable.
+     * {@code system_audit_logs.entity_id} is a non-null UUID, but roles use an
+     * INTEGER identity.
+     * Derive a stable UUID from the role id so role rows are still addressable and
+     * greppable.
      */
     private static UUID auditEntityId(Integer roleId) {
         return UUID.nameUUIDFromBytes(("ROLE:" + roleId).getBytes(StandardCharsets.UTF_8));
     }
 
-    /** Permission ids rendered as their human-readable codes, sorted, for the audit payload. */
+    /**
+     * Permission ids rendered as their human-readable codes, sorted, for the audit
+     * payload.
+     */
     private String codesOf(Set<Integer> permissionIds) {
         return permissionRepository.findAllByOrderByPermissionIdAsc().stream()
                 .filter(p -> permissionIds.contains(p.getPermissionId()))
-                .map(PermissionEntity::getPermissionCode)
+                .map(p -> p.getPermissionCode())
                 .sorted()
                 .collect(Collectors.joining(", "));
     }

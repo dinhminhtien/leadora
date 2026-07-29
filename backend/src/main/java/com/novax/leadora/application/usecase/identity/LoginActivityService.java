@@ -1,6 +1,11 @@
 package com.novax.leadora.application.usecase.identity;
 
+import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActorType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.UserStatus;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -11,24 +16,28 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Shared sign-in policy, applied for both email/password (UC-1) and Google OAuth logins:
+ * Shared sign-in policy, applied for both email/password (UC-1) and Google
+ * OAuth logins:
  * <ul>
- *   <li>LOCKED accounts are rejected with the standard message.</li>
- *   <li>INACTIVE accounts (dormant from 7-day inactivity) are reactivated to ACTIVE on login.</li>
- *   <li>{@code lastLoginAt} is stamped so the idle-inactivation job has a fresh window.</li>
+ * <li>LOCKED accounts are rejected with the standard message.</li>
+ * <li>INACTIVE accounts (dormant from 7-day inactivity) are reactivated to
+ * ACTIVE on login.</li>
+ * <li>{@code lastLoginAt} is stamped so the idle-inactivation job has a fresh
+ * window.</li>
  * </ul>
  */
 @Service
 @RequiredArgsConstructor
 public class LoginActivityService {
 
-    public static final String LOCKED_MESSAGE =
-            "Your account has been locked. Please contact the Admin for assistance.";
+    public static final String LOCKED_MESSAGE = "Your account has been locked. Please contact the Admin for assistance.";
 
     private final UserRepository userRepository;
+    private final ActivityLogPublisher activityLogPublisher;
 
     /**
-     * Apply the policy to an already-loaded, managed entity (e.g. inside the email-login
+     * Apply the policy to an already-loaded, managed entity (e.g. inside the
+     * email-login
      * transaction). The caller's transaction persists the changes.
      */
     public void applyOnLogin(UserEntity user) {
@@ -39,9 +48,22 @@ public class LoginActivityService {
             user.setStatus(UserStatus.ACTIVE); // re-activate dormant account on sign-in
         }
         user.setLastLoginAt(OffsetDateTime.now());
+
+        activityLogPublisher.publish(ActivityLogCommand.builder()
+                .actorType(ActorType.USER)
+                .actorUserId(user.getUserId())
+                .actorRoleSnapshot(user.getRole() != null ? user.getRole().getRoleName() : null)
+                .activityType(ActivityLogType.USER_LOGGED_IN)
+                .entityType(EntityType.USER)
+                .entityId(user.getUserId())
+                .summary(user.getFullName() + " (" + user.getEmail() + ") logged in successfully.")
+                .build());
     }
 
-    /** Load + apply the policy in its own transaction (e.g. from the OAuth verify endpoint). */
+    /**
+     * Load + apply the policy in its own transaction (e.g. from the OAuth verify
+     * endpoint).
+     */
     @Transactional
     public void recordLogin(UUID userId) {
         userRepository.findWithRoleByUserId(userId).ifPresent(this::applyOnLogin);

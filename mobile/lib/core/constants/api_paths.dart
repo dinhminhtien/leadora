@@ -48,6 +48,9 @@ class ApiPaths {
   static String notificationRead(String id) => '/notifications/$id/read';
   static const String notificationsMarkAllRead = '/notifications/mark-all-read';
 
+  // --- FCM Device Tokens (DeviceTokenController) ---
+  static const String deviceTokens = '/device-tokens';
+
   // --- Customers (CustomerController) ---
   static const String customers = '/customers';
   static const String customersList = '/customers/list';

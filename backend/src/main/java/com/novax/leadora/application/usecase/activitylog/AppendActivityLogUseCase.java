@@ -71,8 +71,13 @@ public class AppendActivityLogUseCase {
                 .refActivityId(command.getRefActivityId())
                 .build();
 
-        activityLogRepository.save(entity);
-        log.info("Appended activity log entry: id={}, type={}, entity={}", entity.getId(), entity.getActivityType(),
-                entity.getEntityId());
+        try {
+            activityLogRepository.save(entity);
+            log.info("Appended activity log entry: id={}, type={}, entity={}", entity.getId(), entity.getActivityType(),
+                    entity.getEntityId());
+        } catch (Exception ex) {
+            log.error("Failed to append activity log entry for activityType={}, entityId={}. Error: {}",
+                    command.getActivityType(), command.getEntityId(), ex.getMessage(), ex);
+        }
     }
 }

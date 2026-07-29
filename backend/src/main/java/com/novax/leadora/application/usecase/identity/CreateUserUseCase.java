@@ -7,9 +7,13 @@ import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.UserStatus;
 import com.novax.leadora.infrastructure.persistence.repository.RoleRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,6 +33,7 @@ public class CreateUserUseCase {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ActivityLogPublisher activityLogPublisher;
     private final SystemAuditLogService systemAuditLogService;
     private final CurrentUserProvider currentUserProvider;
 
@@ -46,7 +51,8 @@ public class CreateUserUseCase {
         RoleEntity role = roleRepository.findById(request.getRoleId())
                 .orElseThrow(() -> new ResourceNotFoundException("Role", request.getRoleId()));
 
-        // Admin accounts are not provisioned through this form — only Staff/Manager can be assigned.
+        // Admin accounts are not provisioned through this form — only Staff/Manager can
+        // be assigned.
         if ("ADMIN".equalsIgnoreCase(role.getRoleName())) {
             throw new IllegalStateException("The Admin role cannot be assigned to a new account.");
         }
@@ -63,16 +69,25 @@ public class CreateUserUseCase {
                 .avatarUrl(request.getAvatarUrl())
                 .build();
 
-        UserEntity saved = userRepository.save(user);
+        UserEntity savedUser = userRepository.save(user);
+
+        // Publish activity log for compliance audit dashboard
+        activityLogPublisher.publish(ActivityLogCommand.builder()
+                .activityType(ActivityLogType.USER_ACCOUNT_CREATED)
+                .entityType(EntityType.USER)
+                .entityId(savedUser.getUserId())
+                .summary("User account created for " + savedUser.getFullName() + " (" + savedUser.getEmail()
+                        + ") with role " + savedUser.getRole().getRoleName() + ".")
+                .build());
 
         // BR-03 / BR-37 — every account change is logged with actor, target and new value.
         // The password is never part of the audit payload.
-        systemAuditLogService.log("IDENTITY", "USER", saved.getUserId(), "CREATED",
+        systemAuditLogService.log("IDENTITY", "USER", savedUser.getUserId(), "CREATED",
                 currentUserProvider.resolveQuietly(), null,
-                "email=" + saved.getEmail() + ", role=" + role.getRoleName() + ", status=" + saved.getStatus(),
+                "email=" + savedUser.getEmail() + ", role=" + role.getRoleName() + ", status=" + savedUser.getStatus(),
                 null);
 
-        return UserAccountResponse.from(saved);
+        return UserAccountResponse.from(savedUser);
     }
 
     private void validatePasswordComplexity(String password) {

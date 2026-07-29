@@ -9,6 +9,7 @@ import com.novax.leadora.common.security.JwtService;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,6 +42,9 @@ class LoginUseCaseTest {
 
         @Mock
         private EffectivePermissionsService effectivePermissionsService;
+
+        @Mock
+        private ActivityLogPublisher activityLogPublisher;
 
         @InjectMocks
         private LoginUseCase loginUseCase;

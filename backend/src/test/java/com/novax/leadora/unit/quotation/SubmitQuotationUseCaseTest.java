@@ -21,6 +21,8 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 
 import java.math.BigDecimal;
 import java.util.Collections;
@@ -51,10 +53,10 @@ class SubmitQuotationUseCaseTest {
     private QuotationAccessPolicy quotationAccessPolicy;
 
     @Mock
-    private com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase startSlaTrackingUseCase;
+    private StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Mock
-    private com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher activityLogPublisher;
+    private ActivityLogPublisher activityLogPublisher;
 
     @Spy
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();

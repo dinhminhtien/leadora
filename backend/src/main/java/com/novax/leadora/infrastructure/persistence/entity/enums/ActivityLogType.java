@@ -21,6 +21,21 @@ public enum ActivityLogType {
     QUOTATION_UPDATED,
     BOOKING_UPDATED,
 
+    // Security / Identity events
+    USER_LOGGED_IN,
+    USER_LOGGED_OUT,
+    PASSWORD_CHANGED,
+    PASSWORD_RESET_REQUESTED,
+    PASSWORD_RESET_COMPLETED,
+    USER_ACCOUNT_CREATED,
+    USER_ACCOUNT_UPDATED,
+
+    // Security / Access control events
+    LOGIN_FAILED,
+    ACCESS_DENIED_EVENT,
+    INVALID_TOKEN_ACCESS,
+    FEEDBACK_LINK_EXPIRED,
+
     // Handover (UC-20.x Sales/Reservation, UC-22.3 Front Office). The module previously wrote only
     // to the log file, so BR-37's "old value / new value / actor / target" was not queryable and
     // the POST-2 audit requirement of UC-22.3 was unmet.
