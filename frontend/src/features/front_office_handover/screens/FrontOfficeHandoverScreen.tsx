@@ -122,14 +122,13 @@ export function FrontOfficeHandoverScreen() {
   useEffect(() => {
     if (!isSupervisor) return;
     let cancelled = false;
+    // Asks for the Front Office team only. This used to fetch every user in the company and keep
+    // the five it wanted, which handed the whole staff directory to the browser for a dropdown.
     userService
-      .getSummaries()
+      .getSummariesByRole("FO")
       .then((res) => {
         if (cancelled) return;
-        const roster = (res.data ?? []).filter((u) =>
-          ["FO", "FRONT_OFFICE"].includes((u.roleName ?? "").toUpperCase()),
-        );
-        setFoStaff(roster);
+        setFoStaff(res.data ?? []);
       })
       .catch(() => {
         // A missing roster only costs the filter — the list itself is unaffected.
