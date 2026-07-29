@@ -1,13 +1,16 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
 import com.novax.leadora.infrastructure.persistence.entity.OpHandoverEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.HandoverStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Repository
@@ -27,4 +30,19 @@ public interface OpHandoverRepository
      */
     @Query("select distinct h.booking.bookingId from OpHandoverEntity h where h.booking is not null")
     List<UUID> findBookingIdsWithHandover();
+
+    /**
+     * Submitted handovers whose booking has left {@link BookingStatus#LIVE_FOR_ARRIVAL} — the guest
+     * checked out, cancelled, or never arrived — and which are not closed yet.
+     *
+     * <p>DRAFTs are left alone: they are Sales' unfinished work, not an arrival that ended.
+     */
+    @Query("""
+            select h from OpHandoverEntity h
+             where h.status <> com.novax.leadora.infrastructure.persistence.entity.enums.HandoverStatus.DRAFT
+               and h.status <> com.novax.leadora.infrastructure.persistence.entity.enums.HandoverStatus.CLOSED
+               and h.booking is not null
+               and h.booking.status not in :liveStatuses
+            """)
+    List<OpHandoverEntity> findFinishedButNotClosed(@Param("liveStatuses") Set<BookingStatus> liveStatuses);
 }
