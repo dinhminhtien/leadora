@@ -8,7 +8,11 @@ import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.OpHandoverEntity;
 import com.novax.leadora.infrastructure.persistence.entity.PaymentEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.HandoverStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ReadinessStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
@@ -17,6 +21,7 @@ import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.application.usecase.timeline.CreateInteractionTimelineUseCase;
 import com.novax.leadora.api.dto.request.CreateInteractionTimelineRequest;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +50,8 @@ public class UpdateHandoverUseCase {
     private final UserRepository userRepository;
     private final CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
     private final HandoverAccessPolicy handoverAccessPolicy;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public ArrivalHandoverResponse execute(UUID handoverId, UpdateHandoverRequest request, UserEntity actor) {
@@ -138,7 +145,25 @@ public class UpdateHandoverUseCase {
                 ? paymentRepository.findByBooking_BookingId(booking.getBookingId()) 
                 : List.of();
 
-        // BR-37: Write Slf4j Audit Log
+        // BR-37 — a queryable audit row alongside the log line. The log file alone could not answer
+        // "who changed this handover and from what", which is the whole point of the rule.
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("bookingCode", booking != null ? booking.getBookingCode() : null)
+                    .put("previousStatus", oldStatus != null ? oldStatus.name() : null)
+                    .put("newStatus", newStatus.name())
+                    .put("assignedFoUserId", request.getAssignedFoUserId() != null
+                            ? request.getAssignedFoUserId().toString() : null);
+            activityLogPublisher.publish(
+                    ActivityLogType.HANDOVER_SUBMITTED,
+                    EntityType.HANDOVER,
+                    saved.getHandoverId(),
+                    "Operational handover " + oldStatus + " -> " + newStatus,
+                    payload);
+        } catch (Exception e) {
+            log.warn("Failed to publish handover update activity: {}", e.getMessage());
+        }
+
         log.info("[AUDIT] Action: UPDATE_OPERATIONAL_HANDOVER, TargetRecord: {}, OldStatus: {}, NewStatus: {}, UpdatedBy: {}, Timestamp: {}",
                 saved.getHandoverId(), oldStatus, newStatus, actor != null ? actor.getUserId() : null, OffsetDateTime.now());
 

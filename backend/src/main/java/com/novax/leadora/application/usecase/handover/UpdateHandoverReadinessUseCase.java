@@ -1,8 +1,13 @@
 package com.novax.leadora.application.usecase.handover;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.novax.leadora.api.dto.request.UpdateReadinessStatusRequest;
 import com.novax.leadora.api.dto.response.ArrivalHandoverResponse;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.OpHandoverEntity;
@@ -73,6 +78,8 @@ public class UpdateHandoverReadinessUseCase {
 
     private final OpHandoverRepository opHandoverRepository;
     private final NotificationRepository notificationRepository;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public ArrivalHandoverResponse execute(UUID handoverId, UpdateReadinessStatusRequest request, UserEntity actor) {
@@ -129,8 +136,29 @@ public class UpdateHandoverReadinessUseCase {
             notifyClarificationNeeded(saved, actor);
         }
 
-        // BR-37 wants the old value alongside the new one; without it the trail cannot show what
-        // actually changed. (The full audit row in `activity_logs` is still outstanding.)
+        // POST-2 / BR-37 — a queryable audit row, not just a line in the log file. The old value
+        // matters as much as the new one: without it the trail cannot show what actually changed.
+        // Wrapped because an audit write must never turn a completed business operation into an
+        // error response, which is how every other publisher in the codebase treats it.
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("bookingCode", booking != null ? booking.getBookingCode() : null)
+                    .put("previousReadiness", previousReadiness != null ? previousReadiness.name() : null)
+                    .put("newReadiness", newReadiness.name())
+                    .put("handoverStatus", saved.getStatus() != null ? saved.getStatus().name() : null);
+            if (newReadiness == ReadinessStatus.NEED_CLARIFICATION) {
+                payload.put("clarificationNote", saved.getClarificationNote());
+            }
+            activityLogPublisher.publish(
+                    ActivityLogType.HANDOVER_READINESS_UPDATED,
+                    EntityType.HANDOVER,
+                    saved.getHandoverId(),
+                    "Arrival readiness " + previousReadiness + " -> " + newReadiness,
+                    payload);
+        } catch (Exception e) {
+            log.warn("Failed to publish handover readiness activity: {}", e.getMessage());
+        }
+
         log.info("FO readiness update: handover={} readiness {} -> {} by={}",
                 handoverId, previousReadiness, newReadiness, actor != null ? actor.getUserId() : null);
 

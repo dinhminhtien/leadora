@@ -1,6 +1,8 @@
 package com.novax.leadora.application.usecase.handover;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novax.leadora.api.dto.request.UpdateHandoverRequest;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.application.usecase.timeline.CreateInteractionTimelineUseCase;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
@@ -56,6 +58,7 @@ class UpdateHandoverAuthorizationTest {
     @Mock private UserRepository userRepository;
     @Mock private CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
     @Mock private CurrentUserProvider currentUserProvider;
+    @Mock private ActivityLogPublisher activityLogPublisher;
 
     private UpdateHandoverUseCase useCase;
     private UUID handoverId;
@@ -66,7 +69,8 @@ class UpdateHandoverAuthorizationTest {
         useCase = new UpdateHandoverUseCase(
                 opHandoverRepository, bookingDetailRepository, paymentRepository,
                 notificationRepository, userRepository, createInteractionTimelineUseCase,
-                new HandoverAccessPolicy(currentUserProvider));
+                new HandoverAccessPolicy(currentUserProvider),
+                activityLogPublisher, new ObjectMapper());
         handoverId = UUID.randomUUID();
         creator = user("SALES");
         when(bookingDetailRepository.findByBooking_BookingId(any())).thenReturn(List.of());

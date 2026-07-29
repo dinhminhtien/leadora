@@ -6,5 +6,7 @@ public enum EntityType {
     TASK,
     QUOTATION,
     BOOKING,
-    PAYMENT
+    PAYMENT,
+    /** Operational / arrival handover (UC-20.x, UC-22.x). */
+    HANDOVER
 }

@@ -1,6 +1,11 @@
 package com.novax.leadora.application.usecase.handover;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novax.leadora.api.dto.request.UpdateReadinessStatusRequest;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.OpHandoverEntity;
@@ -50,6 +55,9 @@ class UpdateHandoverReadinessUseCaseTest {
     @Mock
     private NotificationRepository notificationRepository;
 
+    @Mock
+    private ActivityLogPublisher activityLogPublisher;
+
     private UpdateHandoverReadinessUseCase useCase;
 
     private UUID handoverId;
@@ -57,7 +65,8 @@ class UpdateHandoverReadinessUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new UpdateHandoverReadinessUseCase(opHandoverRepository, notificationRepository);
+        useCase = new UpdateHandoverReadinessUseCase(
+                opHandoverRepository, notificationRepository, activityLogPublisher, new ObjectMapper());
         handoverId = UUID.randomUUID();
         actor = UserEntity.builder().userId(UUID.randomUUID()).fullName("FO Desk").build();
     }
@@ -275,6 +284,37 @@ class UpdateHandoverReadinessUseCaseTest {
 
         assertThat(response.getReadinessStatus()).isEqualTo("NEED_CLARIFICATION");
         verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("BR-37 / POST-2 — the audit row carries the old value, not just the new one")
+    void publishesAuditRowWithBothValues() {
+        handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+
+        useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
+
+        ArgumentCaptor<JsonNode> payload = ArgumentCaptor.forClass(JsonNode.class);
+        verify(activityLogPublisher).publish(
+                org.mockito.ArgumentMatchers.eq(ActivityLogType.HANDOVER_READINESS_UPDATED),
+                org.mockito.ArgumentMatchers.eq(EntityType.HANDOVER),
+                org.mockito.ArgumentMatchers.eq(handoverId),
+                org.mockito.ArgumentMatchers.contains("REVIEWED -> READY_FOR_ARRIVAL"),
+                payload.capture());
+        assertThat(payload.getValue().get("previousReadiness").asText()).isEqualTo("REVIEWED");
+        assertThat(payload.getValue().get("newReadiness").asText()).isEqualTo("READY_FOR_ARRIVAL");
+        assertThat(payload.getValue().get("bookingCode").asText()).isEqualTo("BK-001");
+    }
+
+    @Test
+    @DisplayName("A failing audit write must not fail the business operation")
+    void auditFailureDoesNotBreakTheUpdate() {
+        handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+        org.mockito.Mockito.doThrow(new RuntimeException("audit sink down"))
+                .when(activityLogPublisher).publish(any(), any(), any(), any(), any());
+
+        var response = useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
+
+        assertThat(response.getReadinessStatus()).isEqualTo("READY_FOR_ARRIVAL");
     }
 
     @Test
