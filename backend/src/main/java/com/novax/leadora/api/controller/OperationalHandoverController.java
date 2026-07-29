@@ -4,6 +4,7 @@ import com.novax.leadora.api.dto.request.CreateHandoverRequest;
 import com.novax.leadora.api.dto.request.UpdateHandoverRequest;
 import com.novax.leadora.api.dto.response.ArrivalHandoverResponse;
 import com.novax.leadora.application.usecase.handover.CreateHandoverUseCase;
+import com.novax.leadora.application.usecase.handover.GetBookingIdsWithHandoverUseCase;
 import com.novax.leadora.application.usecase.handover.GetHandoverDetailUseCase;
 import com.novax.leadora.application.usecase.handover.GetHandoverListUseCase;
 import com.novax.leadora.application.usecase.handover.UpdateHandoverUseCase;
@@ -17,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -39,6 +41,7 @@ public class OperationalHandoverController {
     private final GetHandoverListUseCase getHandoverListUseCase;
     private final GetHandoverDetailUseCase getHandoverDetailUseCase;
     private final UpdateHandoverUseCase updateHandoverUseCase;
+    private final GetBookingIdsWithHandoverUseCase getBookingIdsWithHandoverUseCase;
     private final CurrentUserProvider currentUserProvider;
 
     /** UC-20.1 — Create Operational Handover. */
@@ -72,6 +75,19 @@ public class OperationalHandoverController {
     public ResponseEntity<ApiResponse<ArrivalHandoverResponse>> detail(@PathVariable UUID id) {
         ArrivalHandoverResponse response = getHandoverDetailUseCase.execute(id);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * UC-20.1 — the booking ids that already have a handover, so the "confirmed bookings still
+     * waiting for one" list can exclude them without the client paging the whole table.
+     *
+     * <p>Unscoped by design: the existence of a handover is not private to its author, and scoping
+     * it is what made a colleague's handover invisible and offered its booking for a second one.
+     */
+    @GetMapping("/booking-ids")
+    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN', 'MANAGER') and @access.can('HANDOVER_VIEW')")
+    public ResponseEntity<ApiResponse<List<UUID>>> bookingIdsWithHandover() {
+        return ResponseEntity.ok(ApiResponse.success(getBookingIdsWithHandoverUseCase.execute()));
     }
 
     /** UC-20.2 — View Handover List. */
