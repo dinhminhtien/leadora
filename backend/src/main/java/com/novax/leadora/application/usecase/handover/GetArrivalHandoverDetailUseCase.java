@@ -7,6 +7,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.HandoverStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.OpHandoverRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
+import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ public class GetArrivalHandoverDetailUseCase {
     private final OpHandoverRepository opHandoverRepository;
     private final BookingDetailRepository bookingDetailRepository;
     private final PaymentRepository paymentRepository;
+    private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
     public ArrivalHandoverResponse execute(UUID handoverId) {
@@ -33,6 +35,14 @@ public class GetArrivalHandoverDetailUseCase {
             throw new ResourceNotFoundException("Arrival handover", handoverId);
         }
 
+        // Deliberately NOT scoped by assignee, unlike the operational detail endpoint.
+        //
+        // There, one Sales rep must not read another's records (BR-01 / BR-02). Here the assignee
+        // is a work-queue default, not a confidentiality boundary: the same Front Office user can
+        // list the whole desk on request (see ArrivalDeskScope), so refusing the detail would block
+        // nothing while breaking the obvious case — opening a row from the desk-wide list.
+        // The real boundaries are already enforced: the FO role plus HANDOVER_VIEW on the
+        // controller, and the DRAFT check above.
         UUID bookingId = handover.getBooking() != null ? handover.getBooking().getBookingId() : null;
         var details = bookingId != null
                 ? bookingDetailRepository.findByBooking_BookingId(bookingId)
@@ -41,6 +51,12 @@ public class GetArrivalHandoverDetailUseCase {
                 ? paymentRepository.findByBooking_BookingId(bookingId)
                 : Collections.<com.novax.leadora.infrastructure.persistence.entity.PaymentEntity>emptyList();
 
-        return ArrivalHandoverResponse.fromDetail(handover, details, payments);
+        String assignedFoName = handover.getAssignedFoUserId() != null
+                ? userRepository.findById(handover.getAssignedFoUserId())
+                        .map(u -> u.getFullName())
+                        .orElse(null)
+                : null;
+
+        return ArrivalHandoverResponse.fromDetail(handover, details, payments, assignedFoName);
     }
 }

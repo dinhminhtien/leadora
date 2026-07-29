@@ -30,7 +30,7 @@ import {
   type DetailActionSpec,
 } from "@/components/ui/record-drawer";
 import { StatusPill } from "@/components/ui/status-pill";
-import type { ArrivalHandover } from "@/services/arrival_handover_service";
+import { isBookingActive, type ArrivalHandover } from "@/services/arrival_handover_service";
 
 export function HandoverDetailDrawer({
   handover,
@@ -51,6 +51,7 @@ export function HandoverDetailDrawer({
 
   const needsClarification =
     (handover.readinessStatus ?? "").toUpperCase() === "NEED_CLARIFICATION";
+  const bookingActive = isBookingActive(handover.bookingStatus);
 
   return (
     <RecordDetailDrawer
@@ -68,11 +69,21 @@ export function HandoverDetailDrawer({
       recordId={handover.handoverId}
       actions={actions}
       notice={
-        // A clarification request is a question aimed at Sales/Reservation — it
-        // is the reason the arrival is blocked, so it leads.
-        needsClarification && handover.clarificationNote
-          ? { tone: "danger", text: handover.clarificationNote }
-          : undefined
+        // A dead booking outranks everything: there is no arrival to prepare for, so say that
+        // before the front desk reads any of the notes below. The list already filters these
+        // out (UC-22.1 step 3), but a deep link from an older notification still lands here.
+        !bookingActive
+          ? {
+              tone: "danger",
+              text: `This booking is ${(handover.bookingStatus ?? "")
+                .toLowerCase()
+                .replace(/_/g, " ")} — there is no arrival to prepare for.`,
+            }
+          : // Otherwise a clarification request is a question aimed at Sales/Reservation — it
+            // is the reason the arrival is blocked, so it leads.
+            needsClarification && handover.clarificationNote
+            ? { tone: "danger", text: handover.clarificationNote }
+            : undefined
       }
       sections={[
         {

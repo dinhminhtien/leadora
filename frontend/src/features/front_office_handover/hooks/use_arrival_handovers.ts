@@ -17,10 +17,12 @@ export function useArrivalHandovers(params?: ArrivalHandoverQuery) {
   });
 }
 
-export function useArrivalHandoverSummary() {
+export function useArrivalHandoverSummary(deskWide?: boolean) {
   return useQuery({
-    queryKey: [LIST_KEY, "summary"],
-    queryFn: () => arrivalHandoverService.getSummary(),
+    // deskWide is part of the key: the counts differ per scope, so a shared cache entry would
+    // show one scope's numbers above the other scope's rows.
+    queryKey: [LIST_KEY, "summary", { deskWide: !!deskWide }],
+    queryFn: () => arrivalHandoverService.getSummary(deskWide),
     select: (res) => res.data,
     staleTime: 15_000,
   });

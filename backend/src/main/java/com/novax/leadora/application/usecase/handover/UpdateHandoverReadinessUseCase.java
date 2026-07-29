@@ -7,6 +7,7 @@ import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.OpHandoverEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.HandoverStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ReadinessStatus;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
@@ -19,6 +20,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -40,6 +42,44 @@ public class UpdateHandoverReadinessUseCase {
     private static final Set<ReadinessStatus> FO_SETTABLE = EnumSet.of(
             ReadinessStatus.REVIEWED, ReadinessStatus.READY_FOR_ARRIVAL, ReadinessStatus.NEED_CLARIFICATION);
 
+    /**
+     * The readiness workflow (UC-22.3 step 7: "validates ... workflow transition").
+     *
+     * <p>A whitelist of target values alone is not enough. Two things must be impossible:
+     * <ul>
+     *   <li><b>POST-4</b> — once readiness is NEED_CLARIFICATION the handover "requires Sales or
+     *       Reservation update before final readiness confirmation", so Front Office must not be
+     *       able to walk itself back to REVIEWED / READY_FOR_ARRIVAL. Only Sales re-submitting
+     *       (UC-20.4, which resets readiness to PENDING_REVIEW) reopens the path.</li>
+     *   <li><b>skipping review</b> — PENDING_REVIEW must not jump straight to READY_FOR_ARRIVAL;
+     *       confirming a room is ready without having reviewed the handover is the whole thing
+     *       this screen exists to prevent.</li>
+     * </ul>
+     *
+     * <p>Each state maps to itself so a retried request (network blip, double click) is idempotent
+     * rather than a 422 — and so Front Office can amend the clarification note without having to
+     * leave NEED_CLARIFICATION, which POST-4 does not forbid.
+     */
+    private static final Map<ReadinessStatus, Set<ReadinessStatus>> ALLOWED_TRANSITIONS = Map.of(
+            ReadinessStatus.PENDING_REVIEW, EnumSet.of(
+                    ReadinessStatus.REVIEWED, ReadinessStatus.NEED_CLARIFICATION),
+            ReadinessStatus.REVIEWED, EnumSet.of(
+                    ReadinessStatus.REVIEWED, ReadinessStatus.READY_FOR_ARRIVAL,
+                    ReadinessStatus.NEED_CLARIFICATION),
+            ReadinessStatus.READY_FOR_ARRIVAL, EnumSet.of(
+                    ReadinessStatus.READY_FOR_ARRIVAL, ReadinessStatus.NEED_CLARIFICATION),
+            ReadinessStatus.NEED_CLARIFICATION, EnumSet.of(
+                    ReadinessStatus.NEED_CLARIFICATION));
+
+    /**
+     * Booking states that still accept a readiness change (BR-44: cancelled / closed records are
+     * not editable). Mirrors the whitelist the Front Office list filters on, and the equivalent
+     * check the Sales side already had in {@code UpdateHandoverUseCase} — without it, Front Office
+     * could mark a room READY_FOR_ARRIVAL for a guest who had already cancelled.
+     */
+    private static final Set<BookingStatus> UPDATABLE_BOOKING_STATUSES =
+            EnumSet.of(BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN);
+
     private final OpHandoverRepository opHandoverRepository;
     private final NotificationRepository notificationRepository;
 
@@ -53,7 +93,18 @@ public class UpdateHandoverReadinessUseCase {
             throw new IllegalStateException("The handover has not been sent to the Front Office yet, so it can't be updated.");
         }
 
+        // BR-44 — a cancelled / rejected / no-show / checked-out booking is closed. Preparing a
+        // room for it is meaningless, so the readiness of its handover is frozen.
+        BookingEntity booking = handover.getBooking();
+        if (booking != null && !UPDATABLE_BOOKING_STATUSES.contains(booking.getStatus())) {
+            throw new IllegalStateException(
+                    "This booking is no longer active (" + booking.getStatus()
+                            + "), so its arrival readiness can't be changed.");
+        }
+
+        ReadinessStatus previousReadiness = handover.getReadinessStatus();
         ReadinessStatus newReadiness = parseReadiness(request.getReadinessStatus());
+        assertTransitionAllowed(previousReadiness, newReadiness);
 
         // E7.2 — clarification note is required when asking for clarification.
         String note = request.getClarificationNote();
@@ -84,8 +135,10 @@ public class UpdateHandoverReadinessUseCase {
             notifyClarificationNeeded(saved, actor);
         }
 
-        log.info("FO readiness update: handover={} readiness={} by={}",
-                handoverId, newReadiness, actor != null ? actor.getUserId() : null);
+        // BR-37 wants the old value alongside the new one; without it the trail cannot show what
+        // actually changed. (The full audit row in `activity_logs` is still outstanding.)
+        log.info("FO readiness update: handover={} readiness {} -> {} by={}",
+                handoverId, previousReadiness, newReadiness, actor != null ? actor.getUserId() : null);
 
         return ArrivalHandoverResponse.from(saved);
     }
@@ -124,5 +177,29 @@ public class UpdateHandoverReadinessUseCase {
             throw new IllegalStateException("Invalid readiness status: " + value);
         }
         return parsed;
+    }
+
+    /**
+     * E7.3 / step 7 — the target value is legal in the abstract (checked by
+     * {@link #parseReadiness}), but is it legal <em>from where this handover stands</em>?
+     */
+    private void assertTransitionAllowed(ReadinessStatus current, ReadinessStatus target) {
+        // A row predating the readiness column behaves as if it had just been submitted.
+        ReadinessStatus from = current != null ? current : ReadinessStatus.PENDING_REVIEW;
+
+        if (ALLOWED_TRANSITIONS.getOrDefault(from, Set.of()).contains(target)) {
+            return;
+        }
+
+        // POST-4 gets its own sentence: "invalid status" would leave the front desk guessing why
+        // a value the dropdown offered was refused, when the real answer is that they are waiting
+        // on somebody else.
+        if (from == ReadinessStatus.NEED_CLARIFICATION) {
+            throw new IllegalStateException(
+                    "This handover is waiting for Sales/Reservation to clarify it. They have to "
+                            + "update and re-submit it before its readiness can be confirmed.");
+        }
+        throw new IllegalStateException(
+                "Invalid readiness status: cannot go from " + from + " to " + target + ".");
     }
 }

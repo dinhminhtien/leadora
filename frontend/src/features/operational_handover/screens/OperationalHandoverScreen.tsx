@@ -151,11 +151,24 @@ export function OperationalHandoverScreen() {
         size: 10,
       });
       if (res.data) {
-        // Fetch all handovers to filter out bookings that already have handovers
-        const handoversRes = await operationalHandoverService.getList({ size: 1000 });
-        const existingBookingIds = new Set(
-          handoversRes.data?.content?.map(h => h.bookingId).filter(Boolean) || []
-        );
+        // Fetch all handovers to filter out bookings that already have handovers.
+        // Paged rather than `size: 1000`: the API caps page size at 100, and a single oversized
+        // request now returns 400 instead of silently working. The loop is bounded so a growing
+        // table can never turn this into an unbounded scan.
+        const HANDOVER_PAGE_SIZE = 100;
+        const MAX_PAGES = 20;
+        const existingBookingIds = new Set<string>();
+        for (let p = 0; p < MAX_PAGES; p++) {
+          const handoversRes = await operationalHandoverService.getList({
+            page: p,
+            size: HANDOVER_PAGE_SIZE,
+          });
+          const content = handoversRes.data?.content ?? [];
+          content.forEach(h => {
+            if (h.bookingId) existingBookingIds.add(h.bookingId);
+          });
+          if (p + 1 >= (handoversRes.data?.totalPages ?? 0)) break;
+        }
 
         const filtered = (res.data.content || []).filter(
           b => existingBookingIds.has!(b.bookingId)

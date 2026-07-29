@@ -22,6 +22,13 @@ import java.util.UUID;
 /**
  * Operational Handover Management — Module 20 (UC-20.1 / UC-20.2 / UC-20.3 / UC-20.4).
  * Handles the creation, retrieval, and updating of handovers by Sales/Reservation staff.
+ *
+ * <p><b>Front Office is not on any of these endpoints.</b> It reads arrivals through
+ * {@code /api/v1/arrival-handovers}, which shows only submitted handovers on a live booking.
+ * The read endpoints here were previously open to FO and applied neither filter, so swapping the
+ * URL exposed the DRAFT handovers — Sales' unfinished work — that the arrival screens are careful
+ * to hide (UC-22.1 step 3, UC-22.2). Reads are additionally scoped per owner by
+ * {@link com.novax.leadora.application.usecase.handover.HandoverAccessPolicy} (BR-01 / BR-02).
  */
 @RestController
 @RequestMapping("/api/v1/operational-handovers")
@@ -61,7 +68,7 @@ public class OperationalHandoverController {
 
     /** UC-20.3 — View Handover Detail. */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'FO', 'FRONT_OFFICE', 'ADMIN', 'MANAGER') and @access.can('HANDOVER_VIEW')")
+    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN', 'MANAGER') and @access.can('HANDOVER_VIEW')")
     public ResponseEntity<ApiResponse<ArrivalHandoverResponse>> detail(@PathVariable UUID id) {
         ArrivalHandoverResponse response = getHandoverDetailUseCase.execute(id);
         return ResponseEntity.ok(ApiResponse.success(response));
@@ -69,7 +76,7 @@ public class OperationalHandoverController {
 
     /** UC-20.2 — View Handover List. */
     @GetMapping
-    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'FO', 'FRONT_OFFICE', 'ADMIN', 'MANAGER') and @access.can('HANDOVER_VIEW')")
+    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN', 'MANAGER') and @access.can('HANDOVER_VIEW')")
     public ResponseEntity<ApiResponse<Page<ArrivalHandoverResponse>>> list(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,

@@ -36,6 +36,12 @@ public class ArrivalHandoverResponse {
     private String customerPhone;
     private LocalDate checkInDate;   // arrival date
     private LocalDate checkOutDate;
+    /**
+     * BookingStatus. The list only shows arrivals whose booking is CONFIRMED / CHECKED_IN, but a
+     * detail view can still be reached by a deep link from an older notification — so the front
+     * desk needs to see when the booking behind it is no longer live (UC-22.1 step 3, BR-44).
+     */
+    private String bookingStatus;
 
     // Room / service information
     private String roomSummary;              // compact line for the list view
@@ -49,6 +55,11 @@ public class ArrivalHandoverResponse {
 
     // Payment / deposit status reference (UC-22.2)
     private String paymentReference;
+
+    // Assignment (UC-22.1 step 4 — the list must show the responsible Front Office Staff)
+    private UUID assignedFoUserId;
+    /** Resolved separately: {@code assigned_fo_user_id} is a scalar column, not a JPA relation. */
+    private String assignedFoName;
 
     // Lifecycle
     private String status;            // HandoverStatus: SUBMITTED | ACKNOWLEDGED | READY
@@ -78,8 +89,15 @@ public class ArrivalHandoverResponse {
 
     /** List row: base + a compact room/service summary. */
     public static ArrivalHandoverResponse fromList(OpHandoverEntity h, List<BookingDetailEntity> details) {
+        return fromList(h, details, null);
+    }
+
+    /** List row for the Front Office desk, which also names the responsible FO staff. */
+    public static ArrivalHandoverResponse fromList(OpHandoverEntity h, List<BookingDetailEntity> details,
+                                                   String assignedFoName) {
         return baseBuilder(h)
                 .roomSummary(buildRoomSummary(details))
+                .assignedFoName(assignedFoName)
                 .build();
     }
 
@@ -87,10 +105,19 @@ public class ArrivalHandoverResponse {
     public static ArrivalHandoverResponse fromDetail(OpHandoverEntity h,
                                                      List<BookingDetailEntity> details,
                                                      List<PaymentEntity> payments) {
+        return fromDetail(h, details, payments, null);
+    }
+
+    /** Detail for the Front Office desk, which also names the responsible FO staff. */
+    public static ArrivalHandoverResponse fromDetail(OpHandoverEntity h,
+                                                     List<BookingDetailEntity> details,
+                                                     List<PaymentEntity> payments,
+                                                     String assignedFoName) {
         return baseBuilder(h)
                 .roomSummary(buildRoomSummary(details))
                 .rooms(buildRooms(details))
                 .paymentReference(buildPaymentReference(payments))
+                .assignedFoName(assignedFoName)
                 .build();
     }
 
@@ -107,6 +134,9 @@ public class ArrivalHandoverResponse {
                 .customerPhone(customer != null ? customer.getPhone() : null)
                 .checkInDate(booking != null ? booking.getCheckInDate() : null)
                 .checkOutDate(booking != null ? booking.getCheckOutDate() : null)
+                .bookingStatus(booking != null && booking.getStatus() != null
+                        ? booking.getStatus().name() : null)
+                .assignedFoUserId(h.getAssignedFoUserId())
                 .specialRequests(h.getSpecialRequests())
                 .roomPreferences(h.getRoomPreferences())
                 .vipNotes(h.getVipNotes())
