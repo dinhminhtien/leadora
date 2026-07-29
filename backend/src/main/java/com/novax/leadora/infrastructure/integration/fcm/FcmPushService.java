@@ -1,10 +1,8 @@
 package com.novax.leadora.infrastructure.integration.fcm;
 
-import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
 import com.google.firebase.messaging.Notification;
-import com.google.firebase.messaging.MessagingErrorCode;
 import com.novax.leadora.infrastructure.persistence.entity.UserDeviceTokenEntity;
 import com.novax.leadora.infrastructure.persistence.repository.UserDeviceTokenRepository;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +19,7 @@ import java.util.UUID;
 public class FcmPushService {
 
     private final UserDeviceTokenRepository userDeviceTokenRepository;
+    private final FcmMessageSender fcmMessageSender;
 
     @Transactional
     public void sendToUser(UUID userId, String title, String body, Map<String, String> data) {
@@ -49,16 +48,15 @@ public class FcmPushService {
                     });
                 }
 
-                FirebaseMessaging.getInstance().send(messageBuilder.build());
+                fcmMessageSender.sendMessage(messageBuilder.build());
                 log.info("Successfully sent FCM notification to user {} on token: {}", userId, token);
 
+            } catch (PermanentFcmException e) {
+                log.warn("Permanent FCM failure for token {} (user {}): {}", token, userId, e.getMessage());
+                log.info("Removing invalid/unregistered token {} for user {}", token, userId);
+                userDeviceTokenRepository.deleteByFcmToken(token);
             } catch (FirebaseMessagingException e) {
-                log.warn("Failed to send FCM notification to token {} for user {}: {}", token, userId, e.getMessage());
-                MessagingErrorCode errorCode = e.getMessagingErrorCode();
-                if (errorCode == MessagingErrorCode.UNREGISTERED || errorCode == MessagingErrorCode.INVALID_ARGUMENT) {
-                    log.info("Removing invalid/unregistered token {} for user {}", token, userId);
-                    userDeviceTokenRepository.deleteByFcmToken(token);
-                }
+                log.warn("Transient FCM failure (retries exhausted) for token {} (user {}): {}", token, userId, e.getMessage());
             } catch (Exception e) {
                 log.error("Unexpected error sending FCM notification to token {} for user {}: {}", token, userId, e.getMessage(), e);
             }

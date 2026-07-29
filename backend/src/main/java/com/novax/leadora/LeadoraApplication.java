@@ -4,7 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.web.config.EnableSpringDataWebSupport;
 import org.springframework.scheduling.annotation.EnableScheduling;
-
+import org.springframework.retry.annotation.EnableRetry;
 import org.springframework.scheduling.annotation.EnableAsync;
 
 @SpringBootApplication
@@ -12,6 +12,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @org.springframework.cache.annotation.EnableCaching
 @EnableSpringDataWebSupport(pageSerializationMode = EnableSpringDataWebSupport.PageSerializationMode.VIA_DTO)
 @EnableAsync
+@EnableRetry
 public class LeadoraApplication {
 
 	public static void main(String[] args) {
