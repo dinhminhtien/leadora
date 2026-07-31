@@ -13,6 +13,7 @@ import '../../../../shared/widgets/list_skeleton.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared/widgets/status_chip.dart';
 import '../../data/lead_models.dart';
+import '../../data/lead_suggestions.dart';
 import '../providers/lead_providers.dart';
 
 /// Dummy row for the loading skeleton — same widget as a real row so the list
@@ -35,8 +36,19 @@ class LeadListScreen extends ConsumerStatefulWidget {
   ConsumerState<LeadListScreen> createState() => _LeadListScreenState();
 }
 
-class _LeadListScreenState extends ConsumerState<LeadListScreen> {
+class _LeadListScreenState extends ConsumerState<LeadListScreen>
+    with SingleTickerProviderStateMixin {
   final _scrollController = ScrollController();
+
+  /// The two pools of leads a sales rep has. Kept as tabs rather than a row in
+  /// the filter sheet because they are not a refinement of one list — they are
+  /// two different lists, and a lead the rep created is invisible in the other
+  /// one until a manager assigns it. Buried in the sheet, "where did the lead I
+  /// just entered go?" had no discoverable answer.
+  late final TabController _scopeTabs = TabController(
+    length: LeadScope.values.length,
+    vsync: this,
+  );
 
   @override
   void initState() {
@@ -46,8 +58,15 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
 
   @override
   void dispose() {
+    _scopeTabs.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScopeSelected(int index) {
+    final scope = LeadScope.values[index];
+    if (_controller.filters.scope == scope) return;
+    _controller.applyFilters(_controller.filters.copyWith(scope: scope));
   }
 
   LeadListController get _controller =>
@@ -60,8 +79,12 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
     }
   }
 
-  void _onSearchChanged(String term) =>
-      _controller.applyFilters(_controller.filters.copyWith(search: term));
+  /// An empty box is "no search", not "search for nothing" — normalising to
+  /// null here keeps clearing the field from looking like a filter change and
+  /// refetching the list it is already showing.
+  void _onSearchChanged(String term) => _controller.applyFilters(
+    _controller.filters.copyWith(search: term.isEmpty ? null : term),
+  );
 
   Future<void> _openFilterSheet() async {
     final result = await showModalBottomSheet<LeadFilters>(
@@ -79,6 +102,12 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
     final filters = asyncState.valueOrNull?.filters ?? const LeadFilters();
     final advancedCount = filters.activeAdvancedCount;
 
+    // The tabs follow the filters, not the other way round: a scope set from
+    // anywhere else (a failed fetch retried, a restored state) must not leave
+    // the indicator pointing at the list the user is not looking at.
+    final scopeIndex = LeadScope.values.indexOf(filters.scope);
+    if (_scopeTabs.index != scopeIndex) _scopeTabs.index = scopeIndex;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Leads'),
@@ -94,6 +123,13 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
           ),
           const SizedBox(width: 4),
         ],
+        bottom: TabBar(
+          controller: _scopeTabs,
+          onTap: _onScopeSelected,
+          tabs: [
+            for (final scope in LeadScope.values) Tab(text: scope.label),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.pushNamed(RouteNames.leadCreate),
@@ -103,7 +139,7 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
       body: Column(
         children: [
           AppSearchField(
-            hintText: 'Search name, phone, company…',
+            hintText: 'Search name, phone, email, company…',
             initialValue: filters.search,
             onChanged: _onSearchChanged,
           ),
@@ -134,10 +170,18 @@ class _LeadListScreenState extends ConsumerState<LeadListScreen> {
                 itemBuilder: (_) => _LeadCard(lead: _skeletonLead),
               ),
               isEmpty: (s) => s.items.isEmpty,
-              empty: const EmptyState(
+              // An empty list means something different in each tab, and the
+              // generic wording sent a rep to clear filters that were not the
+              // problem: nobody had assigned them a lead yet.
+              empty: EmptyState(
                 icon: Icons.people_outline_rounded,
-                title: 'No leads found',
-                message: 'Try clearing filters or create a new lead.',
+                title: filters.scope == LeadScope.created
+                    ? 'You have not created any leads'
+                    : 'No leads assigned to you',
+                message: filters.scope == LeadScope.created
+                    ? 'Leads you add appear here until a manager assigns them.'
+                    : 'A manager assigns leads to you. Anything you add '
+                          'yourself is under "Created by me".',
               ),
               data: (s) => RefreshIndicator(
                 onRefresh: _controller.refresh,
@@ -239,18 +283,9 @@ class _LeadFilterSheetState extends State<_LeadFilterSheet> {
             children: [
               Text('Filter leads', style: theme.textTheme.titleMedium),
               const SizedBox(height: 16),
-              Text('Show', style: theme.textTheme.labelLarge),
-              const SizedBox(height: 8),
-              SegmentedButton<LeadScope>(
-                segments: [
-                  for (final s in LeadScope.values)
-                    ButtonSegment(value: s, label: Text(s.label)),
-                ],
-                selected: {_draft.scope},
-                onSelectionChanged: (sel) =>
-                    setState(() => _draft = _draft.copyWith(scope: sel.first)),
-              ),
-              const SizedBox(height: 16),
+              // Scope lives in the tabs above the list now — see the TabBar in
+              // LeadListScreen. Two controls for one filter would let the sheet
+              // silently move the user to the other list on Apply.
               Text('Lead type', style: theme.textTheme.labelLarge),
               const SizedBox(height: 8),
               SegmentedButton<bool?>(
@@ -283,14 +318,50 @@ class _LeadFilterSheetState extends State<_LeadFilterSheet> {
               const SizedBox(height: 16),
               TextField(
                 controller: _sourceController,
-                onChanged: (v) =>
-                    setState(() => _draft = _draft.copyWith(source: v)),
+                // Normalised to null when empty, so clearing by hand and
+                // clearing by chip produce the same filter set — otherwise
+                // `''` and `null` compare unequal and cost a refetch that
+                // returns the identical list.
+                onChanged: (v) => setState(
+                  () => _draft = _draft.copyWith(
+                    source: v.trim().isEmpty ? null : v,
+                  ),
+                ),
                 decoration: const InputDecoration(
                   labelText: 'Source',
                   hintText: 'e.g. Referral, Website, Walk-in',
                   prefixIcon: Icon(Icons.campaign_outlined),
                   isDense: true,
                 ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              // The server matches `source` exactly, so filtering it by hand is
+              // a spelling test the user cannot see the answer to. The same
+              // options the create form offers are the ones worth filtering by.
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: 0,
+                children: [
+                  for (final option in kLeadSourceOptions)
+                    ChoiceChip(
+                      label: Text(option),
+                      selected: _draft.source == option,
+                      onSelected: (_) {
+                        final next = _draft.source == option ? '' : option;
+                        _sourceController.value = TextEditingValue(
+                          text: next,
+                          selection: TextSelection.collapsed(
+                            offset: next.length,
+                          ),
+                        );
+                        setState(
+                          () => _draft = _draft.copyWith(
+                            source: next.isEmpty ? null : next,
+                          ),
+                        );
+                      },
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
               ListTile(
