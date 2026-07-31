@@ -30,50 +30,21 @@ export const SOURCE_OPTIONS = [
   "Website Inquiry", "Referral", "Social Media", "Cold Call", "Walk-in", "Event",
 ];
 
-/** Letters (any language), spaces and basic name punctuation — no digits/symbols. */
-export const NAME_ALLOWED = /^[\p{L}\s.'-]+$/u;
-
-export type LeadEditErrors = {
-  fullName?: string; email?: string; phone?: string; companyName?: string;
-};
-
 /**
- * Shared by both callers so a rule fixed in one is fixed in the other. Mirrors the server-side
- * checks in {@code CreateLeadUseCase}/{@code UpdateLeadUseCase} rather than replacing them.
+ * Re-exported so this module's existing importers keep working, but the rules
+ * themselves now live in one place.
+ *
+ * <p>This file used to carry its own `validateLeadForm`, a near-copy of
+ * `lead-rules.ts`'s `validateLead`. The two agreed on names and phone shape and
+ * differed on exactly one rule — a lead needs a phone or an email — which the
+ * copy enforced and the original did not. Two validators that agree on the easy
+ * rules and differ on the important one are worse than either alone: whichever
+ * form you test, the other behaves differently.
  */
-export function validateLeadForm(form: UpdateLeadPayload): LeadEditErrors {
-  const errs: LeadEditErrors = {};
-  const name = form.fullName?.trim() ?? "";
-  if (!name) {
-    errs.fullName = "Full name is required";
-  } else if (/\d/.test(name)) {
-    errs.fullName = "Full name cannot contain numbers";
-  } else if (!NAME_ALLOWED.test(name)) {
-    errs.fullName = "Full name cannot contain special characters";
-  }
-  if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-    errs.email = "Invalid email format (e.g. name@domain.com)";
-  }
-  if (form.phone) {
-    const digits = form.phone.replace(/\s/g, "");
-    if (/[^\d]/.test(digits)) {
-      errs.phone = "Phone number can only contain digits (no letters or symbols)";
-    } else if (!/^\d{10,11}$/.test(digits)) {
-      errs.phone = "Phone number must be 10–11 digits";
-    }
-  }
-  // A lead with neither is a name nobody can follow up. Reported on both fields so whichever one
-  // the user is looking at explains itself — and only when neither is malformed, so the specific
-  // "invalid email" message is not overwritten by the general one.
-  if (!form.email?.trim() && !form.phone?.trim() && !errs.email && !errs.phone) {
-    errs.email = "Enter an email or a phone number";
-    errs.phone = "Enter an email or a phone number";
-  }
-  if (form.isCorporate && !form.companyName?.trim()) {
-    errs.companyName = "Company name is required for an organization";
-  }
-  return errs;
-}
+import { type LeadFieldErrors } from "@/features/lead/lib/lead-rules";
+
+export { NAME_ALLOWED, validateLead as validateLeadForm } from "@/features/lead/lib/lead-rules";
+export type LeadEditErrors = LeadFieldErrors;
 
 /** Seeds the form from a lead. Kept here so both callers start from the same shape. */
 export function seedLeadForm(lead: Lead): UpdateLeadPayload {

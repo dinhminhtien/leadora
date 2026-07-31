@@ -458,6 +458,14 @@ export function OverviewTab({
 }) {
   const status = (lead.status ?? "").toUpperCase() as LeadStatus;
 
+  // BR-05, read from the saved lead. `LeadStatusActions` already refuses the
+  // forward move, but it explained itself only through the disabled button's
+  // `title` — which browsers do not show on a disabled control and touch
+  // devices never show at all. The button was therefore simply dead, and the
+  // rep's next move was to click it, get nothing, and eventually meet the
+  // server's "A lead in active follow-up needs an interested service."
+  const statusGate = leadStatusGate(lead);
+
   return (
     <div className="space-y-5">
       <PipelineStepper status={status} />
@@ -521,6 +529,29 @@ export function OverviewTab({
           Assign this lead to a sales rep before it can be converted.
         </p>
       )}
+
+      {/* …and *why* the forward move is greyed out. Only for the BR-05 case:
+          an unassigned lead is already covered by the note above, and repeating
+          it would say the same thing twice. */}
+      {!locked &&
+        statusGate.next &&
+        !statusGate.unassigned &&
+        statusGate.missingForFollowUp.length > 0 && (
+          <p className="flex flex-wrap items-center gap-1 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
+            <span>
+              To mark this lead as {LEAD_STATUS_LABEL[statusGate.next]} it needs{" "}
+              {statusGate.missingForFollowUp.join(" and ")}.
+            </span>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="font-semibold underline underline-offset-2 hover:opacity-80"
+            >
+              Add it now
+            </button>
+            <span>— you can still mark it Lost.</span>
+          </p>
+        )}
       {locked && (
         <p className="rounded-md border border-border bg-muted px-3 py-2 text-[12px] text-muted-foreground">
           {status === "CONVERTED"

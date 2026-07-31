@@ -31,8 +31,8 @@ public class UpdateUserRequest {
     private String password;
 
     @Pattern(
-            regexp = "^(0[35789])\\d{8}$",
-            message = "Phone number must be a valid Vietnamese 10-digit number (e.g. 0912345678)"
+            regexp = LeadFieldLimits.PHONE_PATTERN,
+            message = LeadFieldLimits.PHONE_MESSAGE
     )
     private String phone;
 

@@ -71,14 +71,30 @@ public final class LeadSpecification {
 
             List<Predicate> predicates = new ArrayList<>();
 
-            // Free-text: fullName, email, companyName
+            // Free-text: fullName, email, companyName, phone.
+            //
+            // Phone was missing, and it is the identifier a sales rep is most likely to have in
+            // hand: the guest just called. A lead recorded with a phone and no email — which the
+            // contact rule expressly allows — could not be found by any of the three fields
+            // searched, so it was reachable only by scrolling.
+            //
+            // The number is matched on digits alone. Stored values are digits-only (the phone
+            // pattern permits nothing else), while a person searching types the number the way
+            // they read it — "0912 345 678" — and a literal LIKE would miss every time.
             if (search != null && !search.isBlank()) {
                 String pattern = "%" + search.toLowerCase() + "%";
-                predicates.add(cb.or(
+                List<Predicate> textMatches = new ArrayList<>(List.of(
                         cb.like(cb.lower(root.get("fullName")),    pattern),
                         cb.like(cb.lower(root.get("email")),       pattern),
                         cb.like(cb.lower(root.get("companyName")), pattern)
                 ));
+
+                String digits = phoneQuery(search);
+                if (digits != null) {
+                    textMatches.add(cb.like(root.get("phone"), "%" + digits + "%"));
+                }
+
+                predicates.add(cb.or(textMatches.toArray(new Predicate[0])));
             }
 
             // "Assignment needed": leads nobody owns yet. These are invisible to a sales rep's
@@ -110,5 +126,30 @@ public final class LeadSpecification {
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    /**
+     * The digits to match a stored phone against, or {@code null} when this search term is not a
+     * phone number at all.
+     *
+     * <p><b>Why not simply strip every non-digit.</b> That was the first version, and it made a
+     * narrower search return more rows: {@code "minh 2"} reduced to {@code "2"}, which matches most
+     * numbers on file, so it produced 23 hits where {@code "minh"} alone produced 12. Letters in
+     * the term mean the user is looking for a person, not a number, and the phone clause must stay
+     * out of it.
+     *
+     * <p>Separators <em>are</em> removed, because people read a number back the way they say it —
+     * {@code "0912 345 678"} — while it is stored as one run of digits. The {@code +84} prefix is
+     * folded onto the national {@code 0} for the same reason the clients fold it on input: one
+     * number written two ways has to find the same lead, or search quietly depends on knowing which
+     * form was typed when the record was created.
+     */
+    private static String phoneQuery(String search) {
+        String compact = search.replaceAll("[\\s.()\\-]", "");
+        if (compact.startsWith("+84")) {
+            compact = "0" + compact.substring(3);
+        }
+        boolean isNumber = !compact.isEmpty() && compact.chars().allMatch(Character::isDigit);
+        return isNumber ? compact : null;
     }
 }

@@ -122,4 +122,10 @@ class ApiPaths {
   // --- Reminders (ReminderController) ---
   static const String reminders = '/reminders';
   static String reminderDismiss(String id) => '/reminders/$id/dismiss';
+
+  // --- Product & service catalogue (ProductServiceController) ---
+  // Read-only here: the lead form offers the hotel's real services as
+  // suggestions so `leads.interested_service` stops collecting four spellings
+  // of the same thing. Open to SALES and MANAGER.
+  static const String productServices = '/product-services';
 }

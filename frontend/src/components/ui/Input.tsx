@@ -1,5 +1,12 @@
 import React, { useState } from "react";
 
+import {
+  PHONE_MAX_DIGITS,
+  PHONE_MESSAGE,
+  PHONE_PATTERN,
+  normalizePhone,
+} from "@/shared/utils/phone";
+
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   icon?: React.ReactNode;
   rightElement?: React.ReactNode;
@@ -63,21 +70,24 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
       let rawVal = e.target.value;
 
       if (phoneOnly) {
-        // Automatically filter non-digits and limit to 10 digits
-        rawVal = rawVal.replace(/\D/g, "").slice(0, 10);
+        // Normalise *before* stripping, so a pasted `+84 912 345 678` becomes
+        // `0912345678` and not `84912345678`. Stripping first eats the `+` that
+        // identifies the country code, and with 11 digits now legal the wrong
+        // reading would be accepted silently instead of refused — which is what
+        // the old ten-digit cap accidentally protected against.
+        rawVal = normalizePhone(rawVal)
+          .replace(/\D/g, "")
+          .slice(0, PHONE_MAX_DIGITS);
         e.target.value = rawVal;
 
-        // Dynamic format validation
-        if (rawVal.length > 0) {
-          if (rawVal.length < 10) {
-            setLocalError(`Phone number must be 10 digits (${rawVal.length}/10)`);
-          } else if (!/^(0[35789])\d{8}$/.test(rawVal)) {
-            setLocalError("Must start with valid prefix (03, 05, 07, 08, 09)");
-          } else {
-            setLocalError(null);
-          }
-        } else {
+        // Counts up while the user is still short, so the field says how far it
+        // has to go rather than just refusing.
+        if (rawVal.length === 0) {
           setLocalError(null);
+        } else if (rawVal.length < 10) {
+          setLocalError(`${PHONE_MESSAGE} (${rawVal.length}/10)`);
+        } else {
+          setLocalError(PHONE_PATTERN.test(rawVal) ? null : PHONE_MESSAGE);
         }
       } else if (numericOnly) {
         rawVal = rawVal.replace(/\D/g, "");
@@ -99,11 +109,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
       if (phoneOnly) {
         const val = e.target.value;
-        if (val.length > 0 && !/^(0[35789])\d{8}$/.test(val)) {
-          setLocalError("Invalid Vietnamese phone number (10 digits starting with 03, 05, 07, 08, 09)");
-        } else {
-          setLocalError(null);
-        }
+        setLocalError(
+          val.length > 0 && !PHONE_PATTERN.test(val) ? PHONE_MESSAGE : null
+        );
       }
       if (onBlur) onBlur(e);
     };
@@ -126,7 +134,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onBlur={handleBlur}
-            maxLength={phoneOnly ? 10 : props.maxLength}
+            maxLength={phoneOnly ? PHONE_MAX_DIGITS : props.maxLength}
             className={`w-full rounded-xl border border-border bg-input py-2 px-3.5 text-sm text-foreground placeholder:text-muted-foreground/60 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.025)] focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50 dark:shadow-none ${
               icon ? "pl-10" : "pl-4"
             } ${rightElement ? "pr-10" : "pr-4"} ${

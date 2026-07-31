@@ -34,6 +34,7 @@ import 'package:leadora_mobile/features/interaction/presentation/screens/interac
 import 'package:leadora_mobile/features/interaction/presentation/screens/interaction_timeline_screen.dart';
 import 'package:leadora_mobile/features/interaction/presentation/screens/log_interaction_screen.dart';
 import 'package:leadora_mobile/features/lead/presentation/screens/create_lead_screen.dart';
+import 'package:leadora_mobile/features/lead/presentation/screens/edit_lead_screen.dart';
 import 'package:leadora_mobile/features/lead/presentation/screens/lead_detail_screen.dart';
 import 'package:leadora_mobile/features/lead/presentation/screens/lead_list_screen.dart';
 import 'package:leadora_mobile/features/notification/presentation/screens/notification_list_screen.dart';
@@ -722,6 +723,7 @@ void main() {
     () => const LeadDetailScreen(leadId: 'l1'),
     expectText: 'Pham Thi Thu Huong',
   );
+  smokeTest('EditLeadScreen', () => const EditLeadScreen(leadId: 'l1'));
 
   // Tasks
   smokeTest(
@@ -910,7 +912,15 @@ void main() {
     );
     expect(errors, isEmpty);
 
-    final complete = find.widgetWithText(FilledButton, 'Mark complete');
+    // Matched by predicate, not by type. `find.byType` compares the *exact*
+    // runtime type, and `FilledButton.icon` builds a private
+    // `_FilledButtonWithIcon` — so `widgetWithText(FilledButton, …)` matched
+    // nothing, the test died on that line, and the two assertions below (which
+    // are the whole point of it) had quietly stopped running.
+    final complete = find.ancestor(
+      of: find.text('Mark complete'),
+      matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+    );
     final cancel = find.byType(OutlinedButton);
     expect(complete, findsOneWidget);
     expect(cancel, findsOneWidget);
