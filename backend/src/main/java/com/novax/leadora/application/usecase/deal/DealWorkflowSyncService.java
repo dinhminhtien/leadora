@@ -27,6 +27,7 @@ public class DealWorkflowSyncService {
     private final DealWorkflowResolver dealWorkflowResolver;
     private final DealValidation dealValidation;
     private final ActivityLogPublisher activityLogPublisher;
+    private final RecordDealStageChangeService recordDealStageChangeService;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -138,6 +139,8 @@ public class DealWorkflowSyncService {
         // 4. Update and save
         deal.setPipelineStage(targetStage);
         DealEntity savedDeal = dealRepository.save(deal);
+        recordDealStageChangeService.record(savedDeal, currentStage, targetStage,
+                RecordDealStageChangeService.SOURCE_WORKFLOW_SYNC);
 
         try {
             ObjectNode payload = objectMapper.createObjectNode()

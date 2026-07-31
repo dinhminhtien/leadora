@@ -16,6 +16,8 @@
  * text uses ink tokens (never the series color), inline labels only when they fit.
  */
 import React from "react";
+import { Download, Printer } from "lucide-react";
+import { printReport } from "./export";
 
 export const VIZ = {
   // categorical / status marks (validated set)
@@ -70,27 +72,115 @@ export function ReportDateRange({
   dateTo,
   setDateFrom,
   setDateTo,
+  invalid = false,
 }: {
   dateFrom: string;
   dateTo: string;
   setDateFrom: (v: string) => void;
   setDateTo: (v: string) => void;
+  /** True when "from" is later than "to" — the request is held back until it is fixed. */
+  invalid?: boolean;
 }) {
   const inputCls =
-    "w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:border-teal-400 focus:outline-none";
+    "w-full rounded-lg border bg-white px-3 py-1.5 text-xs text-slate-700 focus:outline-none";
+  const normalCls = `${inputCls} border-slate-200 focus:border-teal-400`;
+  const invalidCls = `${inputCls} border-rose-300 focus:border-rose-400`;
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-slate-100 bg-white p-3 shadow-sm sm:flex-row sm:items-end">
-      <div className="flex-1">
-        <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Date From</label>
-        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={inputCls} />
+    <div className="rounded-xl border border-slate-100 bg-white p-3 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="flex-1">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Date From</label>
+          <input
+            type="date"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className={invalid ? invalidCls : normalCls}
+          />
+        </div>
+        <div className="flex-1">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Date To</label>
+          <input
+            type="date"
+            value={dateTo}
+            min={dateFrom || undefined}
+            onChange={(e) => setDateTo(e.target.value)}
+            className={invalid ? invalidCls : normalCls}
+          />
+        </div>
+        <p className="text-[11px] text-slate-400 sm:pb-2">Leave empty = all time</p>
       </div>
-      <div className="flex-1">
-        <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Date To</label>
-        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={inputCls} />
-      </div>
-      <p className="text-[11px] text-slate-400 sm:pb-2">Leave empty = all time</p>
+      {invalid && (
+        // Without this the inverted range simply returned nothing, which reads as "no activity in
+        // this period" — a different and much more misleading answer than "your filter is backwards".
+        <p className="mt-2 text-[11px] font-semibold text-rose-500">
+          The start date must not be after the end date.
+        </p>
+      )}
     </div>
   );
+}
+
+/* ── Export / print toolbar ─────────────────────────────────────────────────── */
+
+/**
+ * The Export CSV / Print pair every report tab carries.
+ *
+ * Marked `no-print` so the buttons do not appear in the printed sheet, and disabled while there is
+ * nothing loaded — exporting an empty report produces a file that looks like a real (empty) result.
+ */
+export function ReportActions({
+  onExport,
+  disabled = false,
+}: {
+  onExport: () => void;
+  disabled?: boolean;
+}) {
+  const btn =
+    "inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40";
+  return (
+    <div className="no-print flex items-center gap-2">
+      <button type="button" onClick={onExport} disabled={disabled} className={btn}>
+        <Download className="size-3.5" /> Export CSV
+      </button>
+      <button type="button" onClick={printReport} disabled={disabled} className={btn}>
+        <Printer className="size-3.5" /> Print
+      </button>
+    </div>
+  );
+}
+
+/** Title row with the period on the left and the export actions on the right. */
+export function ReportHeader({
+  title,
+  period,
+  onExport,
+  disabled,
+}: {
+  title: string;
+  period: string;
+  onExport: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 className="text-sm font-bold text-slate-700">{title}</h2>
+        <p className="text-[11px] text-slate-400">Period: {period}</p>
+      </div>
+      <ReportActions onExport={onExport} disabled={disabled} />
+    </div>
+  );
+}
+
+/* ── Methodology footnote ───────────────────────────────────────────────────── */
+
+/**
+ * A short note on how a figure was derived. Reports that make a claim ("bottleneck", "compliance")
+ * carry one so the reader can tell what the number does and does not cover.
+ */
+export function Note({ children }: { children: React.ReactNode }) {
+  return <p className="mt-1 text-[10px] leading-relaxed text-slate-400">{children}</p>;
 }
 
 /* ── Horizontal labeled bars (per-mark distribution — stages, statuses, types) ─ */

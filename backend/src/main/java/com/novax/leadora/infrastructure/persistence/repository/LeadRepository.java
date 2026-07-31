@@ -104,16 +104,39 @@ public interface LeadRepository
 
         long countByStatus(LeadStatus status);
 
-        // ── Performance report query (eliminates N+1 and filters at DB level) ──
-        @EntityGraph(attributePaths = { "assignedUser" })
+        // ── UC-23.1 report aggregates ─────────────────────────────────────────────
+        // Counting happens in SQL. The previous form selected whole entities (plus an
+        // @EntityGraph join on assignedUser) and counted them with Java streams, so an
+        // unbounded date range meant "SELECT * FROM leads" into heap — and the default
+        // state of the screen is exactly that unbounded range.
+        // Ranges are half-open: [start, end) — see ReportRange.
+
+        /** {@code [status, count]} rows. */
         @Query("""
-                        SELECT l FROM LeadEntity l
-                        WHERE l.createdAt >= :startDate
-                          AND l.createdAt <= :endDate
+                        SELECT l.status, count(l) FROM LeadEntity l
+                        WHERE l.createdAt >= :start
+                          AND l.createdAt < :end
+                        GROUP BY l.status
                         """)
-        List<LeadEntity> findByCreatedAtRange(
-                        @Param("startDate") OffsetDateTime startDate,
-                        @Param("endDate") OffsetDateTime endDate);
+        List<Object[]> aggregateByStatus(
+                        @Param("start") OffsetDateTime start,
+                        @Param("end") OffsetDateTime end);
+
+        /**
+         * {@code [ownerId, ownerName, count]} rows. LEFT JOIN so unassigned leads survive as a
+         * null-owner group: dropping them is what makes a per-rep table stop reconciling with the
+         * headline total.
+         */
+        @Query("""
+                        SELECT u.userId, u.fullName, count(l)
+                        FROM LeadEntity l LEFT JOIN l.assignedUser u
+                        WHERE l.createdAt >= :start
+                          AND l.createdAt < :end
+                        GROUP BY u.userId, u.fullName
+                        """)
+        List<Object[]> aggregateByOwner(
+                        @Param("start") OffsetDateTime start,
+                        @Param("end") OffsetDateTime end);
 
         // ── Chat-assistant snapshot ───────────────────────────────────────────────
         // A null :userId means "every lead" (Manager/Admin scope); a non-null value

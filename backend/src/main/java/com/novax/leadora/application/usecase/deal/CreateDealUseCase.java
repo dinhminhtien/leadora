@@ -35,6 +35,7 @@ public class CreateDealUseCase {
     private final DealValidation dealValidation;
     private final CurrentUserProvider currentUserProvider;
     private final ActivityLogPublisher activityLogPublisher;
+    private final RecordDealStageChangeService recordDealStageChangeService;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -83,6 +84,10 @@ public class CreateDealUseCase {
                 .build();
 
         DealEntity savedDeal = dealRepository.save(deal);
+        // Opening row of the deal's journey: from_stage null means "entered the pipeline here".
+        // Without it, time spent in the very first stage would be unmeasurable.
+        recordDealStageChangeService.record(savedDeal, null, savedDeal.getPipelineStage(),
+                RecordDealStageChangeService.SOURCE_CREATED);
 
         // Publish Activity Log event
         try {

@@ -15,6 +15,7 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -44,16 +45,33 @@ public interface BookingRepository extends JpaRepository<BookingEntity, UUID>, J
     @EntityGraph(attributePaths = {"customer", "assignedUser", "quotation"})
     Page<BookingEntity> findAll(Specification<BookingEntity> spec, Pageable pageable);
 
-    // ── Performance report query (eliminates N+1 and filters at DB level) ──
-    @EntityGraph(attributePaths = {"assignedUser"})
+    // ── UC-23.1 report aggregates ─────────────────────────────────────────────
+    // Ranges are half-open: [start, end) — see ReportRange.
+
+    /** {@code [status, count]} rows. */
     @Query("""
-            SELECT b FROM BookingEntity b
-            WHERE b.createdAt >= :startDate
-              AND b.createdAt <= :endDate
+            SELECT b.status, count(b) FROM BookingEntity b
+            WHERE b.createdAt >= :start
+              AND b.createdAt < :end
+            GROUP BY b.status
             """)
-    List<BookingEntity> findByCreatedAtRange(
-            @Param("startDate") OffsetDateTime startDate,
-            @Param("endDate") OffsetDateTime endDate);
+    List<Object[]> aggregateByStatus(
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end);
+
+    /** {@code [ownerId, ownerName, count]} rows, restricted to the statuses that count as booked. */
+    @Query("""
+            SELECT u.userId, u.fullName, count(b)
+            FROM BookingEntity b LEFT JOIN b.assignedUser u
+            WHERE b.createdAt >= :start
+              AND b.createdAt < :end
+              AND b.status IN :statuses
+            GROUP BY u.userId, u.fullName
+            """)
+    List<Object[]> aggregateByOwnerForStatuses(
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end,
+            @Param("statuses") Collection<BookingStatus> statuses);
 
     // ── Chat-assistant snapshot ───────────────────────────────────────────────
 
