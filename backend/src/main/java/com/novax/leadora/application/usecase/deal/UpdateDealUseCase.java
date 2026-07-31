@@ -40,6 +40,7 @@ public class UpdateDealUseCase {
     private final DealValidation dealValidation;
     private final DealAccessPolicy dealAccessPolicy;
     private final AuditCorrectionService auditCorrectionService;
+    private final RecordDealStageChangeService recordDealStageChangeService;
     private final ObjectMapper objectMapper;
 
     private static final List<ActivityLogType> DEAL_FAMILY_TYPES = List.of(
@@ -70,6 +71,9 @@ public class UpdateDealUseCase {
             dealValidation.validateStageTransition(deal.getPipelineStage(), targetStage, deal, request);
             if (targetStage != oldStage) {
                 deal.setPipelineStage(targetStage);
+                // Same transaction as the stage change itself — see RecordDealStageChangeService.
+                recordDealStageChangeService.record(deal, oldStage, targetStage,
+                        RecordDealStageChangeService.SOURCE_MANUAL);
                 updatePayload.put("previousStage", oldStage != null ? oldStage.name() : null);
                 updatePayload.put("newStage", targetStage.name());
                 stageChanged = true;

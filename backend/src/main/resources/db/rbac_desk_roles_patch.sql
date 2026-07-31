@@ -97,6 +97,24 @@ SELECT r.role_id, p.permission_id, now()
       WHERE rp.role_id = r.role_id AND rp.permission_id = p.permission_id
    );
 
+-- 2d) SALES needs REPORTING_VIEW for UC-23.2 (Follow-up Task Performance).
+--     `ReportingController#getTaskPerformance` is guarded by
+--     `hasAnyRole('SALES','MANAGER','ADMIN') and @access.can('REPORTING_VIEW')`, and the use case
+--     narrows the query to the caller's own tasks for any non-Manager role — but SALES was never
+--     granted the code, so the endpoint answered 403 to the actor it was written for and the
+--     scoping branch was unreachable. The frontend gates /reporting on the same code, so the
+--     screen did not open either. Manager/Admin scope is unaffected: the role list on the other
+--     four reports still excludes SALES.
+INSERT INTO role_permissions (role_id, permission_id, granted_at)
+SELECT r.role_id, p.permission_id, now()
+  FROM roles r, permissions p
+ WHERE upper(trim(r.role_name)) = 'SALES'
+   AND p.permission_code = 'REPORTING_VIEW'
+   AND NOT EXISTS (
+     SELECT 1 FROM role_permissions rp
+      WHERE rp.role_id = r.role_id AND rp.permission_id = p.permission_id
+   );
+
 COMMIT;
 
 -- ============================================================================

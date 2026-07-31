@@ -6,11 +6,13 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
 @Table(name = "deals", indexes = {
     @Index(name = "idx_deals_created_at", columnList = "created_at"),
+    @Index(name = "idx_deals_closed_at", columnList = "closed_at"),
     @Index(name = "idx_deals_assigned_user_id", columnList = "assigned_user_id")
 })
 @Getter
@@ -57,6 +59,20 @@ public class DealEntity extends BaseEntity {
     @JoinColumn(name = "created_by")
     private UserEntity createdBy;
 
+    /**
+     * When the deal reached CLOSED_WON or CLOSED_LOST; null while it is still open.
+     *
+     * <p>Reporting needs this because outcome metrics belong to the period a deal <em>closed</em>,
+     * not the period it was created. Without it, "win rate for July" silently meant "win rate of
+     * deals opened in July" — which drops a deal opened in May and won in July, and drags the rate
+     * down with July's deals that are still in flight.
+     *
+     * <p>Maintained by the mutators below rather than by callers, so there is exactly one place it
+     * can go wrong and no use case has to remember it.
+     */
+    @Column(name = "closed_at")
+    private OffsetDateTime closedAt;
+
     public void setPipelineStage(DealPipelineStage pipelineStage) {
         this.pipelineStage = pipelineStage;
         if (pipelineStage == DealPipelineStage.CLOSED_WON) {
@@ -66,6 +82,7 @@ public class DealEntity extends BaseEntity {
         } else {
             this.status = DealStatus.OPEN;
         }
+        stampClosedAt();
     }
 
     public void setStatus(DealStatus status) {
@@ -75,6 +92,7 @@ public class DealEntity extends BaseEntity {
         } else if (status == DealStatus.LOST) {
             this.pipelineStage = DealPipelineStage.CLOSED_LOST;
         }
+        stampClosedAt();
     }
 
     @PrePersist
@@ -86,6 +104,27 @@ public class DealEntity extends BaseEntity {
             this.status = DealStatus.LOST;
         } else {
             this.status = DealStatus.OPEN;
+        }
+        stampClosedAt();
+    }
+
+    /**
+     * Sets the close timestamp on the way into a terminal stage and clears it on the way back out.
+     *
+     * <p>Only stamps when the field is empty, so a correction that re-saves a closed deal (BR-44)
+     * does not silently move a historical close date into the current month and reshape a period
+     * that has already been reported on.
+     */
+    private void stampClosedAt() {
+        boolean closed = this.status == DealStatus.WON || this.status == DealStatus.LOST;
+        if (closed) {
+            if (this.closedAt == null) {
+                this.closedAt = OffsetDateTime.now();
+            }
+        } else {
+            // Reopening genuinely un-closes the deal: leaving a stale timestamp would keep counting
+            // it as an outcome of the month it was previously closed in.
+            this.closedAt = null;
         }
     }
 }

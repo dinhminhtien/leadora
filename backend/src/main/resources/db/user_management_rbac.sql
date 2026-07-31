@@ -73,7 +73,11 @@ SELECT r.role_id, p.permission_id, now()
      'INTERACTION_VIEW','INTERACTION_WRITE','BOOKING_VIEW','BOOKING_WRITE',
      'RESERVATION_VIEW','RESERVATION_WRITE','HANDOVER_VIEW','HANDOVER_WRITE',
      'ROOM_REQUEST_VIEW',
-     'PAYMENT_VIEW','PAYMENT_WRITE','NOTIFICATION_VIEW','REMINDER_VIEW','REMINDER_WRITE','CHAT_VIEW'
+     'PAYMENT_VIEW','PAYMENT_WRITE','NOTIFICATION_VIEW','REMINDER_VIEW','REMINDER_WRITE','CHAT_VIEW',
+     -- UC-23.2 only. The other four UC-23 reports keep MANAGER/ADMIN in their role list, so this
+     -- code opens the Reporting screen for a Sales Staff on their own task performance and nothing
+     -- else. Without it the endpoint 403s the very actor its own scoping branch was written for.
+     'REPORTING_VIEW'
    );
 
 -- Default grants — MANAGER (Staff set + approvals, reporting, SLA, feedback)

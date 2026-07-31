@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Loader2, ClipboardList, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import React from "react";
+import { Loader2, ClipboardList, CheckCircle2, AlertTriangle, XCircle, User } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -11,37 +11,78 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { useTaskPerformanceReport } from "@/features/reporting/hooks/use_reporting";
-import { StatTile, Meter, SegmentBar, EmptyReport, VIZ } from "./viz";
+import { useReportRange, useTaskPerformanceReport } from "@/features/reporting/hooks/use_reporting";
+import { StatTile, Meter, SegmentBar, EmptyReport, ReportDateRange, ReportHeader, Note, VIZ } from "./viz";
+import { downloadReportCsv, periodLabel, reportFilename } from "./export";
 
 const pct = (n?: number) => `${(n ?? 0).toFixed(1)}%`;
 
 export function TaskPerformanceTab() {
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const range = useReportRange();
+  const { data, isLoading, isError } = useTaskPerformanceReport(range.params, range.enabled);
 
-  const { data, isLoading, isError } = useTaskPerformanceReport({
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
-  });
+  const handleExport = () => {
+    if (!data) return;
+    downloadReportCsv({
+      filename: reportFilename("task-performance", range.dateFrom, range.dateTo),
+      meta: [
+        ["Report", "Follow-up Task Performance (UC-23.2)"],
+        ["Period", periodLabel(range.dateFrom, range.dateTo)],
+        ["Scope", data.ownScope ? "Own assigned tasks" : "Team-wide"],
+        ["Generated at", new Date().toLocaleString("vi-VN")],
+      ],
+      sections: [
+        {
+          title: "Summary",
+          rows: [
+            ["Total tasks", data.totalTasks],
+            ["Completed", data.completed],
+            ["Open", data.open],
+            ["Cancelled", data.cancelled],
+            ["Overdue", data.overdue],
+            ["Completion rate (%)", data.completionRate],
+            ["Overdue rate (%)", data.overdueRate],
+            ["Priority high", data.priorityHigh],
+            ["Priority medium", data.priorityMedium],
+            ["Priority low", data.priorityLow],
+          ],
+        },
+      ],
+      tables: [
+        {
+          title: "Performance by staff",
+          headers: ["Staff", "Total", "Completed", "Overdue", "Completion rate (%)"],
+          rows: data.staff.map((s) => [s.name, s.total, s.completed, s.overdue, s.completionRate]),
+        },
+      ],
+    });
+  };
 
   return (
     <div className="space-y-5">
-      {/* Date range */}
-      <Card className="border-slate-100 bg-white shadow-sm">
-        <CardContent className="flex flex-col gap-3 p-3 sm:flex-row sm:items-end">
-          <div className="flex-1">
-            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Date From</label>
-            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          </div>
-          <div className="flex-1">
-            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Date To</label>
-            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </div>
-          <p className="text-[11px] text-slate-400 sm:pb-2">Leave empty = all time</p>
-        </CardContent>
-      </Card>
+      <ReportHeader
+        title="Follow-up Task Performance"
+        period={periodLabel(range.dateFrom, range.dateTo)}
+        onExport={handleExport}
+        disabled={!data || data.totalTasks === 0}
+      />
+
+      <ReportDateRange
+        dateFrom={range.dateFrom}
+        dateTo={range.dateTo}
+        setDateFrom={range.setDateFrom}
+        setDateTo={range.setDateTo}
+        invalid={range.invalid}
+      />
+
+      {/* The scope is decided by the caller's role on the server, so say which one is on screen —
+          a staff member comparing their figures against a manager's needs to know why they differ. */}
+      {data?.ownScope && (
+        <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5">
+          <User className="mt-0.5 size-3.5 shrink-0" style={{ color: VIZ.open }} />
+          <p className="text-xs text-slate-600">Showing your own assigned tasks only.</p>
+        </div>
+      )}
 
       {isLoading && (
         <div className="flex items-center gap-2 p-6 text-sm text-slate-400">
@@ -96,6 +137,10 @@ export function TaskPerformanceTab() {
                     <span className="text-sm font-extrabold" style={{ color: VIZ.critical }}>{pct(data.overdueRate)}</span>
                   </div>
                   <Meter value={data.overdueRate} fill={VIZ.critical} track={VIZ.trackRed} />
+                  <Note>
+                    Overdue is derived, not stored: past the task&apos;s end time and not yet
+                    completed or cancelled. It is evaluated when the report runs.
+                  </Note>
                 </div>
               </CardContent>
             </Card>
@@ -137,35 +182,47 @@ export function TaskPerformanceTab() {
               <div className="border-b border-slate-100 px-4 py-3">
                 <h3 className="text-sm font-bold text-slate-700">Performance by staff</h3>
               </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Staff</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right">Completed</TableHead>
-                    <TableHead className="text-right">Overdue</TableHead>
-                    <TableHead className="text-right">Completion</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.staff.length === 0 && (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={5} className="py-6 text-center text-xs text-slate-400">
-                        No per-staff data for this period.
-                      </TableCell>
+                      <TableHead>Staff</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="text-right">Completed</TableHead>
+                      <TableHead className="text-right">Overdue</TableHead>
+                      <TableHead className="text-right">Completion</TableHead>
                     </TableRow>
-                  )}
-                  {data.staff.map((s) => (
-                    <TableRow key={s.name}>
-                      <TableCell className="font-semibold text-slate-700">{s.name}</TableCell>
-                      <TableCell className="text-right tabular-nums">{s.total}</TableCell>
-                      <TableCell className="text-right tabular-nums text-emerald-600">{s.completed}</TableCell>
-                      <TableCell className="text-right tabular-nums text-rose-600">{s.overdue}</TableCell>
-                      <TableCell className="text-right font-semibold tabular-nums">{pct(s.completionRate)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {data.staff.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-6 text-center text-xs text-slate-400">
+                          No per-staff data for this period.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {data.staff.map((s) => (
+                      <TableRow key={s.name} className={s.unassigned ? "bg-slate-50/70" : undefined}>
+                        <TableCell className={s.unassigned ? "italic text-slate-500" : "font-semibold text-slate-700"}>
+                          {s.name}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{s.total}</TableCell>
+                        <TableCell className="text-right tabular-nums text-emerald-600">{s.completed}</TableCell>
+                        <TableCell className="text-right tabular-nums text-rose-600">{s.overdue}</TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">{pct(s.completionRate)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              {data.staff.some((s) => s.unassigned) && (
+                <div className="px-4 pb-3">
+                  <Note>
+                    Tasks with nobody assigned are grouped into their own row so the column adds up
+                    to the {data.totalTasks} in the headline figure.
+                  </Note>
+                </div>
+              )}
             </CardContent>
           </Card>
         </>

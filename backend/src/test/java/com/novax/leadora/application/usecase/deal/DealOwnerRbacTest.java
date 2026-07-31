@@ -56,6 +56,12 @@ class DealOwnerRbacTest {
     @Mock
     private ActivityLogPublisher activityLogPublisher;
 
+    // Records the stage transition in the same transaction as the change itself
+    // (RecordDealStageChangeService); mocked here because these tests assert on the deal,
+    // not on the history row.
+    @Mock
+    private RecordDealStageChangeService recordDealStageChangeService;
+
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
 

@@ -31,7 +31,12 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/api/v1/reporting")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+// Baseline guard only. A class-level role list is the wrong default here: Spring resolves the most
+// specific @PreAuthorize and does NOT combine it with the class annotation, so the four report
+// endpoints below quietly ran on their own rules while the two endpoints without a method-level
+// annotation inherited a SALES/MANAGER list that locked out Admin, Front Office and Reservation —
+// including from the dashboard summary that every role's home screen calls.
+@PreAuthorize("isAuthenticated()")
 public class ReportingController {
 
     private final SaveReportLogUseCase saveReportLogUseCase;
@@ -48,6 +53,7 @@ public class ReportingController {
      * stays reachable even for a role that was never granted the Reporting screen.
      */
     @GetMapping("/dashboard-summary")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<DashboardSummaryResponse>> getDashboardSummary() {
         UserEntity actor = currentUserProvider.resolve(null);
         DashboardSummaryResponse summary = getDashboardSummaryUseCase.execute(actor);
@@ -121,6 +127,7 @@ public class ReportingController {
 
     /** UC-14.2 — Save audit log when a discount report is generated */
     @PostMapping("/logs")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<ReportLogResponse>> saveReportLog(
             @Valid @RequestBody SaveReportLogRequest request) {
         ReportLogResponse response = saveReportLogUseCase.execute(request);

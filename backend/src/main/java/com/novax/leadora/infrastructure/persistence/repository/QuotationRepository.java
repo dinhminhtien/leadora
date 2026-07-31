@@ -22,15 +22,58 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
     List<QuotationEntity> findByStatus(QuotationStatus status);
     List<QuotationEntity> findByStatusInAndValidUntilBefore(List<QuotationStatus> statuses, LocalDate date);
 
-    // ── Performance report query (filters at DB level) ──
+    // ── UC-23.1 / UC-23.5 report aggregates ───────────────────────────────────
+    // Ranges are half-open: [start, end) — see ReportRange.
+
+    /** {@code [status, count]} rows. */
     @Query("""
-            SELECT q FROM QuotationEntity q
-            WHERE q.createdAt >= :startDate
-              AND q.createdAt <= :endDate
+            SELECT q.status, count(q) FROM QuotationEntity q
+            WHERE q.createdAt >= :start
+              AND q.createdAt < :end
+            GROUP BY q.status
             """)
-    List<QuotationEntity> findByCreatedAtRange(
-            @Param("startDate") OffsetDateTime startDate,
-            @Param("endDate") OffsetDateTime endDate);
+    List<Object[]> aggregateByStatus(
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end);
+
+    /**
+     * Quotations that actually cleared manager approval, identified by {@code approved_at} rather
+     * than by the current status.
+     *
+     * <p>UC-23.5's approval rate cannot be read off {@code status}: approval is overwritten in
+     * place by SEND → ACCEPTED → CONVERTED, so the better the team performs the fewer rows are
+     * left sitting at {@code APPROVED}. {@code approvedAt} is written once and never cleared, so it
+     * is the only durable record that an approval happened.
+     */
+    @Query("""
+            SELECT count(q) FROM QuotationEntity q
+            WHERE q.createdAt >= :start
+              AND q.createdAt < :end
+              AND q.approvedAt IS NOT NULL
+              AND q.status <> :excludedStatus
+            """)
+    long countApproved(
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end,
+            @Param("excludedStatus") QuotationStatus excludedStatus);
+
+    /**
+     * Quotations rejected <em>by the approver</em>, i.e. REJECTED without ever having been approved.
+     * A quotation the customer turned down also ends up REJECTED, but only after being approved and
+     * sent — so {@code approvedAt IS NULL} separates the two populations that BR-20/BR-21 treat as
+     * different outcomes.
+     */
+    @Query("""
+            SELECT count(q) FROM QuotationEntity q
+            WHERE q.createdAt >= :start
+              AND q.createdAt < :end
+              AND q.approvedAt IS NULL
+              AND q.status = :rejectedStatus
+            """)
+    long countRejectedByApprover(
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end,
+            @Param("rejectedStatus") QuotationStatus rejectedStatus);
 
     // ── Chat-assistant snapshot ───────────────────────────────────────────────
     // Quotations have no assignee column: they are scoped through the deal they belong to, so

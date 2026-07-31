@@ -38,6 +38,12 @@ class AutoWinDealByPaymentUseCaseTest {
     @Mock
     private ActivityLogPublisher activityLogPublisher;
 
+    // Records the stage transition in the same transaction as the change itself
+    // (RecordDealStageChangeService); mocked here because these tests assert on the deal,
+    // not on the history row.
+    @Mock
+    private RecordDealStageChangeService recordDealStageChangeService;
+
     @Spy
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
