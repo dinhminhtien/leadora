@@ -38,10 +38,10 @@ public final class ReportingUtils {
      * are kept — an unassigned record is still a record, and dropping it here is what makes a
      * per-owner breakdown stop adding up to the headline total.
      */
+    @SuppressWarnings({"unchecked", "null"})
     public static <K> Map<K, Long> countByKey(List<Object[]> rows) {
         Map<K, Long> result = new LinkedHashMap<>();
         for (Object[] row : rows) {
-            @SuppressWarnings("unchecked")
             K key = (K) row[0];
             result.merge(key, toLong(row[1]), Long::sum);
         }

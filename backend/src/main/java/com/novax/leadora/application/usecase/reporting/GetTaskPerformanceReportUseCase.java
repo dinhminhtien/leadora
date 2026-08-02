@@ -58,6 +58,7 @@ public class GetTaskPerformanceReportUseCase {
                     + ".scopeKey(#actor) + '_' + #from + '_' + #to",
             unless = "#result == null")
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public TaskPerformanceReportResponse execute(UserEntity actor, LocalDate from, LocalDate to) {
         ReportRange range = reportRangeFactory.resolve(from, to);
         OffsetDateTime now = OffsetDateTime.now();
@@ -93,6 +94,7 @@ public class GetTaskPerformanceReportUseCase {
                 .build();
     }
 
+    @SuppressWarnings("null")
     private List<StaffRow> buildStaff(UUID assignedUserId, ReportRange range, OffsetDateTime now) {
         List<StaffRow> named = new ArrayList<>();
         StaffRow unassigned = null;

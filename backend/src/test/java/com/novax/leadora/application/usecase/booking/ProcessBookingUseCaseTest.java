@@ -188,4 +188,17 @@ class ProcessBookingUseCaseTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Booking not found");
     }
+
+    @Test
+    void shouldProcessBookingAtBoundaryDateLimit() {
+        // Test with boundary check-in/out dates: check-in is today, check-out is today (0 nights, minimal duration limit)
+        bookingEntity.setCheckInDate(LocalDate.now());
+        bookingEntity.setCheckOutDate(LocalDate.now());
+
+        ProcessBookingRequest request = new ProcessBookingRequest();
+        request.setStatus("CONFIRMED");
+
+        BookingResponse response = processBookingUseCase.execute(bookingId, request);
+        assertThat(response.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+    }
 }

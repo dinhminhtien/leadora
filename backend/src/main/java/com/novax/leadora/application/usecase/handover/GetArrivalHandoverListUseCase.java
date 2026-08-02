@@ -37,6 +37,7 @@ public class GetArrivalHandoverListUseCase {
     private final ArrivalDeskScope arrivalDeskScope;
 
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public Page<ArrivalHandoverResponse> execute(String search, String readinessStatus, String arrivalDate,
                                                  String assignedFoUserId, boolean deskWide,
                                                  String sortBy, String sortDir, int page, int size) {

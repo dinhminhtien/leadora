@@ -44,6 +44,7 @@ public class GetArrivalHandoverSummaryUseCase {
      * three of the four cards the moment one was clicked and leave no way back.
      */
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public ArrivalHandoverSummaryResponse execute(String search, String arrivalDate,
                                                   String assignedFoUserId, boolean deskWide) {
         LocalDate arrivalFilter = HandoverListQuery.dateFilter(arrivalDate, "arrivalDate");

@@ -108,6 +108,7 @@ class GetTaskPerformanceReportUseCaseTest {
 
     @Test
     @DisplayName("overdue excludes finished tasks (BR-17)")
+    @SuppressWarnings("unchecked")
     void overdueNeverIncludesFinishedTasks() {
         run(user("MANAGER"));
 
@@ -147,6 +148,7 @@ class GetTaskPerformanceReportUseCaseTest {
 
     @Test
     @DisplayName("unassigned tasks get their own row so the breakdown reconciles")
+    @SuppressWarnings("null")
     void unassignedTasksAreKept() {
         statusRows.add(new Object[] { TaskStatus.OPEN, 10L });
         ownerRows.add(new Object[] { UUID.randomUUID(), "Mai Anh", 7L, 3L, 1L });

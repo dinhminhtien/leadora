@@ -195,4 +195,15 @@ class BookingStatusTransitionServiceTest {
         // paymentRepository should not be queried since NO_SHOW is not CANCELLED/REJECTED
         verifyNoInteractions(paymentRepository);
     }
+
+    @Test
+    @DisplayName("Should successfully handle transition to the exact same status boundary limit")
+    void testTransitionToSameStatusBoundaryLimit() {
+        when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
+
+        assertThatThrownBy(() -> service.transition(bookingId, BookingStatus.PENDING,
+                TransitionActor.SALES, "Re-confirm pending status"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Transition from PENDING to PENDING is not allowed for this actor");
+    }
 }

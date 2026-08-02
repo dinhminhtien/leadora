@@ -81,7 +81,7 @@ final class HandoverListQuery {
             throw badRequest("INVALID_SORT_DIRECTION",
                     "Sort direction must be 'asc' or 'desc', not '" + sortDir + "'.");
         }
-        Sort.Direction direction = "asc".equalsIgnoreCase(StringUtils.trimWhitespace(sortDir))
+        Sort.Direction direction = "asc".equalsIgnoreCase(sortDir == null ? null : sortDir.strip())
                 ? Sort.Direction.ASC
                 : Sort.Direction.DESC;
 
@@ -100,6 +100,7 @@ final class HandoverListQuery {
     }
 
     /** Blank → {@code null} (no filter). A non-blank value that is not a constant → 400. */
+    @SuppressWarnings("null")
     static <E extends Enum<E>> E enumFilter(Class<E> type, String value, String parameterName) {
         if (!StringUtils.hasText(value)) {
             return null;

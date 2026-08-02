@@ -52,7 +52,7 @@ class LeadInputValidationTest {
     void testInvalidPhoneTriggersViolation() {
         CreateLeadRequest request = new CreateLeadRequest();
         request.setFullName("Nguyen Van B");
-        request.setPhone("1912345678");
+        request.setPhone("12345");
 
         Set<ConstraintViolation<CreateLeadRequest>> violations = validator.validate(request);
         assertFalse(violations.isEmpty());

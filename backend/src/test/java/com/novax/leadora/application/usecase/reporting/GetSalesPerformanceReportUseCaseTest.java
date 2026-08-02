@@ -185,6 +185,7 @@ class GetSalesPerformanceReportUseCaseTest {
 
     @Test
     @DisplayName("unassigned records get their own row so the breakdown reconciles with the total")
+    @SuppressWarnings("null")
     void unassignedRecordsGetTheirOwnRow() {
         agg("LEAD", "NEW", 10, 0);
         owner("LEADS", UUID.randomUUID(), "Mai Anh", 7, 0);
@@ -250,6 +251,7 @@ class GetSalesPerformanceReportUseCaseTest {
 
     @Test
     @DisplayName("reps are ranked by revenue, with the unassigned row kept last")
+    @SuppressWarnings("null")
     void repsAreRankedByRevenue() {
         owner("REVENUE", UUID.randomUUID(), "Low", 1, 100);
         owner("REVENUE", UUID.randomUUID(), "High", 1, 900);

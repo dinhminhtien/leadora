@@ -250,6 +250,7 @@ public class GetPipelineProgressionReportUseCase {
         private final Map<DealPipelineStage, double[]> hours = new HashMap<>();
         private final Map<DealPipelineStage, Long> samples = new HashMap<>();
 
+        @SuppressWarnings("null")
         void add(DealPipelineStage stage, OffsetDateTime from, OffsetDateTime to) {
             if (stage == null || from == null || to == null || to.isBefore(from)) {
                 return;
