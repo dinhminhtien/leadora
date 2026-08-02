@@ -12,6 +12,8 @@ import com.novax.leadora.infrastructure.persistence.repository.NotificationRepos
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -67,10 +69,9 @@ class SubmitQuotationUseCaseTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(
-            submitQuotationUseCase,
-            "discountApprovalThreshold",
-            java.math.BigDecimal.valueOf(10)
-        );
+                submitQuotationUseCase,
+                "discountApprovalThreshold",
+                java.math.BigDecimal.valueOf(10));
     }
 
     @Test
@@ -133,7 +134,8 @@ class SubmitQuotationUseCaseTest {
         when(quotationAccessPolicy.currentUser()).thenReturn(new UserEntity());
         when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(approvedQuotation));
 
-        assertThrows(IllegalStateException.class, () -> submitQuotationUseCase.execute(quotationId, new SubmitQuotationRequest()));
+        assertThrows(IllegalStateException.class,
+                () -> submitQuotationUseCase.execute(quotationId, new SubmitQuotationRequest()));
         verify(quotationRepository, never()).save(any());
     }
 
@@ -143,6 +145,7 @@ class SubmitQuotationUseCaseTest {
         UUID id = UUID.randomUUID();
         when(quotationRepository.findById(id)).thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class, () -> submitQuotationUseCase.execute(id, new SubmitQuotationRequest()));
+        assertThrows(ResourceNotFoundException.class,
+                () -> submitQuotationUseCase.execute(id, new SubmitQuotationRequest()));
     }
 }
