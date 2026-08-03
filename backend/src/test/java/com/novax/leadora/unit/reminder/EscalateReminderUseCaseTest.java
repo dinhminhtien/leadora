@@ -3,7 +3,6 @@ package com.novax.leadora.unit.reminder;
 import com.novax.leadora.application.usecase.reminder.*;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.BusinessException;
-import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.ReminderEntity;
@@ -53,8 +52,7 @@ class EscalateReminderUseCaseTest {
                 userRepository,
                 notificationRepository,
                 currentUserProvider,
-                systemAuditLogService
-        );
+                systemAuditLogService);
     }
 
     private UserEntity createTestUser(UUID id, String roleName) {
@@ -98,7 +96,8 @@ class EscalateReminderUseCaseTest {
         escalateReminderUseCase.execute(reminderId);
 
         verify(notificationRepository, times(1)).save(any(NotificationEntity.class));
-        verify(systemAuditLogService).log(eq("REMINDER"), eq("REMINDER"), eq(reminderId), eq("ESCALATED"), eq(assignee), any(), any(), eq("Escalated to 1 manager(s)"));
+        verify(systemAuditLogService).log(eq("REMINDER"), eq("REMINDER"), eq(reminderId), eq("ESCALATED"), eq(assignee),
+                any(), any(), eq("Escalated to 1 manager(s)"));
     }
 
     @Test
@@ -203,6 +202,7 @@ class EscalateReminderUseCaseTest {
         escalateReminderUseCase.execute(reminderId);
 
         verify(notificationRepository, never()).save(any(NotificationEntity.class));
-        verify(systemAuditLogService).log(eq("REMINDER"), eq("REMINDER"), eq(reminderId), eq("ESCALATED"), eq(assignee), any(), any(), eq("Escalated to 0 manager(s)"));
+        verify(systemAuditLogService).log(eq("REMINDER"), eq("REMINDER"), eq(reminderId), eq("ESCALATED"), eq(assignee),
+                any(), any(), eq("Escalated to 0 manager(s)"));
     }
 }
