@@ -48,6 +48,8 @@ export type ReminderListParams = {
   remindTo?: string;
   /** "priority" for HIGH→LOW ordering, or omitted for remindAt ascending. */
   sortBy?: string;
+  /** Keyword search on title / description (server-side). */
+  search?: string;
 };
 
 export const reminderService = {
