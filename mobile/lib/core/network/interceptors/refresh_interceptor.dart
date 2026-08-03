@@ -30,6 +30,9 @@ class RefreshInterceptor extends QueuedInterceptor {
   final TokenRefresher _refresher;
   final Future<void> Function() _onSessionExpired;
   final _lock = Mutex();
+  String? _refreshedToken;
+  bool _refreshFailed = false;
+  String? _failedToken;
 
   static bool _isAuthEndpoint(String path) =>
       path.contains(ApiPaths.login) ||
@@ -56,11 +59,42 @@ class RefreshInterceptor extends QueuedInterceptor {
       return handler.next(err);
     }
 
+    final authHeader = err.requestOptions.headers['Authorization'] as String?;
+    final requestToken = authHeader?.startsWith('Bearer ') == true
+        ? authHeader!.substring(7)
+        : null;
+
     String? newToken;
     try {
       // Single-flight: only the first caller performs the refresh; the rest
       // block here and reuse whatever token it produced.
-      newToken = await _lock.protect(() => _refresher.refresh());
+      newToken = await _lock.protect(() async {
+        // Reset flags if this is a new token failure cycle
+        if (requestToken != null &&
+            requestToken != _failedToken &&
+            requestToken != _refreshedToken) {
+          _refreshFailed = false;
+          _failedToken = null;
+        }
+
+        if (_refreshedToken != null && requestToken != _refreshedToken) {
+          return _refreshedToken;
+        }
+        if (_refreshFailed) {
+          return null;
+        }
+
+        final refreshed = await _refresher.refresh();
+        if (refreshed != null) {
+          _refreshedToken = refreshed;
+          _refreshFailed = false;
+          _failedToken = null;
+        } else {
+          _refreshFailed = true;
+          _failedToken = requestToken;
+        }
+        return refreshed;
+      });
     } catch (_) {
       newToken = null;
     }

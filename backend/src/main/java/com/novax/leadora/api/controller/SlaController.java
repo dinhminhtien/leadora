@@ -104,15 +104,18 @@ public class SlaController {
     /**
      * UC-23.3 — View SLA Compliance Report. Manager/Admin only per the SRS
      * (the report aggregates team-wide SLA warnings/violations).
+     *
+     * <p>Parameters are {@code dateFrom}/{@code dateTo} to match the other four UC-23 reports;
+     * they were {@code from}/{@code to}, which forced the frontend to special-case this one call.
      */
     @GetMapping("/report")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER') and @access.can('SLA_VIEW')")
     public ResponseEntity<ApiResponse<SlaReportResponse>> getReport(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String activityType,
             @RequestParam(required = false) String entityType) {
         return ResponseEntity.ok(ApiResponse.success(
-                getSlaReportUseCase.execute(from, to, activityType, entityType)));
+                getSlaReportUseCase.execute(dateFrom, dateTo, activityType, entityType)));
     }
 }

@@ -25,11 +25,29 @@ class DashboardScreen extends ConsumerWidget {
     ref.invalidate(dashboardSummaryProvider);
     ref.invalidate(upcomingTasksProvider);
     ref.invalidate(recentNotificationsProvider);
+    // The bell badge is its own provider; leaving it out meant a pull-to-refresh
+    // repainted every number on the screen except the unread count.
+    ref.invalidate(unreadNotificationCountProvider);
     await Future.wait([
-      ref.read(dashboardSummaryProvider.future),
-      ref.read(upcomingTasksProvider.future),
-      ref.read(recentNotificationsProvider.future),
+      _settle(ref.read(dashboardSummaryProvider.future)),
+      _settle(ref.read(upcomingTasksProvider.future)),
+      _settle(ref.read(recentNotificationsProvider.future)),
+      _settle(ref.read(unreadNotificationCountProvider.future)),
     ]);
+  }
+
+  /// Waits for [future] and swallows its failure.
+  ///
+  /// A bare `Future.wait` rethrows the first error out of `onRefresh`, where
+  /// nothing catches it — one unreachable endpoint turned a pull-to-refresh
+  /// into an unhandled exception. Every section below already renders its own
+  /// error state from the same provider, so all the gesture needs is to end.
+  static Future<void> _settle(Future<Object?> future) async {
+    try {
+      await future;
+    } catch (_) {
+      // Reported by the section that owns the provider.
+    }
   }
 
   /// Content column cap so the dashboard stays readable on tablets and in
@@ -75,9 +93,17 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: AppSpacing.xl),
                   const _QuickActions(),
-                  const SizedBox(height: AppSpacing.xl),
+                  // The funnel's leading gap travels with the card. Hoisted out
+                  // it left a double-height hole between Quick actions and
+                  // Upcoming tasks whenever the card was absent — still
+                  // loading, failed, or simply no deals in the pipeline yet.
                   summary.maybeWhen(
-                    data: (s) => _Funnel(stages: s.funnelStages),
+                    data: (s) => s.funnelStages.isEmpty
+                        ? const SizedBox.shrink()
+                        : Padding(
+                            padding: const EdgeInsets.only(top: AppSpacing.xl),
+                            child: _Funnel(stages: s.funnelStages),
+                          ),
                     orElse: () => const SizedBox.shrink(),
                   ),
                   const SizedBox(height: AppSpacing.xl),

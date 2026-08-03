@@ -49,7 +49,7 @@ public class GetDashboardSummaryUseCase {
 
     @Cacheable(
         value = "dashboard-summary",
-        key = "(#actor.role != null && #actor.role.roleName != null && (#actor.role.roleName.trim().toUpperCase() == 'MANAGER' || #actor.role.roleName.trim().toUpperCase() == 'ADMIN') ? 'all' : #actor.userId)",
+        key = "#actor.userId",
         unless = "#result == null"
     )
     @Transactional(readOnly = true)

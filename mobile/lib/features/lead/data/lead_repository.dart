@@ -48,10 +48,25 @@ class LeadRepository {
   }
 
   /// UC-24.4 — update lead status (via the PUT update endpoint).
+  ///
+  /// Sends the status alone: every other field is omitted, which the server
+  /// reads as "leave unchanged". Advancing a lead must not rewrite its details
+  /// as a side effect.
   Future<Lead> updateStatus(String leadId, LeadStatus status) {
     return _client.put<Lead>(
       ApiPaths.leadById(leadId),
       data: {'status': status.wire},
+      decode: (data) => Lead.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  /// UC-8.4 — edit a lead's details. Same endpoint as [updateStatus]; the two
+  /// are separate methods because they send disjoint halves of the DTO and are
+  /// reached from different screens.
+  Future<Lead> updateLead(String leadId, UpdateLeadPayload payload) {
+    return _client.put<Lead>(
+      ApiPaths.leadById(leadId),
+      data: payload.toJson(),
       decode: (data) => Lead.fromJson(data as Map<String, dynamic>),
     );
   }

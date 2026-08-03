@@ -839,7 +839,7 @@ export function LeadListScreen() {
               <X className="size-3" />
             </button>
           )}
-          <input type="text" placeholder="Search name, company, email…" value={searchInput}
+          <input type="text" placeholder="Search name, phone, email, company…" value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
             className="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:outline-none transition" />
         </div>

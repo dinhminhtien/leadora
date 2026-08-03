@@ -349,6 +349,9 @@ export function ReportingScreen() {
   // Land on the first report the role can see: managers → Sales Performance, staff → Task Performance.
   const [activeTab, setActiveTab] = useState<Tab>(isManagerScope ? "sales-performance" : "task-performance");
 
+  // Sales Staff hold REPORTING_VIEW purely so UC-23.2 works for them; the report itself is scoped
+  // to their own tasks server-side. Everything else on this screen is a team-wide view whose
+  // endpoints only accept MANAGER/ADMIN, so showing those tabs would just render a failed request.
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     ...(isManagerScope
       ? ([
@@ -359,7 +362,13 @@ export function ReportingScreen() {
         ] as { key: Tab; label: string; icon: React.ReactNode }[])
       : []),
     { key: "task-performance", label: "Task Performance", icon: <ClipboardList className="size-3.5" /> },
-    { key: "discount-report", label: "Discount Reports", icon: <FileText className="size-3.5" /> },
+    ...(isManagerScope
+      ? ([{ key: "discount-report", label: "Discount Reports", icon: <FileText className="size-3.5" /> }] as {
+          key: Tab;
+          label: string;
+          icon: React.ReactNode;
+        }[])
+      : []),
   ];
 
   return (
@@ -395,7 +404,7 @@ export function ReportingScreen() {
       {activeTab === "quotation-outcome" && <QuotationOutcomeTab />}
       {activeTab === "sla-compliance" && <SlaComplianceTab />}
       {activeTab === "task-performance" && <TaskPerformanceTab />}
-      {activeTab === "discount-report" && <DiscountReportTab />}
+      {activeTab === "discount-report" && isManagerScope && <DiscountReportTab />}
     </div>
   );
 }

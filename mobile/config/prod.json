@@ -1,7 +1,7 @@
 {
   "FLAVOR": "prod",
   "APP_NAME": "Leadora",
-  "API_BASE_URL": "https://api.leadora.novax.ai/api/v1",
+  "API_BASE_URL": "https://leadora-backend-732291906105.asia-southeast1.run.app/api/v1",
   "CONNECT_TIMEOUT_MS": "15000",
   "RECEIVE_TIMEOUT_MS": "15000",
   "LOG_LEVEL": "warning",

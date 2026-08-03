@@ -22,6 +22,7 @@
 import * as React from "react";
 import {
   Activity,
+  ArrowRight,
   Building2,
   CalendarDays,
   Check,
@@ -29,23 +30,28 @@ import {
   MapPin,
   Pencil,
   Phone,
+  RotateCcw,
   Sparkles,
   User,
   X,
+  XCircle,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/Input";
 import { StatusPill } from "@/components/ui/status-pill";
 import { toast } from "@/stores/toast_store";
 import { resolveApiError } from "@/shared/design/error-messages";
-import { useUpdateLead } from "@/features/lead/hooks/use_leads";
+import { useReopenLead, useUpdateLead } from "@/features/lead/hooks/use_leads";
 import {
   LEAD_PIPELINE,
   LEAD_STATUS_LABEL,
   allowedStatusOptions,
   hasErrors,
+  isLeadLocked,
+  leadStatusGate,
   toUpdatePayload,
   validateLead,
   type LeadFieldErrors,
@@ -258,6 +264,176 @@ export function LeadDetailTabs({
 }
 
 /* ------------------------------------------------------------------ *
+ * Status actions
+ * ------------------------------------------------------------------ */
+
+/**
+ * One-click status moves, sitting in the Overview action row.
+ *
+ * <p><b>Why they exist.</b> Advancing a lead was four steps — open the drawer, switch to Edit,
+ * change a dropdown, Save — which made the most frequent action in the module the most expensive
+ * one. The Edit form keeps the dropdown; it is still where a status change goes when it is part of
+ * a larger edit.
+ *
+ * <p><b>Why there is never more than one forward button.</b> `NEXT_STATUS` allows exactly one step,
+ * so the ladder itself decides the label. That is also why this is a button rather than a menu:
+ * a menu whose every rendering has one item is a button with extra clicks.
+ *
+ * <p><b>Which moves confirm.</b> Every transition here is one-way — the server refuses to walk a
+ * lead back — but they are not equally consequential. A forward step is the move the rep came to
+ * make, so it fires on the click and reports through a toast. `Lost` closes the record and takes it
+ * out of the pipeline, and `Reopen` rewrites a closed outcome, so both go through a dialog first.
+ */
+function LeadStatusActions({
+  lead,
+  canReopen,
+}: {
+  lead: Lead;
+  /** MANAGER only — matches `hasRole('MANAGER')` on `POST /leads/{id}/reopen`. */
+  canReopen: boolean;
+}) {
+  const updateMutation = useUpdateLead(lead.leadId);
+  const reopenMutation = useReopenLead(lead.leadId);
+
+  const [lostOpen, setLostOpen] = React.useState(false);
+  const [reopenOpen, setReopenOpen] = React.useState(false);
+  const [dialogError, setDialogError] = React.useState<string | null>(null);
+
+  const gate = leadStatusGate(lead);
+  const locked = isLeadLocked(lead.status);
+
+  /**
+   * Why the forward button is disabled, in the shape a `title` wants. Read from the saved lead
+   * rather than a form, because there is no form open here — so unlike the Edit tab's hint this
+   * one cannot clear as the user types, and it has to say where to go and fix it.
+   */
+  const forwardBlockedReason = gate.unassigned
+    ? "This lead must be assigned to a sales rep before its status can change."
+    : gate.missingForFollowUp.length > 0
+      ? `Add ${gate.missingForFollowUp.join(", ")} in the Edit tab first.`
+      : null;
+
+  const advance = () => {
+    if (!gate.next) return;
+    updateMutation.mutate(
+      { status: gate.next },
+      {
+        onSuccess: () => toast.success(`Lead marked as ${LEAD_STATUS_LABEL[gate.next!]}`),
+        onError: (err) => toast.error(resolveApiError(err).message),
+      },
+    );
+  };
+
+  // The dialog stays open on failure and shows the message, so a refusal the client did not
+  // predict (a rule that moved server-side, a lost race) is readable instead of being a modal
+  // that closes with nothing changed.
+  const markLost = () => {
+    setDialogError(null);
+    updateMutation.mutate(
+      { status: "LOST" },
+      {
+        onSuccess: () => {
+          setLostOpen(false);
+          toast.success("Lead closed as lost");
+        },
+        onError: (err) => setDialogError(resolveApiError(err).message),
+      },
+    );
+  };
+
+  const reopen = (reason: string) => {
+    setDialogError(null);
+    reopenMutation.mutate(
+      { reason },
+      {
+        onSuccess: () => {
+          setReopenOpen(false);
+          toast.success("Lead reopened — it is back in the pipeline as New");
+        },
+        onError: (err) => setDialogError(resolveApiError(err).message),
+      },
+    );
+  };
+
+  return (
+    <>
+      {!locked && gate.next && (
+        <Button
+          size="sm"
+          variant="primary"
+          leftIcon={<ArrowRight className="size-3.5" />}
+          disabled={gate.forwardBlocked || updateMutation.isPending}
+          title={forwardBlockedReason ?? undefined}
+          onClick={advance}
+        >
+          Mark as {LEAD_STATUS_LABEL[gate.next]}
+        </Button>
+      )}
+
+      {!locked && (
+        <Button
+          size="sm"
+          variant="outline"
+          leftIcon={<XCircle className="size-3.5" />}
+          // BR-06 blocks *every* transition on an unassigned lead, Lost included —
+          // `UpdateLeadUseCase` guards on `newStatus != previousStatus`, not on direction. Closing a
+          // draft nobody owns is refused with LEAD_UNASSIGNED, so the button says so up front.
+          disabled={gate.unassigned || updateMutation.isPending}
+          title={gate.unassigned ? forwardBlockedReason ?? undefined : undefined}
+          onClick={() => {
+            setDialogError(null);
+            setLostOpen(true);
+          }}
+        >
+          Mark as Lost
+        </Button>
+      )}
+
+      {lead.status === "LOST" && canReopen && (
+        <Button
+          size="sm"
+          variant="secondary"
+          leftIcon={<RotateCcw className="size-3.5" />}
+          onClick={() => {
+            setDialogError(null);
+            setReopenOpen(true);
+          }}
+        >
+          Reopen
+        </Button>
+      )}
+
+      <ConfirmDialog
+        open={lostOpen}
+        onOpenChange={setLostOpen}
+        severity="danger"
+        title={`Close ${lead.fullName} as lost?`}
+        description="The lead leaves the pipeline and can no longer be edited or converted. Only a manager can reopen it."
+        confirmLabel="Mark as Lost"
+        isLoading={updateMutation.isPending}
+        error={dialogError}
+        onConfirm={markLost}
+      />
+
+      <ConfirmDialog
+        open={reopenOpen}
+        onOpenChange={setReopenOpen}
+        severity="warning"
+        title={`Reopen ${lead.fullName}?`}
+        description="The lead returns to the pipeline as New and its owner is notified. This changes the recorded outcome, so the reason is kept on the record."
+        confirmLabel="Reopen lead"
+        requireReason
+        reasonLabel="Why is this lead being reopened?"
+        reasonPlaceholder="e.g. The guest called back about the March banquet"
+        isLoading={reopenMutation.isPending}
+        error={dialogError}
+        onConfirm={reopen}
+      />
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Overview
  * ------------------------------------------------------------------ */
 
@@ -265,6 +441,7 @@ export function OverviewTab({
   lead,
   locked,
   convertible,
+  canReopen,
   wide,
   onEdit,
   onConvert,
@@ -272,12 +449,22 @@ export function OverviewTab({
   lead: Lead;
   locked: boolean;
   convertible: boolean;
+  /** MANAGER only — gates the Reopen action on a lost lead. */
+  canReopen: boolean;
   /** Lay the sections out side by side instead of stacking them. */
   wide?: boolean;
   onEdit: () => void;
   onConvert: () => void;
 }) {
   const status = (lead.status ?? "").toUpperCase() as LeadStatus;
+
+  // BR-05, read from the saved lead. `LeadStatusActions` already refuses the
+  // forward move, but it explained itself only through the disabled button's
+  // `title` — which browsers do not show on a disabled control and touch
+  // devices never show at all. The button was therefore simply dead, and the
+  // rep's next move was to click it, get nothing, and eventually meet the
+  // server's "A lead in active follow-up needs an interested service."
+  const statusGate = leadStatusGate(lead);
 
   return (
     <div className="space-y-5">
@@ -330,6 +517,10 @@ export function OverviewTab({
             Convert
           </Button>
         )}
+
+        {/* Advance / Lost / Reopen. Rendered last so the destructive move is not the button
+            sitting under the cursor when the drawer opens. */}
+        <LeadStatusActions lead={lead} canReopen={canReopen} />
       </div>
 
       {/* Say *why* Convert is unavailable rather than just omitting the button. */}
@@ -338,11 +529,36 @@ export function OverviewTab({
           Assign this lead to a sales rep before it can be converted.
         </p>
       )}
+
+      {/* …and *why* the forward move is greyed out. Only for the BR-05 case:
+          an unassigned lead is already covered by the note above, and repeating
+          it would say the same thing twice. */}
+      {!locked &&
+        statusGate.next &&
+        !statusGate.unassigned &&
+        statusGate.missingForFollowUp.length > 0 && (
+          <p className="flex flex-wrap items-center gap-1 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
+            <span>
+              To mark this lead as {LEAD_STATUS_LABEL[statusGate.next]} it needs{" "}
+              {statusGate.missingForFollowUp.join(" and ")}.
+            </span>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="font-semibold underline underline-offset-2 hover:opacity-80"
+            >
+              Add it now
+            </button>
+            <span>— you can still mark it Lost.</span>
+          </p>
+        )}
       {locked && (
         <p className="rounded-md border border-border bg-muted px-3 py-2 text-[12px] text-muted-foreground">
           {status === "CONVERTED"
             ? "This lead has been converted and is kept as a locked historical record."
-            : "This lead is closed as lost and can no longer be edited."}
+            : canReopen
+              ? "This lead is closed as lost. Reopen it if the guest came back — it returns to the pipeline as New."
+              : "This lead is closed as lost and can no longer be edited. Ask a manager to reopen it if the guest came back."}
         </p>
       )}
 
@@ -474,27 +690,43 @@ export function EditTab({
   const statusOptions = allowedStatusOptions(lead.status);
 
   /**
-   * BR-05 — what a lead still needs before it can enter active follow-up.
+   * BR-05 / BR-06 — what a lead still needs before it can enter active follow-up.
    *
-   * Read from the *form*, not the lead, so it clears the moment the user types
-   * into the boxes above rather than after a save. Without this the move to
-   * Contacted/Qualified failed server-side with a 422 that pointed at no field.
-   * The names are short because they are printed inside the `<option>` itself:
-   * opening the dropdown covers the hint below it, so at the exact moment the
-   * user asks "why can't I pick this?" the answer would be behind the menu.
+   * Evaluated against the *form*, not the saved lead, so it clears the moment the
+   * user types into the boxes above rather than after a save. Without this the
+   * move to Contacted/Qualified failed server-side with a 422 that pointed at no
+   * field. The names are short because they are printed inside the `<option>`
+   * itself: opening the dropdown covers the hint below it, so at the exact moment
+   * the user asks "why can't I pick this?" the answer would be behind the menu.
+   *
+   * The rule itself lives in `lead-rules.ts` — the Overview quick-action asks the
+   * same question about the saved record, and two copies of it would be the drift
+   * that file was written to prevent.
    */
-  const missingForFollowUp = [
-    !form.phone?.trim() && !form.email?.trim() ? "phone or email" : null,
-    !form.source?.trim() ? "source" : null,
-    !form.interestedService?.trim() ? "interested service" : null,
-  ].filter(Boolean) as string[];
+  // `forwardBlocked` is deliberately not taken: it folds BR-05 and BR-06 into one flag, and this
+  // form needs them apart — see `blockedFor` below.
+  const { missingForFollowUp, unassigned } = leadStatusGate({
+    status: lead.status,
+    email: form.email,
+    phone: form.phone,
+    source: form.source,
+    interestedService: form.interestedService,
+    assignedUserId: form.assignedUserId,
+  });
 
-  // BR-06: an unassigned lead is a draft — it stays NEW until a manager gives it
-  // to someone, so no forward move is available at all.
-  const unassigned = !form.assignedUserId;
-  const forwardBlocked = unassigned || missingForFollowUp.length > 0;
-  // Lost is always reachable, and the current value must stay selectable.
+  /**
+   * Whether an option would be refused server-side. The current value is never blocked — the
+   * select has to be able to show what the lead already is.
+   *
+   * <p>The two rules have different reach, which the dropdown used to blur. BR-05 is about being
+   * ready for follow-up, so it stops the move to Contacted/Qualified and leaves Lost alone —
+   * a lead with no source is exactly the kind you close. BR-06 is about the lead being a draft at
+   * all: `UpdateLeadUseCase` guards on `newStatus != previousStatus` regardless of direction, so an
+   * unassigned lead cannot even be marked Lost. Offering it produced a 422 on save.
+   */
   const isForwardMove = (s: LeadStatus) => s !== lead.status && s !== "LOST";
+  const blockedFor = (s: LeadStatus) =>
+    unassigned ? s !== lead.status : missingForFollowUp.length > 0 && isForwardMove(s);
 
   const statusHint = unassigned
     ? "This lead must be assigned to a sales rep before its status can change."
@@ -628,7 +860,7 @@ export function EditTab({
             className={SELECT_CLASS}
           >
             {statusOptions.map((s) => {
-              const blocked = forwardBlocked && isForwardMove(s);
+              const blocked = blockedFor(s);
               return (
                 <option key={s} value={s} disabled={blocked}>
                   {LEAD_STATUS_LABEL[s]}

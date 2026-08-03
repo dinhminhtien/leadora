@@ -5,6 +5,7 @@ import com.novax.leadora.api.dto.response.DealResponse;
 import com.novax.leadora.application.usecase.deal.CreateDealUseCase;
 import com.novax.leadora.application.usecase.deal.DealMapper;
 import com.novax.leadora.application.usecase.deal.DealValidation;
+import com.novax.leadora.application.usecase.deal.RecordDealStageChangeService;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
@@ -51,6 +52,12 @@ class DealIntegrationTest {
 
     @Mock
     private CurrentUserProvider currentUserProvider;
+
+    // Records the stage transition in the same transaction as the change itself
+    // (RecordDealStageChangeService); mocked here because these tests assert on the deal,
+    // not on the history row.
+    @Mock
+    private RecordDealStageChangeService recordDealStageChangeService;
 
     @InjectMocks
     private CreateDealUseCase createDealUseCase;

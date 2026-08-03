@@ -96,6 +96,17 @@ export const userService = {
   },
 
   // Flat, non-paged summary list for assignee dropdowns — open to all authenticated roles.
+  /**
+   * @param role optional role filter, resolved server-side. Ask for the team you need rather than
+   *   downloading the whole staff directory and filtering it here.
+   */
+  async getSummariesByRole(role: string): Promise<ApiResponse<UserSummary[]>> {
+    const { data } = await apiClient.get<ApiResponse<UserSummary[]>>(USERS, {
+      params: { role },
+    });
+    return data;
+  },
+
   async getSummaries(): Promise<ApiResponse<UserSummary[]>> {
     const { data } = await apiClient.get<ApiResponse<UserSummary[]>>(USERS);
     return data;

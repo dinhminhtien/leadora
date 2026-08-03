@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -20,18 +21,37 @@ public interface PaymentRepository extends JpaRepository<PaymentEntity, UUID>, J
     List<PaymentEntity> findByBooking_BookingIdIn(List<UUID> bookingIds);
     boolean existsByBooking_BookingIdAndStatus(UUID bookingId, PaymentStatus status);
     List<PaymentEntity> findByStatus(PaymentStatus status);
-    // ── Performance report query (eliminates N+1 and filters at DB level) ──
-    @EntityGraph(attributePaths = {"booking", "booking.assignedUser"})
+    // ── UC-23.1 revenue aggregates ────────────────────────────────────────────
+    // Revenue is placed in the period it was *collected* (paidAt), falling back to createdAt for
+    // rows a gateway confirmed without stamping a time. Ranges are half-open: [start, end).
+
+    /** Total collected amount in the period. */
     @Query("""
-            SELECT p FROM PaymentEntity p
+            SELECT sum(p.amount) FROM PaymentEntity p
             WHERE p.status = :status
-              AND COALESCE(p.paidAt, p.createdAt) >= :startDate
-              AND COALESCE(p.paidAt, p.createdAt) <= :endDate
+              AND ((p.paidAt IS NOT NULL AND p.paidAt >= :start AND p.paidAt < :end) OR (p.paidAt IS NULL AND p.createdAt >= :start AND p.createdAt < :end))
             """)
-    List<PaymentEntity> findPaidPaymentsForReport(
+    BigDecimal sumCollected(
             @Param("status") PaymentStatus status,
-            @Param("startDate") OffsetDateTime startDate,
-            @Param("endDate") OffsetDateTime endDate);
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end);
+
+    /**
+     * {@code [ownerId, ownerName, sumAmount]} rows. Attribution follows the booking's assignee —
+     * payments carry no owner of their own — and LEFT JOINs keep unattributable revenue visible
+     * instead of quietly shrinking the per-rep column below the headline figure.
+     */
+    @Query("""
+            SELECT u.userId, u.fullName, sum(p.amount)
+            FROM PaymentEntity p LEFT JOIN p.booking b LEFT JOIN b.assignedUser u
+            WHERE p.status = :status
+              AND ((p.paidAt IS NOT NULL AND p.paidAt >= :start AND p.paidAt < :end) OR (p.paidAt IS NULL AND p.createdAt >= :start AND p.createdAt < :end))
+            GROUP BY u.userId, u.fullName
+            """)
+    List<Object[]> aggregateCollectedByOwner(
+            @Param("status") PaymentStatus status,
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end);
 
     java.util.Optional<PaymentEntity> findByGatewayTransactionId(String gatewayTransactionId);
 

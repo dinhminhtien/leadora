@@ -17,10 +17,17 @@ export function useArrivalHandovers(params?: ArrivalHandoverQuery) {
   });
 }
 
-export function useArrivalHandoverSummary() {
+type SummaryParams = Pick<
+  ArrivalHandoverQuery,
+  "search" | "arrivalDate" | "assignedFoUserId" | "deskWide"
+>;
+
+export function useArrivalHandoverSummary(params?: SummaryParams) {
   return useQuery({
-    queryKey: [LIST_KEY, "summary"],
-    queryFn: () => arrivalHandoverService.getSummary(),
+    // The filters are part of the key: the counts differ per scope and per filter, so a shared
+    // cache entry would show one query's numbers above another query's rows.
+    queryKey: [LIST_KEY, "summary", params ?? {}],
+    queryFn: () => arrivalHandoverService.getSummary(params),
     select: (res) => res.data,
     staleTime: 15_000,
   });

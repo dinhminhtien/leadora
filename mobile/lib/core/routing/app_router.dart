@@ -27,6 +27,7 @@ import '../../features/interaction/presentation/screens/interaction_detail_scree
 import '../../features/interaction/presentation/screens/interaction_timeline_screen.dart';
 import '../../features/interaction/presentation/screens/log_interaction_screen.dart';
 import '../../features/lead/presentation/screens/create_lead_screen.dart';
+import '../../features/lead/presentation/screens/edit_lead_screen.dart';
 import '../../features/lead/presentation/screens/lead_detail_screen.dart';
 import '../../features/lead/presentation/screens/lead_list_screen.dart';
 import '../../features/notification/presentation/screens/notification_list_screen.dart';
@@ -356,6 +357,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                     parentNavigatorKey: _rootNavigatorKey,
                     builder: (_, state) =>
                         LeadDetailScreen(leadId: state.pathParameters['id']!),
+                  ),
+                  GoRoute(
+                    path: Routes.leadEditSub,
+                    name: RouteNames.leadEdit,
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (_, state) =>
+                        EditLeadScreen(leadId: state.pathParameters['id']!),
                   ),
                 ],
               ),
