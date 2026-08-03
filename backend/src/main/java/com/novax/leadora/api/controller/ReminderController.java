@@ -33,6 +33,7 @@ public class ReminderController {
     private final EscalateReminderUseCase escalateReminderUseCase;
 
     /** UC-16.1 / UC-16.2: List reminders — filter by userId, status, date range; sort by date or priority */
+    /** UC-Search Reminders: optional keyword search on title / description */
     @GetMapping
     @PreAuthorize("isAuthenticated() and @access.can('REMINDER_VIEW')")
     public ResponseEntity<ApiResponse<List<ReminderResponse>>> getAll(
@@ -40,9 +41,10 @@ public class ReminderController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime remindFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime remindTo,
-            @RequestParam(required = false) String sortBy) {
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String search) {
         return ResponseEntity.ok(ApiResponse.success(
-                getRemindersUseCase.execute(userId, status, remindFrom, remindTo, sortBy)));
+                getRemindersUseCase.execute(userId, status, remindFrom, remindTo, sortBy, search)));
     }
 
     /** UC-16.1: Create a manual reminder (Sales Staff / Manager / Admin) */
