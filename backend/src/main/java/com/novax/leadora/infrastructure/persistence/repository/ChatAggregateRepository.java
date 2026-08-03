@@ -42,7 +42,7 @@ import java.util.UUID;
 public class ChatAggregateRepository {
 
     /** Marks the derived overdue-task row, which is a filter rather than a stored status. */
-    static final String OVERDUE_MARKER = "__OVERDUE__";
+    public static final String OVERDUE_MARKER = "__OVERDUE__";
 
     private static final String COUNT_ALL = """
             SELECT 'LEADS' AS area, l.status AS status, COUNT(*) AS cnt, NULL::numeric AS amount
@@ -186,12 +186,12 @@ public class ChatAggregateRepository {
     }
 
     /** The statement, for the test that checks every area is represented in it. */
-    static String countAllSql() {
+    public static String countAllSql() {
         return COUNT_ALL;
     }
 
     /** The listing statement, for the test that checks its scoping mirrors the count branch. */
-    static String slaListingSql() {
+    public static String slaListingSql() {
         return SLA_LISTING;
     }
 }
