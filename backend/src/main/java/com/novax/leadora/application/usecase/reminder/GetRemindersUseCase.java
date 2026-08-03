@@ -32,7 +32,7 @@ public class GetRemindersUseCase {
     @Transactional(readOnly = true)
     public List<ReminderResponse> execute(UUID userId, String statusFilter,
                                           OffsetDateTime remindFrom, OffsetDateTime remindTo,
-                                          String sortBy) {
+                                          String sortBy, String search) {
         // A Sales Staff may only ever see their own reminders — override whatever
         // userId the client sent (or omitted) rather than trusting it. Manager/Admin
         // (and any other role) keep the caller-supplied filter, including "all staff"
@@ -85,6 +85,15 @@ public class GetRemindersUseCase {
                     .sorted(Comparator
                             .comparingInt((ReminderEntity r) -> priorityOrder(r.getPriority()))
                             .thenComparing(r -> r.getRemindAt()))
+                    .toList();
+        }
+
+        // UC-Search Reminders: optional keyword search on title / description
+        if (StringUtils.hasText(search)) {
+            String keyword = search.trim().toLowerCase();
+            records = records.stream()
+                    .filter(r -> (r.getTitle() != null && r.getTitle().toLowerCase().contains(keyword))
+                            || (r.getDescription() != null && r.getDescription().toLowerCase().contains(keyword)))
                     .toList();
         }
 
