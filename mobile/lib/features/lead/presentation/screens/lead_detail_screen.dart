@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/network/api_exception.dart';
+import '../../../../core/routing/routes.dart';
 import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
 import '../../../../shared/widgets/async_value_view.dart';
@@ -25,8 +27,27 @@ class LeadDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(leadDetailProvider(leadId));
 
+    final lead = async.valueOrNull;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Lead detail')),
+      appBar: AppBar(
+        title: const Text('Lead detail'),
+        actions: [
+          // BR-08: a converted lead is a locked historical record, and a lost
+          // one is closed — the server refuses every edit to either, so the
+          // action is absent rather than offered and then denied.
+          if (lead != null && !lead.status.isTerminal)
+            IconButton(
+              tooltip: 'Edit lead',
+              onPressed: () => context.pushNamed(
+                RouteNames.leadEdit,
+                pathParameters: {'id': leadId},
+              ),
+              icon: const Icon(Icons.edit_outlined),
+            ),
+          const SizedBox(width: 4),
+        ],
+      ),
       body: AsyncValueView<Lead>(
         value: async,
         onRetry: () => ref.invalidate(leadDetailProvider(leadId)),
@@ -114,13 +135,49 @@ class LeadDetailScreen extends ConsumerWidget {
               ],
               const SizedBox(height: 20),
               if (!lead.status.isTerminal) ...[
-                FilledButton.icon(
-                  onPressed: () => _showStatusSheet(context, ref, lead),
-                  icon: const Icon(Icons.swap_horiz_rounded),
-                  label: const Text('Update status'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(50),
-                  ),
+                // BR-04/BR-05/BR-06, checked here rather than discovered from a
+                // 422. Both refusals disable the control and say what to do:
+                // an unassigned lead is a draft nobody may move, and a lead
+                // without a source and an interested service cannot enter
+                // active follow-up.
+                Builder(
+                  builder: (context) {
+                    final gate = LeadStatusGate.of(lead);
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: gate.allBlocked
+                              ? null
+                              : () => _showStatusSheet(context, ref, lead),
+                          icon: const Icon(Icons.swap_horiz_rounded),
+                          label: const Text('Update status'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(50),
+                          ),
+                        ),
+                        if (gate.reason != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: AppSpacing.sm),
+                            child: _HintText(gate.reason!),
+                          ),
+                        // The way out of the BR-05 refusal, next to the refusal
+                        // itself — the fields it names are all editable.
+                        if (!gate.unassigned && gate.missing.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: AppSpacing.sm),
+                            child: OutlinedButton.icon(
+                              onPressed: () => context.pushNamed(
+                                RouteNames.leadEdit,
+                                pathParameters: {'id': lead.leadId},
+                              ),
+                              icon: const Icon(Icons.edit_outlined),
+                              label: const Text('Add the missing details'),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
                 // UC-8.5: convert to a customer. Only assigned leads may convert
                 // (backend rule); the sheet gates the manager-override path.
@@ -163,16 +220,33 @@ class LeadDetailScreen extends ConsumerWidget {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
+            // BR-05 blocks a forward move but never Lost: a junk lead has to be
+            // closable immediately rather than after filling in details nobody
+            // will use. So the blocked option is shown greyed with its reason,
+            // not hidden — hiding it would look like the ladder had changed.
             for (final s in lead.status.allowedTransitions)
-              ListTile(
-                onTap: () => Navigator.of(context).pop(s),
-                leading: StatusChip(
-                  tone: s.tone,
-                  rawStatus: s.wire,
-                  dense: true,
-                ),
-                title: Text(Formatters.humanizeEnum(s.wire)),
-                trailing: const Icon(Icons.arrow_forward_rounded, size: 18),
+              Builder(
+                builder: (context) {
+                  final gate = LeadStatusGate.of(lead);
+                  final blocked =
+                      s != LeadStatus.lost && gate.missing.isNotEmpty;
+                  return ListTile(
+                    enabled: !blocked,
+                    onTap: blocked ? null : () => Navigator.of(context).pop(s),
+                    leading: StatusChip(
+                      tone: s.tone,
+                      rawStatus: s.wire,
+                      dense: true,
+                    ),
+                    title: Text(Formatters.humanizeEnum(s.wire)),
+                    subtitle: blocked
+                        ? Text('Needs ${gate.missing.join(' and ')} first')
+                        : null,
+                    trailing: blocked
+                        ? const Icon(Icons.lock_outline_rounded, size: 18)
+                        : const Icon(Icons.arrow_forward_rounded, size: 18),
+                  );
+                },
               ),
             const SizedBox(height: 8),
           ],
@@ -245,14 +319,29 @@ class _ConvertLeadSheet extends ConsumerStatefulWidget {
   ConsumerState<_ConvertLeadSheet> createState() => _ConvertLeadSheetState();
 }
 
+/// UC-8.5 E6 — the customer this lead would have created already exists.
+/// [customerId] comes from the refusal's `details`; [field] is the detail that
+/// collided, so the note can say which one.
+typedef _DuplicateCustomer = ({String customerId, String field});
+
 class _ConvertLeadSheetState extends ConsumerState<_ConvertLeadSheet> {
   final _reason = TextEditingController();
   bool _submitting = false;
+
+  /// Set when the server refuses the conversion because the person is already on
+  /// the books. Turns the refusal into the choice UC-8.5 describes — link the
+  /// lead to that profile, or cancel — instead of a snackbar with nowhere to go.
+  _DuplicateCustomer? _duplicate;
 
   bool get _isQualified => widget.lead.status == LeadStatus.qualified;
   bool get _canConfirm =>
       _isQualified ||
       (widget.canOverride && _reason.text.trim().isNotEmpty);
+
+  /// The approval reason travels with the link too: attaching a not-yet-QUALIFIED
+  /// lead to a customer is the same exception BR-07 governs, taken by a different
+  /// route.
+  String? get _approvalReason => _isQualified ? null : _reason.text.trim();
 
   @override
   void dispose() {
@@ -260,26 +349,76 @@ class _ConvertLeadSheetState extends ConsumerState<_ConvertLeadSheet> {
     super.dispose();
   }
 
+  /// Reads a duplicate-customer refusal out of a failed conversion, or null for
+  /// every other error — which is what keeps the "link instead" button from
+  /// appearing next to failures it cannot fix. A 409 carrying no id is still
+  /// shown as a plain error rather than a button that would post nothing.
+  static _DuplicateCustomer? _duplicateFrom(AppException e) {
+    if (e is! ApiException || e.details == null) return null;
+    return switch (e.errorCode) {
+      'DUPLICATE_CUSTOMER_EMAIL' => (
+        customerId: e.details!,
+        field: 'email address',
+      ),
+      'DUPLICATE_CUSTOMER_PHONE' => (
+        customerId: e.details!,
+        field: 'phone number',
+      ),
+      _ => null,
+    };
+  }
+
   Future<void> _submit() async {
     if (!_canConfirm) return;
+    await _run(
+      () => ref.read(leadRepositoryProvider).convertLead(
+            widget.lead.leadId,
+            ConvertLeadPayload(
+              customerType: widget.lead.isCorporate ? 'CORPORATE' : 'INDIVIDUAL',
+              reason: _approvalReason,
+            ),
+          ),
+      success: '${widget.lead.fullName} converted to a customer',
+    );
+  }
+
+  /// UC-8.5 E6 — attach the lead to the customer that already exists rather than
+  /// creating a second record for the same person. Both routes end the same way,
+  /// so the caller cannot tell them apart.
+  Future<void> _linkExisting() async {
+    final duplicate = _duplicate;
+    if (duplicate == null) return;
+    await _run(
+      () => ref.read(leadRepositoryProvider).linkLeadToCustomer(
+            widget.lead.leadId,
+            LinkLeadToCustomerPayload(
+              customerId: duplicate.customerId,
+              reason: _approvalReason,
+            ),
+          ),
+      success: '${widget.lead.fullName} linked to the existing customer',
+    );
+  }
+
+  /// Shared submit plumbing: spinner, the duplicate branch, and popping `true`.
+  Future<void> _run(
+    Future<String> Function() action, {
+    required String success,
+  }) async {
     setState(() => _submitting = true);
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-    final lead = widget.lead;
     try {
-      await ref.read(leadRepositoryProvider).convertLead(
-            lead.leadId,
-            ConvertLeadPayload(
-              customerType: lead.isCorporate ? 'CORPORATE' : 'INDIVIDUAL',
-              reason: _isQualified ? null : _reason.text.trim(),
-            ),
-          );
-      messenger.showSnackBar(
-        SnackBar(content: Text('${lead.fullName} converted to a customer')),
-      );
+      await action();
+      messenger.showSnackBar(SnackBar(content: Text(success)));
       navigator.pop(true);
     } on AppException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      final duplicate = _duplicateFrom(e);
+      if (duplicate != null && mounted) {
+        setState(() => _duplicate = duplicate);
+      } else {
+        messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -352,24 +491,100 @@ class _ConvertLeadSheetState extends ConsumerState<_ConvertLeadSheet> {
                     'It must reach Qualified before conversion, or a Sales Manager '
                     'must approve an exception.',
               ),
-            const SizedBox(height: AppSpacing.xl),
-            FilledButton.icon(
-              onPressed: (_submitting || !_canConfirm) ? null : _submit,
-              icon: _submitting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.how_to_reg_rounded),
-              label: Text(_isQualified ? 'Confirm conversion' : 'Approve & convert'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
+            // UC-8.5 E6. Once the server has told us this person is already a
+            // customer, converting again can only fail the same way — so the
+            // primary action becomes linking, and "Convert" steps aside.
+            if (_duplicate != null) ...[
+              const SizedBox(height: AppSpacing.lg),
+              _EligibilityNote(
+                tone: StatusTone.warning,
+                icon: Icons.people_alt_outlined,
+                text:
+                    'A customer with this ${_duplicate!.field} already exists. '
+                    'Link ${lead.fullName} to that profile instead of creating a '
+                    'second record for the same person.',
               ),
-            ),
+              const SizedBox(height: AppSpacing.xl),
+              FilledButton.icon(
+                onPressed: _submitting ? null : _linkExisting,
+                icon: _submitting
+                    ? const _ButtonSpinner()
+                    : const Icon(Icons.link_rounded),
+                label: const Text('Link to existing customer'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              TextButton(
+                onPressed: _submitting
+                    ? null
+                    : () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+            ] else ...[
+              const SizedBox(height: AppSpacing.xl),
+              FilledButton.icon(
+                onPressed: (_submitting || !_canConfirm) ? null : _submit,
+                icon: _submitting
+                    ? const _ButtonSpinner()
+                    : const Icon(Icons.how_to_reg_rounded),
+                label: Text(
+                  _isQualified ? 'Confirm conversion' : 'Approve & convert',
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                ),
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The in-button progress indicator, sized to sit where the icon was so the
+/// button does not resize when it starts working.
+class _ButtonSpinner extends StatelessWidget {
+  const _ButtonSpinner();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(
+    width: 18,
+    height: 18,
+    child: CircularProgressIndicator(strokeWidth: 2),
+  );
+}
+
+/// Muted explanatory line under a disabled action — says why it is disabled,
+/// which a greyed-out button on its own never does.
+class _HintText extends StatelessWidget {
+  const _HintText(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.info_outline_rounded,
+          size: AppIconSize.sm,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

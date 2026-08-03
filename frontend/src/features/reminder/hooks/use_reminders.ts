@@ -7,10 +7,10 @@ import {
   type UpdateReminderPayload,
 } from "@/services/reminder_service";
 
-export function useReminders(userId?: string, status?: string, fetchAll?: boolean) {
+export function useReminders(userId?: string, status?: string, fetchAll?: boolean, search?: string) {
   return useQuery({
-    queryKey: ["reminders", userId, status, fetchAll],
-    queryFn: () => reminderService.getList({ userId, status }),
+    queryKey: ["reminders", userId, status, fetchAll, search],
+    queryFn: () => reminderService.getList({ userId, status, search }),
     select: (res) => res.data ?? [],
     enabled: !!userId || !!fetchAll,
   });

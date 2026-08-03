@@ -27,7 +27,7 @@ public class UpdateLeadRequest {
 
     @Pattern(
             regexp = LeadFieldLimits.PHONE_PATTERN,
-            message = "Phone number must be a valid Vietnamese 10-digit number (e.g. 0912345678)"
+            message = LeadFieldLimits.PHONE_MESSAGE
     )
     private String phone;
 

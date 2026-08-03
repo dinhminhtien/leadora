@@ -7,7 +7,11 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "sla_tracking")
+@Table(name = "sla_tracking", indexes = {
+    // UC-23.3 filters and orders by started_at; the schedulers probe status + a deadline column.
+    @Index(name = "idx_sla_tracking_started_at", columnList = "started_at"),
+    @Index(name = "idx_sla_tracking_status", columnList = "status")
+})
 @Getter
 @Setter
 @NoArgsConstructor

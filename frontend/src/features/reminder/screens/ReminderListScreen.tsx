@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import {
-  Bell, Clock, AlertTriangle, Plus, Filter,
+  Bell, Clock, AlertTriangle, Plus, Filter, Search,
   FileSpreadsheet, Calendar, LayoutList, ChevronLeft, ChevronRight,
   Users, Building2, CreditCard, ChevronUp, ChevronDown, ArrowUpDown, Pencil,
 } from "lucide-react";
@@ -207,6 +207,10 @@ export function ReminderListScreen() {
   const queryUserId = isManager ? (filterUserId || undefined) : user?.id;
   const fetchAll    = isManager && !filterUserId;
 
+  // Search — keyword match on title / description, applied client-side (see `displayed`)
+  // so it doesn't shrink `allReminders`, which the stats below depend on staying unfiltered.
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Only enable query once auth is resolved (user object is available)
   const authReady = !isAuthLoading && !!user;
   const { data: allReminders = [], isLoading } = useReminders(
@@ -276,14 +280,20 @@ export function ReminderListScreen() {
     });
     if (entityFilter) list = list.filter(r => r.relatedEntity === entityFilter);
     list = list.filter(r => matchesDateFilter(r, dateFilter, calendarDay));
+    if (searchQuery.trim()) {
+      const keyword = searchQuery.trim().toLowerCase();
+      list = list.filter(r =>
+        r.title.toLowerCase().includes(keyword) ||
+        (r.description ?? "").toLowerCase().includes(keyword));
+    }
     return applySort(list, sortField, sortDir);
-  }, [allReminders, listTab, statusFilter, entityFilter, dateFilter, calendarDay, sortField, sortDir]);
+  }, [allReminders, listTab, statusFilter, entityFilter, dateFilter, calendarDay, searchQuery, sortField, sortDir]);
 
-  const hasFilters = !!(statusFilter || dateFilter || entityFilter || calendarDay || filterUserId);
+  const hasFilters = !!(statusFilter || dateFilter || entityFilter || calendarDay || filterUserId || searchQuery);
 
   const clearFilters = () => {
     setStatusFilter(""); setDateFilter(""); setEntityFilter("");
-    setCalendarDay(null); setFilterUserId("");
+    setCalendarDay(null); setFilterUserId(""); setSearchQuery("");
   };
 
   const handleCalendarDayClick = (dateStr: string) => {
@@ -396,6 +406,17 @@ export function ReminderListScreen() {
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search title or description..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="rounded-lg border border-slate-200 bg-white pl-8 pr-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-400 transition w-56"
+          />
+        </div>
+
         <Filter className="size-3.5 text-slate-400 shrink-0" />
 
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}

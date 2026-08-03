@@ -1,13 +1,16 @@
 package com.novax.leadora.common.util;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
+import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
- * Utility class for reporting use cases to centralize date boundary conversions
- * and rate computation calculations, resolving code duplication anti-patterns.
+ * Shared helpers for the UC-23 reports: percentage maths and the mapping of JPQL {@code GROUP BY}
+ * result tuples into lookup maps.
+ *
+ * <p>Date-range resolution moved to {@link ReportRangeFactory}: it needs the configured business
+ * time zone, so it cannot stay static.
  */
 public final class ReportingUtils {
 
@@ -15,30 +18,60 @@ public final class ReportingUtils {
     }
 
     /**
-     * Converts a LocalDate to OffsetDateTime at the start of day (UTC).
-     * If the input is null, returns Epoch Start (1970-01-01).
-     */
-    public static OffsetDateTime getStartOfDayOrEpoch(LocalDate date) {
-        return date != null ? date.atStartOfDay().atOffset(ZoneOffset.UTC)
-                : OffsetDateTime.of(1970, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
-    }
-
-    /**
-     * Converts a LocalDate to OffsetDateTime at the end of day (UTC).
-     * If the input is null, returns Far Future (2100-12-31).
-     */
-    public static OffsetDateTime getEndOfDayOrFuture(LocalDate date) {
-        return date != null ? date.atTime(LocalTime.MAX).atOffset(ZoneOffset.UTC)
-                : OffsetDateTime.of(2100, 12, 31, 23, 59, 59, 999999999, ZoneOffset.UTC);
-    }
-
-    /**
-     * Safely computes a percentage rate rounded to two decimal places.
+     * Safely computes a percentage rounded to two decimal places. A non-positive denominator yields
+     * {@code 0.0} rather than NaN/Infinity — every report renders these straight into the UI.
      */
     public static double calculateRate(long part, long wholePart) {
         if (wholePart <= 0) {
             return 0.0;
         }
         return Math.round((part * 10000.0 / wholePart)) / 100.0;
+    }
+
+    /** Rounds to two decimal places; used for hour/day averages. */
+    public static double round2(double value) {
+        return Math.round(value * 100.0) / 100.0;
+    }
+
+    /**
+     * Maps {@code SELECT <key>, count(x) ... GROUP BY <key>} tuples into a map. Rows with a null key
+     * are kept — an unassigned record is still a record, and dropping it here is what makes a
+     * per-owner breakdown stop adding up to the headline total.
+     */
+    @SuppressWarnings({"unchecked", "null"})
+    public static <K> Map<K, Long> countByKey(List<Object[]> rows) {
+        Map<K, Long> result = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            K key = (K) row[0];
+            result.merge(key, toLong(row[1]), Long::sum);
+        }
+        return result;
+    }
+
+    /** Null-safe lookup — an absent group means zero, not a missing entry to guard at every call. */
+    public static <K> long countOf(Map<K, Long> counts, K key) {
+        Long value = counts.get(key);
+        return value == null ? 0L : value;
+    }
+
+    /** Sums selected groups, e.g. "all the statuses that count as a confirmed booking". */
+    @SafeVarargs
+    public static <K> long sumOf(Map<K, Long> counts, K... keys) {
+        long total = 0;
+        for (K key : keys) {
+            total += countOf(counts, key);
+        }
+        return total;
+    }
+
+    public static long toLong(Object value) {
+        return (value instanceof Number number) ? number.longValue() : 0L;
+    }
+
+    public static BigDecimal toBigDecimal(Object value) {
+        if (value instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        return (value instanceof Number number) ? BigDecimal.valueOf(number.doubleValue()) : BigDecimal.ZERO;
     }
 }

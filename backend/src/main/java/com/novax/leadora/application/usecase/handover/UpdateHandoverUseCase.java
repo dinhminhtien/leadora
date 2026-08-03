@@ -8,6 +8,11 @@ import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.OpHandoverEntity;
 import com.novax.leadora.infrastructure.persistence.entity.PaymentEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.HandoverStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ReadinessStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
@@ -16,6 +21,7 @@ import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.application.usecase.timeline.CreateInteractionTimelineUseCase;
 import com.novax.leadora.api.dto.request.CreateInteractionTimelineRequest;
 import lombok.RequiredArgsConstructor;
@@ -43,21 +49,27 @@ public class UpdateHandoverUseCase {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
+    private final HandoverAccessPolicy handoverAccessPolicy;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public ArrivalHandoverResponse execute(UUID handoverId, UpdateHandoverRequest request, UserEntity actor) {
         OpHandoverEntity handover = opHandoverRepository.findById(handoverId)
                 .orElseThrow(() -> new ResourceNotFoundException("Operational handover", handoverId));
 
-        // PRE-4 & E6-4.1: Unauthorized Update check
-        if (actor != null && actor.getRole() != null) {
-            String roleName = actor.getRole().getRoleName();
-            boolean isAdmin = "ADMIN".equalsIgnoreCase(roleName);
-            boolean isOwner = handover.getCreatedBy() != null && handover.getCreatedBy().getUserId().equals(actor.getUserId());
-            if (!isAdmin && !isOwner) {
-                throw new AccessDeniedException("Access Denied.");
-            }
+        // PRE-4 & E6-4.1: Unauthorized Update check.
+        //
+        // Delegated to the same policy the read path uses, for two reasons. The old inline check
+        // was wrapped in `if (actor != null && actor.getRole() != null)`, so a caller with no role
+        // skipped authorization altogether — it failed open, which is the one direction an
+        // authorization check must never fail. And it allowed only ADMIN or the creator, so a
+        // MANAGER was refused a record they are allowed to read, and a colleague could not touch a
+        // handover on a booking assigned to them.
+        if (actor == null) {
+            throw new AccessDeniedException("Access Denied.");
         }
+        handoverAccessPolicy.assertCanView(actor, handover);
 
         BookingEntity booking = handover.getBooking();
 
@@ -66,12 +78,14 @@ public class UpdateHandoverUseCase {
             throw new IllegalStateException("Cannot update past handovers.");
         }
 
-        // BR-44: Booking is closed/cancelled/rejected
-        if (booking != null) {
-            String bStatus = booking.getStatus() != null ? booking.getStatus().name() : "";
-            if (bStatus.equals("CANCELLED") || bStatus.equals("REJECTED") || bStatus.equals("CHECKED_OUT")) {
-                throw new IllegalStateException("Booking is cancelled or completed, cannot update operational handover.");
-            }
+        // BR-44: booking is closed / cancelled / rejected. Whitelist rather than blacklist so a
+        // BookingStatus added later is treated as "not editable" until somebody decides otherwise
+        // — the old list missed NO_SHOW and PENDING. Matches UPDATABLE_BOOKING_STATUSES on the
+        // Front Office side.
+        if (booking != null && !BookingStatus.LIVE_FOR_ARRIVAL.contains(booking.getStatus())) {
+            throw new IllegalStateException(
+                    "This booking is " + booking.getStatus()
+                            + ", so its operational handover can no longer be updated.");
         }
 
         HandoverStatus newStatus;
@@ -131,7 +145,25 @@ public class UpdateHandoverUseCase {
                 ? paymentRepository.findByBooking_BookingId(booking.getBookingId()) 
                 : List.of();
 
-        // BR-37: Write Slf4j Audit Log
+        // BR-37 — a queryable audit row alongside the log line. The log file alone could not answer
+        // "who changed this handover and from what", which is the whole point of the rule.
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("bookingCode", booking != null ? booking.getBookingCode() : null)
+                    .put("previousStatus", oldStatus != null ? oldStatus.name() : null)
+                    .put("newStatus", newStatus.name())
+                    .put("assignedFoUserId", request.getAssignedFoUserId() != null
+                            ? request.getAssignedFoUserId().toString() : null);
+            activityLogPublisher.publish(
+                    ActivityLogType.HANDOVER_SUBMITTED,
+                    EntityType.HANDOVER,
+                    saved.getHandoverId(),
+                    "Operational handover " + oldStatus + " -> " + newStatus,
+                    payload);
+        } catch (Exception e) {
+            log.warn("Failed to publish handover update activity: {}", e.getMessage());
+        }
+
         log.info("[AUDIT] Action: UPDATE_OPERATIONAL_HANDOVER, TargetRecord: {}, OldStatus: {}, NewStatus: {}, UpdatedBy: {}, Timestamp: {}",
                 saved.getHandoverId(), oldStatus, newStatus, actor != null ? actor.getUserId() : null, OffsetDateTime.now());
 

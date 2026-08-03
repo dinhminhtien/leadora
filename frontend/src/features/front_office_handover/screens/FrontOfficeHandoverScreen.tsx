@@ -31,12 +31,17 @@ import {
   useArrivalHandoverSummary,
   useUpdateReadiness,
 } from "@/features/front_office_handover/hooks/use_arrival_handovers";
-import type {
-  ArrivalHandover,
-  ReadinessStatus,
+import {
+  READINESS_TRANSITIONS,
+  isBookingActive,
+  type ArrivalHandover,
+  type ReadinessStatus,
 } from "@/services/arrival_handover_service";
 import { HandoverDetailDrawer } from "@/features/front_office_handover/components/HandoverDetailDrawer";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
+import { useAuthStore } from "@/stores/auth_store";
+import { hasFullAccess } from "@/shared/auth/access";
+import { userService, type UserSummary } from "@/services/user_service";
 
 const PAGE_SIZE = 10;
 
@@ -97,12 +102,42 @@ function fmtDate(iso?: string) {
 
 export function FrontOfficeHandoverScreen() {
   const { highlightedId, setRowRef } = useHighlightRow();
+  const user = useAuthStore((s) => s.user);
+  // UC-22.1 step 5 — only a supervisor filters by an arbitrary colleague. For Front Office Staff
+  // the server decides visibility, so the control is hidden rather than shown-and-ignored.
+  const isSupervisor = hasFullAccess(user);
+
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [readinessFilter, setReadinessFilter] = useState("");
   const [arrivalDate, setArrivalDate] = useState("");
+  const [assignedFoUserId, setAssignedFoUserId] = useState("");
+  const [deskWide, setDeskWide] = useState(false);
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [foStaff, setFoStaff] = useState<UserSummary[]>([]);
+
+  // Front Office roster for the assignee filter. Supervisors only, so nothing is fetched for the
+  // Front Office Staff who make up most of this screen's traffic.
+  useEffect(() => {
+    if (!isSupervisor) return;
+    let cancelled = false;
+    // Asks for the Front Office team only. This used to fetch every user in the company and keep
+    // the five it wanted, which handed the whole staff directory to the browser for a dropdown.
+    userService
+      .getSummariesByRole("FO")
+      .then((res) => {
+        if (cancelled) return;
+        setFoStaff(res.data ?? []);
+      })
+      .catch(() => {
+        // A missing roster only costs the filter — the list itself is unaffected.
+        if (!cancelled) setFoStaff([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSupervisor]);
 
   // Debounce the free-text search a touch.
   useEffect(() => {
@@ -117,19 +152,37 @@ export function FrontOfficeHandoverScreen() {
     search: search || undefined,
     readinessStatus: readinessFilter || undefined,
     arrivalDate: arrivalDate || undefined,
+    assignedFoUserId: assignedFoUserId || undefined,
+    deskWide: deskWide || undefined,
     page,
     size: PAGE_SIZE,
   });
 
-  const summaryQuery = useArrivalHandoverSummary();
+  // Same filters as the list minus readinessStatus — see the service for why.
+  const summaryQuery = useArrivalHandoverSummary({
+    search: search || undefined,
+    arrivalDate: arrivalDate || undefined,
+    assignedFoUserId: assignedFoUserId || undefined,
+    deskWide: deskWide || undefined,
+  });
   const summary = summaryQuery.data;
 
   const rows: ArrivalHandover[] = useMemo(
     () => listQuery.data?.data?.content ?? [],
     [listQuery.data],
   );
-  const totalPages = listQuery.data?.data?.totalPages ?? 1;
-  const totalElements = summary?.total ?? listQuery.data?.data?.totalElements ?? rows.length;
+  // Spring Boot serialises Page as { content, page: { size, number, totalElements, totalPages } }.
+  // This screen read the flat `data.totalPages`, which is absent — so it always resolved to 1 and
+  // the pager below (`totalPages > 1`) never rendered at all. Same shape check the lead,
+  // notification and identity screens already use.
+  const pageData = listQuery.data?.data;
+  const pageMeta = pageData?.page && typeof pageData.page === "object" ? pageData.page : null;
+  const totalPages = pageMeta ? pageMeta.totalPages : (pageData?.totalPages ?? 1);
+  // The list's own count, not summary.total: the summary ignores search/date/readiness, so
+  // preferring it made the header read "48 requests" above a table filtered down to 2.
+  const totalElements = pageMeta
+    ? pageMeta.totalElements
+    : (pageData?.totalElements ?? rows.length);
 
   // Clicking a KPI card filters the list by that readiness.
   const filterBy = (readiness: string) => {
@@ -151,7 +204,10 @@ export function FrontOfficeHandoverScreen() {
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <span className="text-xs font-semibold text-slate-500">{totalElements} requests</span>
+          {/* Suppressed on error: "0 requests" next to a failure message reads as a fact. */}
+          {!listQuery.isError && (
+            <span className="text-xs font-semibold text-slate-500">{totalElements} requests</span>
+          )}
           <Pill text="Front Office" className="bg-blue-100 text-blue-800" />
         </div>
       </div>
@@ -230,6 +286,42 @@ export function FrontOfficeHandoverScreen() {
               <option value="NEED_CLARIFICATION">Needs clarification</option>
             </Select>
           </div>
+          {isSupervisor && (
+            <div className="lg:w-52">
+              <Select
+                aria-label="Assigned Front Office staff"
+                value={assignedFoUserId}
+                onChange={(e) => {
+                  setAssignedFoUserId(e.target.value);
+                  setPage(0);
+                }}
+              >
+                <option value="">All FO staff</option>
+                {foStaff.map((u) => (
+                  <option key={u.userId} value={u.userId}>
+                    {u.fullName}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+          {/* A front desk is a shift rota: when the assignee is off duty, whoever is on duty still
+              has to prepare the arrival. Off by default so the list opens on your own queue.
+              Pointless for a supervisor, who is never scoped in the first place. */}
+          {!isSupervisor && (
+          <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-slate-600">
+            <input
+              type="checkbox"
+              checked={deskWide}
+              onChange={(e) => {
+                setDeskWide(e.target.checked);
+                setPage(0);
+              }}
+              className="size-3.5 rounded border-slate-300"
+            />
+            Whole desk
+          </label>
+          )}
         </CardContent>
       </Card>
 
@@ -244,20 +336,53 @@ export function FrontOfficeHandoverScreen() {
                 <TableHead>Arrival date</TableHead>
                 <TableHead>Room / Service</TableHead>
                 <TableHead>Special requests</TableHead>
+                <TableHead>Assigned FO</TableHead>
                 <TableHead>Ready</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {listQuery.isLoading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-xs text-slate-400">
+                  <TableCell colSpan={7} className="py-8 text-center text-xs text-slate-400">
                     <Loader2 className="mx-auto mb-1 size-4 animate-spin" /> Loading…
                   </TableCell>
                 </TableRow>
               )}
-              {!listQuery.isLoading && rows.length === 0 && (
+              {/* A failed request is not an empty desk. Rendering the empty state for any error
+                  told a Front Office user "no arrivals today" when the truth was a 403 or a dead
+                  backend — the single most misleading thing this screen could say. */}
+              {!listQuery.isLoading && listQuery.isError && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-12">
+                  <TableCell colSpan={7} className="py-12">
+                    <div className="flex flex-col items-center justify-center gap-2 text-center">
+                      <span className="flex size-12 items-center justify-center rounded-full bg-rose-50 text-rose-500">
+                        <AlertTriangle className="size-6" />
+                      </span>
+                      <p className="text-sm font-semibold text-slate-700">
+                        {isForbidden(listQuery.error)
+                          ? "You do not have permission to view the arrival desk"
+                          : "Could not load the arrival handovers"}
+                      </p>
+                      <p className="max-w-sm text-xs text-slate-500">
+                        {serverMessage(listQuery.error)}
+                      </p>
+                      {!isForbidden(listQuery.error) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-1"
+                          onClick={() => listQuery.refetch()}
+                        >
+                          Try again
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!listQuery.isLoading && !listQuery.isError && rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-12">
                     <div className="flex flex-col items-center justify-center gap-2 text-center">
                       <span className="flex size-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
                         <ConciergeBell className="size-6" />
@@ -294,6 +419,13 @@ export function FrontOfficeHandoverScreen() {
                   <TableCell className="max-w-[180px] truncate text-slate-500" title={h.specialRequests}>
                     {h.specialRequests?.trim() ? h.specialRequests : "—"}
                   </TableCell>
+                  <TableCell className="text-slate-600">
+                    {h.assignedFoName ?? (
+                      // Only mandatory on submit, so legacy rows have none. Say "unassigned"
+                      // rather than a bare dash — it is a thing somebody needs to fix.
+                      <span className="text-amber-600">Unassigned</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <StatusPill size="sm" domain="readiness" value={h.readinessStatus} />
                   </TableCell>
@@ -315,8 +447,10 @@ export function FrontOfficeHandoverScreen() {
           >
             Previous
           </Button>
+          {/* Was "Trang {n}/{m}" / "Sau" next to an English "Previous" — every other label on this
+              screen is English, so the two Vietnamese ones were the odd pair out. */}
           <span className="text-slate-500">
-            Trang {page + 1}/{totalPages}
+            Page {page + 1} of {totalPages}
           </span>
           <Button
             variant="outline"
@@ -324,7 +458,7 @@ export function FrontOfficeHandoverScreen() {
             disabled={page >= totalPages - 1}
             onClick={() => setPage((p) => p + 1)}
           >
-            Sau
+            Next
           </Button>
         </div>
       )}
@@ -367,14 +501,37 @@ function HandoverDetailPanel({ id, onClose }: { id: string; onClose: () => void 
  * UC-22.3 — the only field Front Office may write (BR-27). Everything else in
  * the drawer is read-only, which is why this is the sole form on the surface.
  */
+const READINESS_LABELS: Record<ReadinessStatus, string> = {
+  PENDING_REVIEW: "Pending review",
+  REVIEWED: "Reviewed",
+  READY_FOR_ARRIVAL: "Ready for arrival",
+  NEED_CLARIFICATION: "Needs clarification",
+};
+
+const READINESS_ORDER: ReadinessStatus[] = [
+  "PENDING_REVIEW",
+  "REVIEWED",
+  "READY_FOR_ARRIVAL",
+  "NEED_CLARIFICATION",
+];
+
 function ReadinessForm({ id, detail }: { id: string; detail: ArrivalHandover }) {
   const updateReadiness = useUpdateReadiness();
 
+  const current = (detail.readinessStatus as ReadinessStatus) ?? "PENDING_REVIEW";
   const [readiness, setReadiness] = useState<ReadinessStatus | "">(
     (detail.readinessStatus as ReadinessStatus) ?? "",
   );
   const [note, setNote] = useState(detail.clarificationNote ?? "");
   const [localError, setLocalError] = useState<string | null>(null);
+
+  // BR-44 — a cancelled / no-show / checked-out booking freezes readiness entirely.
+  const bookingActive = isBookingActive(detail.bookingStatus);
+  // POST-4 — from NEED_CLARIFICATION the only move is to amend the note; Sales/Reservation must
+  // re-submit before readiness can be confirmed. The server enforces this; we mirror it so the
+  // dropdown never offers a move that would be refused.
+  const allowed = READINESS_TRANSITIONS[current] ?? [];
+  const waitingOnSales = current === "NEED_CLARIFICATION";
 
   const needsClarification = readiness === "NEED_CLARIFICATION";
   const dirty =
@@ -382,18 +539,26 @@ function ReadinessForm({ id, detail }: { id: string; detail: ArrivalHandover }) 
     (readiness !== detail.readinessStatus ||
       (needsClarification && note.trim() !== (detail.clarificationNote ?? "")));
 
-  const handleSave = async () => {
+  const handleSave = () => {
     setLocalError(null);
-    if (!readiness || !dirty) return;
+    if (!readiness || !dirty || !bookingActive) return;
     if (needsClarification && !note.trim()) {
       setLocalError("Please enter the clarification details.");
       return;
     }
-    await updateReadiness.mutateAsync({
-      id,
-      readinessStatus: readiness,
-      clarificationNote: needsClarification ? note.trim() : undefined,
-    });
+    // `mutate`, not `mutateAsync`: an awaited rejection here was an unhandled promise rejection,
+    // and the 422 the server sends (E7.2 / E7.3 / POST-4) carries the sentence the user needs.
+    updateReadiness.mutate(
+      {
+        id,
+        readinessStatus: readiness,
+        clarificationNote: needsClarification ? note.trim() : undefined,
+      },
+      {
+        onError: (err) =>
+          setLocalError(serverMessage(err, "Update failed. Please try again.")),
+      },
+    );
   };
 
   return (
@@ -402,41 +567,51 @@ function ReadinessForm({ id, detail }: { id: string; detail: ArrivalHandover }) 
         Update readiness status
       </p>
 
+      {!bookingActive && (
+        <p className="text-[11.5px] text-danger">
+          This booking is {detail.bookingStatus?.toLowerCase().replace(/_/g, " ")} — its
+          arrival readiness can no longer be changed.
+        </p>
+      )}
+
       <Select
         aria-label="Readiness status"
         value={readiness}
+        disabled={!bookingActive}
         onChange={(e) => {
           setReadiness(e.target.value as ReadinessStatus);
           setLocalError(null);
         }}
       >
-        <option value="PENDING_REVIEW" disabled>
-          Pending review
-        </option>
-        <option value="REVIEWED">Reviewed</option>
-        <option value="READY_FOR_ARRIVAL">Ready for arrival</option>
-        <option value="NEED_CLARIFICATION">Needs clarification</option>
+        {READINESS_ORDER.map((value) => (
+          <option
+            key={value}
+            value={value}
+            // Keep the current value selectable so the control shows where the record stands,
+            // even when it is a state Front Office cannot re-enter.
+            disabled={!allowed.includes(value) && value !== current}
+          >
+            {READINESS_LABELS[value]}
+          </option>
+        ))}
       </Select>
 
       {needsClarification && (
         <textarea
           rows={3}
           value={note}
+          disabled={!bookingActive}
           onChange={(e) => {
             setNote(e.target.value);
             setLocalError(null);
           }}
           placeholder="Details for Sales/Reservations to clarify…"
           aria-label="Clarification details"
-          className="w-full resize-none rounded-md border border-border bg-input px-3 py-2 text-[12.5px] text-foreground placeholder:text-muted-foreground focus-ring"
+          className="w-full resize-none rounded-md border border-border bg-input px-3 py-2 text-[12.5px] text-foreground placeholder:text-muted-foreground focus-ring disabled:opacity-60"
         />
       )}
 
-      {(localError || updateReadiness.isError) && (
-        <p className="text-[11.5px] text-danger">
-          {localError || "Update failed. Please try again."}
-        </p>
-      )}
+      {localError && <p className="text-[11.5px] text-danger">{localError}</p>}
       {updateReadiness.isSuccess && !dirty && !localError && (
         <p className="text-[11.5px] text-success">Updated.</p>
       )}
@@ -444,7 +619,7 @@ function ReadinessForm({ id, detail }: { id: string; detail: ArrivalHandover }) 
       <Button
         size="sm"
         className="w-full"
-        disabled={!dirty || updateReadiness.isPending}
+        disabled={!dirty || !bookingActive || updateReadiness.isPending}
         isLoading={updateReadiness.isPending}
         leftIcon={<Save className="size-3.5" />}
         onClick={handleSave}
@@ -452,7 +627,13 @@ function ReadinessForm({ id, detail }: { id: string; detail: ArrivalHandover }) 
         Save status
       </Button>
 
-      {needsClarification && (
+      {waitingOnSales && bookingActive && (
+        <p className="text-[11px] text-muted-foreground">
+          Waiting on Sales/Reservations. They have to update and re-submit this handover
+          before you can confirm it is ready — you can still amend the note above.
+        </p>
+      )}
+      {needsClarification && !waitingOnSales && (
         <p className="text-[11px] text-muted-foreground">
           Choosing “Needs clarification” notifies the responsible
           Sales/Reservations staff.
@@ -460,4 +641,19 @@ function ReadinessForm({ id, detail }: { id: string; detail: ArrivalHandover }) 
       )}
     </section>
   );
+}
+
+/** The message the API sent, falling back to something honest if the shape is unexpected. */
+function serverMessage(err: unknown, fallback = "Please try again."): string {
+  const message = (err as { response?: { data?: { message?: string } } })?.response?.data
+    ?.message;
+  return message?.trim() || fallback;
+}
+
+/**
+ * Whether the request was refused rather than broken. Worth separating: a 403 will not fix itself,
+ * so offering "Try again" on one is a lie, and telling the user their desk is empty is worse.
+ */
+function isForbidden(err: unknown): boolean {
+  return (err as { response?: { status?: number } })?.response?.status === 403;
 }

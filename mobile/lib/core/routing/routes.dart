@@ -25,6 +25,7 @@ class Routes {
   static const String dealDetailSub = 'detail/:id';
   static const String leadCreateSub = 'new';
   static const String leadDetailSub = 'detail/:id';
+  static const String leadEditSub = 'edit/:id';
   static const String taskDetailSub = 'detail/:id';
   static const String taskCreateSub = 'new';
   static const String taskEditSub = 'edit/:id';
@@ -33,6 +34,7 @@ class Routes {
   static const String profileEditSub = 'edit';
 
   static String leadDetailPath(String id) => '/leads/detail/$id';
+  static String leadEditPath(String id) => '/leads/edit/$id';
   static String taskDetailPath(String id) => '/tasks/detail/$id';
   static const String taskCreate = '/tasks/new';
   static String taskEditPath(String id) => '/tasks/edit/$id';
@@ -160,6 +162,7 @@ class RouteNames {
   static const String leads = 'leads';
   static const String leadCreate = 'leadCreate';
   static const String leadDetail = 'leadDetail';
+  static const String leadEdit = 'leadEdit';
   static const String tasks = 'tasks';
   static const String taskDetail = 'taskDetail';
   static const String taskCreate = 'taskCreate';

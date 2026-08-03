@@ -2,59 +2,68 @@ package com.novax.leadora.application.usecase.reporting;
 
 import com.novax.leadora.api.dto.response.QuotationOutcomeReportResponse;
 import com.novax.leadora.api.dto.response.QuotationOutcomeReportResponse.StatusRow;
-import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
+import com.novax.leadora.common.util.ReportRange;
+import com.novax.leadora.common.util.ReportRangeFactory;
+import com.novax.leadora.common.util.ReportingUtils;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
-import com.novax.leadora.common.util.ReportingUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
-/** UC-23.5 — View Quotation Outcome Report. */
+/**
+ * UC-23.5 — View Quotation Outcome Report.
+ *
+ * <p>Two things about this data shape drive the implementation. First, {@code quotations.status} is
+ * overwritten in place as a quotation advances, so a status snapshot cannot answer "how many were
+ * approved" — that comes from {@code approved_at}, which is written once. Second, BR-22 turns an
+ * edit into a new version and marks the old row SUPERSEDED, so those rows have to leave the
+ * denominator or every rate falls as negotiation rounds pile up.
+ */
 @Service
 @RequiredArgsConstructor
 public class GetQuotationOutcomeReportUseCase {
 
     private final QuotationRepository quotationRepository;
+    private final ReportRangeFactory reportRangeFactory;
 
     @Cacheable(value = "quotation-outcome-report", key = "#from + '_' + #to", unless = "#result == null")
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public QuotationOutcomeReportResponse execute(LocalDate from, LocalDate to) {
-        OffsetDateTime start = ReportingUtils.getStartOfDayOrEpoch(from);
-        OffsetDateTime end = ReportingUtils.getEndOfDayOrFuture(to);
+        ReportRange range = reportRangeFactory.resolve(from, to);
 
-        List<QuotationEntity> quotations = quotationRepository.findByCreatedAtRange(start, end);
+        Map<QuotationStatus, Long> counts = ReportingUtils.countByKey(
+                quotationRepository.aggregateByStatus(range.start(), range.endExclusive()));
 
-        // Count per status.
-        Map<QuotationStatus, Long> counts = new EnumMap<>(QuotationStatus.class);
-        for (QuotationEntity q : quotations) {
-            if (q.getStatus() != null) {
-                counts.put(q.getStatus(), counts.getOrDefault(q.getStatus(), 0L) + 1L);
-            }
-        }
+        long superseded = ReportingUtils.countOf(counts, QuotationStatus.SUPERSEDED);
+        long total = counts.values().stream().mapToLong(Long::longValue).sum() - superseded;
 
-        long total = quotations.size();
-        long sent = counts.getOrDefault(QuotationStatus.SENT, 0L);
-        long approved = counts.getOrDefault(QuotationStatus.APPROVED, 0L);
-        long rejected = counts.getOrDefault(QuotationStatus.REJECTED, 0L);
-        long expired = counts.getOrDefault(QuotationStatus.EXPIRED, 0L);
-        long accepted = counts.getOrDefault(QuotationStatus.ACCEPTED, 0L);
-        long converted = counts.getOrDefault(QuotationStatus.CONVERTED, 0L);
+        long accepted = ReportingUtils.countOf(counts, QuotationStatus.ACCEPTED);
+        long converted = ReportingUtils.countOf(counts, QuotationStatus.CONVERTED);
 
-        // Full breakdown (enum order, only non-empty statuses).
+        long approved = quotationRepository.countApproved(
+                range.start(), range.endExclusive(), QuotationStatus.SUPERSEDED);
+        long rejectedByApprover = quotationRepository.countRejectedByApprover(
+                range.start(), range.endExclusive(), QuotationStatus.REJECTED);
+
+        // Full breakdown in enum order, superseded revisions included so the numbers stay auditable
+        // against the quotations screen even though they are out of the rate denominators.
         List<StatusRow> byStatus = new ArrayList<>();
-        for (QuotationStatus s : QuotationStatus.values()) {
-            long c = counts.getOrDefault(s, 0L);
-            if (c > 0) {
-                byStatus.add(StatusRow.builder().status(s.name()).label(label(s)).count(c).build());
+        for (QuotationStatus status : QuotationStatus.values()) {
+            long count = ReportingUtils.countOf(counts, status);
+            if (count > 0) {
+                byStatus.add(StatusRow.builder()
+                        .status(status.name())
+                        .label(label(status))
+                        .count(count)
+                        .build());
             }
         }
 
@@ -62,25 +71,27 @@ public class GetQuotationOutcomeReportUseCase {
                 .dateFrom(from)
                 .dateTo(to)
                 .total(total)
-                .sent(sent)
-                .approved(approved)
-                .rejected(rejected)
-                .expired(expired)
+                .superseded(superseded)
+                .sent(ReportingUtils.countOf(counts, QuotationStatus.SENT))
+                .rejected(ReportingUtils.countOf(counts, QuotationStatus.REJECTED))
+                .expired(ReportingUtils.countOf(counts, QuotationStatus.EXPIRED))
                 .accepted(accepted)
                 .converted(converted)
-                .approvalRate(ReportingUtils.calculateRate(approved, approved + rejected))
-                .acceptanceRate(ReportingUtils.calculateRate(accepted, total))
+                .approved(approved)
+                .rejectedByApprover(rejectedByApprover)
+                .approvalRate(ReportingUtils.calculateRate(approved, approved + rejectedByApprover))
+                .acceptanceRate(ReportingUtils.calculateRate(accepted + converted, total))
                 .conversionRate(ReportingUtils.calculateRate(converted, total))
                 .byStatus(byStatus)
                 .build();
     }
 
-    private String label(QuotationStatus s) {
-        return switch (s) {
+    private String label(QuotationStatus status) {
+        return switch (status) {
             case DRAFT -> "Draft";
             case PENDING_APPROVAL -> "Pending approval";
             case SENT -> "Sent";
-            case APPROVED -> "Approved";
+            case APPROVED -> "Approved (awaiting dispatch)";
             case REJECTED -> "Rejected";
             case EXPIRED -> "Expired";
             case CLOSED -> "Closed";
@@ -88,7 +99,7 @@ public class GetQuotationOutcomeReportUseCase {
             case PENDING_REVISION -> "Pending revision";
             case ACCEPTED -> "Accepted";
             case INTERESTED -> "Interested";
-            case SUPERSEDED -> "Superseded";
+            case SUPERSEDED -> "Superseded (older version)";
         };
     }
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { quotationService } from "@/services/quotation_service";
 import {
@@ -7,6 +8,26 @@ import {
   type ReportLogPayload,
   type ReportRangeParams,
 } from "@/services/reporting_service";
+
+/**
+ * The date-range filter shared by all five UC-23 tabs.
+ *
+ * Owns the inversion check in one place: an inverted range is refused client-side (`enabled`) so
+ * the report keeps its previous numbers and shows a validation message, rather than round-tripping
+ * to a 422 or — worse — rendering an empty state that reads as "no activity in this period".
+ */
+export function useReportRange() {
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const invalid = Boolean(dateFrom && dateTo && dateFrom > dateTo);
+  const params: ReportRangeParams = useMemo(
+    () => ({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
+    [dateFrom, dateTo],
+  );
+
+  return { dateFrom, dateTo, setDateFrom, setDateTo, invalid, params, enabled: !invalid };
+}
 // Fetch all quotations for the discount report tab
 export function useQuotationsForReport() {
   return useQuery({
@@ -36,51 +57,56 @@ export function useSaveReportLog() {
 }
 
 // UC-23.1 — Sales Performance Statistics Report
-export function useSalesPerformanceReport(params: ReportRangeParams) {
+export function useSalesPerformanceReport(params: ReportRangeParams, enabled = true) {
   return useQuery({
     queryKey: ["sales-performance-report", params],
     queryFn: () => reportingService.getSalesPerformance(params),
     select: (res) => res.data,
     staleTime: 30_000,
+    enabled,
   });
 }
 
 // UC-23.2 — Follow-up Task Performance Report
-export function useTaskPerformanceReport(params: ReportRangeParams) {
+export function useTaskPerformanceReport(params: ReportRangeParams, enabled = true) {
   return useQuery({
     queryKey: ["task-performance-report", params],
     queryFn: () => reportingService.getTaskPerformance(params),
     select: (res) => res.data,
     staleTime: 30_000,
+    enabled,
   });
 }
 
 // UC-23.4 — Sales Pipeline Progression Report
-export function usePipelineProgressionReport(params: ReportRangeParams) {
+export function usePipelineProgressionReport(params: ReportRangeParams, enabled = true) {
   return useQuery({
     queryKey: ["pipeline-progression-report", params],
     queryFn: () => reportingService.getPipelineProgression(params),
     select: (res) => res.data,
     staleTime: 30_000,
+    enabled,
   });
 }
 
 // UC-23.5 — Quotation Outcome Report
-export function useQuotationOutcomeReport(params: ReportRangeParams) {
+export function useQuotationOutcomeReport(params: ReportRangeParams, enabled = true) {
   return useQuery({
     queryKey: ["quotation-outcome-report", params],
     queryFn: () => reportingService.getQuotationOutcome(params),
     select: (res) => res.data,
     staleTime: 30_000,
+    enabled,
   });
 }
 
 // UC-23.3 — SLA Compliance Report
-export function useSlaComplianceReport(params: ReportRangeParams) {
+export function useSlaComplianceReport(params: ReportRangeParams, enabled = true) {
   return useQuery({
     queryKey: ["sla-compliance-report", params],
     queryFn: () => reportingService.getSlaCompliance(params),
     select: (res) => res.data,
     staleTime: 30_000,
+    enabled,
   });
 }

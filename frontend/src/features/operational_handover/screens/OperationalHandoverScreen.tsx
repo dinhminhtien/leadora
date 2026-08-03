@@ -131,7 +131,11 @@ export function OperationalHandoverScreen() {
       });
       if (res.data) {
         setHandovers(res.data.content || []);
-        setLogsTotalPages(res.data.totalPages || 0);
+        // Spring serialises Page as { content, page: {...} }; the flat totalPages is absent, so
+        // this resolved to 0 and the logs pager never appeared.
+        const pageMeta =
+          res.data.page && typeof res.data.page === "object" ? res.data.page : null;
+        setLogsTotalPages(pageMeta ? pageMeta.totalPages : (res.data.totalPages ?? 0));
       }
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Failed to load operational handovers"));
@@ -151,18 +155,25 @@ export function OperationalHandoverScreen() {
         size: 10,
       });
       if (res.data) {
-        // Fetch all handovers to filter out bookings that already have handovers
-        const handoversRes = await operationalHandoverService.getList({ size: 1000 });
-        const existingBookingIds = new Set(
-          handoversRes.data?.content?.map(h => h.bookingId).filter(Boolean) || []
-        );
+        // Which bookings already have a handover — asked of the server. Deriving it here from the
+        // paged handover list was wrong three ways: it requested more rows than the API allows, it
+        // read page metadata from a field the API does not send (so it only saw the first page),
+        // and the list is owner-scoped, so a colleague's handover was invisible and its booking was
+        // offered for a second one.
+        const idsRes = await operationalHandoverService.getBookingIdsWithHandover();
+        const existingBookingIds = new Set(idsRes.data ?? []);
 
+        // This tab is "confirmed bookings *waiting for* a handover", so the ones that already have
+        // one are what must be dropped. The predicate was inverted — it kept exactly those — while
+        // the comment above it said the opposite.
         const filtered = (res.data.content || []).filter(
-          b => existingBookingIds.has!(b.bookingId)
+          b => !existingBookingIds.has(b.bookingId)
         );
 
         setBookings(filtered);
-        setBookingsTotalPages(res.data.totalPages || 0);
+        const pageMeta =
+          res.data.page && typeof res.data.page === "object" ? res.data.page : null;
+        setBookingsTotalPages(pageMeta ? pageMeta.totalPages : (res.data.totalPages ?? 0));
       }
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Failed to load bookings"));

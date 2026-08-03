@@ -27,6 +27,7 @@ public class AutoWinDealByPaymentUseCase {
     private final SystemAuditLogService auditLogService;
     private final DealWorkflowResolver dealWorkflowResolver;
     private final ActivityLogPublisher activityLogPublisher;
+    private final RecordDealStageChangeService recordDealStageChangeService;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -81,8 +82,11 @@ public class AutoWinDealByPaymentUseCase {
 
         // 4. Perform transition
         DealStatus oldStatus = deal.getStatus();
+        DealPipelineStage oldStage = deal.getPipelineStage();
         deal.setPipelineStage(DealPipelineStage.CLOSED_WON);
         dealRepository.save(deal);
+        recordDealStageChangeService.record(deal, oldStage, DealPipelineStage.CLOSED_WON,
+                RecordDealStageChangeService.SOURCE_AUTO_WIN);
 
         log.info("[AUTO-WIN] Deal {} successfully transitioned to WON via Payment {}", deal.getDealId(), payment.getPaymentId());
 
@@ -98,7 +102,12 @@ public class AutoWinDealByPaymentUseCase {
                     .put("bookingId", booking.getBookingId().toString())
                     .put("bookingCode", booking.getBookingCode())
                     .put("previousStatus", oldStatus != null ? oldStatus.name() : "OPEN")
-                    .put("newStatus", "WON");
+                    .put("newStatus", "WON")
+                    // Stage fields too, not just status. This activity is a stage transition like
+                    // any other, and omitting them meant anything reading stage history out of
+                    // activity_log saw an auto-won deal stall at its second-to-last stage forever.
+                    .put("previousStage", oldStage != null ? oldStage.name() : null)
+                    .put("newStage", DealPipelineStage.CLOSED_WON.name());
             activityLogPublisher.publish(
                     ActivityLogType.DEAL_AUTO_WON,
                     EntityType.DEAL,

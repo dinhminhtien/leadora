@@ -1081,3 +1081,51 @@ textarea {
 .dark .hover\:border-purple-500:hover {
   border-color: color-mix(in oklab, var(--info) 40%, transparent) !important;
 }
+
+/* ── Print (UC-23 reports) ──────────────────────────────────────────────────
+   Printing a report otherwise carries the whole app chrome onto the page: the
+   sidebar eats a third of the sheet and the export buttons print as empty
+   boxes. Scoped to @media print, so nothing here affects the screen. */
+@media print {
+  aside,
+  header nav,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Cards scroll on screen; on paper they have to be allowed to grow, and to
+     break between rows rather than through the middle of one. */
+  main {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .overflow-x-auto,
+  .overflow-y-auto {
+    overflow: visible !important;
+  }
+
+  table {
+    break-inside: auto;
+  }
+
+  tr,
+  img {
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group; /* repeat headers across pages */
+  }
+
+  /* Meters and stacked bars are colour-only marks — force the browser to print
+     the fill instead of dropping backgrounds as it does by default. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}

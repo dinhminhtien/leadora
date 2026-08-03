@@ -13,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -46,18 +47,81 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
                         @Param("rangeStart") OffsetDateTime rangeStart,
                         @Param("rangeEnd") OffsetDateTime rangeEnd);
 
-        // ── Performance report query (eliminates N+1 and filters at DB level) ──
-        @EntityGraph(attributePaths = { "assignedUser" })
+        // ── UC-23.2 report aggregates ──────────────────────────────────────────
+        // A null :assignedUserId means team-wide (Manager/Admin); a value scopes to that user's
+        // own tasks. The join is LEFT so the team-wide scope still sees unassigned tasks — the
+        // previous `t.assignedUser.userId = :id` form created an implicit INNER join that dropped
+        // them from the manager's totals even when the parameter was null.
+        // Ranges are half-open: [start, end) — see ReportRange.
+
+        /** {@code [status, count]} rows. */
         @Query("""
-                        SELECT t FROM TaskEntity t
-                        WHERE (:assignedUserId IS NULL OR t.assignedUser.userId = :assignedUserId)
-                          AND t.createdAt >= :startDate
-                          AND t.createdAt <= :endDate
+                        SELECT t.status, count(t)
+                        FROM TaskEntity t LEFT JOIN t.assignedUser u
+                        WHERE (:assignedUserId IS NULL OR u.userId = :assignedUserId)
+                          AND t.createdAt >= :start
+                          AND t.createdAt < :end
+                        GROUP BY t.status
                         """)
-        List<TaskEntity> findForPerformanceReport(
+        List<Object[]> aggregateByStatus(
                         @Param("assignedUserId") UUID assignedUserId,
-                        @Param("startDate") OffsetDateTime startDate,
-                        @Param("endDate") OffsetDateTime endDate);
+                        @Param("start") OffsetDateTime start,
+                        @Param("end") OffsetDateTime end);
+
+        /** {@code [priority, count]} rows. */
+        @Query("""
+                        SELECT t.priority, count(t)
+                        FROM TaskEntity t LEFT JOIN t.assignedUser u
+                        WHERE (:assignedUserId IS NULL OR u.userId = :assignedUserId)
+                          AND t.createdAt >= :start
+                          AND t.createdAt < :end
+                        GROUP BY t.priority
+                        """)
+        List<Object[]> aggregateByPriority(
+                        @Param("assignedUserId") UUID assignedUserId,
+                        @Param("start") OffsetDateTime start,
+                        @Param("end") OffsetDateTime end);
+
+        /**
+         * Overdue count (BR-17): past {@code end_at} and not finished. "Overdue" is a derived flag,
+         * never a stored status, so the cut-off instant is passed in rather than read from a column.
+         */
+        @Query("""
+                        SELECT count(t)
+                        FROM TaskEntity t LEFT JOIN t.assignedUser u
+                        WHERE (:assignedUserId IS NULL OR u.userId = :assignedUserId)
+                          AND t.createdAt >= :start
+                          AND t.createdAt < :end
+                          AND t.endAt IS NOT NULL
+                          AND t.endAt < :now
+                          AND t.status NOT IN :finishedStatuses
+                        """)
+        long countOverdue(
+                        @Param("assignedUserId") UUID assignedUserId,
+                        @Param("start") OffsetDateTime start,
+                        @Param("end") OffsetDateTime end,
+                        @Param("now") OffsetDateTime now,
+                        @Param("finishedStatuses") Collection<TaskStatus> finishedStatuses);
+
+        /** {@code [ownerId, ownerName, total, completed, overdue]} rows. */
+        @Query("""
+                        SELECT u.userId, u.fullName, count(t),
+                               sum(CASE WHEN t.status = :completedStatus THEN 1 ELSE 0 END),
+                               sum(CASE WHEN t.endAt IS NOT NULL AND t.endAt < :now
+                                         AND t.status NOT IN :finishedStatuses THEN 1 ELSE 0 END)
+                        FROM TaskEntity t LEFT JOIN t.assignedUser u
+                        WHERE (:assignedUserId IS NULL OR u.userId = :assignedUserId)
+                          AND t.createdAt >= :start
+                          AND t.createdAt < :end
+                        GROUP BY u.userId, u.fullName
+                        """)
+        List<Object[]> aggregateByOwner(
+                        @Param("assignedUserId") UUID assignedUserId,
+                        @Param("start") OffsetDateTime start,
+                        @Param("end") OffsetDateTime end,
+                        @Param("now") OffsetDateTime now,
+                        @Param("completedStatus") TaskStatus completedStatus,
+                        @Param("finishedStatuses") Collection<TaskStatus> finishedStatuses);
 
         // ── Lightweight association lookups (no eager load required) ──────────
 
@@ -99,4 +163,7 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
         List<TaskEntity> findOpenForChat(@Param("userId") UUID userId,
                         @Param("closedStatuses") List<TaskStatus> closedStatuses,
                         Pageable pageable);
+
+        @Query("SELECT t.taskId FROM TaskEntity t WHERE t.assignedUser.userId = :userId")
+        List<UUID> findTaskIdsByAssignedUser_UserId(@Param("userId") UUID userId);
 }
