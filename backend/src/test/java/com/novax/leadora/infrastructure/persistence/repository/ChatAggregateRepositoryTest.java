@@ -77,9 +77,11 @@ class ChatAggregateRepositoryTest {
             assertThat(sql).contains("sq.quotation_id = st.entity_id");
             assertThat(sql).contains("sb.booking_id   = st.entity_id");
             assertThat(sql)
-                    .as("ownership must be the same COALESCE in both statements, or the count "
-                            + "and the rows beneath it would disagree about scope")
-                    .contains("COALESCE(sl.assigned_user_id, stk.assigned_user_id,");
+                    .as("ownership must be resolved per entity type consistently in both statements")
+                    .contains("st.entity_type = 'LEAD' AND sl.assigned_user_id")
+                    .contains("st.entity_type = 'TASK' AND stk.assigned_user_id")
+                    .contains("st.entity_type = 'QUOTATION' AND sq.created_by")
+                    .contains("st.entity_type = 'BOOKING' AND sb.assigned_user_id");
         }
     }
 
@@ -112,8 +114,7 @@ class ChatAggregateRepositoryTest {
     @DisplayName("every SQL keyword in the SLA listing keeps its separating space")
     void slaListingHasNoFusedKeywords() {
         assertThat(ChatAggregateRepository.slaListingSql())
-                .contains("IS NULL OR COALESCE(")
-                .doesNotContain("ORCOALESCE")
+                .contains("IS NULL OR")
                 .doesNotContain("NULLOR");
     }
 }

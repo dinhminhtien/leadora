@@ -96,8 +96,10 @@ public class ChatAggregateRepository {
               LEFT JOIN quotations sq  ON st.entity_type = 'QUOTATION' AND sq.quotation_id = st.entity_id
               LEFT JOIN bookings   sb  ON st.entity_type = 'BOOKING'   AND sb.booking_id   = st.entity_id
              WHERE (CAST(:scope AS uuid) IS NULL
-                    OR COALESCE(sl.assigned_user_id, stk.assigned_user_id,
-                                sq.created_by, sb.assigned_user_id) = CAST(:scope AS uuid))
+                    OR (st.entity_type = 'LEAD' AND sl.assigned_user_id = CAST(:scope AS uuid))
+                    OR (st.entity_type = 'TASK' AND stk.assigned_user_id = CAST(:scope AS uuid))
+                    OR (st.entity_type = 'QUOTATION' AND sq.created_by = CAST(:scope AS uuid))
+                    OR (st.entity_type = 'BOOKING' AND sb.assigned_user_id = CAST(:scope AS uuid)))
              GROUP BY st.status
             """;
 
@@ -112,9 +114,6 @@ public class ChatAggregateRepository {
               LEFT JOIN quotations sq  ON st.entity_type = 'QUOTATION' AND sq.quotation_id = st.entity_id
               LEFT JOIN bookings   sb  ON st.entity_type = 'BOOKING'   AND sb.booking_id   = st.entity_id
             """;
-
-    private static final String SLA_OWNER =
-            "COALESCE(sl.assigned_user_id, stk.assigned_user_id, sq.created_by, sb.assigned_user_id)";
 
     /**
      * The unresolved SLA rows themselves, most urgent first.
@@ -131,11 +130,11 @@ public class ChatAggregateRepository {
             + "  LEFT JOIN users ut ON ut.user_id = stk.assigned_user_id\n"
             + "  LEFT JOIN users uq ON uq.user_id = sq.created_by\n"
             + "  LEFT JOIN users ub ON ub.user_id = sb.assigned_user_id\n"
-            // Spaces around OR and the operator are explicit: a text block strips trailing
-            // whitespace off each line, so concatenating one here silently fused "OR" onto the
-            // next token ("ORCOALESCE") — invisible to a contains()-based unit test, caught only
-            // by running the statement.
-            + " WHERE (CAST(:scope AS uuid) IS NULL OR " + SLA_OWNER + " = CAST(:scope AS uuid))\n"
+            + " WHERE (CAST(:scope AS uuid) IS NULL OR \n"
+            + "        (st.entity_type = 'LEAD' AND sl.assigned_user_id = CAST(:scope AS uuid)) OR\n"
+            + "        (st.entity_type = 'TASK' AND stk.assigned_user_id = CAST(:scope AS uuid)) OR\n"
+            + "        (st.entity_type = 'QUOTATION' AND sq.created_by = CAST(:scope AS uuid)) OR\n"
+            + "        (st.entity_type = 'BOOKING' AND sb.assigned_user_id = CAST(:scope AS uuid)))\n"
             + "   AND st.status <> 'RESOLVED'\n"
             + " ORDER BY st.deadline_at ASC\n"
             + " LIMIT :limit\n";

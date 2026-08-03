@@ -86,4 +86,7 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
             ORDER BY q.createdAt DESC
             """)
     List<QuotationEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
+
+    @Query("SELECT q.quotationId FROM QuotationEntity q WHERE q.deal.assignedUser.userId = :userId")
+    List<UUID> findQuotationIdsByAssignedUser_UserId(@Param("userId") UUID userId);
 }

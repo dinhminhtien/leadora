@@ -10,8 +10,10 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+
 @Repository
-public interface ReminderRepository extends JpaRepository<ReminderEntity, UUID> {
+public interface ReminderRepository extends JpaRepository<ReminderEntity, UUID>, JpaSpecificationExecutor<ReminderEntity> {
 
     @EntityGraph(attributePaths = {"user", "createdBy"})
     List<ReminderEntity> findByUser_UserIdOrderByRemindAtAsc(UUID userId);

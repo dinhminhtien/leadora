@@ -163,4 +163,7 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
         List<TaskEntity> findOpenForChat(@Param("userId") UUID userId,
                         @Param("closedStatuses") List<TaskStatus> closedStatuses,
                         Pageable pageable);
+
+        @Query("SELECT t.taskId FROM TaskEntity t WHERE t.assignedUser.userId = :userId")
+        List<UUID> findTaskIdsByAssignedUser_UserId(@Param("userId") UUID userId);
 }
