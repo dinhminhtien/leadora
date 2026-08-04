@@ -33,7 +33,15 @@ import java.util.UUID;
 @Component
 public class ArrivalDeskScope {
 
-    /** Roles that supervise the desk and therefore see every arrival. */
+    /**
+     * Roles that supervise the desk and therefore see every arrival.
+     *
+     * <p>Currently unreachable, and kept deliberately: {@code ArrivalHandoverController} is gated on
+     * {@code hasAnyRole('FO','FRONT_OFFICE')} because rbac-matrix §2 lists the arrival desk under
+     * Front Office alone, so no caller here can hold one of these roles. Leaving the branch in place
+     * means the scoping stays correct by construction if a supervisor role is ever re-admitted —
+     * deleting it would silently scope a Manager to their own (empty) FO queue instead.
+     */
     private static final Set<String> FULL_SCOPE_ROLES = Set.of("MANAGER", "ADMIN");
 
     /**
