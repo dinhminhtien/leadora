@@ -93,7 +93,53 @@ export function PaymentDetailDrawer({
     !!payment.dueDate &&
     new Date(payment.dueDate).getTime() < now;
 
-  const sections: DetailSectionSpec[] = [
+  const sections: DetailSectionSpec[] = [];
+
+  // Bring VietQR to the very top (under actions)
+  if (isPending && method === "TRANSFER" && payment.qrCodeUrl) {
+    const qrUrl = payment.qrCodeUrl;
+    sections.push({
+      title: "VietQR",
+      content: (
+        <div className="flex flex-col items-center gap-3 p-4">
+          <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+            <QrCode className="size-3.5" />
+            Scan with any banking app
+          </p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={qrUrl}
+            alt="VietQR payment code"
+            className="size-72 max-w-full rounded-md border border-border bg-white object-contain p-1"
+          />
+          <div className="flex w-full flex-wrap justify-center gap-2">
+            {onDownloadQr && (
+              <Button
+                size="sm"
+                variant="outline"
+                leftIcon={<Download className="size-3.5" />}
+                onClick={() => onDownloadQr(qrUrl, payment.paymentId)}
+              >
+                Download QR
+              </Button>
+            )}
+            {onPrintReceipt && (
+              <Button
+                size="sm"
+                variant="primary"
+                leftIcon={<FileText className="size-3.5" />}
+                onClick={() => onPrintReceipt(payment)}
+              >
+                Export QR form
+              </Button>
+            )}
+          </div>
+        </div>
+      ),
+    });
+  }
+
+  sections.push(
     {
       title: "Payment",
       rows: [
@@ -131,53 +177,8 @@ export function PaymentDetailDrawer({
           ) : null,
         },
       ],
-    },
-  ];
-
-  // The QR is the customer-facing artefact; cancelling nulls it server-side, so
-  // its presence is itself meaningful and it only shows while payment is open.
-  if (isPending && method === "TRANSFER" && payment.qrCodeUrl) {
-    const qrUrl = payment.qrCodeUrl;
-    sections.push({
-      title: "VietQR",
-      content: (
-        <div className="flex flex-col items-center gap-3 p-4">
-          <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-            <QrCode className="size-3.5" />
-            Scan with any banking app
-          </p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={qrUrl}
-            alt="VietQR payment code"
-            className="size-48 max-w-full rounded-md border border-border bg-white object-contain p-1"
-          />
-          <div className="flex w-full flex-wrap justify-center gap-2">
-            {onDownloadQr && (
-              <Button
-                size="sm"
-                variant="outline"
-                leftIcon={<Download className="size-3.5" />}
-                onClick={() => onDownloadQr(qrUrl, payment.paymentId)}
-              >
-                Download QR
-              </Button>
-            )}
-            {onPrintReceipt && (
-              <Button
-                size="sm"
-                variant="primary"
-                leftIcon={<FileText className="size-3.5" />}
-                onClick={() => onPrintReceipt(payment)}
-              >
-                Export QR form
-              </Button>
-            )}
-          </div>
-        </div>
-      ),
-    });
-  }
+    }
+  );
 
   if (link) {
     sections.push({
