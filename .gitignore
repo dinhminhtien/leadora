@@ -80,3 +80,6 @@ replay_pid*
 k6_bin/
 k6_bin
 k6.exe
+
+docs/test_docs
+backend/src/main/resources/db/

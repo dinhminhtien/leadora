@@ -137,6 +137,7 @@ public class GetSalesPerformanceReportUseCase {
      * so the table reconciles with the headline KPIs — a mismatch there reads to anyone checking as
      * the report being wrong.
      */
+    @SuppressWarnings("null")
     private List<RepRow> buildReps(ReportRange range) {
         Map<UUID, RepAgg> byUser = new LinkedHashMap<>();
 
@@ -227,12 +228,14 @@ public class GetSalesPerformanceReportUseCase {
         private final Map<String, Long> counts = new LinkedHashMap<>();
         private final Map<String, BigDecimal> amounts = new LinkedHashMap<>();
 
+        @SuppressWarnings("null")
         void put(String kind, String bucket, long count, BigDecimal amount) {
             counts.merge(key(kind, bucket), count, Long::sum);
             amounts.merge(key(kind, bucket), amount, BigDecimal::add);
         }
 
         /** Total across every bucket of a kind. */
+        @SuppressWarnings("null")
         long count(String kind) {
             String prefix = kind + "|";
             return counts.entrySet().stream()

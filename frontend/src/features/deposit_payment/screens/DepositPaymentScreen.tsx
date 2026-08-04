@@ -26,6 +26,8 @@ import { Select } from "@/components/ui/Select";
 import { PaymentDetailDrawer } from "@/features/deposit_payment/components/PaymentDetailDrawer";
 import { toast } from "@/stores/toast_store";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useAuthStore } from "@/stores/auth_store";
+import { getUserRole } from "@/shared/auth/access";
 import {
   depositPaymentService,
   type Payment,
@@ -49,6 +51,10 @@ const generatePaymentSchema = z.object({
 type GeneratePaymentFormData = z.infer<typeof generatePaymentSchema>;
 
 export function DepositPaymentScreen() {
+  const { user } = useAuthStore();
+  const userRole = getUserRole(user);
+  const canWrite = user?.permissions?.includes("PAYMENT_WRITE") ?? false;
+
   // Design-system confirmation (§3.16) replacing the native confirm().
   const { confirm, confirmElement } = useConfirm();
   const searchParams = useSearchParams();
@@ -90,6 +96,7 @@ export function DepositPaymentScreen() {
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [receiptBooking, setReceiptBooking] = useState<Booking | null>(null);
   const [loadingReceiptBooking, setLoadingReceiptBooking] = useState(false);
+  const [printingPayment, setPrintingPayment] = useState<Payment | null>(null);
 
   // Action states
   const [submittingRequest, setSubmittingRequest] = useState(false);
@@ -228,6 +235,8 @@ export function DepositPaymentScreen() {
 
   // Open print modal and fetch booking details on demand
   const handleOpenPrintModal = async (payment: Payment) => {
+    setPrintingPayment(payment);
+    setSelectedPayment(null);
     setShowPrintModal(true);
     setLoadingReceiptBooking(true);
     setReceiptBooking(null);
@@ -402,15 +411,17 @@ export function DepositPaymentScreen() {
         >
           Payment Transactions List
         </button>
-        <button
-          onClick={() => { setActiveTab("bookings"); setBookingsPage(0); }}
-          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all ${activeTab === "bookings"
-            ? "border-primary text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold"
-            : "border-transparent text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-300"
-            }`}
-        >
-          Generate Requests (Pending Bookings)
-        </button>
+        {canWrite && userRole !== "FO" && (
+          <button
+            onClick={() => { setActiveTab("bookings"); setBookingsPage(0); }}
+            className={`px-5 py-3 text-xs font-bold border-b-2 transition-all ${activeTab === "bookings"
+              ? "border-primary text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold"
+              : "border-transparent text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-300"
+              }`}
+          >
+            Generate Requests (Pending Bookings)
+          </button>
+        )}
       </div>
 
       {/* Tab content 1: Payment list */}
@@ -564,7 +575,7 @@ export function DepositPaymentScreen() {
       )}
 
       {/* Tab content 2: Confirmed Bookings waiting for payment request */}
-      {activeTab === "bookings" && (
+      {activeTab === "bookings" && canWrite && userRole !== "FO" && (
         <div className="space-y-4">
           {/* Filters Card */}
           <Card className="border border-slate-100 dark:border-zinc-800 shadow-sm bg-white dark:bg-zinc-900">
@@ -833,22 +844,30 @@ export function DepositPaymentScreen() {
                 // the server refuses both, so they are absent (§12.13).
                 ...(selectedPayment.status === "PENDING" && !showConfirmPaidForm
                   ? [
-                      {
-                        label: "Confirm paid",
-                        icon: CheckCircle2,
-                        variant: "success" as const,
-                        disabled: actionLoading,
-                        // BR-29: PAID needs a verification note, so this opens
-                        // the note form rather than firing the mutation.
-                        onClick: () => setShowConfirmPaidForm(true),
-                      },
-                      {
-                        label: "Cancel request",
-                        icon: X,
-                        variant: "danger" as const,
-                        disabled: actionLoading,
-                        onClick: () => handleCancelRequest(selectedPayment.paymentId),
-                      },
+                      ...(userRole !== "SALES"
+                        ? [
+                            {
+                              label: "Confirm paid",
+                              icon: CheckCircle2,
+                              variant: "success" as const,
+                              disabled: actionLoading,
+                              // BR-29: PAID needs a verification note, so this opens
+                              // the note form rather than firing the mutation.
+                              onClick: () => setShowConfirmPaidForm(true),
+                            },
+                          ]
+                        : []),
+                      ...(userRole !== "FO"
+                        ? [
+                            {
+                              label: "Cancel request",
+                              icon: X,
+                              variant: "danger" as const,
+                              disabled: actionLoading,
+                              onClick: () => handleCancelRequest(selectedPayment.paymentId),
+                            },
+                          ]
+                        : []),
                     ]
                   : []),
               ]
@@ -1002,12 +1021,15 @@ export function DepositPaymentScreen() {
       )}
 
       {/* Printable Receipt Modal Overlay */}
-      {showPrintModal && selectedPayment && (
+      {showPrintModal && printingPayment && (
         <PrintableReceiptModal
-          payment={selectedPayment}
+          payment={printingPayment}
           booking={receiptBooking}
           loading={loadingReceiptBooking}
-          onClose={() => setShowPrintModal(false)}
+          onClose={() => {
+            setShowPrintModal(false);
+            setPrintingPayment(null);
+          }}
         />
       )}
       {confirmElement}
@@ -1035,7 +1057,7 @@ function PrintableReceiptModal({
   const receiptId = `PAY-${payment.paymentId.substring(0, 8).toUpperCase()}`;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-center items-start overflow-y-auto p-4 sm:p-10 print-modal-overlay">
+    <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex justify-center items-start overflow-y-auto p-4 sm:p-10 print-modal-overlay">
       <style>{`
         @media print {
           @page {
@@ -1117,17 +1139,17 @@ function PrintableReceiptModal({
         }
       `}</style>
 
-      <div className="print-card bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-6 sm:p-8 max-w-2xl w-full mx-auto my-auto relative text-slate-800 dark:text-zinc-100 flex flex-col gap-5">
+      <div className="print-card bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 sm:p-8 max-w-2xl w-full mx-auto my-auto relative text-slate-800 flex flex-col gap-5">
 
         {/* Print Actions */}
-        <div className="flex justify-between items-center no-print border-b border-slate-100 dark:border-zinc-800 pb-4">
-          <h3 className="text-sm font-bold text-slate-700 dark:text-zinc-300">Payment Form / Receipt Preview</h3>
+        <div className="flex justify-between items-center no-print border-b border-slate-100 pb-4">
+          <h3 className="text-sm font-bold text-slate-700">Payment Form / Receipt Preview</h3>
           <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={onClose}
-              className="text-slate-700 dark:text-zinc-300"
+              className="text-slate-700 border-slate-200 hover:bg-slate-50"
             >
               Close Preview
             </Button>
@@ -1135,7 +1157,7 @@ function PrintableReceiptModal({
               variant="primary"
               onClick={handlePrint}
               disabled={loading}
-              className="bg-blue-650 hover:bg-blue-700 text-white font-bold shadow-sm disabled:opacity-50"
+              className="font-bold shadow-sm disabled:opacity-50"
             >
               <span className="flex items-center justify-center gap-1.5">
                 <Printer className="size-3.5 shrink-0" />
@@ -1154,16 +1176,16 @@ function PrintableReceiptModal({
               className="logo h-10 w-10 object-cover rounded-lg border border-slate-100 print:border-slate-200"
             />
             <div className="flex flex-col text-left">
-              <span className="text-lg font-extrabold tracking-widest text-slate-900 dark:text-zinc-100 leading-none">LEADORA</span>
+              <span className="text-lg font-extrabold tracking-widest text-slate-900 leading-none">LEADORA</span>
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-1">Sales & Workflow Management System</span>
-              <span className="text-[7.5px] text-slate-400 dark:text-zinc-500 mt-0.5 print:text-black font-semibold">Contact: minhplnce180439@fpt.edu.vn | Hotline: +84 (0) 96 495 9652</span>
+              <span className="text-[7.5px] text-slate-400 mt-0.5 print:text-black font-semibold">Contact: minhplnce180439@fpt.edu.vn | Hotline: +84 (0) 96 495 9652</span>
             </div>
           </div>
           <div className="text-right">
-            <h2 className="text-xs font-black text-slate-800 dark:text-zinc-200 uppercase tracking-wide">
+            <h2 className="text-xs font-black text-slate-800 uppercase tracking-wide">
               {payment.status === "PAID" ? "PAYMENT RECEIPT" : "PAYMENT REQUEST"}
             </h2>
-            <span className="text-[9px] font-semibold text-slate-455 dark:text-zinc-500 uppercase tracking-wider">System-Generated Invoice</span>
+            <span className="text-[9px] font-semibold text-slate-455 uppercase tracking-wider">System-Generated Invoice</span>
           </div>
         </div>
 
@@ -1172,11 +1194,13 @@ function PrintableReceiptModal({
           <div className="space-y-1">
             <div>
               <span className="text-slate-455 font-semibold block text-[10px]">Receipt ID:</span>
-              <span className="font-bold text-slate-800 dark:text-zinc-200 select-all">{receiptId}</span>
+              <span className="font-bold text-slate-800 select-all">{receiptId}</span>
             </div>
+          </div>
+          <div className="space-y-1 text-right">
             <div>
               <span className="text-slate-455 font-semibold block text-[10px]">Date Created:</span>
-              <span className="font-medium text-slate-700 dark:text-zinc-300">{new Date(payment.createdAt).toLocaleString("en-US")}</span>
+              <span className="font-medium text-slate-700">{new Date(payment.createdAt).toLocaleString("en-US")}</span>
             </div>
             {payment.status === "PAID" && payment.paidAt && (
               <div>
@@ -1184,27 +1208,6 @@ function PrintableReceiptModal({
                 <span className="font-bold text-emerald-600">{new Date(payment.paidAt).toLocaleString("en-US")}</span>
               </div>
             )}
-          </div>
-          <div className="space-y-1 text-right">
-            <div>
-              <span className="text-slate-455 font-semibold block text-[10px]">Payment Type:</span>
-              <span className="font-bold text-slate-800 dark:text-zinc-200 uppercase">{payment.paymentType === "DEPOSIT" ? "Room Deposit" : "Full Payment"}</span>
-            </div>
-            <div>
-              <span className="text-slate-455 font-semibold block text-[10px]">Method:</span>
-              <span className="font-bold text-slate-800 dark:text-zinc-200 uppercase">{payment.paymentMethod || "TRANSFER"}</span>
-            </div>
-            <div>
-              <span className="text-slate-455 font-semibold block text-[10px]">Payment Status:</span>
-              <span className={`inline-block font-extrabold uppercase px-2 py-0.5 rounded text-[9px] mt-0.5 ${payment.status === "PAID"
-                ? "bg-emerald-100 text-emerald-800"
-                : payment.status === "PENDING"
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-red-100 text-red-800"
-                }`}>
-                {payment.status}
-              </span>
-            </div>
           </div>
         </div>
 

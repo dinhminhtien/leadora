@@ -295,4 +295,23 @@ class CreateLeadUseCaseTest {
         assertThat(useCase.execute(request()).getStatus()).isEqualTo(LeadStatus.NEW);
         assertThat(savedLead().getCreatedBy()).isNull();
     }
+
+    @Test
+    @DisplayName("UT-CREATE-14: boundary limit test for field lengths and minimal entries")
+    void createLeadWithBoundaryFieldsSuccess() {
+        CreateLeadRequest request = new CreateLeadRequest();
+        request.setFullName("A");
+        request.setEmail("a@b.co");
+        request.setPhone("12345678");
+        request.setSource("S");
+        request.setInterestedService("I");
+
+        LeadResponse response = useCase.execute(request);
+        assertThat(response).isNotNull();
+
+        LeadEntity lead = savedLead();
+        assertThat(lead.getFullName()).isEqualTo("A");
+        assertThat(lead.getEmail()).isEqualTo("a@b.co");
+        assertThat(lead.getPhone()).isEqualTo("12345678");
+    }
 }

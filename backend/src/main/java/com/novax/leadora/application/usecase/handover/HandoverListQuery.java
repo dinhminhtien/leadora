@@ -34,7 +34,7 @@ import java.util.UUID;
  * <p>The sort whitelist also keeps entity paths out of the API: callers name
  * {@code arrivalDate}, the mapping decides that means {@code booking.checkInDate}.
  */
-final class HandoverListQuery {
+public final class HandoverListQuery {
 
     /** Hard ceiling on page size — an unbounded {@code size} is a denial-of-service parameter. */
     private static final int MAX_PAGE_SIZE = 100;
@@ -46,7 +46,7 @@ final class HandoverListQuery {
      * entity path means callers never name an internal path, and adding a column here is a
      * deliberate act rather than a side effect of an entity rename.
      */
-    static final Map<String, String> SORTABLE = Map.of(
+    public static final Map<String, String> SORTABLE = Map.of(
             "createdAt", "createdAt",
             "updatedAt", "updatedAt",
             "submittedAt", "submittedAt",
@@ -66,7 +66,7 @@ final class HandoverListQuery {
      * @param allowedSorts API sort name → entity property path (dot-notation is resolved by Spring
      *                     Data, which joins as needed)
      */
-    static Pageable pageable(String sortBy, String sortDir, int page, int size,
+    public static Pageable pageable(String sortBy, String sortDir, int page, int size,
                              Map<String, String> allowedSorts, String defaultSort) {
         String requested = StringUtils.hasText(sortBy) ? sortBy.trim() : defaultSort;
         String property = allowedSorts.get(requested);
@@ -81,7 +81,7 @@ final class HandoverListQuery {
             throw badRequest("INVALID_SORT_DIRECTION",
                     "Sort direction must be 'asc' or 'desc', not '" + sortDir + "'.");
         }
-        Sort.Direction direction = "asc".equalsIgnoreCase(StringUtils.trimWhitespace(sortDir))
+        Sort.Direction direction = "asc".equalsIgnoreCase(sortDir == null ? null : sortDir.strip())
                 ? Sort.Direction.ASC
                 : Sort.Direction.DESC;
 
@@ -100,7 +100,8 @@ final class HandoverListQuery {
     }
 
     /** Blank → {@code null} (no filter). A non-blank value that is not a constant → 400. */
-    static <E extends Enum<E>> E enumFilter(Class<E> type, String value, String parameterName) {
+    @SuppressWarnings("null")
+    public static <E extends Enum<E>> E enumFilter(Class<E> type, String value, String parameterName) {
         if (!StringUtils.hasText(value)) {
             return null;
         }
@@ -115,7 +116,7 @@ final class HandoverListQuery {
     }
 
     /** Blank → {@code null} (no filter). A non-blank value that is not ISO-8601 → 400. */
-    static LocalDate dateFilter(String value, String parameterName) {
+    public static LocalDate dateFilter(String value, String parameterName) {
         if (!StringUtils.hasText(value)) {
             return null;
         }
@@ -128,7 +129,7 @@ final class HandoverListQuery {
     }
 
     /** Blank → {@code null} (no filter). A non-blank value that is not a UUID → 400. */
-    static UUID uuidFilter(String value, String parameterName) {
+    public static UUID uuidFilter(String value, String parameterName) {
         if (!StringUtils.hasText(value)) {
             return null;
         }

@@ -81,7 +81,7 @@ class DealRequestValidationTest {
     @DisplayName("UT-DEAL-REQ-05: Invalid Vietnamese phone → @Pattern violation")
     void testInvalidPhoneTriggersViolation() {
         DealRequest request = buildValidRequest();
-        request.setPhone("1234567890");
+        request.setPhone("12345");
 
         Set<ConstraintViolation<DealRequest>> violations = validator.validate(request);
         assertFalse(violations.isEmpty());

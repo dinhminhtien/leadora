@@ -29,8 +29,7 @@ public interface PaymentRepository extends JpaRepository<PaymentEntity, UUID>, J
     @Query("""
             SELECT sum(p.amount) FROM PaymentEntity p
             WHERE p.status = :status
-              AND COALESCE(p.paidAt, p.createdAt) >= :start
-              AND COALESCE(p.paidAt, p.createdAt) < :end
+              AND ((p.paidAt IS NOT NULL AND p.paidAt >= :start AND p.paidAt < :end) OR (p.paidAt IS NULL AND p.createdAt >= :start AND p.createdAt < :end))
             """)
     BigDecimal sumCollected(
             @Param("status") PaymentStatus status,
@@ -46,8 +45,7 @@ public interface PaymentRepository extends JpaRepository<PaymentEntity, UUID>, J
             SELECT u.userId, u.fullName, sum(p.amount)
             FROM PaymentEntity p LEFT JOIN p.booking b LEFT JOIN b.assignedUser u
             WHERE p.status = :status
-              AND COALESCE(p.paidAt, p.createdAt) >= :start
-              AND COALESCE(p.paidAt, p.createdAt) < :end
+              AND ((p.paidAt IS NOT NULL AND p.paidAt >= :start AND p.paidAt < :end) OR (p.paidAt IS NULL AND p.createdAt >= :start AND p.createdAt < :end))
             GROUP BY u.userId, u.fullName
             """)
     List<Object[]> aggregateCollectedByOwner(

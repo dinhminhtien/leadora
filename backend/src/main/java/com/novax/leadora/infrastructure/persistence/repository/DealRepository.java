@@ -82,8 +82,7 @@ public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpec
             SELECT 'REVENUE', 'PAID', count(*), COALESCE(sum(p.amount), 0)
               FROM payments p
              WHERE p.status = 'PAID'
-               AND COALESCE(p.paid_at, p.created_at) >= :start
-               AND COALESCE(p.paid_at, p.created_at) < :end
+               AND ((p.paid_at IS NOT NULL AND p.paid_at >= :start AND p.paid_at < :end) OR (p.paid_at IS NULL AND p.created_at >= :start AND p.created_at < :end))
             """, nativeQuery = true)
     List<Object[]> salesPerformanceAggregates(
             @Param("start") OffsetDateTime start,
@@ -119,8 +118,7 @@ public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpec
                    LEFT JOIN bookings b ON b.booking_id = p.booking_id
                    LEFT JOIN users u ON u.user_id = b.assigned_user_id
              WHERE p.status = 'PAID'
-               AND COALESCE(p.paid_at, p.created_at) >= :start
-               AND COALESCE(p.paid_at, p.created_at) < :end
+               AND ((p.paid_at IS NOT NULL AND p.paid_at >= :start AND p.paid_at < :end) OR (p.paid_at IS NULL AND p.created_at >= :start AND p.created_at < :end))
              GROUP BY u.user_id, u.full_name
             """, nativeQuery = true)
     List<Object[]> salesPerformanceByOwner(

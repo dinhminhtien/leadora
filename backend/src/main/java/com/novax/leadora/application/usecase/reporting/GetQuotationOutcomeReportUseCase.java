@@ -35,6 +35,7 @@ public class GetQuotationOutcomeReportUseCase {
 
     @Cacheable(value = "quotation-outcome-report", key = "#from + '_' + #to", unless = "#result == null")
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public QuotationOutcomeReportResponse execute(LocalDate from, LocalDate to) {
         ReportRange range = reportRangeFactory.resolve(from, to);
 
