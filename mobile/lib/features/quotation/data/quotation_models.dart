@@ -247,8 +247,9 @@ class SubmitQuotationPayload {
 
 /// UC-14.4 — send an APPROVED quotation to the customer.
 ///
-/// Blocked server-side unless the Reservation team has confirmed the rooms
-/// (`RoomConfirmationGate`): a 409 here carries a `ROOM_*` error code.
+/// The backend only enforces that the quotation is still APPROVED
+/// (`SendQuotationUseCase`) — there is no room-confirmation gate. The Reservation
+/// team's answer is shown for context ([RoomConfirmationCard]) but never blocks this.
 class SendQuotationPayload {
   const SendQuotationPayload({
     required this.sendMethod,
@@ -324,7 +325,9 @@ class ReviseQuotationPayload {
 
 /// UC-14.7 — turn an ACCEPTED quotation into a PENDING booking.
 ///
-/// Also gated on a confirmed room, checked against the dates actually being booked.
+/// Room confirmation from the Reservation team is not required to convert
+/// (`ConvertToBookingUseCase` says so explicitly) — the backend only re-checks that
+/// the room type is still generally available for the dates being booked.
 class ConvertToBookingPayload {
   const ConvertToBookingPayload({
     required this.contactName,
@@ -371,5 +374,115 @@ class CloseQuotationPayload {
     _putIfPresent(map, 'closedByName', closedByName);
     _putIfPresent(map, 'closedByRole', closedByRole);
     return map;
+  }
+}
+
+/// UC-14.3 — a manager's decision on a PENDING_APPROVAL quotation. Wire values match
+/// backend `ProcessApprovalRequest.action` (`ProcessQuotationApprovalUseCase`).
+enum ApprovalDecision {
+  approve('APPROVE'),
+  reject('REJECT'),
+  requestChanges('REQUEST_CHANGES');
+
+  const ApprovalDecision(this.wire);
+  final String wire;
+}
+
+/// UC-14.3 — Processing Quotations. The manager's identity is resolved server-side
+/// from the session (BR-37), never sent from here.
+class ProcessApprovalPayload {
+  const ProcessApprovalPayload({required this.action, this.notes});
+
+  final ApprovalDecision action;
+  final String? notes;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{'action': action.wire};
+    _putIfPresent(map, 'notes', notes);
+    return map;
+  }
+}
+
+/// UC-14.2 Generate Reports — audit log for a discount report a rep generates from the
+/// quotation list. Filtering happens client-side (same as web); this call only records
+/// that it happened. Mirrors backend `SaveReportLogRequest` (`ReportingController`).
+class SaveReportLogPayload {
+  const SaveReportLogPayload({
+    required this.generatedByName,
+    this.generatedByRole,
+    this.filterDateFrom,
+    this.filterDateTo,
+    this.filterRoomType,
+    required this.filterDiscountThreshold,
+    required this.resultCount,
+    this.action,
+    this.result,
+    this.reason,
+  });
+
+  final String generatedByName;
+  final String? generatedByRole;
+  final DateTime? filterDateFrom;
+  final DateTime? filterDateTo;
+  final String? filterRoomType;
+  final num filterDiscountThreshold;
+  final int resultCount;
+
+  /// e.g. `GENERATE_DISCOUNT_REPORT` (BR-37 audit trail).
+  final String? action;
+
+  /// e.g. `SUCCESS` | `NO_DATA`.
+  final String? result;
+  final String? reason;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'generatedByName': generatedByName.trim(),
+      'filterDiscountThreshold': filterDiscountThreshold,
+      'resultCount': resultCount,
+    };
+    _putIfPresent(map, 'generatedByRole', generatedByRole);
+    if (filterDateFrom != null) map['filterDateFrom'] = _isoDate(filterDateFrom!);
+    if (filterDateTo != null) map['filterDateTo'] = _isoDate(filterDateTo!);
+    _putIfPresent(map, 'filterRoomType', filterRoomType);
+    _putIfPresent(map, 'action', action);
+    _putIfPresent(map, 'result', result);
+    _putIfPresent(map, 'reason', reason);
+    return map;
+  }
+}
+
+/// Dart mirror of backend `ReportLogResponse` — the saved audit-log entry, returned
+/// so the UI can show a confirmation with the log id.
+class ReportLog {
+  const ReportLog({
+    required this.logId,
+    required this.filterDiscountThreshold,
+    required this.resultCount,
+    this.generatedByName,
+    this.generatedByRole,
+    this.generatedAt,
+  });
+
+  final String logId;
+  final String? generatedByName;
+  final String? generatedByRole;
+  final num filterDiscountThreshold;
+  final int resultCount;
+  final DateTime? generatedAt;
+
+  factory ReportLog.fromJson(Map<String, dynamic> json) {
+    double? parseNum(Object? v) => v is num ? v.toDouble() : null;
+    DateTime? parseDate(Object? v) =>
+        v is String && v.isNotEmpty ? DateTime.tryParse(v) : null;
+
+    return ReportLog(
+      logId: '${json['logId'] ?? ''}',
+      generatedByName: json['generatedByName'] as String?,
+      generatedByRole: json['generatedByRole'] as String?,
+      filterDiscountThreshold: parseNum(json['filterDiscountThreshold']) ?? 0,
+      resultCount: json['resultCount'] as int? ?? 0,
+      generatedAt: parseDate(json['generatedAt']),
+    );
   }
 }

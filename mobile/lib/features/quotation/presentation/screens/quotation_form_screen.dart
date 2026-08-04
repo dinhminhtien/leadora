@@ -136,33 +136,52 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     super.initState();
     final q = widget.quotation;
 
+    _rooms = TextEditingController(text: '1');
+    _pricePerNight = TextEditingController();
+    _discount = TextEditingController(text: '0');
+    _notes = TextEditingController();
+
     if (_isRevise && q != null) {
       // Start from what the customer was last quoted, so the rep changes only what moved.
-      _rooms = TextEditingController(text: '${q.numberOfRooms ?? 1}');
-      _pricePerNight = TextEditingController(
-        text: q.pricePerNight == null ? '' : _plain(q.pricePerNight!),
-      );
-      _discount = TextEditingController(
-        text: _plain(q.discountPercent ?? 0),
-      );
-      _notes = TextEditingController();
       _dealId = q.dealId;
-      // The room type may be free text the catalogue does not list — only preselect a
-      // dropdown value that exists, otherwise the field would show blank but validate.
-      _roomType = _roomTypes.contains(q.roomType) ? q.roomType : null;
-      _checkIn = q.checkInDate;
-      _checkOut = q.checkOutDate;
-      _validUntil = q.validUntil;
+      _applyTemplateValues(q);
     } else {
-      _rooms = TextEditingController(text: '1');
-      _pricePerNight = TextEditingController();
-      _discount = TextEditingController(text: '0');
-      _notes = TextEditingController();
       _dealId = widget.initialDealId;
+      if (_dealId != null) {
+        // Best-effort: this deal may already have an earlier quotation — seed the same
+        // fields from it once the list resolves. See _prefillFromDealHistory.
+        _prefillFromDealHistory(_dealId!);
+      }
     }
 
     // Fill any gap the source quotation left, and give create a sensible starting window
     // so the common case is two taps, not six.
+    _normalizeDates();
+  }
+
+  /// Trims a trailing `.0` so a whole number does not land in the field as "40.0".
+  static String _plain(num v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+
+  /// Copies the stay/pricing fields from [source] onto the current controllers — the
+  /// same field set a revision pre-fills from the quotation being revised, reused so a
+  /// fresh create for a deal that was already quoted starts from that quote instead of
+  /// blank. Leaves `_dealId` untouched.
+  void _applyTemplateValues(Quotation source) {
+    _rooms.text = '${source.numberOfRooms ?? 1}';
+    _pricePerNight.text = source.pricePerNight == null ? '' : _plain(source.pricePerNight!);
+    _discount.text = _plain(source.discountPercent ?? 0);
+    // The room type may be free text the catalogue does not list — only preselect a
+    // dropdown value that exists, otherwise the field would show blank but validate.
+    _roomType = _roomTypes.contains(source.roomType) ? source.roomType : null;
+    _checkIn = source.checkInDate;
+    _checkOut = source.checkOutDate;
+    _validUntil = source.validUntil;
+  }
+
+  /// Fills any gap left after a template/revise copy, and gives a from-scratch create a
+  /// sensible starting window, so the common case is two taps, not six.
+  void _normalizeDates() {
     final tomorrow = DateTime.now().add(const Duration(days: 1));
     _checkIn ??= DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
     if (_checkOut == null || !_checkOut!.isAfter(_checkIn!)) {
@@ -171,9 +190,31 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     _validUntil ??= _checkIn!.subtract(const Duration(days: 1));
   }
 
-  /// Trims a trailing `.0` so a whole number does not land in the field as "40.0".
-  static String _plain(num v) =>
-      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  /// Best-effort: when the picked deal already has an earlier quotation, seed the stay
+  /// and pricing fields from its most recent one — re-quoting the same lead is then a
+  /// tweak, not a re-type. Everything stays fully editable afterward; this only sets the
+  /// starting values, and only if the deal selection hasn't changed again by the time the
+  /// list resolves.
+  Future<void> _prefillFromDealHistory(String dealId) async {
+    final List<Quotation> quotations;
+    try {
+      quotations = await ref.read(quotationListProvider.future);
+    } catch (_) {
+      return;
+    }
+    if (!mounted || _dealId != dealId) return;
+
+    final forDeal = quotations.where((q) => q.dealId == dealId).toList()
+      ..sort(
+        (a, b) => (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)),
+      );
+    if (forDeal.isEmpty) return;
+
+    setState(() {
+      _applyTemplateValues(forDeal.first);
+      _normalizeDates();
+    });
+  }
 
   @override
   void dispose() {
@@ -404,7 +445,10 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
                                 child: Text(d.title, overflow: TextOverflow.ellipsis),
                               ),
                           ],
-                          onChanged: (v) => setState(() => _dealId = v),
+                          onChanged: (v) {
+                            setState(() => _dealId = v);
+                            if (v != null) _prefillFromDealHistory(v);
+                          },
                           validator: (v) => v == null ? 'Select a deal' : null,
                         ),
                 ),

@@ -268,14 +268,14 @@ class QuotationDetailScreen extends ConsumerWidget {
     QuotationStatus.expired,
   }.contains(status);
 
-  /// Mirrors `ReviseQuotationUseCase.REVISABLE_STATUSES`. PENDING_APPROVAL is excluded:
-  /// a manager is looking at that version right now.
+  /// Mirrors `ReviseQuotationUseCase.REVISABLE_STATUSES` exactly: DRAFT, SENT,
+  /// INTERESTED, REJECTED, PENDING_REVISION. APPROVED and ACCEPTED are deliberately
+  /// absent — revising either backend-side throws `QUOTATION_NOT_REVISABLE` (409), and
+  /// PENDING_APPROVAL is excluded too: a manager is looking at that version right now.
   static bool _canRevise(QuotationStatus status) => const {
     QuotationStatus.draft,
-    QuotationStatus.approved,
     QuotationStatus.sent,
     QuotationStatus.interested,
-    QuotationStatus.accepted,
     QuotationStatus.rejected,
     QuotationStatus.pendingRevision,
   }.contains(status);
@@ -308,8 +308,8 @@ class QuotationDetailScreen extends ConsumerWidget {
           );
   }
 
-  /// UC-14.4 — send to the customer. A `ROOM_*` conflict here is the room gate refusing;
-  /// the message already tells the rep what to do, so it is surfaced verbatim.
+  /// UC-14.4 — send to the customer. Any error the backend returns (e.g. the
+  /// quotation is no longer APPROVED) is surfaced verbatim.
   Future<void> _send(BuildContext context, WidgetRef ref, Quotation quotation) async {
     final payload = await showSendQuotationSheet(context, quotation);
     if (payload == null || !context.mounted) return;

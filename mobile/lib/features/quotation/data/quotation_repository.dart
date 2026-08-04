@@ -74,10 +74,8 @@ class QuotationRepository {
 
   /// UC-14.4 — send an APPROVED quotation to the customer.
   ///
-  /// Gated on the Reservation team having confirmed the rooms: a 409 carries one of the
-  /// `ROOM_*` codes (ROOM_NOT_REQUESTED, ROOM_PENDING_CONFIRMATION, ROOM_REJECTED,
-  /// ROOM_CONFIRMATION_STALE, ROOM_HOLD_EXPIRED), which the UI turns into an
-  /// explanation plus a link to the room request.
+  /// The backend only enforces that the quotation is still APPROVED
+  /// (`SendQuotationUseCase`) — there is no room-confirmation gate here.
   Future<Quotation> sendQuotation(String quotationId, SendQuotationPayload payload) {
     return _client.post<Quotation>(
       ApiPaths.quotationSend(quotationId),
@@ -96,7 +94,8 @@ class QuotationRepository {
   }
 
   /// UC-14.7 — turn an ACCEPTED quotation into a PENDING booking. Returns the booking,
-  /// not the quotation. Also room-gated (see [sendQuotation]).
+  /// not the quotation. Not room-gated either — `ConvertToBookingUseCase` only
+  /// re-checks general room-type availability for the dates.
   Future<Booking> convertToBooking(String quotationId, ConvertToBookingPayload payload) {
     return _client.post<Booking>(
       ApiPaths.quotationConvert(quotationId),
@@ -121,6 +120,27 @@ class QuotationRepository {
       decode: (data) => (data as List)
           .map((e) => Quotation.fromJson(e as Map<String, dynamic>))
           .toList(),
+    );
+  }
+
+  /// UC-14.3 — approve / reject / request changes on a PENDING_APPROVAL quotation.
+  /// MANAGER only server-side; a 409/E3 lands here when another manager already
+  /// decided it.
+  Future<Quotation> processApproval(String quotationId, ProcessApprovalPayload payload) {
+    return _client.post<Quotation>(
+      ApiPaths.quotationProcessApproval(quotationId),
+      data: payload.toJson(),
+      decode: (data) => Quotation.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  /// UC-14.2 Generate Reports — persist the audit log for a discount report generated
+  /// from the (already client-side-filtered) quotation list.
+  Future<ReportLog> saveReportLog(SaveReportLogPayload payload) {
+    return _client.post<ReportLog>(
+      ApiPaths.reportingLogs,
+      data: payload.toJson(),
+      decode: (data) => ReportLog.fromJson(data as Map<String, dynamic>),
     );
   }
 }
