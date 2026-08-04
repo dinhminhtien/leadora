@@ -1,5 +1,4 @@
 package com.novax.leadora.unit.handover;
-import com.novax.leadora.infrastructure.persistence.specification.*;
 
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
@@ -15,13 +14,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The handover specifications address entity attributes by <b>string name</b>
- * ({@code root.join("createdBy")}, {@code booking.get("assignedUser")}). javac cannot check those,
+ * ({@code root.join("createdBy")}, {@code booking.get("assignedUser")}). javac
+ * cannot check those,
  * so a renamed or mistyped field compiles cleanly and then throws
- * {@code IllegalArgumentException: Unable to locate Attribute} on the first request — after
+ * {@code IllegalArgumentException: Unable to locate Attribute} on the first
+ * request — after
  * deployment, on a screen nobody re-tested.
  *
- * <p>With no integration-test database in this project, this is the cheapest automated guard: it
- * pins every attribute path the specifications actually walk. Rename a field and this goes red
+ * <p>
+ * With no integration-test database in this project, this is the cheapest
+ * automated guard: it
+ * pins every attribute path the specifications actually walk. Rename a field
+ * and this goes red
  * instead of production.
  */
 class OpHandoverSpecificationTest {
@@ -60,7 +64,9 @@ class OpHandoverSpecificationTest {
                 .isNotNull();
     }
 
-    /** Walks up the hierarchy so fields inherited from {@code BaseEntity} count too. */
+    /**
+     * Walks up the hierarchy so fields inherited from {@code BaseEntity} count too.
+     */
     private Field declaredField(Class<?> type, String name) {
         for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
             try {

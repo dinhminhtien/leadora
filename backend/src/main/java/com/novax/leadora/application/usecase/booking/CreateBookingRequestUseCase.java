@@ -8,6 +8,7 @@ import com.novax.leadora.infrastructure.persistence.entity.*;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.InventoryStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ProductCategory;
 import com.novax.leadora.infrastructure.persistence.repository.*;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
@@ -40,6 +41,7 @@ public class CreateBookingRequestUseCase {
     private final BookingDetailRepository bookingDetailRepository;
     private final CustomerRepository customerRepository;
     private final QuotationRepository quotationRepository;
+    private final QuotationDetailRepository quotationDetailRepository;
     private final UserRepository userRepository;
     private final ProductServiceRepository productServiceRepository;
     private final DealRepository dealRepository;
@@ -100,7 +102,8 @@ public class CreateBookingRequestUseCase {
         String randomSuffix = String.format("%04d", new Random().nextInt(10000));
         String bookingCode = "BK-" + dateStr + "-" + randomSuffix;
 
-        BigDecimal totalAmount = BigDecimal.ZERO;
+        List<QuotationDetailEntity> quotationDetails = quotationDetailRepository.findByQuotation_QuotationId(quotation.getQuotationId());
+        BigDecimal totalAmount = quotation.getTotalAmount();
 
         // Build Booking Entity (Set status to PENDING by default)
         BookingEntity booking = BookingEntity.builder()
@@ -112,38 +115,62 @@ public class CreateBookingRequestUseCase {
                 .checkOutDate(request.getCheckOutDate())
                 .status(BookingStatus.PENDING)
                 .specialRequests(request.getSpecialRequests())
-                .totalAmount(BigDecimal.ZERO)
+                .totalAmount(totalAmount)
                 .build();
 
         BookingEntity savedBooking = bookingRepository.save(booking);
 
         List<BookingDetailEntity> detailEntities = new ArrayList<>();
-        for (var detailReq : request.getDetails()) {
-            ProductServiceEntity product = productServiceRepository.findById(detailReq.getProductId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Product", detailReq.getProductId()));
+        if (quotationDetails != null && !quotationDetails.isEmpty()) {
+            for (var qDetail : quotationDetails) {
+                ProductServiceEntity product = qDetail.getProductService();
+                if (product == null && quotation.getRoomType() != null) {
+                    product = productServiceRepository.findByCategory(ProductCategory.ROOM).stream()
+                            .filter(p -> p.getName().equalsIgnoreCase(quotation.getRoomType()))
+                            .findFirst()
+                            .orElse(null);
+                }
+                if (product == null && request.getDetails() != null && !request.getDetails().isEmpty()) {
+                    UUID requestProductId = request.getDetails().get(0).getProductId();
+                    product = productServiceRepository.findById(requestProductId).orElse(null);
+                }
+                BookingDetailEntity detail = BookingDetailEntity.builder()
+                        .booking(savedBooking)
+                        .productService(product)
+                        .roomNumber(null)
+                        .quantity(qDetail.getQuantity())
+                        .unitPrice(qDetail.getUnitPrice())
+                        .nights(qDetail.getNights())
+                        .lineTotal(qDetail.getLineTotal())
+                        .inventoryStatus(InventoryStatus.ALLOCATED)
+                        .build();
+                detailEntities.add(bookingDetailRepository.save(detail));
+            }
+        } else {
+            for (var detailReq : request.getDetails()) {
+                ProductServiceEntity product = productServiceRepository.findById(detailReq.getProductId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Product", detailReq.getProductId()));
 
-            BigDecimal lineTotal = detailReq.getUnitPrice()
-                    .multiply(BigDecimal.valueOf(detailReq.getQuantity()))
-                    .multiply(BigDecimal.valueOf(detailReq.getNights()));
+                BigDecimal lineTotal = detailReq.getUnitPrice()
+                        .multiply(BigDecimal.valueOf(detailReq.getQuantity()))
+                        .multiply(BigDecimal.valueOf(detailReq.getNights()));
 
-            totalAmount = totalAmount.add(lineTotal);
+                BookingDetailEntity detail = BookingDetailEntity.builder()
+                        .booking(savedBooking)
+                        .productService(product)
+                        .roomNumber(detailReq.getRoomNumber())
+                        .quantity(detailReq.getQuantity())
+                        .unitPrice(detailReq.getUnitPrice())
+                        .nights(detailReq.getNights())
+                        .lineTotal(lineTotal)
+                        .inventoryStatus(InventoryStatus.ALLOCATED)
+                        .build();
 
-            BookingDetailEntity detail = BookingDetailEntity.builder()
-                    .booking(savedBooking)
-                    .productService(product)
-                    .roomNumber(detailReq.getRoomNumber())
-                    .quantity(detailReq.getQuantity())
-                    .unitPrice(detailReq.getUnitPrice())
-                    .nights(detailReq.getNights())
-                    .lineTotal(lineTotal)
-                    .inventoryStatus(InventoryStatus.ALLOCATED)
-                    .build();
-
-            detailEntities.add(bookingDetailRepository.save(detail));
+                detailEntities.add(bookingDetailRepository.save(detail));
+            }
         }
 
-        savedBooking.setTotalAmount(totalAmount);
-        BookingEntity finalSavedBooking = bookingRepository.save(savedBooking);
+        BookingEntity finalSavedBooking = savedBooking;
 
         // Publish Activity Log for Quotation conversion
         try {

@@ -2,7 +2,6 @@ package com.novax.leadora.integration.activitylog;
 
 import com.novax.leadora.application.usecase.activitylog.GetActivityLogUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.ActivityLogEntity;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
