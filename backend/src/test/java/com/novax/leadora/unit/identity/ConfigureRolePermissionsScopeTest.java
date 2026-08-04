@@ -1,8 +1,10 @@
-package com.novax.leadora.application.usecase.identity;
+package com.novax.leadora.unit.identity;
 
 import com.novax.leadora.api.dto.request.UpdateRolePermissionsRequest;
 import com.novax.leadora.api.dto.response.RoleResponse;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
+import com.novax.leadora.application.usecase.identity.ConfigureRolePermissionsUseCase;
+import com.novax.leadora.application.usecase.identity.PermissionDependencyResolver;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.PermissionEntity;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;

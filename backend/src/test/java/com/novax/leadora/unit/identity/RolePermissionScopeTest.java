@@ -1,5 +1,6 @@
-package com.novax.leadora.common.security;
+package com.novax.leadora.unit.identity;
 
+import com.novax.leadora.common.security.RolePermissionScope;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.config.BeanDefinition;
