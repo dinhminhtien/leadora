@@ -10,8 +10,14 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { reservationStatusService, type ReservationStatus } from "@/services/reservation_status_service";
 import { ReservationDetailDrawer } from "@/features/reservation_status/components/ReservationDetailDrawer";
 import { toast } from "@/stores/toast_store";
+import { useAuthStore } from "@/stores/auth_store";
+import { getUserRole } from "@/shared/auth/access";
 
 export function ReservationStatusScreen() {
+  const { user } = useAuthStore();
+  const userRole = getUserRole(user);
+  const canWrite = user?.permissions?.includes("RESERVATION_WRITE") ?? false;
+
   const [reservations, setReservations] = useState<ReservationStatus[]>([]);
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -250,19 +256,18 @@ export function ReservationStatusScreen() {
           <Table className="w-full table-fixed min-w-300">
             <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
               <TableRow hoverable={false}>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[18%] text-left! whitespace-nowrap">Guest Name</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[11%] text-center! whitespace-nowrap">Reservation Ref</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[13%] text-left! whitespace-nowrap">Room Type</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[17%] text-center! whitespace-nowrap">Check-in / Check-out</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[10%] text-center! whitespace-nowrap">Total Amount</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[11%] text-center! whitespace-nowrap">Occupancy Status</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[20%] text-center! whitespace-nowrap">Actions</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[22%] text-left! whitespace-nowrap">Guest Name</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[12%] text-center! whitespace-nowrap">Reservation Ref</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[16%] text-left! whitespace-nowrap">Room Type</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[22%] text-center! whitespace-nowrap">Check-in / Check-out</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[13%] text-center! whitespace-nowrap">Total Amount</TableHead>
+                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[15%] text-center! whitespace-nowrap">Occupancy Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow hoverable={false}>
-                  <TableCell colSpan={7} className="py-12 text-center text-slate-400 text-xs">
+                  <TableCell colSpan={6} className="py-12 text-center text-slate-400 text-xs">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <Loader2 className="size-6 text-blue-500 animate-spin" />
                       <span>Loading reservations...</span>
@@ -271,7 +276,11 @@ export function ReservationStatusScreen() {
                 </TableRow>
               ) : reservations.length > 0 ? (
                 reservations.map((res) => (
-                  <TableRow key={res.id} className="hover:bg-slate-50/70 border-b border-slate-100 transition">
+                  <TableRow
+                    key={res.id}
+                    onClick={() => handleOpenDetail(res.id)}
+                    className="hover:bg-slate-50/70 border-b border-slate-100 transition cursor-pointer"
+                  >
                     <TableCell className="py-3! px-4! text-xs! font-bold! text-slate-800! text-left! whitespace-nowrap">
                       <span className="flex items-center gap-1.5">
                         <User className="size-3.5 text-slate-400" />
@@ -302,65 +311,11 @@ export function ReservationStatusScreen() {
                         <StatusPill size="sm" domain="booking" value={res.status} />
                       </div>
                     </TableCell>
-                    <TableCell className="py-3! px-4! text-center! whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-1.5">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenDetail(res.id)}
-                        className="p-1 px-2.5 text-[10px] font-bold border-slate-200 text-slate-600 hover:bg-slate-50 h-7"
-                      >
-                        <Info className="size-3 mr-1" />
-                        Detail
-                      </Button>
-
-                      {actionLoading === res.id ? (
-                        <Button disabled size="sm" className="p-1 px-2.5 text-[10px] h-7">
-                          <Loader2 className="size-3 animate-spin mr-1" />
-                          Processing
-                        </Button>
-                      ) : (
-                        <>
-                          {res.status === "CONFIRMED" && (
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              onClick={() => handleStatusChange({ id: res.id, newStatus: "CHECKED_IN", reason: "Guest Checked In" })}
-                              className="p-1 px-2.5 text-[10px] font-bold bg-primary hover:bg-primary/90 text-white h-7"
-                            >
-                              Check In
-                            </Button>
-                          )}
-                          {res.status === "CHECKED_IN" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleStatusChange({ id: res.id, newStatus: "CHECKED_OUT", reason: "Guest Checked Out" })}
-                              className="p-1 px-2.5 text-[10px] font-bold border-slate-200 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200 h-7"
-                            >
-                              Check Out
-                            </Button>
-                          )}
-                          {res.status !== "CANCELLED" && res.status !== "CHECKED_OUT" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleOpenCancel(res.id)}
-                              className="p-1 px-2.5 text-[10px] font-bold border-slate-200 text-red-600 hover:bg-red-50 hover:border-red-200 h-7"
-                            >
-                              <XCircle className="size-3 mr-1" />
-                              Cancel
-                            </Button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
+                  </TableRow>
               ))
             ) : (
               <TableRow hoverable={false}>
-                <TableCell colSpan={7} className="py-8 text-center text-slate-400 text-xs">
+                <TableCell colSpan={6} className="py-8 text-center text-slate-400 text-xs">
                   No reservations matched your query.
                 </TableCell>
               </TableRow>
@@ -403,7 +358,7 @@ export function ReservationStatusScreen() {
         reservation={showDetailModal ? detailData : null}
         onOpenChange={(open) => !open && setShowDetailModal(false)}
         actions={
-          detailData
+          detailData && canWrite && userRole !== "SALES"
             ? [
                 // Check-in and check-out are sequential — the server accepts
                 // each from exactly one prior status (§12.13).
@@ -434,6 +389,16 @@ export function ReservationStatusScreen() {
                             newStatus: "CHECKED_OUT",
                             reason: "Guest Checked Out",
                           }),
+                      },
+                    ]
+                  : []),
+                ...(detailData.status !== "CANCELLED" && detailData.status !== "CHECKED_OUT"
+                  ? [
+                      {
+                        label: "Cancel reservation",
+                        icon: XCircle,
+                        variant: "danger" as const,
+                        onClick: () => handleOpenCancel(detailData.id),
                       },
                     ]
                   : []),

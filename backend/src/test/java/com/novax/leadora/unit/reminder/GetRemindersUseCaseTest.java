@@ -26,7 +26,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -86,8 +85,7 @@ class GetRemindersUseCaseTest {
         when(reminderRepository.findAll(anySpec())).thenReturn(List.of(r1));
 
         List<ReminderResponse> results = getRemindersUseCase.execute(
-                null, "PENDING", null, null, "due", null
-        );
+                null, "PENDING", null, null, "due", null);
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getTitle()).isEqualTo("Call Client A");
@@ -106,8 +104,7 @@ class GetRemindersUseCaseTest {
         when(reminderRepository.findAll(anySpec())).thenReturn(List.of(r1));
 
         List<ReminderResponse> results = getRemindersUseCase.execute(
-                otherUserId, "PENDING", null, null, "due", null
-        );
+                otherUserId, "PENDING", null, null, "due", null);
 
         assertThat(results).hasSize(1);
         verify(reminderRepository).findAll(anySpec());
@@ -125,8 +122,7 @@ class GetRemindersUseCaseTest {
         when(currentUserProvider.resolve(null)).thenReturn(manager);
 
         assertThatThrownBy(() -> getRemindersUseCase.execute(
-                null, "INVALID_STATUS_VALUE", null, null, "due", null
-        ))
+                null, "INVALID_STATUS_VALUE", null, null, "due", null))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("httpStatus", HttpStatus.BAD_REQUEST)
                 .hasFieldOrPropertyWithValue("errorCode", "INVALID_STATUS");
@@ -148,8 +144,7 @@ class GetRemindersUseCaseTest {
         when(reminderRepository.findAll(anySpec())).thenReturn(Collections.emptyList());
 
         List<ReminderResponse> results = getRemindersUseCase.execute(
-                null, null, null, null, null, null
-        );
+                null, null, null, null, null, null);
 
         assertThat(results).isEmpty();
         verify(reminderRepository).findAll(anySpec());
@@ -184,8 +179,7 @@ class GetRemindersUseCaseTest {
         when(reminderRepository.findAll(anySpec())).thenReturn(List.of(r1));
 
         List<ReminderResponse> results = getRemindersUseCase.execute(
-                null, "PENDING", null, null, "due", "   "
-        );
+                null, "PENDING", null, null, "due", "   ");
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getTitle()).isEqualTo("Call Client A");

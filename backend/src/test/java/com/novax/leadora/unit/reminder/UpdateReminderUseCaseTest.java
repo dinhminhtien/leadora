@@ -5,7 +5,6 @@ import com.novax.leadora.api.dto.request.UpdateReminderRequest;
 import com.novax.leadora.api.dto.response.ReminderResponse;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.BusinessException;
-import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.ReminderEntity;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
@@ -51,8 +50,7 @@ class UpdateReminderUseCaseTest {
                 reminderRepository,
                 userRepository,
                 currentUserProvider,
-                systemAuditLogService
-        );
+                systemAuditLogService);
     }
 
     private UserEntity createTestUser(UUID id, String roleName) {
@@ -103,7 +101,8 @@ class UpdateReminderUseCaseTest {
         assertThat(reminder.getTitle()).isEqualTo("New Title");
         assertThat(reminder.getDescription()).isEqualTo("New Desc");
         verify(reminderRepository).save(reminder);
-        verify(systemAuditLogService).log(eq("REMINDER"), eq("REMINDER"), eq(reminderId), eq("UPDATED"), eq(assignee), any(), any(), any());
+        verify(systemAuditLogService).log(eq("REMINDER"), eq("REMINDER"), eq(reminderId), eq("UPDATED"), eq(assignee),
+                any(), any(), any());
     }
 
     @Test
