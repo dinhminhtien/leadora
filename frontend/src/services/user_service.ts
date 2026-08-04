@@ -78,6 +78,15 @@ export type Role = {
    * Manager only. Decided by the server so the screen never hard-codes role names.
    */
   configurable: boolean;
+  /**
+   * Permission codes this role has a real function behind (server-side `RolePermissionScope`).
+   * A module outside this list is shown as "not part of this job" rather than as an empty toggle:
+   * granting it would save a row no endpoint honours, so offering the toggle described an
+   * authorization model the application does not implement.
+   */
+  applicablePermissionCodes: string[];
+  /** The set the role ships with — what the Reset control restores into the draft. */
+  defaultPermissionCodes: string[];
 };
 
 

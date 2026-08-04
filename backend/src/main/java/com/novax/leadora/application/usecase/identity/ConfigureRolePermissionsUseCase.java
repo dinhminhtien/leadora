@@ -7,6 +7,7 @@ import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.common.security.RbacRoles;
+import com.novax.leadora.common.security.RolePermissionScope;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
 import com.novax.leadora.infrastructure.persistence.entity.RolePermissionEntity;
 import com.novax.leadora.infrastructure.persistence.repository.PermissionRepository;
@@ -69,6 +70,17 @@ public class ConfigureRolePermissionsUseCase {
                 throw new ResourceNotFoundException("Permission", permissionId);
             }
         }
+
+        // Drop anything this role has no function behind (RolePermissionScope). Granting a desk a
+        // code no endpoint pairs it with produced a row that changed nothing — the toggle saved,
+        // the screen stayed shut, and role_permissions accumulated claims the application does not
+        // honour. Pruning rather than rejecting is deliberate: the grid already hides these cells,
+        // so a request carrying one is a stale client or a direct API call, and the useful answer
+        // to both is the configuration that will actually take effect.
+        Set<String> applicable = RolePermissionScope.applicableCodes(role.getRoleName());
+        requested.removeIf(id -> permissionRepository.findById(id)
+                .map(p -> !applicable.contains(p.getPermissionCode()))
+                .orElse(true));
 
         Set<Integer> desired = permissionDependencyResolver.prune(requested);
 
