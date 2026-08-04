@@ -85,7 +85,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     [user?.avatarUrl, user?.id],
   );
 
-  // ── Route guard (behaviour unchanged) ────────────────────────────────────
+  // ── Route guard ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (isLoading || !user) return;
     if (pathname === ROUTE_PATHS.dashboard) {
@@ -95,6 +95,20 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, user, pathname, role, roleDashboard, permKey, router]);
+
+  /**
+   * Whether this render may paint the page underneath.
+   *
+   * The redirect above lives in an effect, and effects run *after* paint — so a denied route
+   * used to render one full frame of the screen it is not allowed to show, and its data hooks
+   * fired their requests, before `router.replace` landed. A Manager typing
+   * `/front-office-handover` saw a flash of the Front Office desk for exactly that reason.
+   *
+   * Decided only once the session is known: while it loads, or when there is no user (the login
+   * redirect is somebody else's job), children render as before rather than blanking the shell.
+   */
+  const routeAllowed =
+    isLoading || !user || canAccessPath(role, pathname, permissions);
 
   // Transient surfaces close themselves at the point of navigation rather than
   // being reset here on `pathname`: the sidebar's links call `onMobileClose`,
@@ -191,7 +205,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           id="main-content"
           className="min-w-0 flex-1 px-4 py-6 lg:px-8 lg:py-8"
         >
-          {children}
+          {routeAllowed ? children : null}
         </main>
       </div>
 
