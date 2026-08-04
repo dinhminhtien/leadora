@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Users, ShieldCheck, Search, UserPlus, X, AlertCircle, Loader2, ServerCrash,
-  ChevronLeft, ChevronRight, Pencil, KeyRound, Check, Plus, Save,
+  ChevronLeft, ChevronRight, Pencil, KeyRound, Check, Plus, Save, RotateCcw,
   Target, Building2, Briefcase, GitBranch, ClipboardList, FileText, MessagesSquare,
   CalendarCheck, BedDouble, PackageCheck, CreditCard, Bell, AlarmClock, Timer,
   BarChart3, Star, Bot, DoorOpen, type LucideIcon,
@@ -570,14 +570,66 @@ function PermissionChip({
 /** The two-column comparison grid, one row per module. */
 function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: Permission[] }) {
   const byId = useMemo(() => new Map(permissions.map(p => [p.permissionId, p])), [permissions]);
+  const idByCode = useMemo(
+    () => new Map(permissions.map(p => [p.permissionCode, p.permissionId])),
+    [permissions],
+  );
 
+  /**
+   * Per role, the permission ids it has a function behind. The server decides this
+   * (`RolePermissionScope`) and prunes to the same set on save, so the grid can offer exactly what
+   * will take effect instead of the whole catalogue.
+   */
+  const applicableIds = useMemo(() => {
+    const m = new Map<number, Set<number>>();
+    roles.forEach(r => {
+      const ids = new Set<number>();
+      (r.applicablePermissionCodes ?? []).forEach(code => {
+        const id = idByCode.get(code);
+        if (id != null) ids.add(id);
+      });
+      m.set(r.roleId, ids);
+    });
+    return m;
+  }, [roles, idByCode]);
+
+  const defaultIds = useMemo(() => {
+    const m = new Map<number, Set<number>>();
+    roles.forEach(r => {
+      const ids = new Set<number>();
+      (r.defaultPermissionCodes ?? []).forEach(code => {
+        const id = idByCode.get(code);
+        if (id != null) ids.add(id);
+      });
+      m.set(r.roleId, ids);
+    });
+    return m;
+  }, [roles, idByCode]);
+
+  /** What the server currently stores — the baseline every "changed" badge is measured against. */
   const serverSets = useMemo(() => {
     const m = new Map<number, Set<number>>();
     roles.forEach(r => m.set(r.roleId, new Set(r.permissions.map(p => p.permissionId))));
     return m;
   }, [roles]);
 
-  const [draft, setDraft] = useState<Map<number, Set<number>>>(serverSets);
+  /**
+   * The opening draft drops any stored grant the role has no function for. Those rows exist —
+   * Front Office was seeded PAYMENT_VIEW/WRITE for a screen it cannot open — and hiding them
+   * silently would leave the header count claiming permissions that do nothing. Dropping them
+   * surfaces the cleanup as ordinary unsaved changes, explained by the banner, and one Save
+   * reconciles the database with what the application actually honours.
+   */
+  const sanitised = useMemo(() => {
+    const m = new Map<number, Set<number>>();
+    roles.forEach(r => {
+      const allowed = applicableIds.get(r.roleId) ?? new Set<number>();
+      m.set(r.roleId, new Set([...(serverSets.get(r.roleId) ?? [])].filter(id => allowed.has(id))));
+    });
+    return m;
+  }, [roles, serverSets, applicableIds]);
+
+  const [draft, setDraft] = useState<Map<number, Set<number>>>(sanitised);
   const [query, setQuery] = useState("");
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [serverError, setServerError] = useState("");
@@ -585,11 +637,22 @@ function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: 
 
   // Re-sync when the server data changes (after a save, or a refetch). Adjusting state during
   // render rather than in an effect means the grid never paints the stale set first.
-  const [syncedFrom, setSyncedFrom] = useState(serverSets);
-  if (syncedFrom !== serverSets) {
-    setSyncedFrom(serverSets);
-    setDraft(serverSets);
+  const [syncedFrom, setSyncedFrom] = useState(sanitised);
+  if (syncedFrom !== sanitised) {
+    setSyncedFrom(sanitised);
+    setDraft(sanitised);
   }
+
+  /** Stored grants the role cannot exercise — the count the banner offers to clean up. */
+  const staleGrantCount = useMemo(() => {
+    let n = 0;
+    for (const role of roles) {
+      const stored = serverSets.get(role.roleId) ?? new Set<number>();
+      const allowed = applicableIds.get(role.roleId) ?? new Set<number>();
+      stored.forEach(id => { if (!allowed.has(id)) n++; });
+    }
+    return n;
+  }, [roles, serverSets, applicableIds]);
 
   const dirtyRoleIds = useMemo(
     () => roles.filter(r => !setsEqual(draft.get(r.roleId) ?? new Set(), serverSets.get(r.roleId) ?? new Set()))
@@ -616,6 +679,10 @@ function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: 
    * the UI from showing a state the API would silently reject.
    */
   const toggle = (roleId: number, permission: Permission) => {
+    const allowed = applicableIds.get(roleId) ?? new Set<number>();
+    // The grid does not render a chip outside the scope, so this only matters for the cascade
+    // below: pulling in a parent VIEW must not smuggle in a code the role has no function for.
+    if (!allowed.has(permission.permissionId)) return;
     setSavedAt(null);
     setServerError("");
     setDraft(prev => {
@@ -629,7 +696,7 @@ function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: 
         removeWithDependents(permission.permissionId);
       } else {
         let cur: Permission | undefined = permission;
-        while (cur) {
+        while (cur && allowed.has(cur.permissionId)) {
           current.add(cur.permissionId);
           cur = cur.dependsOnId != null ? byId.get(cur.dependsOnId) : undefined;
         }
@@ -655,7 +722,29 @@ function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: 
       .sort((a, b) => moduleMeta(a[0]).label.localeCompare(moduleMeta(b[0]).label));
   }, [permissions, query]);
 
-  const discard = () => { setDraft(serverSets); setServerError(""); setSavedAt(null); };
+  const discard = () => { setDraft(sanitised); setServerError(""); setSavedAt(null); };
+
+  /**
+   * Restore the setup every role ships with (UC-6.4). Deliberately a draft edit and nothing more:
+   * it lands as unsaved changes, so an Admin reads the diff — highlighted chip by chip — and
+   * decides, rather than having the whole permission model rewritten by one click. Save changes
+   * commits it; Discard walks it back.
+   *
+   * This is a different question from Discard, which asks "undo what I just did". Reset asks
+   * "what did this look like before anyone configured it", and needs saving precisely because the
+   * answer may differ from what is stored.
+   */
+  const resetToDefaults = () => {
+    setSavedAt(null);
+    setServerError("");
+    setDraft(new Map(roles.map(r => [r.roleId, new Set(defaultIds.get(r.roleId) ?? [])])));
+  };
+
+  /** Whether the draft already is the shipped setup — nothing for Reset to do. */
+  const isAtDefaults = useMemo(
+    () => roles.every(r => setsEqual(draft.get(r.roleId) ?? new Set(), defaultIds.get(r.roleId) ?? new Set())),
+    [roles, draft, defaultIds],
+  );
 
   const save = async () => {
     setServerError("");
@@ -677,9 +766,10 @@ function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: 
         <div className="text-[11px] leading-relaxed text-slate-500">
           <p>
             Every job role is configured here except <strong className="text-slate-700">Admin</strong>, which holds
-            each permission by default. <strong className="text-slate-700">Front Office</strong> and{" "}
-            <strong className="text-slate-700">Reservation</strong> are narrow desks — a module left blank for them is
-            simply not part of that job.
+            each permission by default. A module shown as <span className="font-semibold text-slate-400">—</span> is
+            not part of that job: the role has no screen behind it, so a grant there would save and change nothing.
+            That is why <strong className="text-slate-700">Front Office</strong> and{" "}
+            <strong className="text-slate-700">Reservation</strong> offer far fewer toggles than the sales roles.
           </p>
           <p className="mt-1">
             Turning off <span className="font-semibold text-sky-700">View</span> also removes{" "}
@@ -689,6 +779,19 @@ function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: 
           </p>
         </div>
       </div>
+
+      {/* Stored grants that predate the scope rule. Surfaced rather than dropped quietly, because
+          the header counts and the audit trail both change when they go. */}
+      {staleGrantCount > 0 && (
+        <div className="flex items-start gap-2.5 px-3.5 py-3 bg-amber-50/70 border border-amber-200 rounded-xl">
+          <AlertCircle className="size-4 text-amber-500 shrink-0 mt-0.5" />
+          <p className="text-[11px] leading-relaxed text-slate-600">
+            {staleGrantCount} stored permission{staleGrantCount === 1 ? "" : "s"} no longer match{staleGrantCount === 1 ? "es" : ""} any
+            screen the role can open — Front Office was granted payments, for instance, without a payments screen to
+            open. They are already excluded above and will be removed from the database the next time you save.
+          </p>
+        </div>
+      )}
 
       {/* Sticky action bar */}
       <div className="sticky top-0 z-20 -mx-1 px-1">
@@ -720,6 +823,17 @@ function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: 
                 {changedCount} unsaved change{changedCount === 1 ? "" : "s"}
               </span>
             )}
+            <Button
+              variant="ghost" size="sm" onClick={resetToDefaults}
+              disabled={isAtDefaults || setPermissions.isPending}
+              leftIcon={<RotateCcw className="size-3.5" />}
+              title={isAtDefaults
+                ? "Already the default setup"
+                : "Load the setup every role ships with. Nothing is saved until you choose Save changes."}
+              className="text-xs"
+            >
+              Reset to defaults
+            </Button>
             <Button
               variant="ghost" size="sm" onClick={discard} disabled={changedCount === 0 || setPermissions.isPending}
               className="text-xs"
@@ -800,21 +914,38 @@ function PermissionMatrix({ roles, permissions }: { roles: Role[]; permissions: 
                         </div>
                       </div>
                     </td>
-                    {roles.map(role => (
-                      <td key={role.roleId} className="py-2.5 px-4 align-middle border-l border-slate-100">
-                        <div className="flex flex-wrap gap-1.5">
-                          {perms.map(p => (
-                            <PermissionChip
-                              key={p.permissionId}
-                              permission={p}
-                              checked={draft.get(role.roleId)?.has(p.permissionId) ?? false}
-                              changed={isChanged(role.roleId, p.permissionId)}
-                              onToggle={() => toggle(role.roleId, p)}
-                            />
-                          ))}
-                        </div>
-                      </td>
-                    ))}
+                    {roles.map(role => {
+                      // Only the actions this role can actually perform. A module it has no
+                      // surface for collapses to a dash: an empty toggle would invite an Admin to
+                      // grant something that saves and then does nothing.
+                      const allowed = applicableIds.get(role.roleId) ?? new Set<number>();
+                      const offered = perms.filter(p => allowed.has(p.permissionId));
+                      return (
+                        <td key={role.roleId} className="py-2.5 px-4 align-middle border-l border-slate-100">
+                          {offered.length === 0 ? (
+                            <span
+                              className="text-slate-300 select-none"
+                              title={`${meta.label} is not part of the ${roleLabel(role.roleName)} job`}
+                              aria-label={`${meta.label}: not part of the ${roleLabel(role.roleName)} job`}
+                            >
+                              —
+                            </span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              {offered.map(p => (
+                                <PermissionChip
+                                  key={p.permissionId}
+                                  permission={p}
+                                  checked={draft.get(role.roleId)?.has(p.permissionId) ?? false}
+                                  changed={isChanged(role.roleId, p.permissionId)}
+                                  onToggle={() => toggle(role.roleId, p)}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}

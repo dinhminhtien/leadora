@@ -63,10 +63,19 @@ const FO_ROUTES: string[] = [
   ROUTE_PATHS.notifications,
 ];
 
-// Reservation: answer room requests, then confirm/reject the bookings that follow.
+// Reservation: answer room requests, confirm the bookings that follow, then keep the reservation
+// and its handover current through to check-in.
+//
+// `reservationStatus` and `operationalHandover` were missing, and the omission was invisible from
+// this file: the desk is granted RESERVATION_* and HANDOVER_* by the seed, and the backend names
+// RESERVATION in both controllers' @PreAuthorize lists — so the API answered while no route would
+// open. SRS §2.2.2 assigns UC-19.x and UC-20.x to Reservation Staff and rbac-matrix §2 lists both
+// rows under RS, which is why the fix is to restore the screens rather than revoke the permissions.
 const RESERVATION_ROUTES: string[] = [
   ROUTE_PATHS.roomRequests,
   ROUTE_PATHS.bookingConfirmation,
+  ROUTE_PATHS.reservationStatus,
+  ROUTE_PATHS.operationalHandover,
   ROUTE_PATHS.depositPayment,
   ROUTE_PATHS.notifications,
 ];
