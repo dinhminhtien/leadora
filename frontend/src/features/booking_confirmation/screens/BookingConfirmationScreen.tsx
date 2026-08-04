@@ -16,10 +16,16 @@ import { quotationService, type Quotation } from "@/services/quotation_service";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 import { toast } from "@/stores/toast_store";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useAuthStore } from "@/stores/auth_store";
+import { getUserRole } from "@/shared/auth/access";
 
 type TabType = "queue" | "checker";
 
 export function BookingConfirmationScreen() {
+  const { user } = useAuthStore();
+  const userRole = getUserRole(user);
+  const canWrite = user?.permissions?.includes("BOOKING_WRITE") ?? false;
+
   // Design-system confirmation (§3.16) replacing the native window.confirm.
   const { confirm, confirmElement } = useConfirm();
   const { highlightedId, setRowRef } = useHighlightRow();
@@ -244,6 +250,62 @@ export function BookingConfirmationScreen() {
     }
   };
 
+  const handleQuotationChange = (selectedQuoteId: string) => {
+    setFormQuotationId(selectedQuoteId);
+    if (!selectedQuoteId) {
+      setFormCustomerId("");
+      setFormCheckIn("");
+      setFormCheckOut("");
+      setFormNights(1);
+      setFormQuantity(1);
+      setFormSpecialRequests("");
+      setFormProductId("");
+      return;
+    }
+
+    const q = quotations.find((item) => item.id === selectedQuoteId);
+    if (q) {
+      if (q.customerId) {
+        setFormCustomerId(q.customerId);
+        // Ensure customer is present in dropdown options list
+        const hasCustomer = customers.some(c => c.id === q.customerId);
+        if (!hasCustomer) {
+          setCustomers(prev => [
+            ...prev,
+            {
+              id: q.customerId!,
+              name: q.contactName || "Guest",
+              email: q.email || "No email"
+            }
+          ]);
+        }
+      }
+      if (q.checkInDate) setFormCheckIn(q.checkInDate);
+      if (q.checkOutDate) setFormCheckOut(q.checkOutDate);
+      if (q.checkInDate && q.checkOutDate) {
+        const d1 = new Date(q.checkInDate);
+        const d2 = new Date(q.checkOutDate);
+        const diffTime = d2.getTime() - d1.getTime();
+        const computedNights = diffTime > 0 ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : 1;
+        setFormNights(computedNights);
+      } else if (q.nights) {
+        setFormNights(q.nights);
+      }
+      if (q.numberOfRooms) setFormQuantity(q.numberOfRooms);
+      if (q.notes) setFormSpecialRequests(q.notes);
+
+      // Match room type name with product
+      if (q.roomType) {
+        const matchedProduct = roomProducts.find(
+          (p) => p.name.toLowerCase() === q.roomType?.toLowerCase()
+        );
+        if (matchedProduct) {
+          setFormProductId(matchedProduct.productId);
+        }
+      }
+    }
+  };
+
   // UC-18.2: Create booking request via live API call
   const handleCreateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -307,11 +369,26 @@ export function BookingConfirmationScreen() {
     }
   };
 
+  const selectedQuotationCustomerName = useMemo(() => {
+    if (!formQuotationId) return "";
+    const q = quotations.find(item => item.id === formQuotationId);
+    if (q) {
+      return `${q.contactName} (${q.email || "No email"})`;
+    }
+    return "";
+  }, [formQuotationId, quotations]);
+
   const computedFormAmount = useMemo(() => {
+    if (formQuotationId) {
+      const q = quotations.find(item => item.id === formQuotationId);
+      if (q && q.totalAmount) {
+        return q.totalAmount;
+      }
+    }
     const selectedProduct = roomProducts.find(p => p.productId === formProductId);
     if (!selectedProduct) return 0;
     return selectedProduct.unitPrice * formQuantity * formNights;
-  }, [formProductId, formQuantity, formNights, roomProducts]);
+  }, [formQuotationId, formProductId, formQuantity, formNights, roomProducts, quotations]);
 
   const handleDownload = (bNum: string) => {
     toast.success(`Generated PDF Booking Confirmation & Slip for reservation: ${bNum}`);
@@ -337,14 +414,16 @@ export function BookingConfirmationScreen() {
           >
             Booking Queue
           </Button>
-          <Button
-            variant={activeTab === "checker" ? "primary" : "ghost"}
-            size="sm"
-            onClick={() => setActiveTab("checker")}
-            className="rounded-lg"
-          >
-            Availability Checker
-          </Button>
+          {userRole !== "FO" && (
+            <Button
+              variant={activeTab === "checker" ? "primary" : "ghost"}
+              size="sm"
+              onClick={() => setActiveTab("checker")}
+              className="rounded-lg"
+            >
+              Availability Checker
+            </Button>
+          )}
         </div>
       </div>
 
@@ -387,15 +466,17 @@ export function BookingConfirmationScreen() {
                 >
                   <RefreshCw className="size-3.5" />
                 </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleOpenNewRequest}
-                  leftIcon={<Plus className="size-3.5" />}
-                  className="h-9 font-semibold"
-                >
-                  New Request
-                </Button>
+                {canWrite && userRole !== "FO" && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleOpenNewRequest}
+                    leftIcon={<Plus className="size-3.5" />}
+                    className="h-9 font-semibold"
+                  >
+                    New Request
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -476,7 +557,7 @@ export function BookingConfirmationScreen() {
       )}
 
       {/* Tab 2: Availability Checker */}
-      {activeTab === "checker" && (
+      {activeTab === "checker" && userRole !== "FO" && (
         <div className="w-full block clear-both">
           <Card className="shadow-sm border-border bg-background">
             <CardHeader>
@@ -593,27 +674,12 @@ export function BookingConfirmationScreen() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">Guest / Customer *</label>
-                  <Select
-                    value={formCustomerId}
-                    onChange={e => setFormCustomerId(e.target.value)}
-                    required
-                    className="w-full"
-                  >
-                    <option value="">-- Choose Customer --</option>
-                    {customers.map(c => (
-                      <option key={c.id} value={c.id}>{c.name} ({c.email || "No email"})</option>
-                    ))}
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5 w-full">
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">Linked Quotation *</label>
                   <Select
                     value={formQuotationId}
-                    onChange={e => setFormQuotationId(e.target.value)}
+                    onChange={e => handleQuotationChange(e.target.value)}
                     required
                     className="w-full"
                   >
@@ -622,6 +688,16 @@ export function BookingConfirmationScreen() {
                       <option key={q.id} value={q.id}>{String(q.quoteNo || q.id).substring(0, 8)}... (Status: {q.status})</option>
                     ))}
                   </Select>
+                </div>
+
+                <div className="flex flex-col gap-1.5 w-full">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">Guest / Customer</label>
+                  <Input
+                    type="text"
+                    value={selectedQuotationCustomerName || "Select a quotation to load guest details"}
+                    disabled
+                    className="w-full"
+                  />
                 </div>
               </div>
 
@@ -634,6 +710,7 @@ export function BookingConfirmationScreen() {
                     onChange={e => setFormCheckIn(e.target.value)}
                     required
                     className="w-full"
+                    disabled={!!formQuotationId}
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -644,6 +721,7 @@ export function BookingConfirmationScreen() {
                     onChange={e => setFormCheckOut(e.target.value)}
                     required
                     className="w-full"
+                    disabled={!!formQuotationId}
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -655,6 +733,7 @@ export function BookingConfirmationScreen() {
                     onChange={e => setFormNights(Number(e.target.value))}
                     required
                     className="w-full"
+                    disabled={!!formQuotationId}
                   />
                 </div>
               </div>
@@ -669,11 +748,26 @@ export function BookingConfirmationScreen() {
                       onChange={e => setFormProductId(e.target.value)}
                       required
                       className="w-full"
+                      disabled={!!formQuotationId}
                     >
                       <option value="">-- Select Room Type --</option>
-                      {roomProducts.map(p => (
-                        <option key={p.productId} value={p.productId}>{p.name} ({p.unitPrice.toLocaleString('vi-VN')} ₫/night)</option>
-                      ))}
+                       {roomProducts.map(p => {
+                        const isSelected = p.productId === formProductId;
+                        let displayPrice = p.unitPrice;
+                        if (isSelected && formQuotationId) {
+                          const q = quotations.find(item => item.id === formQuotationId);
+                          if (q && q.totalAmount) {
+                            const nights = formNights || 1;
+                            const qty = formQuantity || 1;
+                            displayPrice = q.totalAmount / (qty * nights);
+                          }
+                        }
+                        return (
+                          <option key={p.productId} value={p.productId}>
+                            {p.name} ({displayPrice.toLocaleString('vi-VN')} ₫/night)
+                          </option>
+                        );
+                      })}
                     </Select>
                   </div>
 
@@ -686,6 +780,7 @@ export function BookingConfirmationScreen() {
                       onChange={e => setFormQuantity(Number(e.target.value))}
                       required
                       className="w-full"
+                      disabled={!!formQuotationId}
                     />
                   </div>
                 </div>
@@ -697,8 +792,9 @@ export function BookingConfirmationScreen() {
                   rows={2}
                   value={formSpecialRequests}
                   onChange={e => setFormSpecialRequests(e.target.value)}
-                  className="w-full rounded-xl border border-border bg-input py-2 px-3.5 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.025)] dark:shadow-none transition"
+                  className="w-full rounded-xl border border-border bg-input py-2 px-3.5 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.025)] dark:shadow-none transition disabled:opacity-75 disabled:cursor-not-allowed"
                   placeholder="E.g., early check-in, high floor, quiet room..."
+                  disabled={!!formQuotationId}
                 />
               </div>
 
@@ -738,7 +834,7 @@ export function BookingConfirmationScreen() {
                 },
                 // Approve/reject exist only on a PENDING request — the server
                 // refuses the transition from any other state (§12.13).
-                ...(selectedBooking.status === "PENDING"
+                ...(selectedBooking.status === "PENDING" && canWrite && userRole !== "SALES" && userRole !== "FO"
                   ? [
                       {
                         label: "Reject request",

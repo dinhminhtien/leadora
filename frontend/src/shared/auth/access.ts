@@ -60,6 +60,7 @@ const ADMIN_ROUTES: string[] = [
 // Front Office: a simple, focused desk — arrival handovers + their alerts only.
 const FO_ROUTES: string[] = [
   ROUTE_PATHS.frontOfficeHandover,
+  ROUTE_PATHS.depositPayment,
   ROUTE_PATHS.notifications,
 ];
 
@@ -67,6 +68,8 @@ const FO_ROUTES: string[] = [
 const RESERVATION_ROUTES: string[] = [
   ROUTE_PATHS.roomRequests,
   ROUTE_PATHS.bookingConfirmation,
+  ROUTE_PATHS.reservationStatus,
+  ROUTE_PATHS.operationalHandover,
   ROUTE_PATHS.depositPayment,
   ROUTE_PATHS.notifications,
 ];
