@@ -11,7 +11,6 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { bookingConfirmationService, type Booking, type RoomAvailability } from "@/services/booking_confirmation_service";
 import { productService, type ProductService } from "@/services/product_service";
-import { customerProfileService, type CustomerProfile } from "@/services/customer_profile_service";
 import { quotationService, type Quotation } from "@/services/quotation_service";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 import { toast } from "@/stores/toast_store";
@@ -59,7 +58,7 @@ export function BookingConfirmationScreen() {
   const [availError, setAvailError] = useState("");
 
   // State for Create Request Tab
-  const [customers, setCustomers] = useState<CustomerProfile[]>([]);
+
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [roomProducts, setRoomProducts] = useState<ProductService[]>([]);
   const [formCustomerId, setFormCustomerId] = useState("");
@@ -103,17 +102,15 @@ export function BookingConfirmationScreen() {
   // Fetch dropdown data for the booking form
   const loadFormData = async () => {
     try {
-      const custRes = await customerProfileService.getList();
-      if (custRes.success && custRes.data) {
-        setCustomers(custRes.data);
-      }
-      const quotRes = await quotationService.getList();
-      if (quotRes.success && quotRes.data) {
-        setQuotations(quotRes.data);
-      }
       const prodRes = await productService.getList("ROOM");
       if (prodRes.success && prodRes.data) {
         setRoomProducts(prodRes.data);
+      }
+      if (isNewRequestOpen) {
+        const quotRes = await quotationService.getList();
+        if (quotRes.success && quotRes.data) {
+          setQuotations(quotRes.data);
+        }
       }
     } catch (err) {
       console.error("Failed to fetch dropdown catalog items from server", err);
@@ -267,18 +264,6 @@ export function BookingConfirmationScreen() {
     if (q) {
       if (q.customerId) {
         setFormCustomerId(q.customerId);
-        // Ensure customer is present in dropdown options list
-        const hasCustomer = customers.some(c => c.id === q.customerId);
-        if (!hasCustomer) {
-          setCustomers(prev => [
-            ...prev,
-            {
-              id: q.customerId!,
-              name: q.contactName || "Guest",
-              email: q.email || "No email"
-            }
-          ]);
-        }
       }
       if (q.checkInDate) setFormCheckIn(q.checkInDate);
       if (q.checkOutDate) setFormCheckOut(q.checkOutDate);
@@ -466,7 +451,7 @@ export function BookingConfirmationScreen() {
                 >
                   <RefreshCw className="size-3.5" />
                 </Button>
-                {canWrite && userRole !== "FO" && (
+                {canWrite && userRole !== "FO" && userRole !== "RESERVATION" && (
                   <Button
                     variant="primary"
                     size="sm"
