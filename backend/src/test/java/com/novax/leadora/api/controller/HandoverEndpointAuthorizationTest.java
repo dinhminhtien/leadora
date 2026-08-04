@@ -71,4 +71,28 @@ class HandoverEndpointAuthorizationTest {
         String readiness = preAuthorizeOf(ArrivalHandoverController.class, "updateReadiness");
         assertThat(readiness).contains("'FO'").contains("HANDOVER_WRITE");
     }
+
+    /**
+     * UC-22.1/22.2/22.3 belong to Front Office alone (rbac-matrix §2). Manager and Admin were
+     * admitted here as "desk supervisors", which put the arrival desk in the Manager sidebar —
+     * a screen the matrix never granted them. The frontend guard
+     * ({@code shared/auth/access.ts}) now refuses the route for every non-FO role; this asserts
+     * the server agrees, because a guard only the browser enforces is not a guard.
+     */
+    @Test
+    @DisplayName("The arrival desk admits nobody but Front Office")
+    void arrivalEndpointsExcludeSupervisors() throws Exception {
+        String klass = ArrivalHandoverController.class.getAnnotation(PreAuthorize.class).value();
+        String readiness = preAuthorizeOf(ArrivalHandoverController.class, "updateReadiness");
+
+        for (String expression : new String[]{klass, readiness}) {
+            assertThat(expression)
+                    .as("UC-22.x is a Front Office duty; a supervisor role here re-opens the "
+                            + "arrival desk to the Manager/Admin sidebar")
+                    .doesNotContain("MANAGER")
+                    .doesNotContain("ADMIN")
+                    .doesNotContain("SALES")
+                    .doesNotContain("RESERVATION");
+        }
+    }
 }

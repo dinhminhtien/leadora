@@ -25,11 +25,18 @@ import java.util.UUID;
  * <p>Front Office prepares for guest arrivals from the operational handovers submitted by
  * Sales/Reservation. FO may view the list/detail and update the arrival readiness status, but
  * (BR-27) cannot change booking/quotation/deal data — enforced by exposing readiness only.
+ *
+ * <p><b>Front Office only.</b> rbac-matrix §2 puts "Arrival Handover / Arrival Handover Detail
+ * (view, update readiness)" under the FO column alone. MANAGER and ADMIN used to be admitted here
+ * as desk supervisors; they are not, and admitting them contradicted the frontend, which shows the
+ * arrival desk to Front Office alone. Sales/Reservation and Manager see handovers through
+ * {@code /api/v1/operational-handovers} instead — the authoring side, which carries the FO
+ * readiness state for oversight without exposing the readiness write.
  */
 @RestController
 @RequestMapping("/api/v1/arrival-handovers")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('FO','FRONT_OFFICE','MANAGER','ADMIN') and @access.can('HANDOVER_VIEW')")
+@PreAuthorize("hasAnyRole('FO','FRONT_OFFICE') and @access.can('HANDOVER_VIEW')")
 public class ArrivalHandoverController {
 
     private final GetArrivalHandoverListUseCase getArrivalHandoverListUseCase;
@@ -57,13 +64,13 @@ public class ArrivalHandoverController {
     /**
      * UC-22.1 — View Arrival Handover List.
      *
-     * @param assignedFoUserId filter by responsible Front Office staff (step 5). Supervisors only;
-     *                         silently ignored for Front Office Staff, whose visibility is decided
-     *                         by the scope below rather than by a request parameter.
+     * @param assignedFoUserId filter by responsible Front Office staff (step 5). Supervisors only,
+     *                         and no supervisor role reaches this endpoint any more, so in practice
+     *                         it is always ignored: a Front Office Staff's visibility is decided by
+     *                         the scope below rather than by a request parameter.
      * @param deskWide         Front Office Staff default to their own queue (plus arrivals nobody
      *                         is assigned to yet). Set this to take over the whole desk — a shift
-     *                         rota needs it when the assignee is off duty. No effect for
-     *                         Manager/Admin, who already see everything.
+     *                         rota needs it when the assignee is off duty.
      */
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ArrivalHandoverResponse>>> list(
@@ -94,7 +101,7 @@ public class ArrivalHandoverController {
 
     /** UC-22.3 — Update Handover Readiness Status. */
     @PutMapping("/{id}/readiness")
-    @PreAuthorize("hasAnyRole('FO','FRONT_OFFICE','MANAGER','ADMIN') and @access.can('HANDOVER_WRITE')")
+    @PreAuthorize("hasAnyRole('FO','FRONT_OFFICE') and @access.can('HANDOVER_WRITE')")
     public ResponseEntity<ApiResponse<ArrivalHandoverResponse>> updateReadiness(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @PathVariable UUID id,
