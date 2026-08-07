@@ -186,12 +186,14 @@ export function InteractionTimelineScreen() {
             setSearchResults(res.data || []);
           }
         } else if (searchEntityType === "deal") {
-          const res = await dealService.getList();
+          // `GET /deals` accepts `?search=` and matches deal name, customer name and
+          // company name server-side. This used to download every visible deal and
+          // substring-match the title in the browser — one full-table read per
+          // keystroke, and it could not find a deal by its customer.
+          const res = await dealService.getList({ search: searchQuery });
           if (res && res.success && res.data) {
-            const filtered = res.data.filter((d: any) =>
-              d.title?.toLowerCase().includes(searchQuery.toLowerCase())
-            );
-            setSearchResults(filtered.slice(0, 8));
+            // The endpoint returns a plain array and ignores `size`, so cap here.
+            setSearchResults(res.data.slice(0, 8));
           }
         }
       } catch (err) {

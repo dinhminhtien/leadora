@@ -12,6 +12,7 @@ import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared/widgets/status_chip.dart';
 import '../../../deal/data/deal_models.dart';
 import '../../../deal/presentation/providers/deal_providers.dart';
+import '../../../deal/presentation/widgets/deal_picker_sheet.dart';
 import '../../data/quotation_models.dart';
 import '../providers/quotation_providers.dart';
 
@@ -120,6 +121,12 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
   final _changeReason = TextEditingController();
 
   String? _dealId;
+
+  /// The picked deal, kept for display only — [_dealId] stays the value that is validated
+  /// and submitted. Null when the form was opened with an `initialDealId` and the deal
+  /// itself has not been fetched; the picker field falls back to `dealDetailProvider`.
+  Deal? _selectedDeal;
+
   String? _roomType;
   String _paymentPolicy = 'full_upfront';
   DateTime? _checkIn;
@@ -136,33 +143,52 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     super.initState();
     final q = widget.quotation;
 
+    _rooms = TextEditingController(text: '1');
+    _pricePerNight = TextEditingController();
+    _discount = TextEditingController(text: '0');
+    _notes = TextEditingController();
+
     if (_isRevise && q != null) {
       // Start from what the customer was last quoted, so the rep changes only what moved.
-      _rooms = TextEditingController(text: '${q.numberOfRooms ?? 1}');
-      _pricePerNight = TextEditingController(
-        text: q.pricePerNight == null ? '' : _plain(q.pricePerNight!),
-      );
-      _discount = TextEditingController(
-        text: _plain(q.discountPercent ?? 0),
-      );
-      _notes = TextEditingController();
       _dealId = q.dealId;
-      // The room type may be free text the catalogue does not list — only preselect a
-      // dropdown value that exists, otherwise the field would show blank but validate.
-      _roomType = _roomTypes.contains(q.roomType) ? q.roomType : null;
-      _checkIn = q.checkInDate;
-      _checkOut = q.checkOutDate;
-      _validUntil = q.validUntil;
+      _applyTemplateValues(q);
     } else {
-      _rooms = TextEditingController(text: '1');
-      _pricePerNight = TextEditingController();
-      _discount = TextEditingController(text: '0');
-      _notes = TextEditingController();
       _dealId = widget.initialDealId;
+      if (_dealId != null) {
+        // Best-effort: this deal may already have an earlier quotation — seed the same
+        // fields from it once the list resolves. See _prefillFromDealHistory.
+        _prefillFromDealHistory(_dealId!);
+      }
     }
 
     // Fill any gap the source quotation left, and give create a sensible starting window
     // so the common case is two taps, not six.
+    _normalizeDates();
+  }
+
+  /// Trims a trailing `.0` so a whole number does not land in the field as "40.0".
+  static String _plain(num v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+
+  /// Copies the stay/pricing fields from [source] onto the current controllers — the
+  /// same field set a revision pre-fills from the quotation being revised, reused so a
+  /// fresh create for a deal that was already quoted starts from that quote instead of
+  /// blank. Leaves `_dealId` untouched.
+  void _applyTemplateValues(Quotation source) {
+    _rooms.text = '${source.numberOfRooms ?? 1}';
+    _pricePerNight.text = source.pricePerNight == null ? '' : _plain(source.pricePerNight!);
+    _discount.text = _plain(source.discountPercent ?? 0);
+    // The room type may be free text the catalogue does not list — only preselect a
+    // dropdown value that exists, otherwise the field would show blank but validate.
+    _roomType = _roomTypes.contains(source.roomType) ? source.roomType : null;
+    _checkIn = source.checkInDate;
+    _checkOut = source.checkOutDate;
+    _validUntil = source.validUntil;
+  }
+
+  /// Fills any gap left after a template/revise copy, and gives a from-scratch create a
+  /// sensible starting window, so the common case is two taps, not six.
+  void _normalizeDates() {
     final tomorrow = DateTime.now().add(const Duration(days: 1));
     _checkIn ??= DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
     if (_checkOut == null || !_checkOut!.isAfter(_checkIn!)) {
@@ -171,9 +197,31 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     _validUntil ??= _checkIn!.subtract(const Duration(days: 1));
   }
 
-  /// Trims a trailing `.0` so a whole number does not land in the field as "40.0".
-  static String _plain(num v) =>
-      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  /// Best-effort: when the picked deal already has an earlier quotation, seed the stay
+  /// and pricing fields from its most recent one — re-quoting the same lead is then a
+  /// tweak, not a re-type. Everything stays fully editable afterward; this only sets the
+  /// starting values, and only if the deal selection hasn't changed again by the time the
+  /// list resolves.
+  Future<void> _prefillFromDealHistory(String dealId) async {
+    final List<Quotation> quotations;
+    try {
+      quotations = await ref.read(quotationListProvider.future);
+    } catch (_) {
+      return;
+    }
+    if (!mounted || _dealId != dealId) return;
+
+    final forDeal = quotations.where((q) => q.dealId == dealId).toList()
+      ..sort(
+        (a, b) => (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)),
+      );
+    if (forDeal.isEmpty) return;
+
+    setState(() {
+      _applyTemplateValues(forDeal.first);
+      _normalizeDates();
+    });
+  }
 
   @override
   void dispose() {
@@ -370,45 +418,83 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     );
   }
 
+  /// Deal selection (UC-14.1).
+  ///
+  /// A tap target that opens [showQuotableDealPicker] rather than a drop-down of every
+  /// deal: the old menu grew without bound and, because mobile applied no eligibility
+  /// filter, offered deals the backend rejects. The sheet asks `GET /deals/quotable` for a
+  /// page at a time and this screen filters nothing.
   Widget _dealPicker(ThemeData theme, ColorScheme scheme) {
-    final dealsAsync = ref.watch(dealListProvider);
+    // Reached from a deal's workspace: the id is known but the deal is not, so resolve
+    // its name for display. Falls back to the id's absence, never blocks the form.
+    final resolved =
+        _selectedDeal ??
+        (_dealId == null
+            ? null
+            : ref.watch(dealDetailProvider(_dealId!)).valueOrNull);
+
+    final showError = _autovalidate && _dealId == null;
+
     return SectionCard(
-                title: 'Deal',
-                icon: Icons.work_outline_rounded,
-                child: dealsAsync.when(
-                  loading: () => const Padding(
-                    padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                    child: LinearProgressIndicator(),
-                  ),
-                  error: (e, _) => Text(
-                    e is AppException ? e.message : 'Could not load deals.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
-                  ),
-                  data: (deals) => deals.isEmpty
-                      ? Text(
-                          'No deals available. Create a deal first — a quotation always '
-                          'belongs to one.',
-                          style: theme.textTheme.bodySmall,
-                        )
-                      : DropdownButtonFormField<String>(
-                          initialValue: deals.any((d) => d.id == _dealId) ? _dealId : null,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Deal *',
-                            prefixIcon: Icon(Icons.work_outline_rounded),
-                          ),
-                          items: [
-                            for (final Deal d in deals)
-                              DropdownMenuItem(
-                                value: d.id,
-                                child: Text(d.title, overflow: TextOverflow.ellipsis),
-                              ),
-                          ],
-                          onChanged: (v) => setState(() => _dealId = v),
-                          validator: (v) => v == null ? 'Select a deal' : null,
+      title: 'Deal',
+      icon: Icons.work_outline_rounded,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: _pickDeal,
+            borderRadius: BorderRadius.circular(AppRadii.md),
+            child: InputDecorator(
+              decoration: InputDecoration(
+                labelText: 'Deal *',
+                prefixIcon: const Icon(Icons.work_outline_rounded),
+                suffixIcon: const Icon(Icons.search_rounded),
+                errorText: showError ? 'Select a deal' : null,
+              ),
+              isEmpty: false,
+              child: resolved == null
+                  ? Text(
+                      _dealId == null ? 'Search and select a deal' : 'Loading deal…',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          resolved.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium,
                         ),
-                ),
+                        if ((resolved.contactName ?? '').isNotEmpty)
+                          Text(
+                            resolved.contactName!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _pickDeal() async {
+    final picked = await showQuotableDealPicker(context, selectedDealId: _dealId);
+    if (picked == null || !mounted) return;
+    setState(() {
+      _dealId = picked.id;
+      _selectedDeal = picked;
+    });
+    _prefillFromDealHistory(picked.id);
   }
 
   /// Everything below the header: the stay, the pricing, the live total and the save

@@ -9,7 +9,10 @@ enum RoomRequestStatus {
   pending('PENDING'),
   confirmed('CONFIRMED'),
   rejected('REJECTED'),
-  superseded('SUPERSEDED');
+  superseded('SUPERSEDED'),
+
+  /// Sales withdrew the question before Reservation answered it (UC-26.4).
+  cancelled('CANCELLED');
 
   const RoomRequestStatus(this.wire);
   final String wire;
@@ -19,11 +22,17 @@ enum RoomRequestStatus {
     orElse: () => RoomRequestStatus.pending,
   );
 
+  /// True for states that are neither a live question nor a usable answer. Mirrors
+  /// `RoomRequestStatus.notSpeakingForQuotation()` on the backend.
+  bool get speaksForQuotation =>
+      this != RoomRequestStatus.superseded && this != RoomRequestStatus.cancelled;
+
   StatusTone get tone => switch (this) {
     RoomRequestStatus.pending => StatusTone.warning,
     RoomRequestStatus.confirmed => StatusTone.success,
     RoomRequestStatus.rejected => StatusTone.danger,
     RoomRequestStatus.superseded => StatusTone.neutral,
+    RoomRequestStatus.cancelled => StatusTone.neutral,
   };
 }
 
@@ -131,11 +140,15 @@ class CreateRoomRequestPayload {
 }
 
 
-/// The request that currently speaks for a quotation: the newest non-superseded one.
-/// The API returns them newest-first, mirroring `RoomConfirmationGate.currentRequest`.
+/// The request that currently speaks for a quotation: the newest one that is neither
+/// superseded nor cancelled. The API returns them newest-first, mirroring
+/// `RoomConfirmationReader.currentRequest`.
+///
+/// Skipping cancelled rows is what lets an earlier confirmation resurface after Sales
+/// withdraws a follow-up question, instead of the withdrawn row masking it.
 RoomRequest? currentRoomRequest(List<RoomRequest> requests) {
   for (final r in requests) {
-    if (r.status != RoomRequestStatus.superseded) return r;
+    if (r.status.speaksForQuotation) return r;
   }
   return null;
 }
