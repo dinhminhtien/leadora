@@ -170,7 +170,7 @@ class BookingConcurrencyTest {
                 // Cancel the booking first
                 bookingEntity.setStatus(BookingStatus.CANCELLED);
 
-                when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(paymentEntity));
+                when(paymentRepository.findByIdForUpdate(paymentId)).thenReturn(Optional.of(paymentEntity));
                 // Verify payment confirm mock locks deal and booking
                 when(dealRepository.findByIdForUpdate(any(UUID.class))).thenReturn(Optional.of(dealEntity));
                 when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(bookingEntity));

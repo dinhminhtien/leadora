@@ -16,7 +16,7 @@ public final class PaymentSpecification {
 
     private PaymentSpecification() {}
 
-    public static Specification<PaymentEntity> filterPayments(String search, PaymentStatus status, PaymentType paymentType) {
+    public static Specification<PaymentEntity> filterPayments(String search, PaymentStatus status, PaymentType paymentType, java.util.UUID ownerId) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
@@ -28,8 +28,13 @@ public final class PaymentSpecification {
                 predicates.add(cb.equal(root.get("paymentType"), paymentType));
             }
 
+            Join<?, ?> booking = root.join("booking", JoinType.LEFT);
+
+            if (ownerId != null) {
+                predicates.add(cb.equal(booking.get("assignedUser").get("userId"), ownerId));
+            }
+
             if (StringUtils.hasText(search)) {
-                Join<?, ?> booking = root.join("booking", JoinType.LEFT);
                 Join<?, ?> customer = booking.join("customer", JoinType.LEFT);
                 String like = "%" + search.trim().toLowerCase() + "%";
                 predicates.add(cb.or(

@@ -46,9 +46,11 @@ public class UpdatePaymentStatusUseCase {
     private final RoomConfirmationReader roomConfirmationReader;
     private final RoomRequestNotifier roomRequestNotifier;
 
+    private static final java.util.concurrent.ConcurrentHashMap<String, Object> activeTxCodes = new java.util.concurrent.ConcurrentHashMap<>();
+
     @Transactional
     public PaymentResponse execute(UUID paymentId, UpdatePaymentStatusRequest request, UserEntity actor) {
-        PaymentEntity payment = paymentRepository.findById(paymentId)
+        PaymentEntity payment = paymentRepository.findByIdForUpdate(paymentId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment record not found."));
 
         BookingEntity booking = payment.getBooking();
@@ -81,6 +83,40 @@ public class UpdatePaymentStatusUseCase {
 
         PaymentStatus oldStatus = payment.getStatus();
         PaymentStatus newStatus = request.getStatus();
+
+        // BLOCK: Do not allow activating CANCELLED or EXPIRED payments to PAID
+        if (newStatus == PaymentStatus.PAID) {
+            if (oldStatus == PaymentStatus.CANCELLED || oldStatus == PaymentStatus.EXPIRED) {
+                throw new IllegalStateException("This payment request is CANCELLED or EXPIRED and cannot be confirmed.");
+            }
+        }
+
+        // Prevent duplicate gateway transaction codes (Double-Spending protection)
+        if (newStatus == PaymentStatus.PAID && oldStatus != PaymentStatus.PAID) {
+            String rawRef = request.getVerificationNote();
+            if (actor == null) { // Automated flow from Scheduler
+                rawRef = payment.getGatewayTransactionId();
+            }
+            if (StringUtils.hasText(rawRef)) {
+                String txCode = rawRef.replaceAll("[^a-zA-Z0-9_-]", "").toUpperCase();
+                if (txCode.isEmpty()) {
+                    throw new IllegalStateException("Transaction verification code is empty or invalid.");
+                }
+
+                if (activeTxCodes.putIfAbsent(txCode, Boolean.TRUE) != null) {
+                    throw new BusinessException("DUPLICATE_TXN", "The bank transaction is currently being processed by another thread.", HttpStatus.CONFLICT);
+                }
+                try {
+                    java.util.Optional<PaymentEntity> duplicate = paymentRepository.findByGatewayTransactionId(txCode);
+                    if (duplicate.isPresent() && !duplicate.get().getPaymentId().equals(paymentId)) {
+                        throw new BusinessException("DUPLICATE_TXN", "This bank transaction has already been verified for another payment.", HttpStatus.CONFLICT);
+                    }
+                    payment.setGatewayTransactionId(txCode);
+                } finally {
+                    activeTxCodes.remove(txCode);
+                }
+            }
+        }
 
         // Check business rules before making the transition
         if (oldStatus != PaymentStatus.PAID && newStatus == PaymentStatus.PAID) {

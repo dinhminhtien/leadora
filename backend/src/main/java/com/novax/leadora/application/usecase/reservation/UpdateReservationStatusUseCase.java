@@ -6,11 +6,15 @@ import com.novax.leadora.common.exception.BusinessRuleException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
+import com.novax.leadora.infrastructure.persistence.entity.PaymentEntity;
 import com.novax.leadora.infrastructure.persistence.entity.SalesFeedbackEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.PaymentStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.PaymentType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ReviewStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
+import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
 import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepository;
 import com.novax.leadora.infrastructure.integration.email.EmailService;
 import com.novax.leadora.application.usecase.booking.BookingStatusTransitionService;
@@ -21,6 +25,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -36,13 +41,14 @@ public class UpdateReservationStatusUseCase {
     private final SalesFeedbackRepository salesFeedbackRepository;
     private final EmailService emailService;
     private final BookingStatusTransitionService bookingStatusTransitionService;
+    private final PaymentRepository paymentRepository;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
     @Transactional
     public ReservationResponse execute(UUID id, UpdateStatusRequest request) {
-        BookingEntity tempBooking = bookingRepository.findById(id)
+        BookingEntity tempBooking = bookingRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation", id));
 
         BookingStatus oldStatus = tempBooking.getStatus();
@@ -64,19 +70,73 @@ public class UpdateReservationStatusUseCase {
             if (!newCheckOut.isAfter(newCheckIn)) {
                 throw new BusinessRuleException("Check-out date must be after the check-in date");
             }
-            // No capacity check on the new dates: this CRM owns no room inventory, and the
-            // previous check invented capacity from the product name. The Front Office user
-            // moving the dates is reading the real PMS as they do it.
         }
 
         // Call the centralized transition service
         BookingEntity booking = bookingStatusTransitionService.transition(
                 id, newStatus, TransitionActor.FRONT_OFFICE, request.getReason());
 
+        BigDecimal originalTotal = booking.getTotalAmount();
+
         if (datesChanged) {
             booking.setCheckInDate(newCheckIn);
             booking.setCheckOutDate(newCheckOut);
+            
+            // Recalculate nights and room charges in Java Code
+            long nights = java.time.temporal.ChronoUnit.DAYS.between(newCheckIn, newCheckOut);
+            BigDecimal newTotal = BigDecimal.ZERO;
+            
+            List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(id);
+            for (BookingDetailEntity d : details) {
+                d.setNights((int) nights);
+                BigDecimal lineTotal = d.getUnitPrice()
+                        .multiply(BigDecimal.valueOf(d.getQuantity()))
+                        .multiply(BigDecimal.valueOf(nights));
+                d.setLineTotal(lineTotal);
+                newTotal = newTotal.add(lineTotal);
+                bookingDetailRepository.save(d);
+            }
+            booking.setTotalAmount(newTotal);
             booking = bookingRepository.save(booking);
+
+            // Additional payment request if staying nights increased
+            if (newTotal.compareTo(originalTotal) > 0) {
+                BigDecimal deltaAmount = newTotal.subtract(originalTotal);
+                PaymentEntity payment = PaymentEntity.builder()
+                        .booking(booking)
+                        .amount(deltaAmount)
+                        .paymentType(PaymentType.PARTIAL)
+                        .status(PaymentStatus.PENDING)
+                        .paymentMethod("TRANSFER")
+                        .dueDate(LocalDate.now().plusDays(7))
+                        .verificationNote("Additional payment for stay date adjustment (" + oldCheckIn + " -> " + newCheckIn + ", " + oldCheckOut + " -> " + newCheckOut + ")")
+                        .gatewayProvider("MBBANK")
+                        .build();
+                PaymentEntity savedPayment = paymentRepository.save(payment);
+                long amountInVnd = Math.round(deltaAmount.doubleValue());
+                String qrCodeUrl = "https://img.vietqr.io/image/MB-22224102004-compact2.png?amount=" + amountInVnd 
+                        + "&addInfo=LEADORAPAY" + savedPayment.getPaymentId();
+                savedPayment.setQrCodeUrl(qrCodeUrl);
+                paymentRepository.save(savedPayment);
+                log.info("[AUDIT] Auto-generated delta payment {} for booking stay extension.", savedPayment.getPaymentId());
+            }
+            
+            // Refund record if staying nights decreased
+            if (newTotal.compareTo(originalTotal) < 0) {
+                BigDecimal refundAmount = originalTotal.subtract(newTotal);
+                PaymentEntity refund = PaymentEntity.builder()
+                        .booking(booking)
+                        .amount(refundAmount)
+                        .paymentType(PaymentType.PARTIAL)
+                        .status(PaymentStatus.REFUNDED)
+                        .paymentMethod("CASH")
+                        .dueDate(LocalDate.now())
+                        .verificationNote("Refund for shortened stay date adjustment (" + oldCheckIn + " -> " + newCheckIn + ", " + oldCheckOut + " -> " + newCheckOut + ")")
+                        .gatewayProvider("SYSTEM")
+                        .build();
+                paymentRepository.save(refund);
+                log.info("[AUDIT] Auto-generated refund record {} for booking stay shortening.", refund.getPaymentId());
+            }
         }
 
         List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(id);
