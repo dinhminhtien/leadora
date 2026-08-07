@@ -22,11 +22,15 @@ public class GetBookingDetailUseCase {
 
     private final BookingRepository bookingRepository;
     private final BookingDetailRepository bookingDetailRepository;
+    private final BookingAccessPolicy bookingAccessPolicy;
 
     @Transactional(readOnly = true)
     public BookingResponse execute(UUID bookingId) {
-        BookingEntity booking = bookingRepository.findById(bookingId)
+        BookingEntity booking = bookingRepository.findByIdWithCustomerAndAssignedUser(bookingId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Request not found."));
+
+        // Assert access control policies
+        bookingAccessPolicy.assertCanView(bookingAccessPolicy.currentUser(), booking);
 
         List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(bookingId);
         List<BookingDetailResponse> detailResponses = details.stream()

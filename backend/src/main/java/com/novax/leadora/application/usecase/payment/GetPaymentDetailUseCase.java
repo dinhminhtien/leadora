@@ -19,11 +19,15 @@ import java.util.UUID;
 public class GetPaymentDetailUseCase {
 
     private final PaymentRepository paymentRepository;
+    private final PaymentAccessPolicy paymentAccessPolicy;
 
     @Transactional(readOnly = true)
     public PaymentResponse execute(UUID paymentId) {
-        PaymentEntity payment = paymentRepository.findById(paymentId)
+        PaymentEntity payment = paymentRepository.findByIdWithRelations(paymentId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment record not found."));
+
+        // Assert access control policies
+        paymentAccessPolicy.assertCanView(paymentAccessPolicy.currentUser(), payment);
 
         return PaymentResponse.from(payment);
     }

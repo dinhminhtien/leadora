@@ -16,6 +16,10 @@ import java.util.UUID;
 
 @Repository
 public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT q FROM QuotationEntity q WHERE q.quotationId = :id")
+    java.util.Optional<QuotationEntity> findByIdForUpdate(@Param("id") UUID id);
+
     List<QuotationEntity> findByDeal_DealId(UUID dealId);
     List<QuotationEntity> findByDeal_DealIdIn(List<UUID> dealIds);
     List<QuotationEntity> findByCustomer_CustomerId(UUID customerId);

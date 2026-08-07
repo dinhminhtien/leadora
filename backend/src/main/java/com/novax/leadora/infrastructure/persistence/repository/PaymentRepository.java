@@ -17,6 +17,17 @@ import java.util.UUID;
 
 @Repository
 public interface PaymentRepository extends JpaRepository<PaymentEntity, UUID>, JpaSpecificationExecutor<PaymentEntity> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM PaymentEntity p WHERE p.paymentId = :id")
+    java.util.Optional<PaymentEntity> findByIdForUpdate(@Param("id") UUID id);
+
+    @Query("SELECT p FROM PaymentEntity p LEFT JOIN FETCH p.booking b LEFT JOIN FETCH b.customer LEFT JOIN FETCH p.createdBy WHERE p.paymentId = :id")
+    java.util.Optional<PaymentEntity> findByIdWithRelations(@Param("id") UUID id);
+
+    @Override
+    @EntityGraph(attributePaths = {"booking", "booking.customer", "createdBy"})
+    org.springframework.data.domain.Page<PaymentEntity> findAll(org.springframework.data.jpa.domain.Specification<PaymentEntity> spec, org.springframework.data.domain.Pageable pageable);
+
     List<PaymentEntity> findByBooking_BookingId(UUID bookingId);
     List<PaymentEntity> findByBooking_BookingIdIn(List<UUID> bookingIds);
     boolean existsByBooking_BookingIdAndStatus(UUID bookingId, PaymentStatus status);

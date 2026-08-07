@@ -15,6 +15,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import java.util.UUID;
 
 /**
  * UC-21.2 — View Payment List Use Case.
@@ -24,6 +25,7 @@ import org.springframework.util.StringUtils;
 public class GetPaymentListUseCase {
 
     private final PaymentRepository paymentRepository;
+    private final PaymentAccessPolicy paymentAccessPolicy;
 
     @Transactional(readOnly = true)
     public Page<PaymentResponse> execute(String search, String status, String paymentType,
@@ -32,10 +34,13 @@ public class GetPaymentListUseCase {
         Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
 
+        com.novax.leadora.infrastructure.persistence.entity.UserEntity caller = paymentAccessPolicy.currentUser();
+        UUID ownerId = paymentAccessPolicy.listScopeOwnerId(caller);
+
         PaymentStatus statusFilter = parseStatus(status);
         PaymentType typeFilter = parseType(paymentType);
 
-        Specification<PaymentEntity> spec = PaymentSpecification.filterPayments(search, statusFilter, typeFilter);
+        Specification<PaymentEntity> spec = PaymentSpecification.filterPayments(search, statusFilter, typeFilter, ownerId);
         Page<PaymentEntity> payments = paymentRepository.findAll(spec, pageable);
 
         return payments.map(PaymentResponse::from);
