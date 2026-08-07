@@ -2,6 +2,8 @@
   "name": "leadora-web",
   "version": "0.1.0",
   "private": true,
+  "//packageManager": "Pinned deliberately. Vercel otherwise infers the pnpm major from pnpm-lock.yaml's `lockfileVersion: 9.0` and installs pnpm 9 — which reads pnpm-workspace.yaml as a workspace root, finds no `packages:` field, and aborts the build with `ERROR packages field missing or empty`. pnpm 10 and 11 read that file as settings instead. 11 is the pin because `allowBuilds` is pnpm 11 syntax; on 10 it would be ignored and sharp's build script would be skipped.",
+  "packageManager": "pnpm@11.20.0",
   "scripts": {
     "dev": "node --max-old-space-size=4096 node_modules/next/dist/bin/next dev",
     "build": "next build",
