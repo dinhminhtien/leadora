@@ -62,11 +62,20 @@ public class FirebaseConfig {
                 return;
             }
 
-            FirebaseOptions options = FirebaseOptions.builder()
-                    .setCredentials(credentials)
-                    .build();
+            FirebaseOptions.Builder optionsBuilder = FirebaseOptions.builder()
+                    .setCredentials(credentials);
 
-            FirebaseApp.initializeApp(options);
+            // Set project ID explicitly to support Application Default Credentials (ADC) on Cloud Run
+            String projectId = System.getenv("GOOGLE_CLOUD_PROJECT");
+            if (projectId == null || projectId.isEmpty()) {
+                projectId = System.getenv("GEMINI_PROJECT_ID");
+            }
+            if (projectId != null && !projectId.trim().isEmpty() && !"mock-project-id".equals(projectId)) {
+                optionsBuilder.setProjectId(projectId.trim());
+                log.info("Firebase Project ID set explicitly: {}", projectId.trim());
+            }
+
+            FirebaseApp.initializeApp(optionsBuilder.build());
             log.info("Firebase App initialized successfully.");
         } catch (IOException e) {
             log.error("Failed to initialize Firebase App due to IO exception", e);
