@@ -24,7 +24,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -44,22 +43,21 @@ public class CreateHandoverUseCase {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
+    private final HandoverEditPolicy handoverEditPolicy;
 
     @Transactional
     public ArrivalHandoverResponse execute(CreateHandoverRequest request, UserEntity actor) {
         BookingEntity booking = bookingRepository.findById(request.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", request.getBookingId()));
 
-        // BR-26 & E6-3.2: Check Guest Arrival Time
-        if (LocalDate.now().isAfter(booking.getCheckInDate())) {
-            throw new IllegalStateException("Cannot update past handovers.");
-        }
-
-        // BR-44: Booking is closed/cancelled/rejected
-        String bStatus = booking.getStatus() != null ? booking.getStatus().name() : "";
-        if (bStatus.equals("CANCELLED") || bStatus.equals("REJECTED") || bStatus.equals("CHECKED_OUT")) {
-            throw new IllegalStateException("Booking is cancelled or completed, cannot create operational handover.");
-        }
+        // BR-26 (arrival already happened) + BR-44 (booking no longer live), from the same policy
+        // the update path uses. `null` for the handover: one being created cannot be under
+        // clarification, so the exception that path allows cannot apply here.
+        //
+        // This replaced a blacklist of three status *names* compared as strings, which let NO_SHOW
+        // and PENDING through — a handover could be authored for a guest who never turned up, or
+        // for a booking Reservation had not confirmed.
+        handoverEditPolicy.assertAuthorable(booking, null);
 
         // Check if handover already exists
         List<OpHandoverEntity> existing = opHandoverRepository.findByBooking_BookingId(request.getBookingId());

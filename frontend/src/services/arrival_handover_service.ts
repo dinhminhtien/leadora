@@ -29,6 +29,50 @@ export function isBookingActive(bookingStatus?: string): boolean {
   return bookingStatus == null || ["CONFIRMED", "CHECKED_IN"].includes(bookingStatus);
 }
 
+/** Mirror of `BookingStatus.EDITABLE_BY_SALES` — narrower than {@link isBookingActive} on purpose. */
+const EDITABLE_BY_SALES = ["CONFIRMED"];
+
+/**
+ * Why Sales/Reservation may **not** author this handover right now, or `null` when they may.
+ *
+ * <p>Mirrors `HandoverEditPolicy.assertAuthorable` on the backend, which stays the authority — this
+ * exists so the user is told before filling a form in, not after saving it. Both gates, in the
+ * server's order:
+ *
+ * 1. the arrival date has passed (BR-26) — absolute, no exception;
+ * 2. the booking is not `CONFIRMED` (BR-44), unless the handover is answering a Front Office
+ *    clarification on a booking that is still live.
+ *
+ * Dates are compared as `YYYY-MM-DD` strings, which is what the API sends for a `LocalDate`.
+ * Parsing them with `new Date()` would read them as UTC midnight and, west of Greenwich, close the
+ * gate a day early — on the very day the desk is most likely to be correcting the sheet.
+ */
+export function handoverAuthoringBlockReason(subject: {
+  checkInDate?: string;
+  bookingStatus?: string;
+  readinessStatus?: string;
+}): string | null {
+  const { checkInDate, bookingStatus, readinessStatus } = subject;
+
+  // "sv-SE" is the terse way to get a local YYYY-MM-DD out of Intl.
+  const today = new Date().toLocaleDateString("sv-SE");
+  if (checkInDate && checkInDate < today) {
+    return `The arrival date (${checkInDate}) has passed.`;
+  }
+
+  if (!bookingStatus) return null;
+
+  const answeringClarification =
+    readinessStatus === "NEED_CLARIFICATION" && isBookingActive(bookingStatus);
+  if (!EDITABLE_BY_SALES.includes(bookingStatus) && !answeringClarification) {
+    return bookingStatus === "CHECKED_IN"
+      ? "The guest has already checked in."
+      : `This booking is ${bookingStatus}.`;
+  }
+
+  return null;
+}
+
 export type RoomLine = {
   productName?: string;
   roomNumber?: string;

@@ -11,7 +11,6 @@ import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
-import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.HandoverStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ReadinessStatus;
@@ -30,7 +29,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -50,6 +48,7 @@ public class UpdateHandoverUseCase {
     private final UserRepository userRepository;
     private final CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
     private final HandoverAccessPolicy handoverAccessPolicy;
+    private final HandoverEditPolicy handoverEditPolicy;
     private final ActivityLogPublisher activityLogPublisher;
     private final ObjectMapper objectMapper;
 
@@ -73,20 +72,9 @@ public class UpdateHandoverUseCase {
 
         BookingEntity booking = handover.getBooking();
 
-        // BR-26 & E6-3.2: Check Guest Arrival Time
-        if (booking != null && LocalDate.now().isAfter(booking.getCheckInDate())) {
-            throw new IllegalStateException("Cannot update past handovers.");
-        }
-
-        // BR-44: booking is closed / cancelled / rejected. Whitelist rather than blacklist so a
-        // BookingStatus added later is treated as "not editable" until somebody decides otherwise
-        // — the old list missed NO_SHOW and PENDING. Matches UPDATABLE_BOOKING_STATUSES on the
-        // Front Office side.
-        if (booking != null && !BookingStatus.LIVE_FOR_ARRIVAL.contains(booking.getStatus())) {
-            throw new IllegalStateException(
-                    "This booking is " + booking.getStatus()
-                            + ", so its operational handover can no longer be updated.");
-        }
+        // BR-26 (arrival already happened) + BR-44 (booking no longer live). Both live in
+        // HandoverEditPolicy so the create path cannot drift away from them again.
+        handoverEditPolicy.assertAuthorable(booking, handover);
 
         HandoverStatus newStatus;
         try {

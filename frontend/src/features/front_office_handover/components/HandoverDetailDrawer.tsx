@@ -36,12 +36,20 @@ export function HandoverDetailDrawer({
   handover,
   onOpenChange,
   actions = [],
+  fallbackNotice,
   children,
 }: {
   handover: ArrivalHandover | null;
   onOpenChange: (open: boolean) => void;
   /** Readiness transitions only — see BR-27 in the file header. */
   actions?: DetailActionSpec[];
+  /**
+   * Shown only when neither of this drawer's own notices applies — a caller's reason for a
+   * disabled action, which browsers refuse to surface through a disabled control's `title` and
+   * touch devices never show at all. The Sales-side screen uses it to say why editing is closed;
+   * the arrival desk passes nothing and keeps the two notices below.
+   */
+  fallbackNotice?: { tone: "info" | "warning" | "danger"; text: React.ReactNode };
   /** Readiness form, rendered above the read-only sections. */
   children?: React.ReactNode;
 }) {
@@ -83,7 +91,7 @@ export function HandoverDetailDrawer({
             // is the reason the arrival is blocked, so it leads.
             needsClarification && handover.clarificationNote
             ? { tone: "danger", text: handover.clarificationNote }
-            : undefined
+            : fallbackNotice
       }
       sections={[
         {

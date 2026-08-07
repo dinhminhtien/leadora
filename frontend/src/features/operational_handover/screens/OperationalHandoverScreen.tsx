@@ -15,7 +15,10 @@ import { toast } from "@/stores/toast_store";
 import { getApiErrorMessage } from "@/lib/api_error";
 import { operationalHandoverService, type OperationalHandoverPayload } from "@/services/operational_handover_service";
 import { bookingConfirmationService, type Booking } from "@/services/booking_confirmation_service";
-import { type ArrivalHandover } from "@/services/arrival_handover_service";
+import {
+  handoverAuthoringBlockReason,
+  type ArrivalHandover,
+} from "@/services/arrival_handover_service";
 import { HandoverDetailDrawer } from "@/features/front_office_handover/components/HandoverDetailDrawer";
 import { userService } from "@/services/user_service";
 import { useAuthStore } from "@/stores/auth_store";
@@ -86,6 +89,11 @@ export function OperationalHandoverScreen() {
 
   // Modal states
   const [selectedHandover, setSelectedHandover] = useState<ArrivalHandover | null>(null);
+  // Why the server would refuse an edit of the open handover (HandoverEditPolicy), or null. Read
+  // once so the button state and the notice explaining it cannot disagree.
+  const editBlockReason = selectedHandover
+    ? handoverAuthoringBlockReason(selectedHandover)
+    : null;
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [createHandoverBooking, setCreateHandoverBooking] = useState<Booking | null>(null);
   const [editHandover, setEditHandover] = useState<ArrivalHandover | null>(null);
@@ -707,6 +715,14 @@ export function OperationalHandoverScreen() {
       <HandoverDetailDrawer
         handover={selectedHandover}
         onOpenChange={(open) => !open && setSelectedHandover(null)}
+        // A disabled button's `title` is invisible in every browser and on every touch device, so
+        // the reason is stated in the drawer's notice slot as well — the same belt-and-braces the
+        // lead drawer uses for BR-05. Only when the drawer has no higher-priority notice of its own.
+        fallbackNotice={
+          selectedHandover && canWrite && editBlockReason
+            ? { tone: "warning", text: `${editBlockReason} This handover can no longer be edited.` }
+            : undefined
+        }
         actions={
           // A submitted handover is locked; only a draft or one Front Office
           // sent back for clarification may be edited (§12.13).
@@ -718,6 +734,14 @@ export function OperationalHandoverScreen() {
                   label: "Edit handover",
                   icon: Edit,
                   variant: "primary" as const,
+                  // The server refuses the save once the arrival has passed or the booking has
+                  // left CONFIRMED (HandoverEditPolicy). Say so on the button rather than after a
+                  // form has been filled in — and disable rather than hide, so the reason is
+                  // readable instead of the control simply being absent.
+                  disabled: !!editBlockReason,
+                  title: editBlockReason
+                    ? `${editBlockReason} This handover can no longer be edited.`
+                    : undefined,
                   onClick: () => {
                     const target = selectedHandover;
                     setSelectedHandover(null);
@@ -802,25 +826,47 @@ export function OperationalHandoverScreen() {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end px-6 py-4 border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 rounded-b-xl gap-3">
-              <Button
-                variant="ghost"
-                onClick={() => setSelectedBooking(null)}
-              >
-                Cancel
-              </Button>
-              {canWrite && (
-                <Button
-                  variant="primary"
-                  leftIcon={<Plus className="size-3.5" />}
-                  onClick={() => {
-                    setCreateHandoverBooking(selectedBooking);
-                    setSelectedBooking(null);
-                  }}
-                >
-                  Create Handover
-                </Button>
-              )}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 rounded-b-xl gap-3">
+              {/* Same gate as the Edit action, read against the booking rather than a handover:
+                  CreateHandoverUseCase runs the identical policy server-side. Stated in text
+                  because a disabled button's tooltip never appears. */}
+              {(() => {
+                const blockReason = canWrite
+                  ? handoverAuthoringBlockReason({
+                      checkInDate: selectedBooking.checkInDate,
+                      bookingStatus: selectedBooking.status,
+                    })
+                  : null;
+                return (
+                  <>
+                    <p className="text-[12px] text-warning">
+                      {blockReason ? `${blockReason} No handover can be created for it.` : ""}
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <Button
+                        variant="ghost"
+                        onClick={() => setSelectedBooking(null)}
+                      >
+                        Cancel
+                      </Button>
+                      {canWrite && (
+                        <Button
+                          variant="primary"
+                          leftIcon={<Plus className="size-3.5" />}
+                          disabled={!!blockReason}
+                          title={blockReason ?? undefined}
+                          onClick={() => {
+                            setCreateHandoverBooking(selectedBooking);
+                            setSelectedBooking(null);
+                          }}
+                        >
+                          Create Handover
+                        </Button>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>

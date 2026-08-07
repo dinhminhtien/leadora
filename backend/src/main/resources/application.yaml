@@ -185,6 +185,10 @@ sla:
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  # The property's business zone — "has the arrival date passed?" must be answered in the hotel's
+  # local time, not the JVM default (which is UTC inside a container: a UTC server would start
+  # refusing handover edits at 17:00 local on the arrival day itself).
+  time-zone: ${APP_TIME_ZONE:Asia/Ho_Chi_Minh}
   quotation:
     discount-threshold: ${QUOTATION_DISCOUNT_THRESHOLD:10}
   bank:

@@ -28,8 +28,31 @@ public enum BookingStatus {
     public static final Set<BookingStatus> LIVE_FOR_ARRIVAL =
             EnumSet.of(CONFIRMED, CHECKED_IN);
 
+    /**
+     * The states in which Sales/Reservation may still <em>author</em> the operational handover —
+     * create it, edit its notes, submit it (BR-26, BR-44).
+     *
+     * <p>Strictly narrower than {@link #LIVE_FOR_ARRIVAL}, and the difference is the point: once
+     * the guest is {@code CHECKED_IN} the arrival-preparation sheet is a historical record, so
+     * rewriting the special requests behind a guest who is already in the room falsifies it. Front
+     * Office still has to read that handover and move its readiness, which is why the two sets
+     * cannot be collapsed into one.
+     *
+     * <p>{@code PENDING} is excluded as well: nothing should be prepared for an arrival Reservation
+     * has not confirmed yet.
+     *
+     * <p>A whitelist for the same reason as {@link #LIVE_FOR_ARRIVAL} — a status added later is
+     * refused until somebody decides it belongs.
+     */
+    public static final Set<BookingStatus> EDITABLE_BY_SALES = EnumSet.of(CONFIRMED);
+
     /** @see #LIVE_FOR_ARRIVAL */
     public boolean isLiveForArrival() {
         return LIVE_FOR_ARRIVAL.contains(this);
+    }
+
+    /** @see #EDITABLE_BY_SALES */
+    public boolean isEditableBySales() {
+        return EDITABLE_BY_SALES.contains(this);
     }
 }
