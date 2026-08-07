@@ -38,6 +38,8 @@ import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/quotation/presentation/screens/quotation_form_screen.dart';
 import '../../features/quotation/presentation/screens/quotation_detail_screen.dart';
 import '../../features/quotation/presentation/screens/quotation_list_screen.dart';
+import '../../features/quotation/presentation/screens/quotation_pending_approvals_screen.dart';
+import '../../features/reminder/presentation/screens/reminder_form_screen.dart';
 import '../../features/reminder/presentation/screens/reminder_list_screen.dart';
 import '../../features/sla/presentation/screens/sla_list_screen.dart';
 import '../../features/task/data/task_models.dart';
@@ -111,6 +113,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           mode: QuotationFormMode.create,
           initialDealId: state.uri.queryParameters['dealId'],
         ),
+      ),
+      // Also registered BEFORE the `:id` route — "pending-approvals" would otherwise
+      // be swallowed as a quotation id (same trap as quotationCreate above).
+      GoRoute(
+        path: Routes.quotationPendingApprovals,
+        name: RouteNames.quotationPendingApprovals,
+        builder: (_, _) => const QuotationPendingApprovalsScreen(),
       ),
       GoRoute(
         path: Routes.quotationDetail,
@@ -210,6 +219,22 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => ReminderListScreen(
           highlightId: state.uri.queryParameters['highlight'],
         ),
+        routes: [
+          // Declared with a distinct literal segment (`new`) from
+          // `edit/:id` below, so the two can never collide — same trap
+          // noted for deals/quotations.
+          GoRoute(
+            path: Routes.reminderCreateSub,
+            name: RouteNames.reminderCreate,
+            builder: (_, _) =>
+                const ReminderFormScreen(mode: ReminderFormMode.create),
+          ),
+          GoRoute(
+            path: Routes.reminderEditSub,
+            name: RouteNames.reminderEdit,
+            builder: (_, state) => ReminderEditGuard(extra: state.extra),
+          ),
+        ],
       ),
 
       // Customer profiles — full-screen browse (no dedicated tab), reached from

@@ -22,6 +22,11 @@ class ApiPaths {
   // --- Reporting / dashboard (ReportingController) ---
   static const String dashboardSummary = '/reporting/dashboard-summary';
 
+  /// UC-14.2 Generate Reports — audit log for the quotation discount report a rep
+  /// generates from the quotation list (filtering is client-side; this just records
+  /// that it happened). Open to SALES/MANAGER/ADMIN on the backend.
+  static const String reportingLogs = '/reporting/logs';
+
   // --- Users (UserController) — flat assignee directory ---
   static const String users = '/users';
 
@@ -83,8 +88,8 @@ class ApiPaths {
 
   // --- Room availability requests (RoomRequestController) ---
   // This CRM owns no room inventory: Sales asks, the Reservation team answers from the
-  // hotel's real PMS. Sending a quotation and converting it to a booking are both gated
-  // on a confirmed answer.
+  // hotel's real PMS. The answer is shown to the rep as context (RoomConfirmationCard)
+  // but does not gate Send or Convert — neither endpoint checks it server-side.
   static const String roomRequests = '/room-requests';
   static String roomRequestsByQuotation(String quotationId) =>
       '/room-requests/by-quotation/$quotationId';
@@ -118,9 +123,12 @@ class ApiPaths {
 
   // --- SLA (SlaController) ---
   static const String slaMonitoring = '/sla/monitoring';
+  static String slaTrackingResolve(String trackingId) =>
+      '/sla/tracking/$trackingId/resolve';
 
   // --- Reminders (ReminderController) ---
   static const String reminders = '/reminders';
+  static String reminderById(String id) => '/reminders/$id';
   static String reminderDismiss(String id) => '/reminders/$id/dismiss';
 
   // --- Product & service catalogue (ProductServiceController) ---
