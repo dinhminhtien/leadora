@@ -6,6 +6,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -16,6 +17,12 @@ class DealMapperTest {
     @BeforeEach
     void setUp() {
         dealMapper = new DealMapper();
+        ReflectionTestUtils.setField(dealMapper, "inquiryProbability", 10);
+        ReflectionTestUtils.setField(dealMapper, "qualificationProbability", 30);
+        ReflectionTestUtils.setField(dealMapper, "quotationSentProbability", 50);
+        ReflectionTestUtils.setField(dealMapper, "negotiationProbability", 70);
+        ReflectionTestUtils.setField(dealMapper, "pendingConfirmationProbability", 80);
+        ReflectionTestUtils.setField(dealMapper, "bookingConfirmedProbability", 90);
     }
 
     @Test

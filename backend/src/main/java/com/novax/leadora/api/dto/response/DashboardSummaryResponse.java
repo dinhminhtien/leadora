@@ -39,6 +39,18 @@ public class DashboardSummaryResponse {
     // ── Leaderboard ───────────────────────────────────────────────────────────
     private List<LeaderboardEntry> leaderboard;
 
+    // ── Monthly Forecasts ─────────────────────────────────────────────────────
+    private List<MonthlyForecast> monthlyForecasts;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class MonthlyForecast {
+        private String month;
+        private BigDecimal value;
+    }
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
