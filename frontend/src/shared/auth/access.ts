@@ -60,13 +60,23 @@ const ADMIN_ROUTES: string[] = [
 // Front Office: a simple, focused desk — arrival handovers + their alerts only.
 const FO_ROUTES: string[] = [
   ROUTE_PATHS.frontOfficeHandover,
+  ROUTE_PATHS.depositPayment,
   ROUTE_PATHS.notifications,
 ];
 
-// Reservation: answer room requests, then confirm/reject the bookings that follow.
+// Reservation: answer room requests, confirm the bookings that follow, then keep the reservation
+// and its handover current through to check-in.
+//
+// `reservationStatus` and `operationalHandover` were missing, and the omission was invisible from
+// this file: the desk is granted RESERVATION_* and HANDOVER_* by the seed, and the backend names
+// RESERVATION in both controllers' @PreAuthorize lists — so the API answered while no route would
+// open. SRS §2.2.2 assigns UC-19.x and UC-20.x to Reservation Staff and rbac-matrix §2 lists both
+// rows under RS, which is why the fix is to restore the screens rather than revoke the permissions.
 const RESERVATION_ROUTES: string[] = [
   ROUTE_PATHS.roomRequests,
   ROUTE_PATHS.bookingConfirmation,
+  ROUTE_PATHS.reservationStatus,
+  ROUTE_PATHS.operationalHandover,
   ROUTE_PATHS.depositPayment,
   ROUTE_PATHS.notifications,
 ];
@@ -189,16 +199,19 @@ export function canAccessPath(
   if (required === "ROOM_REQUEST_VIEW") return false;
   // Two different screens map to HANDOVER_VIEW, so the permission alone cannot tell them apart:
   // `/operational-handover` (Sales/Reservation author the handover) and `/front-office-handover`
-  // (the arrival desk). The arrival desk is Front Office's surface — rbac-matrix §2 lists it
-  // under FO only, and the backend gates /api/v1/arrival-handovers on
-  // hasAnyRole('FO','FRONT_OFFICE','MANAGER','ADMIN').
+  // (the arrival desk). The arrival desk belongs to Front Office **alone** — rbac-matrix §2 puts
+  // the "Arrival Handover / Arrival Handover Detail (view, update readiness)" row under the FO
+  // column only, and the backend now gates /api/v1/arrival-handovers on hasAnyRole('FO',
+  // 'FRONT_OFFICE') to match.
   //
-  // Sales holds HANDOVER_VIEW for its own screen and so reached this one too, where every
-  // request 403'd. Worse, the desk rendered those 403s as "No arrival requests yet" — a Sales
-  // user saw an empty front desk rather than a refusal. A Manager supervises the desk and stays
-  // allowed; Front Office itself never reaches here (it returns above, via FO_ROUTES).
+  // Sales holds HANDOVER_VIEW for its own screen and so used to reach this one too, where every
+  // request 403'd — and the desk rendered those 403s as "No arrival requests yet", so a Sales user
+  // saw an empty front desk rather than a refusal. Manager was allowed here as a supervisor, which
+  // the matrix does not grant: UC-22.1/22.2/22.3 are Front Office duties, and Manager oversight of
+  // arrivals is served by the handover log on `/operational-handover`. Front Office itself never
+  // reaches this line — it returns above, via FO_ROUTES.
   if (matchesAny([ROUTE_PATHS.frontOfficeHandover], pathname)) {
-    return role === "MANAGER";
+    return false;
   }
   return required != null && permissions.includes(required);
 }

@@ -17,7 +17,9 @@ import { operationalHandoverService, type OperationalHandoverPayload } from "@/s
 import { bookingConfirmationService, type Booking } from "@/services/booking_confirmation_service";
 import { type ArrivalHandover } from "@/services/arrival_handover_service";
 import { HandoverDetailDrawer } from "@/features/front_office_handover/components/HandoverDetailDrawer";
-import { userService } from "@/services/follow_up_task_service";
+import { userService } from "@/services/user_service";
+import { useAuthStore } from "@/stores/auth_store";
+import { getUserRole } from "@/shared/auth/access";
 
 const handoverSchema = z.object({
   specialRequests: z.string().optional(),
@@ -58,6 +60,10 @@ const handoverSchema = z.object({
 type HandoverFormData = z.infer<typeof handoverSchema>;
 
 export function OperationalHandoverScreen() {
+  const { user } = useAuthStore();
+  const userRole = getUserRole(user);
+  const canWrite = user?.permissions?.includes("HANDOVER_WRITE") ?? false;
+
   const [activeTab, setActiveTab] = useState<"logs" | "pending">("logs");
   
   // Handover Logs tab states
@@ -110,7 +116,7 @@ export function OperationalHandoverScreen() {
 
   // Fetch FO Users list once
   useEffect(() => {
-    userService.getAll()
+    userService.getSummariesByRole("FO")
       .then(res => {
         if (res.data) {
           setFoUsers(res.data.map(u => ({ userId: u.userId, fullName: u.fullName })));
@@ -198,7 +204,7 @@ export function OperationalHandoverScreen() {
         roomPreferences: editHandover.roomPreferences || "",
         vipNotes: editHandover.vipNotes || "",
         operationalNotes: editHandover.operationalNotes || "",
-        assignedFoUserId: "",
+        assignedFoUserId: editHandover.assignedFoUserId || "",
         status: (editHandover.status === "SUBMITTED" || editHandover.status === "ACKNOWLEDGED" || editHandover.status === "READY") ? "SUBMITTED" : "DRAFT",
       });
     } else if (createHandoverBooking) {
@@ -282,14 +288,16 @@ export function OperationalHandoverScreen() {
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "logs" | "pending")}>
         <TabsList className="border-b border-slate-200 dark:border-zinc-800 w-full mb-4">
           <TabsTrigger value="logs">Handover Logs</TabsTrigger>
-          <TabsTrigger value="pending" className="relative">
-            Pending Bookings
-            {bookings.length > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold">
-                {bookings.length}
-              </span>
-            )}
-          </TabsTrigger>
+          {canWrite && (
+            <TabsTrigger value="pending" className="relative">
+              Pending Bookings
+              {bookings.length > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                  {bookings.length}
+                </span>
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* ==================== TAB CONTENT: Handover Logs ==================== */}
@@ -430,7 +438,8 @@ export function OperationalHandoverScreen() {
         </TabsContent>
 
         {/* ==================== TAB CONTENT: Pending Bookings ==================== */}
-        <TabsContent value="pending" className="space-y-4">
+        {canWrite && (
+          <TabsContent value="pending" className="space-y-4">
           <Card className="border-slate-100 dark:border-zinc-800 shadow-sm bg-white dark:bg-zinc-900">
             <CardContent className="py-3 px-4 flex flex-row items-center justify-between gap-4 flex-wrap lg:flex-nowrap w-full">
               <div className="relative w-full lg:w-72 shrink-0">
@@ -541,6 +550,7 @@ export function OperationalHandoverScreen() {
             </div>
           )}
         </TabsContent>
+        )}
       </Tabs>
 
       {/* ==================== MODAL: Create / Edit Handover Form ==================== */}
@@ -635,13 +645,13 @@ export function OperationalHandoverScreen() {
                 </label>
                 <select
                   {...register("assignedFoUserId")}
-                  className={`w-full p-2.5 text-xs rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-850 dark:text-zinc-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-zinc-900 transition ${
-                    assignedFoUserVal! ? "text-slate-450 opacity-60 dark:text-zinc-500" : "text-slate-800 dark:text-zinc-100 font-medium"
+                  className={`w-full p-2.5 text-xs rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-zinc-900 transition ${
+                    !assignedFoUserVal ? "text-slate-400 dark:text-zinc-500" : "text-slate-800 dark:text-zinc-100 font-medium"
                   }`}
                 >
-                  <option value="" className="text-slate-400 opacity-65">Select FO staff</option>
+                  <option value="" className="text-slate-400 opacity-65">Select FO Staff</option>
                   {foUsers.map(u => (
-                    <option key={u.userId} value={u.userId} className="text-slate-800 dark:text-zinc-100 font-medium bg-white dark:bg-zinc-900">
+                    <option key={u.userId} value={u.userId} className="text-slate-850 dark:text-zinc-100 font-medium bg-white dark:bg-zinc-900">
                       {u.fullName}
                     </option>
                   ))}
@@ -700,7 +710,7 @@ export function OperationalHandoverScreen() {
         actions={
           // A submitted handover is locked; only a draft or one Front Office
           // sent back for clarification may be edited (§12.13).
-          selectedHandover &&
+          selectedHandover && canWrite &&
           (selectedHandover.status === "DRAFT" ||
             selectedHandover.readinessStatus === "NEED_CLARIFICATION")
             ? [
@@ -799,16 +809,18 @@ export function OperationalHandoverScreen() {
               >
                 Cancel
               </Button>
-              <Button
-                variant="primary"
-                leftIcon={<Plus className="size-3.5" />}
-                onClick={() => {
-                  setCreateHandoverBooking(selectedBooking);
-                  setSelectedBooking(null);
-                }}
-              >
-                Create Handover
-              </Button>
+              {canWrite && (
+                <Button
+                  variant="primary"
+                  leftIcon={<Plus className="size-3.5" />}
+                  onClick={() => {
+                    setCreateHandoverBooking(selectedBooking);
+                    setSelectedBooking(null);
+                  }}
+                >
+                  Create Handover
+                </Button>
+              )}
             </div>
           </div>
         </div>

@@ -3,12 +3,9 @@ package com.novax.leadora.infrastructure.persistence.repository;
 import com.novax.leadora.application.usecase.chat.dto.RepLeadCount;
 import com.novax.leadora.infrastructure.persistence.entity.LeadEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
-import com.novax.leadora.infrastructure.persistence.specification.LeadSpecification;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -73,19 +70,30 @@ public interface LeadRepository
          */
         default Page<LeadEntity> searchLeadsByStatusPriority(
                         Specification<LeadEntity> spec, Pageable pageable) {
-                List<LeadEntity> all = findAll(spec, Sort.unsorted());
-
-                List<LeadEntity> sorted = all.stream()
-                                .sorted(LeadSpecification.STATUS_PRIORITY_COMPARATOR)
-                                .toList();
-
-                int total = sorted.size();
-                int offset = (int) pageable.getOffset();
-                int size = pageable.getPageSize();
-                return new PageImpl<>(
-                                sorted.subList(Math.min(offset, total), Math.min(offset + size, total)),
-                                pageable,
-                                total);
+                Specification<LeadEntity> orderedSpec = (root, query, cb) -> {
+                        if (query.getResultType() != Long.class) {
+                                query.orderBy(
+                                                cb.desc(
+                                                                cb.selectCase()
+                                                                                .when(cb.equal(root.get("status"),
+                                                                                                LeadStatus.QUALIFIED),
+                                                                                                4)
+                                                                                .when(cb.equal(root.get("status"),
+                                                                                                LeadStatus.CONTACTED),
+                                                                                                3)
+                                                                                .when(cb.equal(root.get("status"),
+                                                                                                LeadStatus.NEW), 2)
+                                                                                .when(cb.equal(root.get("status"),
+                                                                                                LeadStatus.CONVERTED),
+                                                                                                1)
+                                                                                .when(cb.equal(root.get("status"),
+                                                                                                LeadStatus.LOST), 0)
+                                                                                .otherwise(0)),
+                                                cb.desc(root.get("createdAt")));
+                        }
+                        return spec.toPredicate(root, query, cb);
+                };
+                return findAll(orderedSpec, pageable);
         }
 
         // ── Duplicate detection (UC-8.1) ──────────────────────────────────────────
@@ -123,8 +131,10 @@ public interface LeadRepository
                         @Param("end") OffsetDateTime end);
 
         /**
-         * {@code [ownerId, ownerName, count]} rows. LEFT JOIN so unassigned leads survive as a
-         * null-owner group: dropping them is what makes a per-rep table stop reconciling with the
+         * {@code [ownerId, ownerName, count]} rows. LEFT JOIN so unassigned leads
+         * survive as a
+         * null-owner group: dropping them is what makes a per-rep table stop
+         * reconciling with the
          * headline total.
          */
         @Query("""
@@ -171,4 +181,7 @@ public interface LeadRepository
                         ORDER BY COUNT(l) DESC
                         """)
         List<RepLeadCount> countPerAssignee(Pageable pageable);
+
+        @Query("SELECT l.leadId FROM LeadEntity l WHERE l.assignedUser.userId = :userId")
+        List<UUID> findLeadIdsByAssignedUser_UserId(@Param("userId") UUID userId);
 }

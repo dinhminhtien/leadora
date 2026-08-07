@@ -6,6 +6,7 @@ import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationClosureLogRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,9 @@ class QuotationIntegrationTest {
 
     @Mock
     private QuotationClosureLogRepository closureLogRepository;
+
+    @Mock
+    private ResolveSlaBreachUseCase resolveSlaBreachUseCase;
 
     @InjectMocks
     private ExpireOverdueQuotationsUseCase expireUseCase;

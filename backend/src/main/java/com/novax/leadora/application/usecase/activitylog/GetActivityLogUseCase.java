@@ -6,6 +6,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType
 import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.RecordOperation;
 import com.novax.leadora.infrastructure.persistence.repository.ActivityLogRepository;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -55,11 +56,16 @@ public class GetActivityLogUseCase {
         return (root, criteriaQuery, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
+            // Fetch join actorUser if we are not executing a count query to avoid LazyInitializationException
+            if (criteriaQuery.getResultType() != Long.class && criteriaQuery.getResultType() != long.class) {
+                root.fetch("actorUser", JoinType.LEFT);
+            }
+
             // 1. Keyword search (summary or reason)
             if (query.getKeyword() != null && !query.getKeyword().isBlank()) {
                 String match = "%" + query.getKeyword().toLowerCase() + "%";
                 Predicate summaryMatch = cb.like(cb.lower(root.get("summary")), match);
-                Predicate reasonMatch = cb.like(cb.lower(cb.coalesce(root.get("reason"), "")), match);
+                Predicate reasonMatch = cb.like(cb.lower(root.get("reason")), match);
                 predicates.add(cb.or(summaryMatch, reasonMatch));
             }
 
@@ -103,17 +109,17 @@ public class GetActivityLogUseCase {
                 Predicate notVoided = cb.notEqual(root.get("recordOperation"), RecordOperation.VOIDED);
 
                 // Exclude records that have been referenced by any VOIDED or CORRECTED record
-                Subquery<UUID> subquery = criteriaQuery.subquery(UUID.class);
+                Subquery<Integer> subquery = criteriaQuery.subquery(Integer.class);
                 Root<ActivityLogEntity> subRoot = subquery.from(ActivityLogEntity.class);
-                subquery.select(subRoot.get("refActivityId"));
+                subquery.select(cb.literal(1));
                 subquery.where(
                         cb.and(
-                                cb.isNotNull(subRoot.get("refActivityId")),
+                                cb.equal(subRoot.get("refActivityId"), root.get("id")),
                                 subRoot.get("recordOperation").in(RecordOperation.VOIDED, RecordOperation.CORRECTED)
                         )
                 );
 
-                Predicate notReferencedAsModified = cb.not(root.get("id").in(subquery));
+                Predicate notReferencedAsModified = cb.not(cb.exists(subquery));
                 predicates.add(cb.and(notVoided, notReferencedAsModified));
             }
 

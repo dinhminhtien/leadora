@@ -54,8 +54,7 @@ public class GetTaskPerformanceReportUseCase {
      * @param actor the authenticated caller — determines whether the report is team-wide or own-only
      */
     @Cacheable(value = "task-performance-report",
-            key = "T(com.novax.leadora.application.usecase.reporting.GetTaskPerformanceReportUseCase)"
-                    + ".scopeKey(#actor) + '_' + #from + '_' + #to",
+            key = "#actor.userId + '_' + #from + '_' + #to",
             unless = "#result == null")
     @Transactional(readOnly = true)
     @SuppressWarnings("null")
