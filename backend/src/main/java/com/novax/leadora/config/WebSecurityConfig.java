@@ -213,7 +213,8 @@ public class WebSecurityConfig {
                 "http://localhost:*",
                 "http://127.0.0.1:*",
                 "https://*.vercel.app",
-                "https://www.leadora.id.vn"));
+                "https://www.leadora.id.vn",
+                "https://leadora.id.vn"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-User-Id"));
         configuration.setExposedHeaders(List.of("Authorization"));
