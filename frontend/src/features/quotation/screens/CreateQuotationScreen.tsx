@@ -76,6 +76,20 @@ export function CreateQuotationScreen() {
    */
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
 
+  /**
+   * The deal's expected revenue, held as the **total** the quotation should come to.
+   *
+   * `Deal Value` and `Price/Night` are not the same unit — the first is the whole deal's
+   * expected revenue (it is what the pipeline sums into its revenue figures), the second
+   * is one room for one night. So the deal's figure is not copied into the rate; the rate
+   * is divided back out of it, and re-divided whenever the stay changes, so the quotation
+   * keeps totalling the amount the deal was forecast at.
+   *
+   * Null once the rep types a rate of their own — at that point they have overridden the
+   * forecast deliberately and the form must stop pulling it back.
+   */
+  const [priceAnchor, setPriceAnchor] = useState<number | null>(null);
+
   const {
     register,
     handleSubmit,
@@ -131,6 +145,37 @@ export function CreateQuotationScreen() {
     });
   }, [dealId, allQuotes, reset]);
 
+  /**
+   * Keeps the rate consistent with the deal's expected revenue: every time the stay
+   * changes (nights or rooms), the rate is re-derived so `rate x nights x rooms` still
+   * comes to the deal's value. Changing 2 rooms to 3 halves-and-a-bit the rate rather
+   * than inflating the quotation by 50%.
+   *
+   * Runs after the seed-from-history effect above on purpose. That one restores the rate
+   * from the previous quotation; this one overwrites it, because the deal's current
+   * forecast is the more recent statement of what the customer is worth.
+   *
+   * Rounded to whole dong — VND has no minor unit — so the total can land a few dong off
+   * the deal value on awkward divisions. The Price Summary shows the real computed total,
+   * never the anchor, so what the rep sees is what will be saved.
+   */
+  useEffect(() => {
+    if (priceAnchor == null) return;
+    const rooms = Number(numberOfRooms) || 0;
+    const inDate = checkInDate ? new Date(checkInDate) : null;
+    const outDate = checkOutDate ? new Date(checkOutDate) : null;
+    const nights =
+      inDate && outDate && outDate > inDate
+        ? Math.floor((outDate.getTime() - inDate.getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
+    // Nothing to divide by until the stay is described; leave whatever is in the field.
+    if (nights <= 0 || rooms <= 0) return;
+    const rate = Math.round(priceAnchor / (nights * rooms));
+    // Guard the write, otherwise setting the field re-runs this effect forever.
+    if ((Number(pricePerNight) || 0) === rate) return;
+    setValue("pricePerNight", rate, { shouldValidate: true, shouldDirty: true });
+  }, [priceAnchor, checkInDate, checkOutDate, numberOfRooms, pricePerNight, setValue]);
+
   const pricing = useMemo(() => {
     const inDate = checkInDate ? new Date(checkInDate) : null;
     const outDate = checkOutDate ? new Date(checkOutDate) : null;
@@ -148,6 +193,9 @@ export function CreateQuotationScreen() {
   }, [checkInDate, checkOutDate, numberOfRooms, pricePerNight, discountPercent]);
 
   const requiresApproval = (discountPercent || 0) > 10;
+
+  /** Held in a variable so the anchor-release handler can chain the form's own onChange. */
+  const priceField = register("pricePerNight");
 
   const onSubmit = async (data: FormValues) => {
     await createQuotation.mutateAsync({
@@ -222,6 +270,10 @@ export function CreateQuotationScreen() {
                         shouldValidate: true,
                         shouldDirty: true,
                       });
+                      // A deal with no forecast revenue anchors nothing — leave the rate
+                      // to the rep rather than driving it to zero.
+                      const value = Number(deal?.value) || 0;
+                      setPriceAnchor(value > 0 ? value : null);
                     }}
                     error={errors.dealId?.message}
                   />
@@ -314,13 +366,31 @@ export function CreateQuotationScreen() {
                 <div>
                   <FieldLabel required>Price Per Night / Unit (VND)</FieldLabel>
                   <Input
-                    {...register("pricePerNight")}
+                    {...priceField}
+                    onChange={(e) => {
+                      // Typing a rate is an explicit override of the deal's forecast.
+                      // Release the anchor so the stay can be edited afterwards without
+                      // the figure being pulled back. `setValue` from the anchor effect
+                      // is programmatic and never reaches here, so it cannot self-clear.
+                      setPriceAnchor(null);
+                      void priceField.onChange(e);
+                    }}
                     type="text"
                     inputMode="numeric"
                     numericOnly
                     placeholder="0"
                     error={errors.pricePerNight?.message}
                   />
+                  {priceAnchor !== null && (
+                    <p className="mt-1 flex items-start gap-1 text-[10px] font-semibold text-slate-500">
+                      <Calculator className="mt-px size-3 shrink-0" />
+                      <span>
+                        Derived from the deal value of{" "}
+                        {priceAnchor.toLocaleString("vi-VN")} ₫ — it re-divides when you
+                        change nights or rooms. Type a rate to override.
+                      </span>
+                    </p>
+                  )}
                 </div>
                 <div>
                   <FieldLabel>Discount (%)</FieldLabel>

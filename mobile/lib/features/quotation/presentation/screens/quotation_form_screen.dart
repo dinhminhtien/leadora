@@ -127,6 +127,11 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
   /// itself has not been fetched; the picker field falls back to `dealDetailProvider`.
   Deal? _selectedDeal;
 
+  /// The picked deal's expected revenue, held as the **total** this quotation should come
+  /// to. Null when no deal is picked, when its forecast is zero, or once the rep types a
+  /// rate of their own. See [_applyPriceAnchor].
+  double? _priceAnchor;
+
   String? _roomType;
   String _paymentPolicy = 'full_upfront';
   DateTime? _checkIn;
@@ -158,6 +163,10 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
         // Best-effort: this deal may already have an earlier quotation — seed the same
         // fields from it once the list resolves. See _prefillFromDealHistory.
         _prefillFromDealHistory(_dealId!);
+        // Opened from a deal's workspace, so only the id is known. Resolve the deal to
+        // get its value, otherwise the rate would be anchored when the rep picks a deal
+        // in the form but not when they arrive with one already chosen.
+        _anchorFromDealId(_dealId!);
       }
     }
 
@@ -220,6 +229,10 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     setState(() {
       _applyTemplateValues(forDeal.first);
       _normalizeDates();
+      // Deliberately last: the template just restored the rate from the previous
+      // quotation, and the deal's current forecast overrides it — that forecast is the
+      // more recent statement of what this customer is worth.
+      _applyPriceAnchor();
     });
   }
 
@@ -258,7 +271,61 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
       firstDate: first,
       lastDate: DateTime(DateTime.now().year + 3),
     );
-    if (picked != null) setState(() => onPicked(picked));
+    if (picked != null) {
+      setState(() {
+        onPicked(picked);
+        // The stay just changed, so the rate derived from the deal's value no longer
+        // divides out to it. Covers both date fields in one place.
+        _applyPriceAnchor();
+      });
+    }
+  }
+
+  /// Fetches the deal behind [widget.initialDealId] so its value can anchor the rate.
+  ///
+  /// Best-effort and silent on failure: an unreachable deal lookup must not stop the rep
+  /// writing a quotation, it just means they type the rate themselves. Bails if the
+  /// selection moved on while the request was in flight.
+  Future<void> _anchorFromDealId(String dealId) async {
+    final Deal deal;
+    try {
+      deal = await ref.read(dealDetailProvider(dealId).future);
+    } catch (_) {
+      return;
+    }
+    if (!mounted || _dealId != dealId) return;
+    final value = deal.value ?? 0;
+    setState(() {
+      _selectedDeal = deal;
+      if (value > 0) {
+        _priceAnchor = value;
+        _applyPriceAnchor();
+      }
+    });
+  }
+
+  /// Re-derives the nightly rate from the deal's expected revenue.
+  ///
+  /// `Deal Value` is the whole deal's forecast revenue — what the pipeline sums into its
+  /// totals — while `Price per night` is one room for one night. They are not the same
+  /// unit, so the deal's figure is never copied into the rate; the rate is divided back
+  /// out of it. Re-run whenever the stay changes, so raising the room count lowers the
+  /// rate instead of inflating the quotation.
+  ///
+  /// No-ops once [_priceAnchor] is null — the rep has typed a rate of their own and the
+  /// form must stop pulling it back. Also no-ops until the stay is described, since there
+  /// is nothing to divide by.
+  ///
+  /// Caller is responsible for `setState`; this only mutates the controller.
+  void _applyPriceAnchor() {
+    final anchor = _priceAnchor;
+    if (anchor == null) return;
+    final nights = _nights;
+    final rooms = _roomCount;
+    if (nights <= 0 || rooms <= 0) return;
+    // Whole dong — VND has no minor unit — so an awkward division can leave the total a
+    // few dong off the deal value. The live total below always shows the real figure.
+    _pricePerNight.text = _plain((anchor / (nights * rooms)).roundToDouble());
   }
 
   String? _validateRooms(String? v) {
@@ -493,6 +560,11 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     setState(() {
       _dealId = picked.id;
       _selectedDeal = picked;
+      // A deal with no forecast revenue anchors nothing — leave the rate to the rep
+      // rather than driving it to zero.
+      final value = picked.value ?? 0;
+      _priceAnchor = value > 0 ? value : null;
+      _applyPriceAnchor();
     });
     _prefillFromDealHistory(picked.id);
   }
@@ -559,7 +631,9 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
                         prefixIcon: Icon(Icons.meeting_room_outlined),
                       ),
                       validator: _validateRooms,
-                      onChanged: (_) => setState(() {}),
+                      // Re-divide: more rooms at the same forecast means a lower rate,
+                      // not a bigger quotation.
+                      onChanged: (_) => setState(_applyPriceAnchor),
                     ),
                   ],
                 ),
@@ -575,12 +649,21 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
                       controller: _pricePerNight,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Price per night (VND) *',
-                        prefixIcon: Icon(Icons.attach_money_rounded),
+                        prefixIcon: const Icon(Icons.attach_money_rounded),
+                        helperText: _priceAnchor == null
+                            ? null
+                            : 'Derived from the deal value of '
+                                  '${Formatters.money(_priceAnchor)} — it re-divides when '
+                                  'you change nights or rooms. Type a rate to override.',
+                        helperMaxLines: 3,
                       ),
                       validator: _validatePrice,
-                      onChanged: (_) => setState(() {}),
+                      // Typing a rate is an explicit override of the deal's forecast, so
+                      // release the anchor. `_applyPriceAnchor` writes the controller
+                      // directly and never fires this, so it cannot self-clear.
+                      onChanged: (_) => setState(() => _priceAnchor = null),
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     TextFormField(
