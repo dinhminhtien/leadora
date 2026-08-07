@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -194,6 +195,35 @@ public class GetDashboardSummaryUseCase {
             );
         }
 
+        List<DashboardSummaryResponse.MonthlyForecast> monthlyForecasts = new ArrayList<>();
+        java.time.format.DateTimeFormatter monthFormatter = java.time.format.DateTimeFormatter.ofPattern("MMM", Locale.US);
+        LocalDate currentDate = LocalDate.now();
+        for (int i = 5; i >= 0; i--) {
+            LocalDate targetDate = currentDate.minusMonths(i);
+            int year = targetDate.getYear();
+            int monthValue = targetDate.getMonthValue();
+            String monthName = targetDate.format(monthFormatter);
+            if (i == 0) {
+                monthName = monthName + " (Current)";
+            }
+
+            BigDecimal monthWeightedValue = allDeals.stream()
+                    .filter(d -> d.getExpectedCloseDate() != null 
+                            && d.getExpectedCloseDate().getYear() == year 
+                            && d.getExpectedCloseDate().getMonthValue() == monthValue)
+                    .map(d -> {
+                        BigDecimal value = d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO;
+                        int prob = dealMapper.calculateProbability(d.getPipelineStage(), d.getStatus());
+                        return value.multiply(BigDecimal.valueOf(prob)).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    })
+                    .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
+
+            monthlyForecasts.add(DashboardSummaryResponse.MonthlyForecast.builder()
+                    .month(monthName)
+                    .value(monthWeightedValue)
+                    .build());
+        }
+
         return DashboardSummaryResponse.builder()
                 .activeLeadsCount(activeLeads)
                 .totalLeadsCount(totalLeads)
@@ -212,6 +242,7 @@ public class GetDashboardSummaryUseCase {
                 .winRateBenchmarkLabel(winRateBenchmarkLabel)
                 .funnelStages(funnelStages)
                 .leaderboard(leaderboard)
+                .monthlyForecasts(monthlyForecasts)
                 .build();
     }
 

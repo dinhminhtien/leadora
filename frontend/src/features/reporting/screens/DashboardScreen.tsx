@@ -121,6 +121,36 @@ export function DashboardScreen() {
   const totalDealsValue = summary?.totalDealsValue ?? 0;
   const weightedPipelineValue = summary?.weightedPipelineValue ?? 0;
 
+  const monthlyForecasts = React.useMemo(() => {
+    return summary?.monthlyForecasts ?? [
+      { month: "Jan", value: 0 },
+      { month: "Feb", value: 0 },
+      { month: "Mar", value: 0 },
+      { month: "Apr", value: 0 },
+      { month: "May", value: 0 },
+      { month: "Jun (Current)", value: 0 }
+    ];
+  }, [summary]);
+
+  const chartData = React.useMemo(() => {
+    const maxVal = Math.max(...monthlyForecasts.map(f => f.value), 1);
+    return monthlyForecasts.map((f, idx) => {
+      const x = idx * 100;
+      const y = 100 - (f.value / maxVal) * 90;
+      return { x, y, month: f.month, value: f.value };
+    });
+  }, [monthlyForecasts]);
+
+  const linePath = React.useMemo(() => {
+    if (chartData.length === 0) return "";
+    return chartData.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  }, [chartData]);
+
+  const areaPath = React.useMemo(() => {
+    if (chartData.length === 0) return "";
+    return `${linePath} L 500 120 L 0 120 Z`;
+  }, [linePath, chartData]);
+
   // Color mapping for funnel bars
   const STAGE_COLORS: Record<string, string> = {
     "Inquiry": "bg-primary/80",
@@ -301,13 +331,13 @@ export function DashboardScreen() {
 
                   {/* Area path */}
                   <path
-                    d="M 0 100 Q 100 85, 200 45 T 400 30 L 500 10 L 500 120 L 0 120 Z"
+                    d={areaPath}
                     fill="url(#chartGrad)"
                   />
 
                   {/* Forecast Line */}
                   <path
-                    d="M 0 100 Q 100 85, 200 45 T 400 30 L 500 10"
+                    d={linePath}
                     fill="none"
                     stroke="var(--primary)"
                     strokeWidth="2.5"
@@ -318,18 +348,25 @@ export function DashboardScreen() {
                   <line x1="0" y1="40" x2="500" y2="40" stroke="var(--success)" strokeWidth="1.5" strokeDasharray="4,4" />
 
                   {/* Nodes */}
-                  <circle cx="200" cy="45" r="4" fill="var(--primary)" stroke="var(--background)" strokeWidth="1.5" />
-                  <circle cx="400" cy="30" r="4" fill="var(--primary)" stroke="var(--background)" strokeWidth="1.5" />
-                  <circle cx="500" cy="10" r="4" fill="var(--primary)" stroke="var(--background)" strokeWidth="1.5" />
+                  {chartData.map((p, idx) => (
+                    <circle
+                      key={idx}
+                      cx={p.x}
+                      cy={p.y}
+                      r="4"
+                      fill="var(--primary)"
+                      stroke="var(--background)"
+                      strokeWidth="1.5"
+                    >
+                      <title>{`${p.month}: ${p.value.toLocaleString("vi-VN")} ₫`}</title>
+                    </circle>
+                  ))}
                 </svg>
                 {/* Labels */}
                 <div className="flex justify-between text-[10px] text-muted-foreground font-semibold mt-1.5">
-                  <span>Jan</span>
-                  <span>Feb</span>
-                  <span>Mar</span>
-                  <span>Apr</span>
-                  <span>May</span>
-                  <span>Jun (Current)</span>
+                  {chartData.map((p, idx) => (
+                    <span key={idx}>{p.month}</span>
+                  ))}
                 </div>
               </div>
             </div>
