@@ -55,7 +55,8 @@ class QuotationActions {
     return quotation;
   }
 
-  /// UC-14.4 — send to the customer. Room-gated: a 409 carries a `ROOM_*` code.
+  /// UC-14.4 — send to the customer. Only an APPROVED quotation may be sent; there
+  /// is no room-confirmation gate (see [QuotationRepository.sendQuotation]).
   Future<Quotation> send(String id, SendQuotationPayload payload) async {
     final quotation = await _repo.sendQuotation(id, payload);
     _refresh(id);
@@ -76,7 +77,8 @@ class QuotationActions {
     return quotation;
   }
 
-  /// UC-14.7 — ACCEPTED quotation → PENDING booking. Room-gated. Returns the booking.
+  /// UC-14.7 — ACCEPTED quotation → PENDING booking. Not room-gated (see
+  /// [QuotationRepository.convertToBooking]). Returns the booking.
   Future<Booking> convertToBooking(String id, ConvertToBookingPayload payload) async {
     final booking = await _repo.convertToBooking(id, payload);
     _refresh(id);
@@ -88,6 +90,20 @@ class QuotationActions {
     final quotation = await _repo.closeQuotation(id, payload);
     _refresh(id);
     return quotation;
+  }
+
+  /// UC-14.3 — a manager's decision (approve / reject / request changes) on a
+  /// PENDING_APPROVAL quotation.
+  Future<Quotation> processApproval(String id, ProcessApprovalPayload payload) async {
+    final quotation = await _repo.processApproval(id, payload);
+    _refresh(id);
+    return quotation;
+  }
+
+  /// UC-14.2 Generate Reports — persist the audit log for a discount report. Doesn't
+  /// mutate any quotation, so no list/detail refresh is needed.
+  Future<ReportLog> saveReportLog(SaveReportLogPayload payload) {
+    return _repo.saveReportLog(payload);
   }
 }
 

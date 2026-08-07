@@ -25,6 +25,9 @@ import { useMyProfile, useUpdateProfile, useChangePassword } from "@/features/pr
 import { useAuthStore } from "@/stores/auth_store";
 import { toast } from "@/stores/toast_store";
 import { getAvatarSource } from "@/shared/utils/avatar";
+import { createSupabaseBrowserClient } from "@/services/supabase/client";
+import { CropDialog } from "@/features/profile/components/CropDialog";
+import { resolveAccessToken } from "@/services/api_client";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Input } from "@/components/ui/Input";
@@ -126,6 +129,9 @@ export function ProfileScreen() {
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [isCropOpen, setIsCropOpen] = useState(false);
+
   const checkCapsLock = (e: React.KeyboardEvent) => {
     if (e.getModifierState) {
       setIsCapsLockOn(e.getModifierState("CapsLock"));
@@ -216,36 +222,89 @@ export function ProfileScreen() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 1024 * 1024) {
-      toast.error("Avatar image size must be under 1MB.");
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Avatar image size must be under 5MB.");
+      return;
+    }
+
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Only JPG, JPEG, PNG, and WEBP formats are allowed.");
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = async () => {
-      const base64Data = reader.result as string;
-      if (profile?.userId) {
-        localStorage.setItem(`local_avatar_${profile.userId}`, base64Data);
-        const placeholderUrl = `local-storage-avatar://${profile.userId}`;
-        
-        try {
-          await updateProfileMutation.mutateAsync({
-            fullName: profile.fullName,
-            phone: profile.phone,
-            avatarUrl: placeholderUrl,
-          });
-
-          updateUserFields({
-            avatarUrl: placeholderUrl,
-          });
-
-          toast.success("Avatar updated successfully.");
-        } catch (err) {
-          toast.error("Failed to update avatar image.");
-        }
-      }
+    reader.onload = () => {
+      setCropImageSrc(reader.result as string);
+      setIsCropOpen(true);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleCropComplete = async (blob: Blob) => {
+    if (!profile?.userId) return;
+
+    try {
+      const uuid = typeof window !== "undefined" && window.crypto?.randomUUID
+        ? window.crypto.randomUUID()
+        : Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+      const fileName = `${profile.userId}/${uuid}.jpg`;
+      const supabase = createSupabaseBrowserClient();
+
+      const token = await resolveAccessToken();
+      if (token) {
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: "dummy-refresh-token",
+        });
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatar")
+        .upload(fileName, blob, {
+          contentType: "image/jpeg",
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("avatar")
+        .getPublicUrl(fileName);
+
+      const oldAvatarUrl = profile.avatarUrl;
+
+      await updateProfileMutation.mutateAsync({
+        fullName: profile.fullName,
+        phone: profile.phone,
+        avatarUrl: publicUrl,
+      });
+
+      updateUserFields({
+        avatarUrl: publicUrl,
+      });
+
+      toast.success("Avatar updated successfully.");
+
+      // Clean up previous avatar if it exists in Supabase storage
+      if (oldAvatarUrl && oldAvatarUrl.includes("/storage/v1/object/public/avatar/")) {
+        const parts = oldAvatarUrl.split("/storage/v1/object/public/avatar/");
+        if (parts.length > 1) {
+          const oldPath = parts[1];
+          supabase.storage
+            .from("avatar")
+            .remove([oldPath])
+            .catch((err) => {
+              console.error("Failed to delete previous avatar:", err);
+            });
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to upload avatar image.");
+    }
   };
 
   // Avatar initials
@@ -669,6 +728,12 @@ export function ProfileScreen() {
 
         </div>
       </div>
+      <CropDialog
+        isOpen={isCropOpen}
+        onClose={() => setIsCropOpen(false)}
+        imageSrc={cropImageSrc}
+        onCrop={handleCropComplete}
+      />
     </div>
   );
 }

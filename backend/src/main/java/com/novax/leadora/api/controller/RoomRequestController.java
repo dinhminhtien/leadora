@@ -1,8 +1,10 @@
 package com.novax.leadora.api.controller;
 
+import com.novax.leadora.api.dto.request.CancelRoomRequestRequest;
 import com.novax.leadora.api.dto.request.CreateRoomRequestRequest;
 import com.novax.leadora.api.dto.request.RespondRoomRequestRequest;
 import com.novax.leadora.api.dto.response.RoomRequestResponse;
+import com.novax.leadora.application.usecase.roomrequest.CancelRoomRequestUseCase;
 import com.novax.leadora.application.usecase.roomrequest.CreateRoomRequestUseCase;
 import com.novax.leadora.application.usecase.roomrequest.GetRoomRequestsUseCase;
 import com.novax.leadora.application.usecase.roomrequest.RespondRoomRequestUseCase;
@@ -38,6 +40,7 @@ public class RoomRequestController {
 
     private final CreateRoomRequestUseCase createRoomRequestUseCase;
     private final RespondRoomRequestUseCase respondRoomRequestUseCase;
+    private final CancelRoomRequestUseCase cancelRoomRequestUseCase;
     private final GetRoomRequestsUseCase getRoomRequestsUseCase;
 
     /** Sales asks the Reservation team whether a quotation's rooms are available. */
@@ -74,6 +77,24 @@ public class RoomRequestController {
     ) {
         List<RoomRequestResponse> requests = getRoomRequestsUseCase.executeByQuotation(quotationId);
         return ResponseEntity.ok(ApiResponse.success(requests));
+    }
+
+    /**
+     * UC-26.4 — Sales withdraws a request the Reservation team has not answered yet.
+     *
+     * <p>Same roles as raising one: the Reservation team answers requests, it does not
+     * withdraw them. Only PENDING requests can be cancelled; anything else is a 409.
+     */
+    @PatchMapping("/{requestId}/cancel")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN') and @access.can('ROOM_REQUEST_VIEW')")
+    public ResponseEntity<ApiResponse<RoomRequestResponse>> cancel(
+            @PathVariable UUID requestId,
+            @RequestBody(required = false) CancelRoomRequestRequest request
+    ) {
+        RoomRequestResponse cancelled = cancelRoomRequestUseCase.execute(
+                requestId, request != null ? request.getReason() : null);
+        return ResponseEntity.ok(ApiResponse.success(cancelled,
+                "Room availability request cancelled"));
     }
 
     /** The Reservation team answers: CONFIRMED (optionally held until) or REJECTED + reason. */

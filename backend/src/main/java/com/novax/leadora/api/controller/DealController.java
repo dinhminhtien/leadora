@@ -9,12 +9,14 @@ import com.novax.leadora.application.usecase.deal.CreateDealUseCase;
 import com.novax.leadora.application.usecase.deal.GetDealDetailUseCase;
 import com.novax.leadora.application.usecase.deal.GetDealListUseCase;
 import com.novax.leadora.application.usecase.deal.GetPipelineDealsUseCase;
+import com.novax.leadora.application.usecase.deal.GetQuotableDealsUseCase;
 import com.novax.leadora.application.usecase.deal.GetDealWorkflowSummaryUseCase;
 import com.novax.leadora.application.usecase.deal.UpdateDealUseCase;
 import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 import com.novax.leadora.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,6 +35,7 @@ public class DealController {
     private final CreateDealUseCase createDealUseCase;
     private final UpdateDealUseCase updateDealUseCase;
     private final GetPipelineDealsUseCase getPipelineDealsUseCase;
+    private final GetQuotableDealsUseCase getQuotableDealsUseCase;
     private final GetDealWorkflowSummaryUseCase getDealWorkflowSummaryUseCase;
     private final DealWorkflowSyncService dealWorkflowSyncService;
 
@@ -41,6 +44,23 @@ public class DealController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) UUID ownerId) {
         List<DealResponse> deals = getDealListUseCase.execute(search, ownerId);
+        return ResponseEntity.ok(ApiResponse.success(deals));
+    }
+
+    /**
+     * Deals a new quotation can be raised against (UC-14.1), paged and searchable.
+     *
+     * <p>Eligibility is one condition — the deal is still active ({@code DealStatus.OPEN});
+     * WON and LOST are closed and cannot be quoted. Applied server-side alongside the usual
+     * owner scoping, so the picker can search without downloading the whole list. Gated on
+     * DEAL_VIEW by the class-level rule: choosing a deal is reading deals.
+     */
+    @GetMapping("/quotable")
+    public ResponseEntity<ApiResponse<Page<DealResponse>>> getQuotableDeals(
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Page<DealResponse> deals = getQuotableDealsUseCase.execute(search, page, size);
         return ResponseEntity.ok(ApiResponse.success(deals));
     }
 

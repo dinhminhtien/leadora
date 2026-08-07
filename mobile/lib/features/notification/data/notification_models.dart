@@ -8,6 +8,7 @@ class AppNotification {
     required this.message,
     required this.isRead,
     this.type,
+    this.priority,
     this.relatedEntity,
     this.relatedId,
     this.createdAt,
@@ -20,6 +21,10 @@ class AppNotification {
   final String message;
   final bool isRead;
   final String? type;
+
+  /// Mirrors backend `NotificationResponse.priority` (`NotificationPriority`
+  /// enum: LOW/NORMAL/HIGH/URGENT) — see [kNotificationPriorityOptions].
+  final String? priority;
   final String? relatedEntity;
   final String? relatedId;
   final DateTime? createdAt;
@@ -35,6 +40,7 @@ class AppNotification {
     message: message,
     isRead: isRead ?? this.isRead,
     type: type,
+    priority: priority,
     relatedEntity: relatedEntity,
     relatedId: relatedId,
     createdAt: createdAt,
@@ -61,6 +67,7 @@ class AppNotification {
       message: json['message'] as String? ?? '',
       isRead: json['isRead'] as bool? ?? json['read'] as bool? ?? false,
       type: json['type'] as String?,
+      priority: json['priority'] as String?,
       relatedEntity: json['relatedEntity'] as String?,
       relatedId: json['relatedId'] as String?,
       createdAt: json['createdAt'] is String
@@ -71,3 +78,41 @@ class AppNotification {
     );
   }
 }
+
+/// Known values of `NotificationResponse.priority` (backend
+/// `NotificationPriority` enum) — backs the priority filter chips.
+/// `NotificationSpecifications.priority` returns "no matches" (not a 500) for
+/// anything outside this set, so these are the only values worth offering.
+const kNotificationPriorityOptions = <String>['LOW', 'NORMAL', 'HIGH', 'URGENT'];
+
+/// Known values of `NotificationEntity.type` written by every notifier
+/// (`TaskNotifier`, `RoomRequestNotifier`, and the lead/quotation/SLA/reminder/
+/// handover/reporting use cases) — there is no backend enum for this free-text
+/// column, so this fixed list is the mobile filter sheet's vocabulary, the same
+/// way `kLeadSourceOptions` covers the free-text lead `source` field. Exact
+/// match against `NotificationSpecifications.type`.
+const kNotificationTypeOptions = <String>[
+  'LEAD_ASSIGNED',
+  'LEAD_REOPENED',
+  'TASK_ASSIGNED',
+  'TASK_REASSIGNED',
+  'TASK_COMPLETED',
+  'TASK_OVERDUE',
+  'QUOTATION_PENDING_APPROVAL',
+  'QUOTATION_SENT',
+  'QUOTATION_APPROVAL',
+  'CUSTOMER_RESPONSE',
+  'BOOKING_UPDATE',
+  'SLA_WARNING',
+  'SLA_BREACH',
+  'SLA_ESCALATED',
+  'REMINDER',
+  'REMINDER_DUE_SOON',
+  'REMINDER_OVERDUE',
+  'REMINDER_ESCALATED',
+  'HANDOVER',
+  'ROOM_REQUEST_RAISED',
+  'ROOM_REQUEST_ANSWERED',
+  'ROOM_CONFIRMATION_URGENT',
+  'DISCOUNT_REPORT_GENERATED',
+];

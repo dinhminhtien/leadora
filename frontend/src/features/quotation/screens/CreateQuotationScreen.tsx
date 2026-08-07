@@ -1,11 +1,10 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { ArrowLeft, AlertCircle, CheckCircle2, Calculator, User, Mail, Phone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -13,7 +12,9 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
-import { useCreateQuotation, useDealsForQuotation, type DealOption } from "@/features/quotation/hooks/use_quotations";
+import { DealSearchPicker } from "@/features/quotation/components/DealSearchPicker";
+import type { Deal } from "@/services/deal_service";
+import { useCreateQuotation, useQuotations } from "@/features/quotation/hooks/use_quotations";
 
 const schema = z
   .object({
@@ -66,12 +67,21 @@ function FieldLabel({ children, required }: { children: React.ReactNode; require
 export function CreateQuotationScreen() {
   const router = useRouter();
   const createQuotation = useCreateQuotation();
-  const { data: deals = [], isLoading: dealsLoading } = useDealsForQuotation();
+  const { data: allQuotes = [] } = useQuotations();
+
+  /**
+   * The picked deal, held alongside the form so the customer strip can render its
+   * contact details. `dealId` remains the single source of truth for validation and
+   * submission — this is display state only.
+   */
+  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
 
   const {
     register,
     handleSubmit,
     watch,
+    reset,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema) as unknown as Resolver<FormValues>,
@@ -91,11 +101,35 @@ export function CreateQuotationScreen() {
     "discountPercent",
   ]);
 
-  // Auto-fill customer info from selected deal
-  const selectedDeal: DealOption | undefined = useMemo(
-    () => deals.find((d) => d.id === dealId),
-    [deals, dealId]
-  );
+  /**
+   * A deal that already has an earlier quotation (any status) gets its stay/pricing
+   * fields seeded from the most recent one, so re-quoting the same lead is a tweak
+   * instead of a re-type — everything stays fully editable afterward. Guarded by a ref
+   * (not just `dealId`) so a background refetch of `allQuotes` while the same deal stays
+   * selected can't re-fire this and clobber what the rep already typed.
+   */
+  const templatedDealRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!dealId || dealId === templatedDealRef.current) return;
+    const history = allQuotes
+      .filter((q) => q.dealId === dealId)
+      .sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
+    if (history.length === 0) return;
+    templatedDealRef.current = dealId;
+    const latest = history[0];
+    reset({
+      dealId,
+      roomType: latest.roomType ?? "",
+      checkInDate: latest.checkInDate ?? "",
+      checkOutDate: latest.checkOutDate ?? "",
+      numberOfRooms: latest.numberOfRooms ?? 1,
+      pricePerNight: latest.pricePerNight ?? 0,
+      discountPercent: Number(latest.discountPercent ?? 0),
+      paymentPolicy: latest.paymentPolicy ?? "",
+      validUntil: latest.validUntil ?? "",
+      notes: latest.notes ?? "",
+    });
+  }, [dealId, allQuotes, reset]);
 
   const pricing = useMemo(() => {
     const inDate = checkInDate ? new Date(checkInDate) : null;
@@ -173,50 +207,24 @@ export function CreateQuotationScreen() {
               <CardContent className="space-y-4">
                 <div>
                   <FieldLabel required>Select Deal</FieldLabel>
-                  <Select
-                    {...register("dealId")}
-                    error={errors.dealId?.message}
-                    disabled={dealsLoading || deals.length === 0}
-                  >
-                    <option value="">
-                      {dealsLoading
-                        ? "Loading deals…"
-                        : deals.length === 0
-                          ? "No eligible deals"
-                          : "-- Select a deal --"}
-                    </option>
-                    {deals.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {/* Title alone is ambiguous when a customer has several
-                            deals — the contact and stage disambiguate them. */}
-                        {d.title}
-                        {d.contactName ? ` · ${d.contactName}` : ""}
-                        {d.stage ? ` · ${d.stage}` : ""}
-                      </option>
-                    ))}
-                  </Select>
-
                   {/*
-                    An empty picker used to look identical to a loading one, so a
-                    rep could not tell "still fetching" from "nothing qualifies".
-                    Say which conditions a deal has to meet, and where to fix it.
+                    Registered so the zod rule still owns validation, but rendered
+                    hidden: the visible control is the search picker below, which
+                    writes through `setValue`.
                   */}
-                  {!dealsLoading && deals.length === 0 && (
-                    <p className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-700 dark:text-warning">
-                      <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                      <span>
-                        No deal is ready to quote. A deal must still be open and
-                        have a linked customer.{" "}
-                        <Link
-                          href={ROUTE_PATHS.deals}
-                          className="font-semibold underline underline-offset-2"
-                        >
-                          Open Deals
-                        </Link>{" "}
-                        to create one or attach a customer.
-                      </span>
-                    </p>
-                  )}
+                  <input type="hidden" {...register("dealId")} />
+                  <DealSearchPicker
+                    id="quotation-deal"
+                    value={selectedDeal}
+                    onChange={(deal) => {
+                      setSelectedDeal(deal);
+                      setValue("dealId", deal?.id ?? "", {
+                        shouldValidate: true,
+                        shouldDirty: true,
+                      });
+                    }}
+                    error={errors.dealId?.message}
+                  />
                 </div>
 
                 {/* Auto-filled customer info */}

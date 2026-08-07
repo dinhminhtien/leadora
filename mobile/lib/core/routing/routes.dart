@@ -55,6 +55,11 @@ class Routes {
   static const String quotationDetail = '/quotations/:id';
   static const String quotationRevise = '/quotations/:id/revise';
 
+  /// UC-14.3 Processing Quotations — manager's queue. Registered before
+  /// [quotationDetail] (same trap as [quotationCreate]): otherwise this literal
+  /// segment would match the `:id` route with an id of "pending-approvals".
+  static const String quotationPendingApprovals = '/quotations/pending-approvals';
+
   static String quotationDetailPath(String id) => '/quotations/$id';
 
   static String quotationRevisePath(String id) => '/quotations/$id/revise';
@@ -84,6 +89,13 @@ class Routes {
   static const String notifications = '/notifications';
   static const String sla = '/sla';
   static const String reminders = '/reminders';
+
+  // Reminder create/edit — full-screen over the shell, nested under the
+  // `/reminders` browse entry point.
+  static const String reminderCreateSub = 'new';
+  static const String reminderCreate = '/reminders/new';
+  static const String reminderEditSub = 'edit/:id';
+  static String reminderEditPath(String id) => '/reminders/edit/$id';
 
   /// [highlightId], when set, is read back by the target list screen to
   /// flash + scroll to that row — mirrors the web `?highlight=` param used
@@ -179,10 +191,13 @@ class RouteNames {
   static const String quotationDetail = 'quotationDetail';
   static const String quotationCreate = 'quotationCreate';
   static const String quotationRevise = 'quotationRevise';
+  static const String quotationPendingApprovals = 'quotationPendingApprovals';
   static const String dealDetail = 'dealDetail';
   static const String quotations = 'quotations';
   static const String sla = 'sla';
   static const String reminders = 'reminders';
+  static const String reminderCreate = 'reminderCreate';
+  static const String reminderEdit = 'reminderEdit';
   static const String interactionTimeline = 'interactionTimeline';
   static const String logInteraction = 'logInteraction';
   static const String interactionDetail = 'interactionDetail';

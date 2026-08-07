@@ -13,9 +13,11 @@ import {
   type RoomRequest,
 } from "@/services/room_request_service";
 import {
+  useCancelRoomRequest,
   useCreateRoomRequest,
   useRoomRequestsByQuotation,
 } from "@/features/room_request/hooks/use_room_requests";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 /**
  * The room-confirmation state of one quotation, plus the button to ask about it.
@@ -130,6 +132,8 @@ export function RoomConfirmationPanel({
 }: RoomConfirmationPanelProps) {
   const { data: requests, isLoading } = useRoomRequestsByQuotation(quote.id);
   const createRequest = useCreateRoomRequest();
+  const cancelRequest = useCancelRoomRequest();
+  const { confirm, confirmElement } = useConfirm();
 
   const [quantity, setQuantity] = useState(String(defaultQuantity));
   const [error, setError] = useState("");
@@ -144,6 +148,34 @@ export function RoomConfirmationPanel({
   }, [usable, onUsableChange]);
 
   const canAsk = !isLoading && !usable && request?.status !== "PENDING";
+
+  // UC-26.4 — only an unanswered request can be withdrawn. The backend re-checks this
+  // under a lock and 409s if Reservation answered in the meantime.
+  const canCancel = !isLoading && request?.status === "PENDING";
+
+  const handleCancel = async () => {
+    if (!request) return;
+    setError("");
+    // A3 — dismissing the dialog leaves the request untouched.
+    const { ok, reason } = await confirm({
+      title: "Cancel this room request?",
+      description:
+        "The Reservation team will stop seeing it in their inbox. The request stays in the history, and you can ask again at any time.",
+      confirmLabel: "Cancel request",
+      cancelLabel: "Keep it",
+      severity: "warning",
+    });
+    if (!ok) return;
+    try {
+      await cancelRequest.mutateAsync({
+        id: request.requestId,
+        payload: reason ? { reason } : undefined,
+      });
+    } catch (e) {
+      // Most likely ROOM_REQUEST_ALREADY_PROCESSED — Reservation answered first.
+      setError(apiErrorMessage(e));
+    }
+  };
 
   const handleAsk = async () => {
     setError("");
@@ -216,6 +248,22 @@ export function RoomConfirmationPanel({
             </div>
           )}
 
+          {canCancel && (
+            <div className="mt-3">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={handleCancel}
+                disabled={cancelRequest.isPending}
+                leftIcon={<XCircle className="size-3" />}
+                className="text-xs text-slate-500 hover:text-red-600"
+              >
+                {cancelRequest.isPending ? "Cancelling…" : "Cancel request"}
+              </Button>
+            </div>
+          )}
+
           {error && (
             <p className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
               {error}
@@ -223,6 +271,7 @@ export function RoomConfirmationPanel({
           )}
         </>
       )}
+      {confirmElement}
     </div>
   );
 }

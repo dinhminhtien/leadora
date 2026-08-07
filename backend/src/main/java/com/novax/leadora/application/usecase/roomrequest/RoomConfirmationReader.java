@@ -34,8 +34,8 @@ public class RoomConfirmationReader {
     /** The request that currently speaks for this quotation, if any. */
     public Optional<RoomRequestEntity> currentRequest(UUID quotationId) {
         return roomRequestRepository
-                .findFirstByQuotation_QuotationIdAndStatusNotOrderByCreatedAtDesc(
-                        quotationId, RoomRequestStatus.SUPERSEDED);
+                .findFirstByQuotation_QuotationIdAndStatusNotInOrderByCreatedAtDesc(
+                        quotationId, RoomRequestStatus.notSpeakingForQuotation());
     }
 
     /**

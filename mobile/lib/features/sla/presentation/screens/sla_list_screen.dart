@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/network/api_exception.dart';
 import '../../../../core/routing/routes.dart';
 import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
@@ -154,14 +155,59 @@ class _SlaListScreenState extends ConsumerState<SlaListScreen> {
   }
 }
 
-class _SlaCard extends StatelessWidget {
+class _SlaCard extends ConsumerWidget {
   const _SlaCard({required this.entry, this.highlighted = false});
 
   final SlaTrackingEntry entry;
   final bool highlighted;
 
+  /// UC-17.4 — Resolve SLA Task on Mobile. Confirms, then calls
+  /// `PATCH /sla/tracking/{id}/resolve` via [SlaResolutionController]; on
+  /// success every `slaMonitoringProvider` filter tab is refetched so this
+  /// row's status/hours update (or it drops out of the Breached/Warning tab).
+  Future<void> _confirmAndResolve(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Resolve SLA breach'),
+        content: Text(
+          'Mark the ${Formatters.humanizeEnum(entry.activityType).toLowerCase()} '
+          'SLA tracker for this ${Formatters.humanizeEnum(entry.entityType).toLowerCase()} '
+          'as resolved? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Resolve'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(slaResolutionControllerProvider.notifier)
+          .resolve(entry.trackingId);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('SLA breach resolved')),
+      );
+    } on AppException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not resolve this SLA task.')),
+      );
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final route = _relatedRoute(entry);
     final hours = entry.hoursRemaining;
@@ -170,6 +216,11 @@ class _SlaCard extends StatelessWidget {
         : hours < 0
         ? '${-hours}h overdue'
         : '${hours}h left';
+    final isResolving = ref.watch(
+      slaResolutionControllerProvider.select(
+        (s) => s.contains(entry.trackingId),
+      ),
+    );
 
     return HighlightGlow(
       highlighted: highlighted,
@@ -178,50 +229,78 @@ class _SlaCard extends StatelessWidget {
         onTap: route == null ? null : () => context.push(route),
         child: SectionCard(
           padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(entry.icon, size: 22, color: theme.colorScheme.primary),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${Formatters.humanizeEnum(entry.activityType)} · ${Formatters.humanizeEnum(entry.entityType)}',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Deadline ${Formatters.dateTime(entry.deadlineAt)}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              Row(
                 children: [
-                  StatusChip(
-                    tone: entry.displayStatus.tone,
-                    rawStatus: entry.displayStatus.wire,
-                    dense: true,
+                  Icon(
+                    entry.icon,
+                    size: 22,
+                    color: theme.colorScheme.primary,
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    hoursLabel,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.outline,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${Formatters.humanizeEnum(entry.activityType)} · ${Formatters.humanizeEnum(entry.entityType)}',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Deadline ${Formatters.dateTime(entry.deadlineAt)}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      StatusChip(
+                        tone: entry.displayStatus.tone,
+                        rawStatus: entry.displayStatus.wire,
+                        dense: true,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        hoursLabel,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.outline,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
+              if (!entry.isResolved) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton.icon(
+                    onPressed: isResolving
+                        ? null
+                        : () => _confirmAndResolve(context, ref),
+                    icon: isResolving
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.check_circle_outline_rounded, size: 18),
+                    label: Text(isResolving ? 'Resolving…' : 'Resolve'),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

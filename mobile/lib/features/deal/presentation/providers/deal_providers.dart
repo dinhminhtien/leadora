@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/network/pagination_response.dart';
 import '../../data/deal_models.dart';
 import '../../data/deal_repository.dart';
 
@@ -58,6 +59,27 @@ final dealListProvider = AutoDisposeFutureProvider<List<Deal>>((ref) async {
   ref.onDispose(timer.cancel);
 
   return ref.watch(dealRepositoryProvider).getDeals(search: search);
+});
+
+/// One page of the quotable-deal search, keyed by term + page index.
+///
+/// A record key gives value equality for free, so re-requesting the same term and page —
+/// scrolling back up, or reopening the picker — is served from Riverpod's cache instead
+/// of the network. Pages are held briefly after the last listener drops, which is what
+/// makes closing and reopening the picker free.
+typedef QuotableDealQuery = ({String search, int page});
+
+final quotableDealsProvider = AutoDisposeFutureProvider.family<
+  PaginationResponse<Deal>,
+  QuotableDealQuery
+>((ref, query) async {
+  final link = ref.keepAlive();
+  final timer = Timer(const Duration(minutes: 2), link.close);
+  ref.onDispose(timer.cancel);
+
+  return ref
+      .watch(dealRepositoryProvider)
+      .getQuotableDeals(search: query.search, page: query.page);
 });
 
 /// The list after the stage tab and sort are applied.

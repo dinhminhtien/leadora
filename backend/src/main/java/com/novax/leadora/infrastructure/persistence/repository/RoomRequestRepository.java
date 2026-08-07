@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,12 +21,16 @@ import java.util.UUID;
 public interface RoomRequestRepository extends JpaRepository<RoomRequestEntity, UUID> {
 
     /**
-     * The request that currently speaks for a quotation: the newest one that hasn't
-     * been superseded. Everything gating Send/Convert reads through this.
+     * The request that currently speaks for a quotation: the newest one that is neither
+     * superseded nor cancelled. Everything reporting on Send/Convert reads through this.
+     *
+     * <p>Takes a collection rather than a single excluded status because a withdrawn
+     * request (UC-26.4) is no more an answer than a superseded one — leaving it in would
+     * let a cancellation hide the confirmation that preceded it.
      */
     @EntityGraph(attributePaths = {"requestedBy", "respondedBy"})
-    Optional<RoomRequestEntity> findFirstByQuotation_QuotationIdAndStatusNotOrderByCreatedAtDesc(
-            UUID quotationId, RoomRequestStatus excludedStatus);
+    Optional<RoomRequestEntity> findFirstByQuotation_QuotationIdAndStatusNotInOrderByCreatedAtDesc(
+            UUID quotationId, Collection<RoomRequestStatus> excludedStatuses);
 
     /** Rows to mark SUPERSEDED when Sales changes the room type / dates / quantity. */
     List<RoomRequestEntity> findByQuotation_QuotationIdAndStatusIn(

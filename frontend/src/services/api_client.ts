@@ -24,6 +24,42 @@ export type PageResponse<T> = {
   last?: boolean;
 };
 
+export type PageMeta = {
+  /** Zero-based index of the page that came back. */
+  number: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  /** True when this is the final page — the signal infinite scroll stops on. */
+  last: boolean;
+};
+
+/**
+ * Normalises the two shapes a Spring `Page` reaches the browser in.
+ *
+ * Depending on `spring.data.web.pageable.serialization-mode`, the metadata arrives either
+ * flat (`{ content, totalPages, last }`) or nested (`{ content, page: { number, size,
+ * totalElements, totalPages } }`). Reading the flat fields off a nested payload silently
+ * yields `undefined`, which is how several screens ended up believing every result set
+ * was exactly one page long. Read paging metadata through here instead of by hand.
+ */
+export function pageMeta<T>(page?: PageResponse<T> | null): PageMeta {
+  const nested = page && typeof page.page === "object" ? page.page : null;
+
+  const number = nested ? nested.number : typeof page?.page === "number" ? page.page : 0;
+  const size = nested ? nested.size : (page?.size ?? page?.content?.length ?? 0);
+  const totalElements = nested
+    ? nested.totalElements
+    : (page?.totalElements ?? page?.content?.length ?? 0);
+  const totalPages = nested ? nested.totalPages : (page?.totalPages ?? (totalElements === 0 ? 0 : 1));
+
+  // The nested form carries no `last` flag, so derive it. `totalPages === 0` (an empty
+  // result) is terminal too, otherwise infinite scroll would page forever on no rows.
+  const last = page?.last ?? (totalPages === 0 || number + 1 >= totalPages);
+
+  return { number, size, totalElements, totalPages, last };
+}
+
 export type ApiErrorResponse = {
   status?: number;
   code?: string;
