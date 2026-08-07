@@ -192,6 +192,14 @@ app:
     provider: ${APP_BANK_PROVIDER:sepay}
     api-token: ${APP_BANK_API_TOKEN:dummy-token}
     api-url: ${APP_BANK_API_URL:https://my.sepay.vn/plus/api/transactions}
+  deal:
+    probability:
+      inquiry: ${DEAL_PROBABILITY_INQUIRY:10}
+      qualification: ${DEAL_PROBABILITY_QUALIFICATION:30}
+      quotation-sent: ${DEAL_PROBABILITY_QUOTATION_SENT:50}
+      negotiation: ${DEAL_PROBABILITY_NEGOTIATION:70}
+      pending-confirmation: ${DEAL_PROBABILITY_PENDING_CONFIRMATION:80}
+      booking-confirmed: ${DEAL_PROBABILITY_BOOKING_CONFIRMED:90}
 
 # Supabase environment fallbacks (prevents startup crash if environment variables are not set)
 SUPABASE_URL: ${SUPABASE_URL}

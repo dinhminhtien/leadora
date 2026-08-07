@@ -37,6 +37,11 @@ export type LeaderboardEntry = {
   actionCount: number;
 };
 
+export type MonthlyForecast = {
+  month: string;
+  value: number;
+};
+
 export type DashboardSummary = {
   activeLeadsCount: number;
   totalLeadsCount: number;
@@ -55,6 +60,7 @@ export type DashboardSummary = {
   winRateBenchmarkLabel?: string;
   funnelStages: StageSummary[];
   leaderboard?: LeaderboardEntry[];
+  monthlyForecasts?: MonthlyForecast[];
 };
 
 export type PublicStats = {
