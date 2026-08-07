@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { zodResolver } from "@hookform/resolvers/zod";  
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, AlertCircle, CheckCircle2, Calculator, User, Mail, Phone } from "lucide-react";
@@ -100,6 +100,36 @@ export function CreateQuotationScreen() {
     "pricePerNight",
     "discountPercent",
   ]);
+
+  /**
+   * A deal that already has an earlier quotation (any status) gets its stay/pricing
+   * fields seeded from the most recent one, so re-quoting the same lead is a tweak
+   * instead of a re-type — everything stays fully editable afterward. Guarded by a ref
+   * (not just `dealId`) so a background refetch of `allQuotes` while the same deal stays
+   * selected can't re-fire this and clobber what the rep already typed.
+   */
+  const templatedDealRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!dealId || dealId === templatedDealRef.current) return;
+    const history = allQuotes
+      .filter((q) => q.dealId === dealId)
+      .sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
+    if (history.length === 0) return;
+    templatedDealRef.current = dealId;
+    const latest = history[0];
+    reset({
+      dealId,
+      roomType: latest.roomType ?? "",
+      checkInDate: latest.checkInDate ?? "",
+      checkOutDate: latest.checkOutDate ?? "",
+      numberOfRooms: latest.numberOfRooms ?? 1,
+      pricePerNight: latest.pricePerNight ?? 0,
+      discountPercent: Number(latest.discountPercent ?? 0),
+      paymentPolicy: latest.paymentPolicy ?? "",
+      validUntil: latest.validUntil ?? "",
+      notes: latest.notes ?? "",
+    });
+  }, [dealId, allQuotes, reset]);
 
   /**
    * A deal that already has an earlier quotation (any status) gets its stay/pricing
