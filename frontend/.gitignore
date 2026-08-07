@@ -10,6 +10,17 @@
 !.yarn/releases
 !.yarn/versions
 
+# Competing lockfiles. pnpm-lock.yaml is the only one this project installs from —
+# it is the lockfile the pnpm-workspace.yaml `overrides` are resolved into, and npm
+# and yarn do not read that file, so a tree installed from either of these silently
+# drops those pins. Vercel infers the package manager from whichever lockfiles it
+# finds, so a stray one here can also flip a green build to a failing one with no
+# source change. Run `pnpm install`, never `npm install`.
+package-lock.json
+yarn.lock
+bun.lockb
+bun.lock
+
 # testing
 /coverage
 
