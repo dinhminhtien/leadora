@@ -63,17 +63,20 @@ public class CreateBookingRequestUseCase {
         CustomerEntity customer = customerRepository.findById(request.getCustomerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Customer", request.getCustomerId()));
 
-        QuotationEntity quotation = quotationRepository.findById(request.getQuotationId())
+        QuotationEntity tempQuotation = quotationRepository.findById(request.getQuotationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Quotation", request.getQuotationId()));
 
-        // Lock Deal first to prevent race conditions (Lock ordering: Deal ->
-        // Quotation/Booking)
-        DealEntity deal = quotation.getDeal();
+        // Lock Deal first to prevent race conditions
+        DealEntity deal = tempQuotation.getDeal();
         if (deal != null) {
             final UUID dealId = deal.getDealId();
             deal = dealRepository.findByIdForUpdate(dealId)
                     .orElseThrow(() -> new ResourceNotFoundException("Deal", dealId));
         }
+
+        // Reload fresh Quotation under pessimistic lock
+        QuotationEntity quotation = quotationRepository.findByIdForUpdate(request.getQuotationId())
+                .orElseThrow(() -> new ResourceNotFoundException("Quotation", request.getQuotationId()));
 
         // Validate Quotation status is ACCEPTED
         if (quotation.getStatus() != QuotationStatus.ACCEPTED) {

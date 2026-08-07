@@ -31,4 +31,10 @@ public final class BookingSpecification {
             return null;
         return (root, query, cb) -> cb.equal(root.get("status"), status);
     }
+
+    public static Specification<BookingEntity> hasAssignedUser(java.util.UUID userId) {
+        if (userId == null)
+            return null;
+        return (root, query, cb) -> cb.equal(root.get("assignedUser").get("userId"), userId);
+    }
 }

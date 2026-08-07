@@ -30,6 +30,7 @@ public class GetBookingListUseCase {
 
     private final BookingRepository bookingRepository;
     private final BookingDetailRepository bookingDetailRepository;
+    private final BookingAccessPolicy bookingAccessPolicy;
 
     @Transactional(readOnly = true)
     public Page<BookingResponse> execute(String search, String status, String sortBy, String sortDir, int page, int size) {
@@ -37,7 +38,14 @@ public class GetBookingListUseCase {
         Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
 
+        com.novax.leadora.infrastructure.persistence.entity.UserEntity caller = bookingAccessPolicy.currentUser();
+        UUID ownerId = bookingAccessPolicy.listScopeOwnerId(caller);
+
         Specification<BookingEntity> spec = (root, query, cb) -> cb.conjunction();
+
+        if (ownerId != null) {
+            spec = spec.and(BookingSpecification.hasAssignedUser(ownerId));
+        }
 
         if (StringUtils.hasText(search)) {
             spec = spec.and(BookingSpecification.search(search));

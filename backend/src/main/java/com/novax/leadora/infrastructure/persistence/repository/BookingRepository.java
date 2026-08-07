@@ -27,6 +27,9 @@ public interface BookingRepository extends JpaRepository<BookingEntity, UUID>, J
     @Query("SELECT b FROM BookingEntity b WHERE b.bookingId = :id")
     Optional<BookingEntity> findByIdForUpdate(@Param("id") UUID id);
 
+    @Query("SELECT b FROM BookingEntity b LEFT JOIN FETCH b.customer LEFT JOIN FETCH b.assignedUser WHERE b.bookingId = :id")
+    Optional<BookingEntity> findByIdWithCustomerAndAssignedUser(@Param("id") UUID id);
+
     Optional<BookingEntity> findByBookingCode(String bookingCode);
 
     boolean existsByQuotation_Deal_DealIdAndStatus(UUID dealId, BookingStatus status);
