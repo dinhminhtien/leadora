@@ -68,7 +68,7 @@ jobs:
           --region ${{ env.REGION }} \
           --platform managed \
           --service-account ${{ env.RUNTIME_SERVICE_ACCOUNT }} \
-          --update-env-vars "GEMINI_PROJECT_ID=${{ env.PROJECT_ID }},GEMINI_LOCATION=asia-southeast1,SUPABASE_URL=${{ secrets.SUPABASE_URL }},FRONTEND_URL=https://leadora-novax.vercel.app,SPRING_MAIL_USERNAME=leadora.novax@gmail.com" \
+          --update-env-vars "GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},GEMINI_PROJECT_ID=${{ env.PROJECT_ID }},GEMINI_LOCATION=asia-southeast1,SUPABASE_URL=${{ secrets.SUPABASE_URL }},FRONTEND_URL=https://leadora-novax.vercel.app,SPRING_MAIL_USERNAME=leadora.novax@gmail.com" \
           --update-secrets "SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET:latest,SPRING_MAIL_PASSWORD=SPRING_MAIL_PASSWORD:latest" \
           --remove-env-vars "GOOGLE_GENAI_API_KEY,GEMINI_API_KEY,SUPABASE_JWT_SECRET" \
           --allow-unauthenticated

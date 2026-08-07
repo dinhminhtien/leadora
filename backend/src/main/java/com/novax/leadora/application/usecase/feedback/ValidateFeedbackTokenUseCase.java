@@ -7,6 +7,7 @@ import com.novax.leadora.infrastructure.persistence.entity.SalesFeedbackEntity;
 import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ActorType;
@@ -27,6 +28,7 @@ public class ValidateFeedbackTokenUseCase {
 
     private static final UUID SYSTEM_UUID = new UUID(0L, 0L);
 
+    @Transactional(readOnly = true)
     public FeedbackTokenValidationResponse execute(String token) {
         SalesFeedbackEntity feedback = salesFeedbackRepository.findByFeedbackToken(token)
                 .orElse(null);
