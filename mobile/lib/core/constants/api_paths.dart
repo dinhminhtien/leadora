@@ -94,8 +94,19 @@ class ApiPaths {
   static String roomRequestsByQuotation(String quotationId) =>
       '/room-requests/by-quotation/$quotationId';
 
+  /// UC-26.4 — Sales withdraws a request Reservation has not answered yet. PATCH.
+  static String roomRequestCancel(String requestId) =>
+      '/room-requests/$requestId/cancel';
+
   // --- Deals (DealController) ---
   static const String deals = '/deals';
+
+  /// Deals a new quotation can be raised against (UC-14.1). Unlike [deals] this one
+  /// *is* a Spring `Page` and takes `?search=&page=&size=`; the eligibility rules
+  /// (open deal, linked customer) are applied server-side by
+  /// `DealSpecification.quotable`, so the client must not re-filter the result.
+  static const String dealsQuotable = '/deals/quotable';
+
   static String dealById(String id) => '/deals/$id';
   static String dealStatus(String id) => '/deals/$id/status';
 

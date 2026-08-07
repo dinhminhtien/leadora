@@ -34,6 +34,7 @@ dependencies:
   # Media
   image_picker: ^1.1.2
   cached_network_image: ^3.4.1
+  image: ^4.8.0
 
   # Typography — brand font (Inter). Falls back to the platform font offline.
   google_fonts: ^6.2.1
@@ -48,6 +49,7 @@ dependencies:
   url_launcher: ^6.3.1         # tel:/mailto: quick actions on detail screens
   mutex: ^3.1.0                # refresh-token mutex lock
   skeletonizer: ^2.1.0         # skeleton loading states (2.x required on Flutter ≥3.35)
+  uuid: ^4.5.1
 
   # Native splash generator + runtime plugin. Must live in `dependencies`
   # (per its docs): as a dev_dependency its Android plugin class is excluded
@@ -71,7 +73,6 @@ dev_dependencies:
   # Production branding — launcher icon generator (pure build tool, no
   # native plugin, so dev-only is correct here). Run: dart run flutter_launcher_icons
   flutter_launcher_icons: ^0.14.3
-  image: ^4.8.0                # used by tool/gen_dark_splash.dart
 
 flutter:
   uses-material-design: true

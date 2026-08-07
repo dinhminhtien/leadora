@@ -42,6 +42,18 @@ class RoomRequestRepository {
     );
   }
 
+  /// UC-26.4 — Sales withdraws a request the Reservation team has not answered yet.
+  ///
+  /// Only a PENDING request can be withdrawn. The backend re-checks that under a lock
+  /// and throws `ROOM_REQUEST_ALREADY_PROCESSED` (409) when Reservation answered first,
+  /// so callers must surface the message rather than assume success.
+  Future<RoomRequest> cancel(String requestId, {String? reason}) {
+    return _client.patch<RoomRequest>(
+      ApiPaths.roomRequestCancel(requestId),
+      data: {if (reason != null && reason.isNotEmpty) 'reason': reason},
+      decode: (data) => RoomRequest.fromJson(data as Map<String, dynamic>),
+    );
+  }
 }
 
 final roomRequestRepositoryProvider = Provider<RoomRequestRepository>((ref) {

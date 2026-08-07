@@ -57,8 +57,8 @@ class RoomConfirmationReaderTest {
     }
 
     private void givenCurrentRequest(RoomRequestEntity request) {
-        when(roomRequestRepository.findFirstByQuotation_QuotationIdAndStatusNotOrderByCreatedAtDesc(
-                quotationId, RoomRequestStatus.SUPERSEDED))
+        when(roomRequestRepository.findFirstByQuotation_QuotationIdAndStatusNotInOrderByCreatedAtDesc(
+                quotationId, RoomRequestStatus.notSpeakingForQuotation()))
                 .thenReturn(Optional.ofNullable(request));
     }
 
@@ -161,5 +161,24 @@ class RoomConfirmationReaderTest {
         givenCurrentRequest(pending);
 
         assertThat(reader.currentRequest(quotationId)).contains(pending);
+    }
+
+    /**
+     * UC-26.4. Both exclusions are asserted through the query the reader actually issues:
+     * a withdrawn request must be skipped exactly as a superseded one is, otherwise
+     * cancelling a follow-up question would bury the confirmation that preceded it and a
+     * rep would be told the rooms were never confirmed.
+     */
+    @Test
+    @DisplayName("Superseded and cancelled rows are both excluded from 'current'")
+    void cancelledAndSupersededDoNotSpeakForTheQuotation() {
+        assertThat(RoomRequestStatus.notSpeakingForQuotation())
+                .containsExactlyInAnyOrder(RoomRequestStatus.SUPERSEDED, RoomRequestStatus.CANCELLED);
+
+        // With the withdrawn row skipped, the older confirmation is what the reader sees.
+        RoomRequestEntity confirmed = request(RoomRequestStatus.CONFIRMED);
+        givenCurrentRequest(confirmed);
+
+        assertThat(reader.isRoomConfirmed(quotation)).isTrue();
     }
 }

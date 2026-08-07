@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   roomRequestService,
+  type CancelRoomRequestPayload,
   type CreateRoomRequestPayload,
   type RespondRoomRequestPayload,
 } from "@/services/room_request_service";
@@ -37,6 +38,25 @@ export function useCreateRoomRequest() {
     mutationFn: (payload: CreateRoomRequestPayload) => roomRequestService.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["room-requests"] });
+    },
+  });
+}
+
+/**
+ * UC-26.4 — Sales withdraws an unanswered request.
+ *
+ * Invalidates the quotation list for the same reason answering does: withdrawing changes
+ * which request speaks for the quotation, and therefore what the room-confirmation panel
+ * reports about Send/Convert.
+ */
+export function useCancelRoomRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload?: CancelRoomRequestPayload }) =>
+      roomRequestService.cancel(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["room-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
     },
   });
 }
