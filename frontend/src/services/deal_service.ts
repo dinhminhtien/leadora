@@ -1,4 +1,4 @@
-import { apiClient, type ApiResponse } from "@/services/api_client";
+import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_client";
 import type { ListQuery } from "@/shared/types/api";
 
 export interface Deal {
@@ -48,6 +48,23 @@ export const dealService = {
     const response = await apiClient.get<ApiResponse<Deal[]>>(ENDPOINT, {
       params,
     });
+    return response.data;
+  },
+
+  /**
+   * `GET /deals/quotable` — the deals a new quotation can be raised against (UC-14.1),
+   * paged and searched server-side.
+   *
+   * Eligibility is one condition, applied by `DealSpecification.quotable`: the deal is
+   * still **active**. WON and LOST deals are closed and never returned. The same owner
+   * scoping `getList` gets still applies. Do not re-filter the result here — duplicating a
+   * server rule in the browser is how the two drift apart.
+   */
+  async getQuotable(params?: ListQuery) {
+    const response = await apiClient.get<ApiResponse<PageResponse<Deal>>>(
+      `${ENDPOINT}/quotable`,
+      { params },
+    );
     return response.data;
   },
 

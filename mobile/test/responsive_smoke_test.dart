@@ -354,7 +354,7 @@ final Map<String, Object?> _cannedByPath = {
   '/payments/p1': _payment,
   '/bookings': _paged([_booking]),
   '/bookings/b1': _booking,
-  '/notifications': [
+  '/notifications': _paged([
     {
       'id': 'n1',
       'title': 'Task overdue: Call Saigon Riverside',
@@ -375,7 +375,7 @@ final Map<String, Object?> _cannedByPath = {
       'relatedId': 'q1',
       'createdAt': _iso(const Duration(days: -1)),
     },
-  ],
+  ]),
   '/sla/monitoring': [
     {
       'trackingId': 'sla1',

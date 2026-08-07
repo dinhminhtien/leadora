@@ -68,8 +68,8 @@ public class CreateRoomRequestUseCase {
         // Re-asking the exact same question is a no-op: return the open request instead of
         // creating a duplicate and pinging the Reservation team again.
         RoomRequestEntity existing = roomRequestRepository
-                .findFirstByQuotation_QuotationIdAndStatusNotOrderByCreatedAtDesc(
-                        quotation.getQuotationId(), RoomRequestStatus.SUPERSEDED)
+                .findFirstByQuotation_QuotationIdAndStatusNotInOrderByCreatedAtDesc(
+                        quotation.getQuotationId(), RoomRequestStatus.notSpeakingForQuotation())
                 .orElse(null);
         if (existing != null && existing.getStatus() == RoomRequestStatus.PENDING
                 && isSameQuestion(existing, quotation, request.getQuantity())) {

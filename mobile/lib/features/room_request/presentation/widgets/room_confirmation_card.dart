@@ -42,6 +42,7 @@ class RoomConfirmationCard extends ConsumerStatefulWidget {
 
 class _RoomConfirmationCardState extends ConsumerState<RoomConfirmationCard> {
   bool _asking = false;
+  bool _cancelling = false;
   String? _error;
   late int _quantity = widget.defaultQuantity;
   bool? _lastReported;
@@ -71,6 +72,48 @@ class _RoomConfirmationCardState extends ConsumerState<RoomConfirmationCard> {
       if (mounted) setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _asking = false);
+    }
+  }
+
+  /// UC-26.4 — withdraw a request the Reservation team has not answered yet.
+  ///
+  /// Confirmed first because it is visible to another team: cancelling pulls the request
+  /// out of their inbox. A3 — dismissing the sheet leaves the request untouched.
+  Future<void> _cancel(RoomRequest request) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this room request?'),
+        content: const Text(
+          'The Reservation team will stop seeing it in their inbox. The request stays '
+          'in the history, and you can ask again at any time.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep it'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Cancel request'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _cancelling = true;
+      _error = null;
+    });
+    try {
+      await ref.read(roomRequestRepositoryProvider).cancel(request.requestId);
+      ref.invalidate(roomRequestsByQuotationProvider(widget.quotationId));
+    } on AppException catch (e) {
+      // ROOM_REQUEST_ALREADY_PROCESSED when Reservation answered first.
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _cancelling = false);
     }
   }
 
@@ -229,6 +272,15 @@ class _RoomConfirmationCardState extends ConsumerState<RoomConfirmationCard> {
                   onPressed: _asking ? null : _ask,
                   icon: const Icon(Icons.send_rounded, size: AppIconSize.md),
                   label: Text(_asking ? 'Sending…' : 'Ask Reservation'),
+                ),
+              ],
+              if (request != null && request.status == RoomRequestStatus.pending) ...[
+                const SizedBox(height: AppSpacing.sm),
+                TextButton.icon(
+                  onPressed: _cancelling ? null : () => _cancel(request),
+                  icon: const Icon(Icons.cancel_outlined, size: AppIconSize.md),
+                  label: Text(_cancelling ? 'Cancelling…' : 'Cancel request'),
+                  style: TextButton.styleFrom(foregroundColor: scheme.error),
                 ),
               ],
               if (_error != null) ...[

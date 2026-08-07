@@ -5,7 +5,10 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/network_providers.dart';
 import 'sla_models.dart';
 
-/// SLA monitoring API calls. Read-only on mobile (rule CRUD stays web-only).
+/// SLA monitoring API calls. Rule CRUD and the compliance report stay
+/// web-only, but resolving an individual tracked breach (UC-17.4 — Resolve
+/// SLA Task on Mobile) is not: it acts on one row a Sales rep is already
+/// looking at, not the rule configuration.
 class SlaRepository {
   SlaRepository(this._client);
 
@@ -27,6 +30,18 @@ class SlaRepository {
       decode: (data) => (data as List)
           .map((e) => SlaTrackingEntry.fromJson(e as Map<String, dynamic>))
           .toList(),
+    );
+  }
+
+  /// UC-17.4 — Resolve a breached/warning SLA tracking record. No request
+  /// body: `ResolveSlaBreachUseCase.execute(trackingId)` takes only the id.
+  /// BR-02 (server-enforced): only the assignee of the underlying entity, or
+  /// a Manager/Admin, may resolve it (403 otherwise); an already-resolved
+  /// record 409s.
+  Future<void> resolve(String trackingId) {
+    return _client.patch<void>(
+      ApiPaths.slaTrackingResolve(trackingId),
+      decode: (_) {},
     );
   }
 }

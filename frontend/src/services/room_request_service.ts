@@ -10,7 +10,22 @@ import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_c
  * `Booking.status`). Note this differs from `Quotation.status`, which is lowercased by
  * `QuotationResponse` — a pre-existing quirk of that endpoint only.
  */
-export type RoomRequestStatus = "PENDING" | "CONFIRMED" | "REJECTED" | "SUPERSEDED";
+export type RoomRequestStatus =
+  | "PENDING"
+  | "CONFIRMED"
+  | "REJECTED"
+  | "SUPERSEDED"
+  /** Sales withdrew the question before Reservation answered it (UC-26.4). */
+  | "CANCELLED";
+
+/**
+ * States that no longer represent a live question or a usable answer. Mirrors
+ * `RoomRequestStatus.notSpeakingForQuotation()` on the backend.
+ */
+const NOT_SPEAKING_FOR_QUOTATION: ReadonlySet<RoomRequestStatus> = new Set([
+  "SUPERSEDED",
+  "CANCELLED",
+]);
 
 export type RoomRequest = {
   requestId: string;
@@ -46,6 +61,11 @@ export type RespondRoomRequestPayload = {
   heldUntil?: string;
 };
 
+/** Optional justification, carried into the audit trail (UC-26.4). */
+export type CancelRoomRequestPayload = {
+  reason?: string;
+};
+
 const ENDPOINT = "/room-requests";
 
 export const roomRequestService = {
@@ -79,15 +99,31 @@ export const roomRequestService = {
     const { data } = await apiClient.put(`${ENDPOINT}/${requestId}/respond`, payload);
     return data;
   },
+
+  /**
+   * UC-26.4 — Sales withdraws a request Reservation has not answered yet. The backend
+   * rejects anything that is no longer PENDING with a 409, so the caller must surface
+   * the message rather than assume success.
+   */
+  async cancel(
+    requestId: string,
+    payload?: CancelRoomRequestPayload,
+  ): Promise<ApiResponse<RoomRequest>> {
+    const { data } = await apiClient.patch(`${ENDPOINT}/${requestId}/cancel`, payload ?? {});
+    return data;
+  },
 };
 
 /**
- * The request that currently speaks for a quotation: the newest non-superseded one.
- * Mirrors `RoomConfirmationGate.currentRequest` on the backend — the list arrives
- * newest-first, so this is the first row that has not been superseded.
+ * The request that currently speaks for a quotation: the newest one that is neither
+ * superseded nor cancelled. Mirrors `RoomConfirmationReader.currentRequest` on the
+ * backend — the list arrives newest-first, so this is the first row that still counts.
+ *
+ * Skipping cancelled rows is what lets an earlier confirmation resurface after Sales
+ * withdraws a follow-up question, instead of the withdrawn row masking it.
  */
 export function currentRoomRequest(requests: RoomRequest[] | undefined): RoomRequest | undefined {
-  return requests?.find((r) => r.status !== "SUPERSEDED");
+  return requests?.find((r) => !NOT_SPEAKING_FOR_QUOTATION.has(r.status));
 }
 
 /**
