@@ -7,7 +7,8 @@ import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 import com.novax.leadora.application.usecase.sla.ResolveSlaBreachUseCase;
 import com.novax.leadora.common.security.CurrentUserProvider;
-import com.novax.leadora.infrastructure.integration.email.EmailService;
+import com.novax.leadora.application.usecase.email.event.BookingConfirmedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
@@ -52,7 +53,7 @@ class ProcessBookingUseCaseTest {
     private NotificationRepository notificationRepository;
 
     @Mock
-    private EmailService emailService;
+    private ApplicationEventPublisher eventPublisher;
 
     @Mock
     private BookingStatusTransitionService bookingStatusTransitionService;
@@ -136,7 +137,7 @@ class ProcessBookingUseCaseTest {
         BookingResponse response = processBookingUseCase.execute(bookingId, request);
 
         assertThat(response.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
-        verify(emailService, times(1)).sendBookingConfirmationEmail(any(BookingEntity.class), eq(bookingDetails));
+        verify(eventPublisher, times(1)).publishEvent(any(BookingConfirmedEvent.class));
     }
 
     @Test
@@ -148,7 +149,7 @@ class ProcessBookingUseCaseTest {
         BookingResponse response = processBookingUseCase.execute(bookingId, request);
 
         assertThat(response.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
-        verify(emailService, never()).sendBookingConfirmationEmail(any(BookingEntity.class), anyList());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -160,7 +161,7 @@ class ProcessBookingUseCaseTest {
         BookingResponse response = processBookingUseCase.execute(bookingId, request);
 
         assertThat(response.getStatus()).isEqualTo(BookingStatus.REJECTED);
-        verify(emailService, never()).sendBookingConfirmationEmail(any(BookingEntity.class), anyList());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -168,13 +169,13 @@ class ProcessBookingUseCaseTest {
         ProcessBookingRequest request = new ProcessBookingRequest();
         request.setStatus("CONFIRMED");
 
-        doThrow(new RuntimeException("SMTP Server Down")).when(emailService)
-                .sendBookingConfirmationEmail(any(BookingEntity.class), anyList());
+        doThrow(new RuntimeException("Publish error")).when(eventPublisher)
+                .publishEvent(any(BookingConfirmedEvent.class));
 
         BookingResponse response = processBookingUseCase.execute(bookingId, request);
 
         assertThat(response.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
-        verify(emailService, times(1)).sendBookingConfirmationEmail(any(BookingEntity.class), eq(bookingDetails));
+        verify(eventPublisher, times(1)).publishEvent(any(BookingConfirmedEvent.class));
     }
 
     @Test

@@ -57,18 +57,11 @@ spring:
         boot:
           allow_jdbc_metadata_access: false
 
-  mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:${SPRING_MAIL_USERNAME:leadora.novax@gmail.com}}
-    password: ${MAIL_PASSWORD:${SPRING_MAIL_PASSWORD:}}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
+resend:
+  api-key: ${RESEND_API_KEY:}
+  default-from: ${RESEND_FROM_EMAIL:noreply@leadora.id.vn}
+  base-url: ${RESEND_BASE_URL:https://api.resend.com}
+  timeout: ${RESEND_TIMEOUT:10s}
 
   data:
     redis:

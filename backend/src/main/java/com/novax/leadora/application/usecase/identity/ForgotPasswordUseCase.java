@@ -5,7 +5,7 @@ import com.novax.leadora.infrastructure.persistence.entity.PasswordResetTokenEnt
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.PasswordResetTokenRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
-import com.novax.leadora.infrastructure.integration.email.EmailService;
+import com.novax.leadora.application.usecase.email.EmailService;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
