@@ -5,7 +5,9 @@ import com.novax.leadora.api.dto.response.SendMessageResponse;
 import com.novax.leadora.application.usecase.chat.intent.ChatIntent;
 import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.application.usecase.chat.intent.IntentClassifier;
+import com.novax.leadora.application.usecase.chat.intent.DateRangeResolver;
 import com.novax.leadora.application.usecase.chat.intent.IntentResult;
+import com.novax.leadora.application.usecase.chat.time.ChatDateRange;
 import com.novax.leadora.infrastructure.integration.ai.ChatLlmService;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +41,7 @@ public class SendChatMessageUseCase {
 
     private final ChatTurnWriter turnWriter;
     private final IntentClassifier intentClassifier;
+    private final DateRangeResolver dateRangeResolver;
     private final ContextAssembler contextAssembler;
     private final ChatLlmService chatLlmService;
 
@@ -54,6 +57,9 @@ public class SendChatMessageUseCase {
         // it in isolation would flip the language and drop the listing the user is asking about.
         boolean vi = IntentClassifier.resolveVietnamese(content, priorUserMessages);
         Set<CrmArea> areas = IntentClassifier.resolveAreas(content, priorUserMessages);
+        // Same inheritance rule, same reason: "ok, chi tiết hơn" after "lead hôm nay" still means
+        // today, and re-reading it alone would silently widen the answer back to all time.
+        ChatDateRange range = dateRangeResolver.resolve(content, priorUserMessages);
 
         // [1] Guardrail. A blocked turn never reaches the model, so it costs no tokens.
         IntentResult intent = intentClassifier.classify(content, ctx.lastIntent(), vi);
@@ -65,7 +71,8 @@ public class SendChatMessageUseCase {
 
         // [2] Gather context — outside any transaction, sources in parallel where they are
         // independent.
-        String referenceBlock = contextAssembler.assemble(intent.intent(), actor, areas, content);
+        String referenceBlock =
+                contextAssembler.assemble(intent.intent(), actor, areas, content, range);
 
         // [3] Generate. Best-effort: an unavailable model degrades to a clear message in the
         // user's language rather than a stack trace.

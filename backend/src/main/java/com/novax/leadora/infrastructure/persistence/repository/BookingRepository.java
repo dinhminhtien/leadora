@@ -54,7 +54,12 @@ public interface BookingRepository extends JpaRepository<BookingEntity, UUID>, J
     @Query("""
             SELECT b FROM BookingEntity b
             WHERE (:userId IS NULL OR b.assignedUser.userId = :userId)
+              AND (:from IS NULL OR b.createdAt >= :from)
+              AND (:to IS NULL OR b.createdAt <= :to)
             ORDER BY b.createdAt DESC
             """)
-    List<BookingEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
+    List<BookingEntity> findRecentForChat(@Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from,
+            @Param("to") OffsetDateTime to,
+            Pageable pageable);
 }

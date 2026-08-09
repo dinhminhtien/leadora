@@ -28,6 +28,46 @@ class ChatAggregateRepositoryTest {
                 .contains("'" + area.name() + "'");
     }
 
+    /**
+     * The period predicate is assembled by concatenating text blocks — exactly how the "ORCOALESCE"
+     * fusion this file already guards against was introduced. The statement is printed on failure
+     * because a malformed date filter satisfies a naive contains() check and surfaces only as a
+     * wrong answer against a real database.
+     */
+    @Test
+    @DisplayName("every branch is filtered on its own created_at, on both bounds")
+    void everyBranchIsDated() {
+        String sql = ChatAggregateRepository.countAllSql();
+        for (String column : new String[]{"l.created_at", "d.created_at", "t.created_at",
+                "q.created_at", "b.created_at", "p.created_at", "c.created_at", "st.created_at"}) {
+            assertThat(sql)
+                    .as("lower bound on %s in:%n%s", column, sql)
+                    .contains("(CAST(:from AS timestamptz) IS NULL OR " + column
+                            + " >= CAST(:from AS timestamptz))");
+            assertThat(sql)
+                    .as("upper bound on %s in:%n%s", column, sql)
+                    .contains("(CAST(:to AS timestamptz) IS NULL OR " + column
+                            + " <= CAST(:to AS timestamptz))");
+        }
+        // A predicate glued onto the neighbouring token still satisfies the checks above while
+        // being invalid SQL.
+        assertThat(sql).doesNotContain("uuid))AND")
+                .doesNotContain("timestamptz))GROUP")
+                .doesNotContain("timestamptz))UNION")
+                .doesNotContain("now()AND");
+    }
+
+    /** The listing must be filtered exactly like its count branch, or the header misreports it. */
+    @Test
+    @DisplayName("the SLA listing carries the same date filter as its count branch")
+    void slaListingIsDated() {
+        assertThat(ChatAggregateRepository.slaListingSql())
+                .contains("CAST(:from AS timestamptz)")
+                .contains("CAST(:to AS timestamptz)")
+                .doesNotContain("'RESOLVED'AND")
+                .doesNotContain("timestamptz))ORDER");
+    }
+
     @Test
     @DisplayName("every branch is scoped, so no branch can leak another user's records")
     void everyBranchIsScoped() {

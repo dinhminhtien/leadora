@@ -45,7 +45,12 @@ public interface PaymentRepository extends JpaRepository<PaymentEntity, UUID>, J
     @Query("""
             SELECT p FROM PaymentEntity p
             WHERE (:userId IS NULL OR p.booking.assignedUser.userId = :userId)
+              AND (:from IS NULL OR p.createdAt >= :from)
+              AND (:to IS NULL OR p.createdAt <= :to)
             ORDER BY p.createdAt DESC
             """)
-    List<PaymentEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
+    List<PaymentEntity> findRecentForChat(@Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from,
+            @Param("to") OffsetDateTime to,
+            Pageable pageable);
 }

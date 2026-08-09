@@ -1,6 +1,7 @@
 package com.novax.leadora.infrastructure.integration.ai;
 
 import com.novax.leadora.application.usecase.chat.ChatTurn;
+import com.novax.leadora.application.usecase.chat.time.ChatClock;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ChatRole;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -88,11 +89,19 @@ public class ChatLlmService {
                none of them covers the question, or — if it is empty — that no document has been
                uploaded yet, and suggest uploading one. Naming the wrong reason sends the user
                hunting for a permission problem that does not exist.
-            3f. NO DATE FILTER. Every count and total covers ALL TIME. If asked about a period
-               ("this month", "this quarter", "today"), say clearly that your figures are
-               all-time and that date filtering is not available yet, then give the all-time
-               number. Never present an all-time figure as if it were a period figure, and never
-               try to derive one by counting the rows in a listing — listings are capped and
+            3f. PERIODS. The REFERENCE DATA states its own window on a "Period:" line, and the
+               CURRENT TIME block below gives today's date and every named period already resolved
+               to exact dates. Read the period off those two — never compute a date yourself and
+               never assume one.
+                 - "Period: ALL TIME" means no date filter was applied. If the question named a
+                   period anyway, say the figures are all-time, and that you could not narrow them.
+                 - Any other Period line means every count, total and listing beneath it covers
+                   ONLY that window. Say which period you answered for, in words the user used
+                   ("hôm nay", "tháng này") plus the dates.
+               Records are filtered on their CREATION date. A question about when something was
+               paid, checked in, or due is asking about a different column, so answer it from the
+               listed rows and say the counts are by creation date.
+               Never derive a period figure by counting rows in a listing — listings are capped and
                show only the newest records.
             3g. LONG LISTS BELONG ON A SCREEN, NOT IN CHAT. Every listing header states how many
                rows it shows out of the area's total, and the screen that holds the full list.
@@ -139,9 +148,11 @@ public class ChatLlmService {
     private static final int MAX_HISTORY_MESSAGES = 10;
 
     private final ChatClient chatClient;
+    private final ChatClock clock;
 
-    public ChatLlmService(ChatClient.Builder chatClientBuilder) {
+    public ChatLlmService(ChatClient.Builder chatClientBuilder, ChatClock clock) {
         this.chatClient = chatClientBuilder.build();
+        this.clock = clock;
     }
 
     /**
@@ -182,12 +193,22 @@ public class ChatLlmService {
         return messages;
     }
 
+    /**
+     * The system message: policy, then the clock, then the data.
+     *
+     * <p>The time block is included on <em>every</em> turn, not only when the question names a
+     * period. A model with no clock cannot read a stored {@code created 2026-08-07T09:12+07:00} as
+     * "two days ago", cannot tell that a quotation's {@code valid until} has passed, and cannot
+     * judge whether a deadline is near — all of which it is asked constantly. It is a dozen lines
+     * and it removes a whole class of confidently wrong answers.
+     */
     private String systemText(String referenceBlock, boolean vietnamese) {
-        String text = SYSTEM_PROMPT + (vietnamese ? LANGUAGE_HINT_VI : LANGUAGE_HINT_EN);
+        String text = SYSTEM_PROMPT + (vietnamese ? LANGUAGE_HINT_VI : LANGUAGE_HINT_EN)
+                + "\n\n" + clock.promptBlock();
         return StringUtils.hasText(referenceBlock)
-                ? text + "\n\n=== REFERENCE DATA (current live snapshot — authoritative, "
+                ? text + "\n=== REFERENCE DATA (current live snapshot — authoritative, "
                         + "overrides any older figures mentioned earlier) ===\n" + referenceBlock
-                : text + "\n\n(No reference data was retrieved for this request.)";
+                : text + "\n(No reference data was retrieved for this request.)";
     }
 
     /**

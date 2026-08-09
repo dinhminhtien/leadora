@@ -2,6 +2,7 @@ package com.novax.leadora.application.usecase.chat;
 
 import com.novax.leadora.application.usecase.chat.intent.ChatIntent;
 import com.novax.leadora.application.usecase.chat.intent.CrmArea;
+import com.novax.leadora.application.usecase.chat.time.ChatDateRange;
 import com.novax.leadora.infrastructure.integration.ai.RagService;
 import com.novax.leadora.infrastructure.persistence.repository.AiDocumentRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -40,14 +41,18 @@ public class ContextAssembler {
     private static final int GATHER_TIMEOUT_SECONDS = 6;
 
     private final CrmSnapshotService crmSnapshotService;
+    private final PerformanceSnapshotService performanceSnapshotService;
     private final RagService ragService;
     private final AiDocumentRepository documentRepository;
     private final Executor executor;
 
-    public ContextAssembler(CrmSnapshotService crmSnapshotService, RagService ragService,
+    public ContextAssembler(CrmSnapshotService crmSnapshotService,
+                            PerformanceSnapshotService performanceSnapshotService,
+                            RagService ragService,
                             AiDocumentRepository documentRepository,
                             @Qualifier("taskExecutor") Executor executor) {
         this.crmSnapshotService = crmSnapshotService;
+        this.performanceSnapshotService = performanceSnapshotService;
         this.ragService = ragService;
         this.documentRepository = documentRepository;
         this.executor = executor;
@@ -60,7 +65,8 @@ public class ContextAssembler {
      * @param query   the raw question, used as the document-search query
      * @return the reference block, empty when the intent needs no data
      */
-    public String assemble(ChatIntent intent, ChatActor actor, Set<CrmArea> areas, String query) {
+    public String assemble(ChatIntent intent, ChatActor actor, Set<CrmArea> areas, String query,
+                           ChatDateRange range) {
         return switch (intent) {
             // Operates on the conversation itself (translate/summarise/rephrase a previous
             // answer), so the history already sent to the model is the whole input. Consulting
@@ -68,22 +74,37 @@ public class ContextAssembler {
             // tokens.
             case META_CONVERSATION -> "";
             // Explicit possessive ("lead của tôi") — pinned to the asker even for a Manager.
-            case PERSONAL_DATA -> crmSnapshotService.personalSnapshot(actor, areas);
+            case PERSONAL_DATA -> crmSnapshotService.personalSnapshot(actor, areas, range);
             // A question naming a staff member ("deal của Tiến Đinh") gets a snapshot scoped to
             // that person — exact totals, their rows — instead of the generic unfiltered listing
             // that used to force a "filter it on the screen yourself" answer. BR-36 is enforced
             // inside: non-privileged callers never match, and fall through to their own scope.
-            case ASSIGNED_DATA -> mentionedStaffOr(actor, areas, query,
-                    () -> crmSnapshotService.scopedSnapshot(actor, areas));
+            case ASSIGNED_DATA -> mentionedStaffOr(actor, areas, query, range,
+                    () -> crmSnapshotService.scopedSnapshot(actor, areas, range));
             // Team-wide figures are a Manager/Admin privilege; anyone else is quietly narrowed to
             // their own scope rather than refused, so the question still gets a useful answer.
             case TEAM_SUMMARY -> crmSnapshotService.canSeeAllData(actor)
-                    ? mentionedStaffOr(actor, areas, query, crmSnapshotService::teamSummary)
-                    : crmSnapshotService.scopedSnapshot(actor, areas);
+                    ? mentionedStaffOr(actor, areas, query, range,
+                            () -> crmSnapshotService.teamSummary(range))
+                    : crmSnapshotService.scopedSnapshot(actor, areas, range);
+            // Rates AND rows: the report block carries the ratios a snapshot cannot express, the
+            // snapshot carries the records behind them. Answering "who converts best" from ratios
+            // alone leaves the assistant unable to name a single deal when asked why.
+            case PERFORMANCE_REPORT -> performance(actor, areas, query, range);
             case DOC_QUERY -> documentContext(query);
-            case GENERAL_BUSINESS -> blend(actor, areas, query);
+            case GENERAL_BUSINESS -> blend(actor, areas, query, range);
             default -> "";
         };
+    }
+
+    /** Performance ratios plus the underlying records, gathered concurrently. */
+    private String performance(ChatActor actor, Set<CrmArea> areas, String query,
+                               ChatDateRange range) {
+        CompletableFuture<String> report =
+                supply(() -> performanceSnapshotService.render(actor, range), "performance report");
+        CompletableFuture<String> crm = supply(() -> mentionedStaffOr(actor, areas, query, range,
+                () -> crmSnapshotService.scopedSnapshot(actor, areas, range)), "CRM snapshot");
+        return joinWithin(report, crm);
     }
 
     /**
@@ -133,27 +154,37 @@ public class ContextAssembler {
 
     /** The named colleague's snapshot when the question mentions one, else the given fallback. */
     private String mentionedStaffOr(ChatActor actor, Set<CrmArea> areas, String query,
+                                    ChatDateRange range,
                                     java.util.function.Supplier<String> fallback) {
-        String mentioned = crmSnapshotService.mentionedStaffSnapshot(actor, areas, query);
+        String mentioned = crmSnapshotService.mentionedStaffSnapshot(actor, areas, query, range);
         return StringUtils.hasText(mentioned) ? mentioned : fallback.get();
     }
 
     /** Company documents and the user's own figures, gathered concurrently. */
-    private String blend(ChatActor actor, Set<CrmArea> areas, String query) {
+    private String blend(ChatActor actor, Set<CrmArea> areas, String query, ChatDateRange range) {
         CompletableFuture<String> rag = supply(() -> ragService.retrieveContext(query), "RAG");
-        CompletableFuture<String> crm = supply(() -> mentionedStaffOr(actor, areas, query,
-                () -> crmSnapshotService.scopedSnapshot(actor, areas)), "CRM snapshot");
+        CompletableFuture<String> crm = supply(() -> mentionedStaffOr(actor, areas, query, range,
+                () -> crmSnapshotService.scopedSnapshot(actor, areas, range)), "CRM snapshot");
+        return joinWithin(rag, crm);
+    }
 
+    /**
+     * Waits for both sources up to the gather timeout, then concatenates whatever arrived.
+     *
+     * <p>{@code getNow("")} is what makes the timeout non-fatal: a source that has not finished
+     * contributes nothing and the answer is built from the rest, which beats making the user wait
+     * on something that may never respond.
+     */
+    private String joinWithin(CompletableFuture<String> first, CompletableFuture<String> second) {
         try {
-            CompletableFuture.allOf(rag, crm).get(GATHER_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            CompletableFuture.allOf(first, second).get(GATHER_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (Exception ex) {
             log.warn("Context gathering did not finish in time ({}); answering with whatever arrived",
                     ex.getClass().getSimpleName());
         }
-
-        String ragText = rag.getNow("");
-        String crmText = crm.getNow("");
-        return (StringUtils.hasText(ragText) ? ragText + "\n" : "") + crmText;
+        String a = first.getNow("");
+        String b = second.getNow("");
+        return (StringUtils.hasText(a) ? a + "\n" : "") + b;
     }
 
     private CompletableFuture<String> supply(java.util.function.Supplier<String> source, String name) {

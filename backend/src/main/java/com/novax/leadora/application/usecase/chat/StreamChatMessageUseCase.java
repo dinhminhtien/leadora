@@ -3,7 +3,9 @@ package com.novax.leadora.application.usecase.chat;
 import com.novax.leadora.api.dto.response.ChatMessageResponse;
 import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.application.usecase.chat.intent.IntentClassifier;
+import com.novax.leadora.application.usecase.chat.intent.DateRangeResolver;
 import com.novax.leadora.application.usecase.chat.intent.IntentResult;
+import com.novax.leadora.application.usecase.chat.time.ChatDateRange;
 import com.novax.leadora.infrastructure.integration.ai.ChatLlmService;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import lombok.extern.slf4j.Slf4j;
@@ -52,15 +54,18 @@ public class StreamChatMessageUseCase {
 
     private final ChatTurnWriter turnWriter;
     private final IntentClassifier intentClassifier;
+    private final DateRangeResolver dateRangeResolver;
     private final ContextAssembler contextAssembler;
     private final ChatLlmService chatLlmService;
     private final Executor executor;
 
     public StreamChatMessageUseCase(ChatTurnWriter turnWriter, IntentClassifier intentClassifier,
+                                    DateRangeResolver dateRangeResolver,
                                     ContextAssembler contextAssembler, ChatLlmService chatLlmService,
                                     @Qualifier("chatStreamExecutor") Executor executor) {
         this.turnWriter = turnWriter;
         this.intentClassifier = intentClassifier;
+        this.dateRangeResolver = dateRangeResolver;
         this.contextAssembler = contextAssembler;
         this.chatLlmService = chatLlmService;
         this.executor = executor;
@@ -93,6 +98,7 @@ public class StreamChatMessageUseCase {
             // alone: a follow-up carries neither signal on its own.
             boolean vi = IntentClassifier.resolveVietnamese(content, priorUserMessages);
             Set<CrmArea> areas = IntentClassifier.resolveAreas(content, priorUserMessages);
+            ChatDateRange range = dateRangeResolver.resolve(content, priorUserMessages);
 
             IntentResult intent = intentClassifier.classify(content, ctx.lastIntent(), vi);
             send(emitter, "start", Map.of(
@@ -108,7 +114,7 @@ public class StreamChatMessageUseCase {
             }
 
             String referenceBlock =
-                    contextAssembler.assemble(intent.intent(), actor, areas, content);
+                    contextAssembler.assemble(intent.intent(), actor, areas, content, range);
 
             StringBuilder full = new StringBuilder();
             try {

@@ -44,20 +44,49 @@ public class ChatAggregateRepository {
     /** Marks the derived overdue-task row, which is a filter rather than a stored status. */
     static final String OVERDUE_MARKER = "__OVERDUE__";
 
+    /**
+     * The period predicate, applied to every branch on its own {@code created_at}.
+     *
+     * <p>Both bounds are nullable and the {@code IS NULL} short-circuit makes an unbounded range
+     * plan exactly as the statement did before dates existed — a question naming no period pays
+     * nothing for the feature.
+     *
+     * <p><b>One column, deliberately.</b> Every area is filtered on when the record was created,
+     * never on an area-specific date ({@code paid_at}, {@code check_in_date}, {@code end_at}). Those
+     * would each answer a different question — "paid this month" is not "created this month" — and
+     * mixing them inside one snapshot would produce a set of numbers that cannot be added up or
+     * compared. The reference block states the rule so the assistant can say which it is.
+     */
+    private static String dated(String column) {
+        return "   AND (CAST(:from AS timestamptz) IS NULL OR " + column
+                + " >= CAST(:from AS timestamptz))\n"
+                + "   AND (CAST(:to AS timestamptz) IS NULL OR " + column
+                + " <= CAST(:to AS timestamptz))\n";
+    }
+
     private static final String COUNT_ALL = """
             SELECT 'LEADS' AS area, l.status AS status, COUNT(*) AS cnt, NULL::numeric AS amount
               FROM leads l
              WHERE (CAST(:scope AS uuid) IS NULL OR l.assigned_user_id = CAST(:scope AS uuid))
+            """
+            + dated("l.created_at")
+            + """
              GROUP BY l.status
             UNION ALL
             SELECT 'DEALS', d.status, COUNT(*), COALESCE(SUM(d.expected_revenue), 0)
               FROM deals d
              WHERE (CAST(:scope AS uuid) IS NULL OR d.assigned_user_id = CAST(:scope AS uuid))
+            """
+            + dated("d.created_at")
+            + """
              GROUP BY d.status
             UNION ALL
             SELECT 'TASKS', t.status, COUNT(*), NULL
               FROM tasks t
              WHERE (CAST(:scope AS uuid) IS NULL OR t.assigned_user_id = CAST(:scope AS uuid))
+            """
+            + dated("t.created_at")
+            + """
              GROUP BY t.status
             UNION ALL
             SELECT 'TASKS', '__OVERDUE__', COUNT(*), NULL
@@ -66,27 +95,42 @@ public class ChatAggregateRepository {
                AND t.status NOT IN ('COMPLETED', 'CANCELLED')
                AND t.end_at IS NOT NULL
                AND t.end_at < now()
+            """
+            + dated("t.created_at")
+            + """
             UNION ALL
             SELECT 'QUOTATIONS', q.status, COUNT(*), COALESCE(SUM(q.total_amount), 0)
               FROM quotations q
               JOIN deals qd ON qd.deal_id = q.deal_id
              WHERE (CAST(:scope AS uuid) IS NULL OR qd.assigned_user_id = CAST(:scope AS uuid))
+            """
+            + dated("q.created_at")
+            + """
              GROUP BY q.status
             UNION ALL
             SELECT 'BOOKINGS', b.status, COUNT(*), COALESCE(SUM(b.total_amount), 0)
               FROM bookings b
              WHERE (CAST(:scope AS uuid) IS NULL OR b.assigned_user_id = CAST(:scope AS uuid))
+            """
+            + dated("b.created_at")
+            + """
              GROUP BY b.status
             UNION ALL
             SELECT 'PAYMENTS', p.status, COUNT(*), COALESCE(SUM(p.amount), 0)
               FROM payments p
               JOIN bookings pb ON pb.booking_id = p.booking_id
              WHERE (CAST(:scope AS uuid) IS NULL OR pb.assigned_user_id = CAST(:scope AS uuid))
+            """
+            + dated("p.created_at")
+            + """
              GROUP BY p.status
             UNION ALL
             SELECT 'CUSTOMERS', c.status, COUNT(*), NULL
               FROM customers c
              WHERE (CAST(:scope AS uuid) IS NULL OR c.assigned_user_id = CAST(:scope AS uuid))
+            """
+            + dated("c.created_at")
+            + """
              GROUP BY c.status
             UNION ALL
             SELECT 'SLA', st.status, COUNT(*), NULL
@@ -98,6 +142,9 @@ public class ChatAggregateRepository {
              WHERE (CAST(:scope AS uuid) IS NULL
                     OR COALESCE(sl.assigned_user_id, stk.assigned_user_id,
                                 sq.created_by, sb.assigned_user_id) = CAST(:scope AS uuid))
+            """
+            + dated("st.created_at")
+            + """
              GROUP BY st.status
             """;
 
@@ -137,6 +184,7 @@ public class ChatAggregateRepository {
             // by running the statement.
             + " WHERE (CAST(:scope AS uuid) IS NULL OR " + SLA_OWNER + " = CAST(:scope AS uuid))\n"
             + "   AND st.status <> 'RESOLVED'\n"
+            + dated("st.created_at")
             + " ORDER BY st.deadline_at ASC\n"
             + " LIMIT :limit\n";
 
@@ -144,10 +192,14 @@ public class ChatAggregateRepository {
 
     /**
      * @param scopeUserId records assigned to this user, or null for every record
+     * @param from        earliest {@code created_at} to count, or null for unbounded
+     * @param to          latest {@code created_at} to count, or null for unbounded
      */
-    public ChatCounts countAll(UUID scopeUserId) {
+    public ChatCounts countAll(UUID scopeUserId, OffsetDateTime from, OffsetDateTime to) {
         MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("scope", scopeUserId != null ? scopeUserId.toString() : null);
+                .addValue("scope", scopeUserId != null ? scopeUserId.toString() : null)
+                .addValue("from", from)
+                .addValue("to", to);
 
         Map<CrmArea, List<StatusBucket>> byArea = new EnumMap<>(CrmArea.class);
         long[] overdue = {0};
@@ -173,9 +225,12 @@ public class ChatAggregateRepository {
      * @param scopeUserId records whose subject is assigned to this user, or null for every record
      * @param limit       hard cap, applied in SQL
      */
-    public List<SlaRow> unresolvedSla(UUID scopeUserId, int limit) {
+    public List<SlaRow> unresolvedSla(UUID scopeUserId, OffsetDateTime from, OffsetDateTime to,
+                                      int limit) {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("scope", scopeUserId != null ? scopeUserId.toString() : null)
+                .addValue("from", from)
+                .addValue("to", to)
                 .addValue("limit", limit);
 
         return jdbc.query(SLA_LISTING, params, (rs, i) -> new SlaRow(

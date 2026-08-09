@@ -38,6 +38,16 @@ public enum ChatIntent {
     /** Question about team-wide aggregates / summaries. */
     TEAM_SUMMARY,
 
+    /**
+     * Question about how well people are performing — conversion rate, win rate, who is ahead.
+     *
+     * <p>Distinct from {@link #TEAM_SUMMARY} because counting records and judging performance need
+     * different data. A summary answers "how many deals are open"; this answers "what share of them
+     * close, and for whom", which requires the ratios and per-person aggregates the Reporting module
+     * already computes. Routed to those reports rather than to the record snapshot.
+     */
+    PERFORMANCE_REPORT,
+
     /** Question answerable from ingested company documents (policies, handbooks...). */
     DOC_QUERY,
 

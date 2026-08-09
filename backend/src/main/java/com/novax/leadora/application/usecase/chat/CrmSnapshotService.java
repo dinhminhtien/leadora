@@ -5,6 +5,8 @@ import com.novax.leadora.application.usecase.chat.dto.RepDealStat;
 import com.novax.leadora.application.usecase.chat.dto.RepLeadCount;
 import com.novax.leadora.application.usecase.chat.dto.StatusBucket;
 import com.novax.leadora.application.usecase.chat.intent.CrmArea;
+import com.novax.leadora.application.usecase.chat.time.ChatClock;
+import com.novax.leadora.application.usecase.chat.time.ChatDateRange;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
@@ -110,6 +112,9 @@ public class CrmSnapshotService {
     @Value("${AI_CHAT_TOP_PRIVILEGE:false}")
     private boolean topPrivilege;
 
+    /** Business calendar, so "today" means the company's day rather than the server's. */
+    private final ChatClock clock;
+
     /** Whether {@code user}'s role may read every record (team-wide), vs only their own. */
     public boolean canSeeAllData(ChatActor actor) {
         if (topPrivilege) {
@@ -123,9 +128,9 @@ public class CrmSnapshotService {
      * Facts the user may view: team-wide for Manager/Admin, own otherwise. Use for generic CRM
      * questions ("what leads are there?").
      */
-    public String scopedSnapshot(ChatActor actor, Set<CrmArea> areas) {
+    public String scopedSnapshot(ChatActor actor, Set<CrmArea> areas, ChatDateRange range) {
         boolean all = canSeeAllData(actor);
-        return snapshot(actor, all ? null : actor.userId(), areas,
+        return snapshot(actor, all ? null : actor.userId(), areas, range,
                 all ? "== Full CRM data (manager access) =="
                         : "== CRM data assigned to " + actor.fullName() + " ==");
     }
@@ -137,8 +142,8 @@ public class CrmSnapshotService {
      * deals"). A Manager asking for "my leads" means the ones assigned to them, not the whole
      * company's — answering with everything silently ignores the word they emphasised.
      */
-    public String personalSnapshot(ChatActor actor, Set<CrmArea> areas) {
-        return snapshot(actor, actor.userId(), areas,
+    public String personalSnapshot(ChatActor actor, Set<CrmArea> areas, ChatDateRange range) {
+        return snapshot(actor, actor.userId(), areas, range,
                 "== CRM data assigned personally to " + actor.fullName() + " ==");
     }
 
@@ -160,7 +165,8 @@ public class CrmSnapshotService {
      * against the current question only. A display name carrying a suffix ("Đinh Minh Tiến -
      * FSchool CT") also answers to its bare part before the dash.
      */
-    public String mentionedStaffSnapshot(ChatActor actor, Set<CrmArea> areas, String query) {
+    public String mentionedStaffSnapshot(ChatActor actor, Set<CrmArea> areas, String query,
+                                         ChatDateRange range) {
         if (!canSeeAllData(actor) || !StringUtils.hasText(query)) {
             return "";
         }
@@ -176,7 +182,7 @@ public class CrmSnapshotService {
             if (u.getFullName() == null || !nameMentioned(foldedQuery, u.getFullName())) {
                 continue;
             }
-            sb.append(snapshot(actor, u.getUserId(), areas,
+            sb.append(snapshot(actor, u.getUserId(), areas, range,
                     "== CRM data assigned to " + u.getFullName()
                             + " (staff member named in the question) =="));
             matched++;
@@ -206,25 +212,29 @@ public class CrmSnapshotService {
                 .trim();
     }
 
-    private String snapshot(ChatActor actor, UUID scopeUserId, Set<CrmArea> areas, String header) {
-        OffsetDateTime now = OffsetDateTime.now();
+    private String snapshot(ChatActor actor, UUID scopeUserId, Set<CrmArea> areas,
+                            ChatDateRange range, String header) {
+        OffsetDateTime now = clock.now();
+        OffsetDateTime from = range.start(clock.zone());
+        OffsetDateTime to = range.end(clock.zone());
         // Every area's counts in one round trip. Fetching them area by area cost more in network
         // latency to a remote database than the model spent producing its first token.
-        ChatCounts counts = chatAggregateRepository.countAll(scopeUserId);
+        ChatCounts counts = chatAggregateRepository.countAll(scopeUserId, from, to);
         StringBuilder sb = new StringBuilder(header).append("\n");
+        sb.append(periodLine(range));
         List<CrmArea> emptyAreas = new ArrayList<>();
 
         for (CrmArea area : CrmArea.values()) {
             boolean detail = areas.contains(area);
             long total = switch (area) {
-                case LEADS -> appendLeads(sb, counts, scopeUserId, detail);
-                case DEALS -> appendDeals(sb, counts, scopeUserId, detail);
-                case TASKS -> appendTasks(sb, counts, scopeUserId, detail, now);
-                case QUOTATIONS -> appendQuotations(sb, counts, scopeUserId, detail);
-                case BOOKINGS -> appendBookings(sb, counts, scopeUserId, detail);
-                case PAYMENTS -> appendPayments(sb, counts, scopeUserId, detail);
-                case CUSTOMERS -> appendCustomers(sb, counts, scopeUserId, detail);
-                case SLA -> appendSla(sb, counts, scopeUserId, detail);
+                case LEADS -> appendLeads(sb, counts, scopeUserId, detail, from, to);
+                case DEALS -> appendDeals(sb, counts, scopeUserId, detail, from, to);
+                case TASKS -> appendTasks(sb, counts, scopeUserId, detail, now, from, to);
+                case QUOTATIONS -> appendQuotations(sb, counts, scopeUserId, detail, from, to);
+                case BOOKINGS -> appendBookings(sb, counts, scopeUserId, detail, from, to);
+                case PAYMENTS -> appendPayments(sb, counts, scopeUserId, detail, from, to);
+                case CUSTOMERS -> appendCustomers(sb, counts, scopeUserId, detail, from, to);
+                case SLA -> appendSla(sb, counts, scopeUserId, detail, from, to);
             };
             // Guidance is only worth giving for what was actually asked about: an empty payments
             // area is not interesting when the question was about leads.
@@ -234,22 +244,41 @@ public class CrmSnapshotService {
         }
 
         if (!emptyAreas.isEmpty()) {
-            appendAffordances(sb, actor, scopeUserId, emptyAreas);
+            appendAffordances(sb, actor, scopeUserId, emptyAreas, range);
         }
         return sb.toString();
+    }
+
+    /**
+     * States the window every figure below was computed over, and on which column.
+     *
+     * <p>Without it a filtered snapshot is indistinguishable from an unfiltered one: the model would
+     * receive "Leads: total 3" for a question about today and have no way to know whether that is
+     * three leads today or three leads ever. Naming the column matters just as much — "created
+     * today" and "paid today" are different questions, and the assistant has to be able to say which
+     * one it answered.
+     */
+    private static String periodLine(ChatDateRange range) {
+        if (range.isAllTime()) {
+            return "Period: ALL TIME (no date filter was applied to this question).\n";
+        }
+        return "Period: " + range.label() + " — every count, total and listing below covers ONLY "
+                + "records whose creation date falls in " + range.from() + " .. " + range.to()
+                + " (inclusive). These are NOT all-time figures. State the period in your answer.\n";
     }
 
     // ── Per-area sections ─────────────────────────────────────────────────────
     // Each returns the area's row count so the caller can spot empty areas.
 
-    private long appendLeads(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+    private long appendLeads(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail,
+                             OffsetDateTime from, OffsetDateTime to) {
         long total = counts.total(CrmArea.LEADS);
         sb.append("Leads: total ").append(total)
                 .append(statusBreakdown(counts.of(CrmArea.LEADS))).append("\n");
 
         if (detail && total > 0) {
             sb.append(listingHeader("Lead list, newest first", Math.min(total, MAX_LEADS), total, CrmArea.LEADS));
-            leadRepository.findRecentForChat(scope, page(MAX_LEADS)).forEach(l ->
+            leadRepository.findRecentForChat(scope, from, to, page(MAX_LEADS)).forEach(l ->
                     sb.append("  - \"").append(l.getFullName())
                             .append("\" | ").append(l.getStatus())
                             .append(" | company: ").append(dash(l.getCompanyName()))
@@ -261,7 +290,8 @@ public class CrmSnapshotService {
         return total;
     }
 
-    private long appendDeals(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+    private long appendDeals(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail,
+                             OffsetDateTime from, OffsetDateTime to) {
         long total = counts.total(CrmArea.DEALS);
         sb.append("Deals: total ").append(total)
                 .append(", open ").append(counts.count(CrmArea.DEALS, DealStatus.OPEN.name()))
@@ -272,7 +302,7 @@ public class CrmSnapshotService {
 
         if (detail && total > 0) {
             sb.append(listingHeader("Deal details, newest first", Math.min(total, MAX_DEALS), total, CrmArea.DEALS));
-            dealRepository.findRecentForChat(scope, page(MAX_DEALS)).forEach(d ->
+            dealRepository.findRecentForChat(scope, from, to, page(MAX_DEALS)).forEach(d ->
                     sb.append("  - \"").append(d.getDealName())
                             .append("\" | ").append(d.getPipelineStage())
                             .append(" | ").append(d.getStatus())
@@ -283,7 +313,7 @@ public class CrmSnapshotService {
             // Full company scope only: exact per-person aggregates, so "how much does X hold?"
             // is answerable even though the listing above is capped and unfiltered.
             if (scope == null) {
-                appendPerRepDealStats(sb);
+                appendPerRepDealStats(sb, from, to);
             }
         }
         return total;
@@ -294,8 +324,8 @@ public class CrmSnapshotService {
      * capped listing cannot answer per-person totals; this can, so per-person questions no longer
      * have to be deflected to the Deals screen.
      */
-    private void appendPerRepDealStats(StringBuilder sb) {
-        List<RepDealStat> stats = dealRepository.statsPerAssignee();
+    private void appendPerRepDealStats(StringBuilder sb, OffsetDateTime from, OffsetDateTime to) {
+        List<RepDealStat> stats = dealRepository.statsPerAssignee(from, to);
         List<String> reps = stats.stream().map(RepDealStat::repName).distinct().limit(MAX_REPS).toList();
         if (reps.isEmpty()) {
             return;
@@ -315,7 +345,7 @@ public class CrmSnapshotService {
     }
 
     private long appendTasks(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail,
-                             OffsetDateTime now) {
+                             OffsetDateTime now, OffsetDateTime from, OffsetDateTime to) {
         long total = counts.total(CrmArea.TASKS);
         long open = counts.count(CrmArea.TASKS, TaskStatus.OPEN.name());
         sb.append("Tasks: total ").append(total)
@@ -325,7 +355,7 @@ public class CrmSnapshotService {
 
         if (detail && open > 0) {
             sb.append(listingHeader("Open tasks, earliest deadline first", Math.min(open, MAX_TASKS), open, CrmArea.TASKS));
-            taskRepository.findOpenForChat(scope, CLOSED_TASK_STATUSES, page(MAX_TASKS)).forEach(t ->
+            taskRepository.findOpenForChat(scope, CLOSED_TASK_STATUSES, from, to, page(MAX_TASKS)).forEach(t ->
                     sb.append("  - \"").append(t.getTitle())
                             .append("\" | due ").append(t.getEndAt())
                             .append(" | priority ").append(t.getPriority())
@@ -336,14 +366,14 @@ public class CrmSnapshotService {
     }
 
     private long appendQuotations(StringBuilder sb, ChatCounts counts, UUID scope,
-                                  boolean detail) {
+                                  boolean detail, OffsetDateTime from, OffsetDateTime to) {
         long total = counts.total(CrmArea.QUOTATIONS);
         sb.append("Quotations: total ").append(total)
                 .append(valueBreakdown(counts.of(CrmArea.QUOTATIONS))).append("\n");
 
         if (detail && total > 0) {
             sb.append(listingHeader("Quotation details, newest first", Math.min(total, MAX_QUOTATIONS), total, CrmArea.QUOTATIONS));
-            quotationRepository.findRecentForChat(scope, page(MAX_QUOTATIONS)).forEach(q ->
+            quotationRepository.findRecentForChat(scope, from, to, page(MAX_QUOTATIONS)).forEach(q ->
                     sb.append("  - v").append(q.getVersion())
                             .append(" | ").append(q.getStatus())
                             .append(" | customer: ")
@@ -359,14 +389,15 @@ public class CrmSnapshotService {
         return total;
     }
 
-    private long appendBookings(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+    private long appendBookings(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail,
+                                OffsetDateTime from, OffsetDateTime to) {
         long total = counts.total(CrmArea.BOOKINGS);
         sb.append("Bookings: total ").append(total)
                 .append(valueBreakdown(counts.of(CrmArea.BOOKINGS))).append("\n");
 
         if (detail && total > 0) {
             sb.append(listingHeader("Booking details, newest first", Math.min(total, MAX_BOOKINGS), total, CrmArea.BOOKINGS));
-            bookingRepository.findRecentForChat(scope, page(MAX_BOOKINGS)).forEach(b ->
+            bookingRepository.findRecentForChat(scope, from, to, page(MAX_BOOKINGS)).forEach(b ->
                     sb.append("  - \"").append(b.getBookingCode())
                             .append("\" | ").append(b.getStatus())
                             .append(" | customer: ")
@@ -380,7 +411,8 @@ public class CrmSnapshotService {
         return total;
     }
 
-    private long appendPayments(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+    private long appendPayments(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail,
+                                OffsetDateTime from, OffsetDateTime to) {
         long total = counts.total(CrmArea.PAYMENTS);
         sb.append("Payments: total ").append(total)
                 .append(", PAID amount ").append(counts.amount(CrmArea.PAYMENTS, "PAID"))
@@ -389,7 +421,7 @@ public class CrmSnapshotService {
 
         if (detail && total > 0) {
             sb.append(listingHeader("Payment details, newest first", Math.min(total, MAX_PAYMENTS), total, CrmArea.PAYMENTS));
-            paymentRepository.findRecentForChat(scope, page(MAX_PAYMENTS)).forEach(p ->
+            paymentRepository.findRecentForChat(scope, from, to, page(MAX_PAYMENTS)).forEach(p ->
                     sb.append("  - booking ")
                             .append(p.getBooking() != null ? p.getBooking().getBookingCode() : "-")
                             .append(" | ").append(p.getPaymentType())
@@ -401,14 +433,15 @@ public class CrmSnapshotService {
         return total;
     }
 
-    private long appendCustomers(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+    private long appendCustomers(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail,
+                                 OffsetDateTime from, OffsetDateTime to) {
         long total = counts.total(CrmArea.CUSTOMERS);
         sb.append("Customers: total ").append(total)
                 .append(statusBreakdown(counts.of(CrmArea.CUSTOMERS))).append("\n");
 
         if (detail && total > 0) {
             sb.append(listingHeader("Customer list, newest first", Math.min(total, MAX_CUSTOMERS), total, CrmArea.CUSTOMERS));
-            customerRepository.findRecentForChat(scope, page(MAX_CUSTOMERS)).forEach(c ->
+            customerRepository.findRecentForChat(scope, from, to, page(MAX_CUSTOMERS)).forEach(c ->
                     sb.append("  - \"").append(c.getFullName())
                             .append("\" | ").append(c.getStatus())
                             .append(" | ").append(c.getCustomerType())
@@ -434,7 +467,8 @@ public class CrmSnapshotService {
      * acting on: a RESOLVED row is history. The header therefore reports the unresolved count, so
      * "showing 10 of 12" never quietly means "10 of 12 including the closed ones".
      */
-    private long appendSla(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail) {
+    private long appendSla(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail,
+                           OffsetDateTime from, OffsetDateTime to) {
         long total = counts.total(CrmArea.SLA);
         long active = counts.count(CrmArea.SLA, SlaStatus.ACTIVE.name());
         long breached = counts.count(CrmArea.SLA, SlaStatus.BREACHED.name());
@@ -448,7 +482,7 @@ public class CrmSnapshotService {
         if (detail && unresolved > 0) {
             sb.append(listingHeader("Unresolved SLA records, earliest deadline first",
                     Math.min(unresolved, MAX_SLA), unresolved, CrmArea.SLA));
-            chatAggregateRepository.unresolvedSla(scope, MAX_SLA).forEach(s ->
+            chatAggregateRepository.unresolvedSla(scope, from, to, MAX_SLA).forEach(s ->
                     sb.append("  - ").append(s.activityType())
                             .append(" on ").append(s.entityType())
                             .append(" | ").append(s.status())
@@ -473,7 +507,7 @@ public class CrmSnapshotService {
      * listing who holds the records would leak data the caller cannot read.
      */
     private void appendAffordances(StringBuilder sb, ChatActor actor, UUID scopeUserId,
-                                   List<CrmArea> emptyAreas) {
+                                   List<CrmArea> emptyAreas, ChatDateRange range) {
         boolean personalScope = scopeUserId != null;
         boolean privileged = canSeeAllData(actor);
 
@@ -515,21 +549,26 @@ public class CrmSnapshotService {
         }
 
         // One more round trip covers the fallback for every empty area, however many there are.
-        ChatCounts companyWide = chatAggregateRepository.countAll(null);
+        // Same window as the scoped snapshot above: offering "company-wide leads: 20" from all time
+        // when the user asked about today would answer a question they did not ask.
+        ChatCounts companyWide = chatAggregateRepository.countAll(
+                null, range.start(clock.zone()), range.end(clock.zone()));
         for (CrmArea area : emptyAreas) {
-            appendCompanyWideFallback(sb, area, companyWide);
+            appendCompanyWideFallback(sb, area, companyWide, range);
         }
     }
 
     /** Company-wide figures a privileged caller can be offered when their own scope is empty. */
-    private void appendCompanyWideFallback(StringBuilder sb, CrmArea area, ChatCounts companyWide) {
+    private void appendCompanyWideFallback(StringBuilder sb, CrmArea area, ChatCounts companyWide,
+                                           ChatDateRange range) {
         sb.append("Company-wide ").append(area.name().toLowerCase()).append(": ")
                 .append(companyWide.total(area));
 
         switch (area) {
             case LEADS -> {
                 sb.append(statusBreakdown(companyWide.of(CrmArea.LEADS))).append("\n");
-                List<RepLeadCount> perRep = leadRepository.countPerAssignee(page(MAX_SUGGESTED_REPS));
+                List<RepLeadCount> perRep = leadRepository.countPerAssignee(
+                        range.start(clock.zone()), range.end(clock.zone()), page(MAX_SUGGESTED_REPS));
                 if (!perRep.isEmpty()) {
                     StringJoiner reps = new StringJoiner(", ");
                     perRep.forEach(r -> reps.add(r.repName() + "=" + r.count()));
@@ -554,10 +593,13 @@ public class CrmSnapshotService {
     }
 
     /** Team-wide aggregates across all sales reps. Caller must check {@link #canSeeAllData}. */
-    public String teamSummary() {
+    public String teamSummary(ChatDateRange range) {
+        OffsetDateTime from = range.start(clock.zone());
+        OffsetDateTime to = range.end(clock.zone());
         // Two round trips for the whole summary: every area's counts, then the per-rep pivot.
-        ChatCounts counts = chatAggregateRepository.countAll(null);
+        ChatCounts counts = chatAggregateRepository.countAll(null, from, to);
         StringBuilder sb = new StringBuilder("== Whole sales team summary ==\n");
+        sb.append(periodLine(range));
 
         sb.append("Deals: total ").append(counts.total(CrmArea.DEALS))
                 .append(" (open ").append(counts.count(CrmArea.DEALS, DealStatus.OPEN.name()))
@@ -580,7 +622,7 @@ public class CrmSnapshotService {
                 .append("\n");
 
         // Per-rep breakdown: the query returns one row per (rep, status); pivot to one line per rep.
-        appendPerRepDealStats(sb);
+        appendPerRepDealStats(sb, from, to);
         return sb.toString();
     }
 

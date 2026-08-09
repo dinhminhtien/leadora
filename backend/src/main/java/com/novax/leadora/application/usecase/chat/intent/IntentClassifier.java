@@ -206,6 +206,18 @@ public class IntentClassifier {
             "minh phu trach", "em phu trach", "toi quan ly", "minh quan ly", "do toi", "thuoc ve toi",
             "assigned to me", "my ", "mine", "my own", "i have", "i am handling", "i manage");
 
+    // Vocabulary that asks how well people are DOING, not how many records exist. These questions
+    // need ratios and per-person aggregates, which the record snapshot cannot express — see
+    // ChatIntent.PERFORMANCE_REPORT.
+    private static final List<String> PERFORMANCE_KEYWORDS = List.of(
+            "hieu suat", "hieu qua lam viec", "nang suat", "productivity", "performance",
+            "kpi", "chi tieu", "thanh tich", "ket qua kinh doanh", "ket qua lam viec",
+            "danh gia nhan vien", "danh gia hieu qua", "bao cao hieu suat",
+            "ty le chuyen doi", "conversion rate", "ty le thang", "ty le chot", "win rate",
+            "ty le chap nhan", "acceptance rate", "ty le hoan thanh", "completion rate",
+            "ai lam tot", "ai gioi nhat", "ai kem nhat", "lam viec tot nhat",
+            "so sanh nhan vien", "xep hang nhan vien", "top nhan vien", "top sales");
+
     private static final List<String> DOC_KEYWORDS = List.of(
             "noi quy", "quy dinh", "chinh sach", "policy", "tai lieu", "document", "huong dan",
             "quy trinh", "process", "so tay", "handbook", "dieu khoan", "theo cong ty", "quy che",
@@ -303,6 +315,12 @@ public class IntentClassifier {
         if (containsAny(text, ASSIGNED_KEYWORDS)) {
             return IntentResult.of(ChatIntent.PERSONAL_DATA);
         }
+        // Above TEAM_SUMMARY on purpose: a performance question is almost always phrased with team
+        // vocabulary ("xếp hạng nhân viên", "top sales"), so checked after it, it would never fire
+        // and would be answered with record counts that cannot express a rate.
+        if (containsAny(text, PERFORMANCE_KEYWORDS)) {
+            return IntentResult.of(ChatIntent.PERFORMANCE_REPORT);
+        }
         if (containsAny(text, TEAM_KEYWORDS)) {
             return IntentResult.of(ChatIntent.TEAM_SUMMARY);
         }
@@ -320,7 +338,8 @@ public class IntentClassifier {
         try {
             ChatIntent prev = ChatIntent.valueOf(name);
             return switch (prev) {
-                case PERSONAL_DATA, ASSIGNED_DATA, TEAM_SUMMARY, DOC_QUERY, GENERAL_BUSINESS -> prev;
+                case PERSONAL_DATA, ASSIGNED_DATA, TEAM_SUMMARY, PERFORMANCE_REPORT,
+                     DOC_QUERY, GENERAL_BUSINESS -> prev;
                 default -> null;
             };
         } catch (IllegalArgumentException ex) {
