@@ -69,15 +69,24 @@ public class CheckRoomAvailabilityUseCase {
             if (product.getStatus() != ProductStatus.ACTIVE) {
                 continue;
             }
+            int totalBooked = committedByProduct.getOrDefault(product.getProductId(), 0L).intValue();
+            Integer totalRooms = product.getTotalRooms();
+            Integer availableRooms = null;
+            if (totalRooms != null) {
+                availableRooms = Math.max(0, totalRooms - totalBooked);
+            }
             results.add(RoomAvailabilityResponse.builder()
                     .productId(product.getProductId())
                     .name(product.getName())
                     .category(product.getCategory())
                     .unitPrice(product.getUnitPrice())
                     .unit(product.getUnit())
-                    .totalBooked(committedByProduct.getOrDefault(product.getProductId(), 0L).intValue())
+                    .totalBooked(totalBooked)
+                    .totalRooms(totalRooms)
+                    .availableRooms(availableRooms)
                     .build());
         }
+
         return results;
     }
 }

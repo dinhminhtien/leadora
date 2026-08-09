@@ -101,4 +101,15 @@ public class QuotationEntity extends BaseEntity {
 
     @Column(name = "approved_at")
     private OffsetDateTime approvedAt;
+
+    @Column(name = "acceptance_token", length = 100)
+    private String acceptanceToken;
+
+    @Column(name = "token_expiry")
+    private OffsetDateTime tokenExpiry;
+
+    @Column(name = "token_used")
+    @Builder.Default
+    private Boolean tokenUsed = false;
 }
+

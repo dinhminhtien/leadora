@@ -15,6 +15,8 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepo
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ProductCategory;
+import com.novax.leadora.infrastructure.persistence.repository.ProductServiceRepository;
 import com.novax.leadora.common.exception.BusinessException;
 
 import lombok.RequiredArgsConstructor;
@@ -36,16 +38,24 @@ public class ConvertToBookingUseCase {
         private final BookingRepository bookingRepository;
         private final QuotationDetailRepository quotationDetailRepository;
         private final BookingDetailRepository bookingDetailRepository;
+        private final ProductServiceRepository productServiceRepository;
         private final QuotationAccessPolicy quotationAccessPolicy;
         private final QuotationAvailabilityChecker availabilityChecker;
         private final StartSlaTrackingUseCase startSlaTrackingUseCase;
 
         @Transactional
         public BookingResponse execute(UUID quotationId, ConvertToBookingRequest request) {
+                return execute(quotationId, request, false);
+        }
+
+        @Transactional
+        public BookingResponse execute(UUID quotationId, ConvertToBookingRequest request, boolean skipAuth) {
                 QuotationEntity quotation = quotationRepository.findById(quotationId)
                                 .orElseThrow(() -> new ResourceNotFoundException("Quotation", quotationId));
 
-                quotationAccessPolicy.assertCanView(quotationAccessPolicy.currentUser(), quotation);
+                if (!skipAuth) {
+                        quotationAccessPolicy.assertCanView(quotationAccessPolicy.currentUser(), quotation);
+                }
 
                 // PRE-1: Only ACCEPTED quotations can be converted
                 if (quotation.getStatus() != QuotationStatus.ACCEPTED) {
@@ -77,21 +87,40 @@ public class ConvertToBookingUseCase {
                                         HttpStatus.UNPROCESSABLE_ENTITY);
                 }
 
-                // Room confirmation is not required to convert. The booking is created PENDING
-                // and
-                // the Reservation team confirms it separately, so an unconfirmed room delays t
-                // e
-                // booking rather than blocking the conversion.
-                //
+                // Load details to get products and check availability
+                List<QuotationDetailEntity> quotationDetails = quotationDetailRepository
+                                .findByQuotation_QuotationId(quotationId);
+
+                // Acquire PESSIMISTIC_WRITE lock on products to prevent concurrent
+                // double-booking.
+                // Sort product IDs first to avoid deadlocks.
+                List<UUID> productIds = quotationDetails.stream()
+                                .map(detail -> detail.getProductService().getProductId())
+                                .distinct()
+                                .sorted()
+                                .toList();
+                for (UUID productId : productIds) {
+                        productServiceRepository.findByIdWithPessimisticWriteLock(productId)
+                                        .orElseThrow(() -> new BusinessException("PRODUCT_NOT_FOUND",
+                                                        "Product not found: " + productId, HttpStatus.NOT_FOUND));
+                }
+
+                // Sum up quantity for the room type being checked
+                int requestedQuantity = quotationDetails.stream()
+                                .filter(detail -> detail.getProductService().getCategory() == ProductCategory.ROOM &&
+                                                detail.getProductService().getName()
+                                                                .equalsIgnoreCase(quotation.getRoomType()))
+                                .mapToInt(e -> e.getQuantity())
+                                .sum();
 
                 // E3: room must still be available for the (possibly re-confirmed) dates —
                 // BR-24
-                availabilityChecker.assertRoomAvailable(checkInDate, checkOutDate, quotation.getRoomType());
+                availabilityChecker.assertRoomAvailable(checkInDate, checkOutDate, quotation.getRoomType(),
+                                requestedQuantity);
 
                 // Generate booking code from year + quotation UUID prefix (unique per
                 // quotation)
                 String bookingCode = "BK-" + checkInDate.getYear() + "-"
-                //
                                 + quotationId.toString().substring(0, 8).toUpperCase();
 
                 // POST-2: Create pending booking record
@@ -111,8 +140,6 @@ public class ConvertToBookingUseCase {
 
                 // Copy quotation line items into booking details, holding inventory for each
                 // room/service
-                List<QuotationDetailEntity> quotationDetails = quotationDetailRepository
-                                .findByQuotation_QuotationId(quotationId);
 
                 List<BookingDetailEntity> bookingDetails = quotationDetails.stream()
                                 .map(detail -> BookingDetailEntity.builder()

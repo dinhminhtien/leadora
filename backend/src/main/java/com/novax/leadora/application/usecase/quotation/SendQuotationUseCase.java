@@ -68,6 +68,12 @@ public class SendQuotationUseCase {
         UserEntity actor = currentUserProvider.resolve(null);
         String actorRole = actor.getRole() != null ? actor.getRole().getRoleName() : null;
 
+        // Generate cryptographic token and set expiry (7 days from now)
+        String token = UUID.randomUUID().toString();
+        quotation.setAcceptanceToken(token);
+        quotation.setTokenExpiry(OffsetDateTime.now().plusDays(7));
+        quotation.setTokenUsed(false);
+
         // POST-3: send the email FIRST when method is EMAIL (UC-14.4 E4) — a delivery
         // failure must surface as an error, not silently leave the quotation marked
         // SENT when the customer never actually received it.
@@ -79,6 +85,7 @@ public class SendQuotationUseCase {
         quotation.setStatus(QuotationStatus.SENT);
         quotation.setSentAt(OffsetDateTime.now());
         QuotationEntity saved = quotationRepository.save(quotation);
+
 
         // POST-2: Record send log (BR-37: actor, action, timestamp, recipient details)
         QuotationSendLogEntity sendLog = QuotationSendLogEntity.builder()

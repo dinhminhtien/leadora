@@ -131,6 +131,89 @@ public class EmailService {
         "  </div>" +
         "</div>";
 
+    private static final String HANDOVER_NOTIFICATION_TEMPLATE = 
+        "<div style=\"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;\">" +
+        "  <div style=\"text-align: center; margin-bottom: 20px;\">" +
+        "    <h2 style=\"color: #1e293b; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;\">Leadora</h2>" +
+        "    <p style=\"color: #64748b; font-size: 12px; margin: 4px 0 0 0;\">Smart Hotel Sales System</p>" +
+        "  </div>" +
+        "  <div style=\"border-bottom: 1px solid #f1f5f9; margin-bottom: 20px;\"></div>" +
+        "  <h3 style=\"color: #0284c7; font-size: 18px; font-weight: 700; margin-top: 0; text-align: center;\">Handover Created - Action Required</h3>" +
+        "  <p style=\"color: #334155; font-size: 13px; line-height: 1.6; margin-bottom: 24px;\">" +
+        "    Hello Operations Team,<br><br>" +
+        "    A new operational handover has been registered for a confirmed booking. Please review the details below to assign tasks and manage operations:" +
+        "  </p>" +
+        "  <div style=\"margin: 20px 0; padding: 15px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #f1f5f9;\">" +
+        "    <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"font-size: 13px; line-height: 1.6; color: #475569;\">" +
+        "      <tr><td style=\"font-weight: 600; width: 140px;\">Handover Code:</td><td style=\"color: #0f172a; font-weight: 700;\">${handoverCode}</td></tr>" +
+        "      <tr><td style=\"font-weight: 600;\">Booking Code:</td><td style=\"color: #0f172a;\">${bookingCode}</td></tr>" +
+        "      <tr><td style=\"font-weight: 600;\">Customer Name:</td><td style=\"color: #0f172a;\">${customerName}</td></tr>" +
+        "      <tr><td style=\"font-weight: 600;\">Sales Representative:</td><td style=\"color: #0f172a;\">${salesRep}</td></tr>" +
+        "    </table>" +
+        "  </div>" +
+        "  <div style=\"text-align: center; margin: 30px 0;\">" +
+        "    <a href=\"${handoverLink}\" style=\"display: inline-block; background-color: #0284c7; color: #ffffff; text-decoration: none; padding: 12px 28px; font-size: 13px; font-weight: 700; border-radius: 6px; box-shadow: 0 4px 6px rgba(2, 132, 199, 0.15);\">View Handover Details</a>" +
+        "  </div>" +
+        "  <div style=\"border-top: 1px solid #f1f5f9; margin-top: 25px; padding-top: 15px; text-align: center;\">" +
+        "    <p style=\"color: #94a3b8; font-size: 11px; margin: 0;\">&copy; 2026 Leadora NovaX. All rights reserved.</p>" +
+        "  </div>" +
+        "</div>";
+
+    private static final String CUSTOMER_ACCEPTED_TEMPLATE = 
+        "<div style=\"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 550px; margin: auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;\">" +
+        "  <div style=\"text-align: center; margin-bottom: 20px;\">" +
+        "    <h2 style=\"color: #1e293b; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;\">Leadora</h2>" +
+        "    <p style=\"color: #64748b; font-size: 12px; margin: 4px 0 0 0;\">Smart Hotel Sales System</p>" +
+        "  </div>" +
+        "  <div style=\"border-bottom: 1px solid #f1f5f9; margin-bottom: 20px;\"></div>" +
+        "  <h3 style=\"color: #0f172a; font-size: 16px; font-weight: 700; margin-top: 0; text-align: center;\">Quotation Accepted</h3>" +
+        "  <p style=\"color: #334155; font-size: 13px; line-height: 1.6; margin-bottom: 24px;\">" +
+        "    Dear ${customerName},<br><br>" +
+        "    Thank you for accepting your quotation (<strong>${quoteNo}</strong>). We have received your acceptance and registered a pending booking with code <strong>${bookingCode}</strong>.<br><br>" +
+        "    Our operations and reservation staff will process your booking details and confirm your reservation shortly." +
+        "  </p>" +
+        "  <div style=\"border-top: 1px solid #f1f5f9; margin-top: 25px; padding-top: 15px; text-align: center;\">" +
+        "    <p style=\"color: #94a3b8; font-size: 11px; margin: 0;\">&copy; 2026 Leadora NovaX. All rights reserved.</p>" +
+        "  </div>" +
+        "</div>";
+
+    private static final String SALES_REP_ACCEPTED_TEMPLATE = 
+        "<div style=\"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 550px; margin: auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;\">" +
+        "  <div style=\"text-align: center; margin-bottom: 20px;\">" +
+        "    <h2 style=\"color: #1e293b; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;\">Leadora</h2>" +
+        "    <p style=\"color: #64748b; font-size: 12px; margin: 4px 0 0 0;\">Smart Hotel Sales System</p>" +
+        "  </div>" +
+        "  <div style=\"border-bottom: 1px solid #f1f5f9; margin-bottom: 20px;\"></div>" +
+        "  <h3 style=\"color: #0284c7; font-size: 16px; font-weight: 700; margin-top: 0; text-align: center;\">Quotation Accepted by Customer</h3>" +
+        "  <p style=\"color: #334155; font-size: 13px; line-height: 1.6; margin-bottom: 24px;\">" +
+        "    Hello ${salesRepName},<br><br>" +
+        "    Great news! The customer has accepted your quotation (<strong>${quoteNo}</strong>). A pending booking (<strong>${bookingCode}</strong>) has been automatically generated, and the deal has transitioned to the next stage." +
+        "  </p>" +
+        "  <div style=\"border-top: 1px solid #f1f5f9; margin-top: 25px; padding-top: 15px; text-align: center;\">" +
+        "    <p style=\"color: #94a3b8; font-size: 11px; margin: 0;\">&copy; 2026 Leadora NovaX. All rights reserved.</p>" +
+        "  </div>" +
+        "</div>";
+
+    private static final String SALES_REP_REJECTED_TEMPLATE = 
+        "<div style=\"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 550px; margin: auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;\">" +
+        "  <div style=\"text-align: center; margin-bottom: 20px;\">" +
+        "    <h2 style=\"color: #1e293b; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;\">Leadora</h2>" +
+        "    <p style=\"color: #64748b; font-size: 12px; margin: 4px 0 0 0;\">Smart Hotel Sales System</p>" +
+        "  </div>" +
+        "  <div style=\"border-bottom: 1px solid #f1f5f9; margin-bottom: 20px;\"></div>" +
+        "  <h3 style=\"color: #dc2626; font-size: 16px; font-weight: 700; margin-top: 0; text-align: center;\">Quotation Rejected by Customer</h3>" +
+        "  <p style=\"color: #334155; font-size: 13px; line-height: 1.6; margin-bottom: 24px;\">" +
+        "    Hello ${salesRepName},<br><br>" +
+        "    The customer has rejected your quotation (<strong>${quoteNo}</strong>).<br><br>" +
+        "    <strong>Reason / Feedback:</strong> ${reason}" +
+        "  </p>" +
+        "  <div style=\"border-top: 1px solid #f1f5f9; margin-top: 25px; padding-top: 15px; text-align: center;\">" +
+        "    <p style=\"color: #94a3b8; font-size: 11px; margin: 0;\">&copy; 2026 Leadora NovaX. All rights reserved.</p>" +
+        "  </div>" +
+        "</div>";
+
+
+
     public void sendResetPasswordHtmlEmail(String toEmail, String webResetLink, String mobileResetLink) {
         try {
             String htmlContent = templateRenderer.render(RESET_PASSWORD_TEMPLATE, Map.of(
@@ -253,7 +336,116 @@ public class EmailService {
         }
     }
 
+    public void sendHandoverNotificationEmail(String toEmail, String handoverCode, String bookingCode, String customerName, String salesRep, String handoverLink) {
+        try {
+            String htmlContent = templateRenderer.render(HANDOVER_NOTIFICATION_TEMPLATE, Map.of(
+                    "handoverCode", escapeHtml(handoverCode),
+                    "bookingCode", escapeHtml(bookingCode),
+                    "customerName", escapeHtml(customerName),
+                    "salesRep", escapeHtml(salesRep),
+                    "handoverLink", handoverLink
+            ));
+
+            EmailRequest emailRequest = new EmailRequest(
+                    null,
+                    List.of(toEmail),
+                    List.of(),
+                    List.of(),
+                    "New Operational Handover Assigned: " + handoverCode,
+                    htmlContent,
+                    List.of(),
+                    null
+            );
+
+            emailGateway.send(emailRequest);
+            log.info("Handover notification email successfully processed for {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to process handover notification email for {}", toEmail, e);
+            throw new RuntimeException("Could not send handover notification email", e);
+        }
+    }
+
+    public void sendQuotationAcceptedEmailToCustomer(String toEmail, String customerName, String quoteNo, String bookingCode) {
+        try {
+            String htmlContent = templateRenderer.render(CUSTOMER_ACCEPTED_TEMPLATE, Map.of(
+                    "customerName", escapeHtml(customerName),
+                    "quoteNo", escapeHtml(quoteNo),
+                    "bookingCode", escapeHtml(bookingCode)
+            ));
+
+            EmailRequest emailRequest = new EmailRequest(
+                    null,
+                    List.of(toEmail),
+                    List.of(),
+                    List.of(),
+                    "Quotation Accepted - Pending Confirmation: " + quoteNo,
+                    htmlContent,
+                    List.of(),
+                    null
+            );
+
+            emailGateway.send(emailRequest);
+            log.info("Quotation accepted email successfully processed for customer {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send quotation accepted email to customer {}", toEmail, e);
+        }
+    }
+
+    public void sendQuotationAcceptedEmailToSalesRep(String toEmail, String salesRepName, String quoteNo, String bookingCode) {
+        try {
+            String htmlContent = templateRenderer.render(SALES_REP_ACCEPTED_TEMPLATE, Map.of(
+                    "salesRepName", escapeHtml(salesRepName),
+                    "quoteNo", escapeHtml(quoteNo),
+                    "bookingCode", escapeHtml(bookingCode)
+            ));
+
+            EmailRequest emailRequest = new EmailRequest(
+                    null,
+                    List.of(toEmail),
+                    List.of(),
+                    List.of(),
+                    "Quotation Accepted by Customer: " + quoteNo,
+                    htmlContent,
+                    List.of(),
+                    null
+            );
+
+            emailGateway.send(emailRequest);
+            log.info("Quotation accepted email successfully processed for sales rep {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send quotation accepted email to sales rep {}", toEmail, e);
+        }
+    }
+
+    public void sendQuotationRejectedEmailToSalesRep(String toEmail, String salesRepName, String quoteNo, String reason) {
+        try {
+            String htmlContent = templateRenderer.render(SALES_REP_REJECTED_TEMPLATE, Map.of(
+                    "salesRepName", escapeHtml(salesRepName),
+                    "quoteNo", escapeHtml(quoteNo),
+                    "reason", escapeHtml(reason)
+            ));
+
+            EmailRequest emailRequest = new EmailRequest(
+                    null,
+                    List.of(toEmail),
+                    List.of(),
+                    List.of(),
+                    "Quotation Rejected by Customer: " + quoteNo,
+                    htmlContent,
+                    List.of(),
+                    null
+            );
+
+            emailGateway.send(emailRequest);
+            log.info("Quotation rejected email successfully processed for sales rep {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send quotation rejected email to sales rep {}", toEmail, e);
+        }
+    }
+
     private String formatCurrency(BigDecimal amount) {
+
+
         if (amount == null) return "—";
         return NumberFormat.getNumberInstance(Locale.of("vi", "VN")).format(amount) + " ₫";
     }

@@ -21,7 +21,7 @@ public class QuotationAvailabilityChecker {
 
     private final CheckRoomAvailabilityUseCase checkRoomAvailabilityUseCase;
 
-    public void assertRoomAvailable(LocalDate checkInDate, LocalDate checkOutDate, String roomType) {
+    public void assertRoomAvailable(LocalDate checkInDate, LocalDate checkOutDate, String roomType, int quantity) {
         List<RoomAvailabilityResponse> rooms = checkRoomAvailabilityUseCase.execute(checkInDate, checkOutDate, null);
 
         RoomAvailabilityResponse match = rooms.stream()
@@ -33,5 +33,16 @@ public class QuotationAvailabilityChecker {
             throw new BusinessException("INVALID_ROOM_TYPE",
                     "Room type \"" + roomType + "\" is not a valid, active room product", HttpStatus.BAD_REQUEST);
         }
+
+        if (match.getTotalRooms() == null) {
+            throw new BusinessException("ROOM_CAPACITY_UNCONFIGURED",
+                    "Capacity is not configured for room type: " + roomType, HttpStatus.BAD_REQUEST);
+        }
+
+        if (match.getAvailableRooms() < quantity) {
+            throw new BusinessException("ROOM_UNAVAILABLE",
+                    "Not enough rooms available for " + roomType + ". Available: " + match.getAvailableRooms() + ", Requested: " + quantity, HttpStatus.BAD_REQUEST);
+        }
     }
+
 }

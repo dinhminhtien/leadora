@@ -40,4 +40,8 @@ public class ProductServiceEntity extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private ProductStatus status;
+
+    @Column(name = "total_rooms")
+    private Integer totalRooms;
+
 }

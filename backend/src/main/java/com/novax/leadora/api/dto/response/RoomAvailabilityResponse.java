@@ -18,13 +18,8 @@ public class RoomAvailabilityResponse {
     private ProductCategory category;
     private BigDecimal unitPrice;
     private String unit;
-    /**
-     * Units this CRM has already committed for the requested date range. NOT a
-     * remaining-availability figure: the CRM does not know the hotel's capacity, so it
-     * cannot compute one. The Reservation team reconciles this against the real PMS.
-     *
-     * <p>The former {@code isAvailable} flag was removed with the invented per-name
-     * capacity table it was derived from.
-     */
     private Integer totalBooked;
+    private Integer totalRooms;
+    private Integer availableRooms;
+
 }

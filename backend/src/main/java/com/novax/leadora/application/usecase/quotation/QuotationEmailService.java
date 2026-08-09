@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -22,6 +24,10 @@ public class QuotationEmailService {
 
     private final EmailGateway emailGateway;
     private final EmailTemplateRenderer templateRenderer;
+
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
+
 
     private static final String QUOTATION_EMAIL_TEMPLATE = 
         "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head>"
@@ -55,8 +61,12 @@ public class QuotationEmailService {
         + "<tr style=\"background:#1e3a5f;\"><td style=\"padding:12px 16px;color:#bfdbfe;font-weight:600;\">Total Amount</td>"
         + "<td style=\"padding:12px 16px;color:#ffffff;font-weight:700;font-size:16px;\">${total}</td></tr>"
         + "</table>"
-        + "<p style=\"color:#6b7280;font-size:12px;margin:20px 0 0;\">To accept, revise, or enquire about this quotation, please reply to this email or contact your sales representative.</p>"
+        + "<div style=\"margin:24px 0;text-align:center;\">"
+        + "<a href=\"${portalLink}\" style=\"display:inline-block;background-color:#0284c7;color:#ffffff;text-decoration:none;padding:12px 28px;font-size:14px;font-weight:700;border-radius:6px;box-shadow:0 4px 6px rgba(2,132,199,0.15);\">Review & Accept Quotation</a>"
+        + "</div>"
+        + "<p style=\"color:#6b7280;font-size:11px;margin:20px 0 0;text-align:center;\">This secure portal link will expire in 7 days or after being accepted/rejected.</p>"
         + "</td></tr>"
+
         // Footer
         + "<tr><td style=\"background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb;\">"
         + "<p style=\"margin:0;color:#9ca3af;font-size:11px;\">Sent by <strong style=\"color:#6b7280;\">${senderName}</strong> via Leadora Hotel CRM</p>"
@@ -107,19 +117,24 @@ public class QuotationEmailService {
                   + escapeHtml(req.getPersonalMessage()) + "</p>"
                 : "";
         String senderName = senderNameOverride != null ? escapeHtml(senderNameOverride) : "Leadora Sales Team";
+        String portalLink = (q.getAcceptanceToken() != null)
+                ? (frontendUrl + "/public/quotations/" + q.getAcceptanceToken())
+                : "#";
 
-        return templateRenderer.render(QUOTATION_EMAIL_TEMPLATE, Map.of(
-                "quoteNo", quoteNo,
-                "customerName", escapeHtml(customerName),
-                "personalMsg", personalMsg,
-                "roomType", roomType,
-                "checkIn", checkIn,
-                "checkOut", checkOut,
-                "policy", policy,
-                "validUntil", validUntil,
-                "total", total,
-                "senderName", senderName
+        return templateRenderer.render(QUOTATION_EMAIL_TEMPLATE, Map.ofEntries(
+                Map.entry("quoteNo", quoteNo),
+                Map.entry("customerName", escapeHtml(customerName)),
+                Map.entry("personalMsg", personalMsg),
+                Map.entry("roomType", roomType),
+                Map.entry("checkIn", checkIn),
+                Map.entry("checkOut", checkOut),
+                Map.entry("policy", policy),
+                Map.entry("validUntil", validUntil),
+                Map.entry("total", total),
+                Map.entry("senderName", senderName),
+                Map.entry("portalLink", portalLink)
         ));
+
     }
 
     private String formatCurrency(BigDecimal amount) {

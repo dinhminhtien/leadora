@@ -24,6 +24,8 @@ import com.novax.leadora.infrastructure.persistence.entity.NotificationEntity;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.application.usecase.timeline.CreateInteractionTimelineUseCase;
 import com.novax.leadora.api.dto.request.CreateInteractionTimelineRequest;
+import com.novax.leadora.application.usecase.handover.event.HandoverSubmittedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
@@ -50,6 +52,7 @@ public class UpdateHandoverUseCase {
     private final UserRepository userRepository;
     private final CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
     private final HandoverAccessPolicy handoverAccessPolicy;
+    private final ApplicationEventPublisher eventPublisher;
     private final ActivityLogPublisher activityLogPublisher;
     private final ObjectMapper objectMapper;
 
@@ -189,6 +192,13 @@ public class UpdateHandoverUseCase {
 
             // Notify Front Office Staff (POST-4)
             sendNotificationToFrontOffice(saved, actor, request.getAssignedFoUserId());
+
+            // Publish HandoverSubmittedEvent to send decoupled emails
+            try {
+                eventPublisher.publishEvent(new HandoverSubmittedEvent(this, saved));
+            } catch (Exception e) {
+                log.warn("Failed to publish HandoverSubmittedEvent for handover: {}", saved.getHandoverId(), e);
+            }
         }
 
         return ArrivalHandoverResponse.fromDetail(saved, details, payments);

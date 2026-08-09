@@ -14,6 +14,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.jpa.repository.Modifying;
+import java.util.Optional;
+
 @Repository
 public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID> {
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
@@ -93,4 +96,12 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
 
     @Query("SELECT q.quotationId FROM QuotationEntity q WHERE q.deal.assignedUser.userId = :userId")
     List<UUID> findQuotationIdsByAssignedUser_UserId(@Param("userId") UUID userId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE QuotationEntity q SET q.tokenUsed = true " +
+           "WHERE q.acceptanceToken = :token AND q.tokenUsed = false AND q.tokenExpiry > :now")
+    int consumeToken(@Param("token") String token, @Param("now") OffsetDateTime now);
+
+    Optional<QuotationEntity> findByAcceptanceToken(String token);
 }
+

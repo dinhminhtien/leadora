@@ -51,7 +51,7 @@ public class CreateQuotationUseCase {
 
                 // E2: room type must exist and be available for the requested dates (BR-24)
                 availabilityChecker.assertRoomAvailable(request.getCheckInDate(), request.getCheckOutDate(),
-                                request.getRoomType());
+                                request.getRoomType(), request.getNumberOfRooms());
 
                 // 2. Fetch deal and get linked customer
                 DealEntity deal = dealRepository.findById(request.getDealId())
@@ -135,8 +135,7 @@ public class CreateQuotationUseCase {
                                         EntityType.QUOTATION,
                                         saved.getQuotationId(),
                                         "Quotation created",
-                                        payload
-                        );
+                                        payload);
                 } catch (Exception e) {
                         log.warn("Failed to publish quotation creation activity: {}", e.getMessage());
                 }

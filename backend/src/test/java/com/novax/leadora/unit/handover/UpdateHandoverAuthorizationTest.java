@@ -28,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -60,6 +61,7 @@ class UpdateHandoverAuthorizationTest {
     @Mock private CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
     @Mock private CurrentUserProvider currentUserProvider;
     @Mock private ActivityLogPublisher activityLogPublisher;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private UpdateHandoverUseCase useCase;
     private UUID handoverId;
@@ -71,6 +73,7 @@ class UpdateHandoverAuthorizationTest {
                 opHandoverRepository, bookingDetailRepository, paymentRepository,
                 notificationRepository, userRepository, createInteractionTimelineUseCase,
                 new HandoverAccessPolicy(currentUserProvider),
+                eventPublisher,
                 activityLogPublisher, new ObjectMapper());
         handoverId = UUID.randomUUID();
         creator = user("SALES");
