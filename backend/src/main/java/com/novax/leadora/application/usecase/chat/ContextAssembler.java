@@ -67,6 +67,25 @@ public class ContextAssembler {
      */
     public String assemble(ChatIntent intent, ChatActor actor, Set<CrmArea> areas, String query,
                            ChatDateRange range) {
+        try {
+            return gather(intent, actor, areas, query, range);
+        } catch (Exception ex) {
+            // The class contract is that retrieval degrades the answer rather than failing the
+            // turn, but only the parallel branches honoured it: they wrap each source in
+            // supply(), which swallows failures. The branches that call a source directly did
+            // not, so a single hiccup in the database — a dropped connection, a pool timeout —
+            // propagated out of here, past the use case, and killed the whole turn. The user's
+            // question was already persisted by then, so the conversation was left showing a
+            // question with no answer, permanently, and the next turn behaved the same way only
+            // sometimes. Answering with no reference data at least produces a reply that says so.
+            log.warn("Context gathering failed for intent {}; answering without reference data: {}",
+                    intent, ex.getMessage(), ex);
+            return "";
+        }
+    }
+
+    private String gather(ChatIntent intent, ChatActor actor, Set<CrmArea> areas, String query,
+                          ChatDateRange range) {
         return switch (intent) {
             // Operates on the conversation itself (translate/summarise/rephrase a previous
             // answer), so the history already sent to the model is the whole input. Consulting
