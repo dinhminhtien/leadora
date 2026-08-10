@@ -1,21 +1,11 @@
 "use client";
 
-<<<<<<< Updated upstream
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useForm, type Resolver } from "react-hook-form";
+import { useForm, useFieldArray, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";  
 import { z } from "zod";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, AlertCircle, CheckCircle2, Calculator, User, Mail, Phone } from "lucide-react";
-=======
-import React, { useEffect, useMemo, useRef } from "react";
-import { useForm, useFieldArray, type Resolver } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { ArrowLeft, AlertCircle, CheckCircle2, Calculator, User, Mail, Phone, Plus, Trash2, BedDouble } from "lucide-react";
->>>>>>> Stashed changes
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
