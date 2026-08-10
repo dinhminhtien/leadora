@@ -66,8 +66,8 @@ public interface CustomerRepository extends JpaRepository<CustomerEntity, UUID>,
     @Query("""
             SELECT c FROM CustomerEntity c
             WHERE (:userId IS NULL OR c.assignedUser.userId = :userId)
-              AND (:from IS NULL OR c.createdAt >= :from)
-              AND (:to IS NULL OR c.createdAt <= :to)
+              AND c.createdAt >= :from
+              AND c.createdAt <= :to
             ORDER BY c.createdAt DESC
             """)
     List<CustomerEntity> findRecentForChat(@Param("userId") UUID userId,

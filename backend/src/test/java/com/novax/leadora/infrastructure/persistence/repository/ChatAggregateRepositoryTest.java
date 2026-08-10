@@ -40,21 +40,33 @@ class ChatAggregateRepositoryTest {
         String sql = ChatAggregateRepository.countAllSql();
         for (String column : new String[]{"l.created_at", "d.created_at", "t.created_at",
                 "q.created_at", "b.created_at", "p.created_at", "c.created_at", "st.created_at"}) {
-            assertThat(sql)
-                    .as("lower bound on %s in:%n%s", column, sql)
-                    .contains("(CAST(:from AS timestamptz) IS NULL OR " + column
-                            + " >= CAST(:from AS timestamptz))");
-            assertThat(sql)
-                    .as("upper bound on %s in:%n%s", column, sql)
-                    .contains("(CAST(:to AS timestamptz) IS NULL OR " + column
-                            + " <= CAST(:to AS timestamptz))");
+            assertThat(sql).as("lower bound on %s in:%n%s", column, sql)
+                    .contains("AND " + column + " >= :from");
+            assertThat(sql).as("upper bound on %s in:%n%s", column, sql)
+                    .contains("AND " + column + " <= :to");
         }
         // A predicate glued onto the neighbouring token still satisfies the checks above while
         // being invalid SQL.
-        assertThat(sql).doesNotContain("uuid))AND")
-                .doesNotContain("timestamptz))GROUP")
-                .doesNotContain("timestamptz))UNION")
-                .doesNotContain("now()AND");
+        assertThat(sql).doesNotContain(":fromAND").doesNotContain(":toGROUP")
+                .doesNotContain(":toUNION").doesNotContain("now()AND");
+    }
+
+    /**
+     * No {@code IS NULL} guard on a date bound, anywhere.
+     *
+     * <p>It reads as harmless defensive SQL and is not: PostgreSQL types a parameter when it
+     * prepares the statement, and one that only ever appears in {@code ? IS NULL} gives it nothing
+     * to infer from. Every such query failed with <i>could not determine data type of parameter</i>
+     * on every call. The bounds are always supplied now — {@code ChatDateRange} substitutes
+     * sentinels — so the guard is both unnecessary and dangerous to reintroduce.
+     */
+    @Test
+    @DisplayName("no date bound is guarded with IS NULL")
+    void noUntypeableNullGuards() {
+        for (String sql : new String[]{ChatAggregateRepository.countAllSql(),
+                                       ChatAggregateRepository.slaListingSql()}) {
+            assertThat(sql).doesNotContain(":from IS NULL").doesNotContain(":to IS NULL");
+        }
     }
 
     /** The listing must be filtered exactly like its count branch, or the header misreports it. */
@@ -62,10 +74,10 @@ class ChatAggregateRepositoryTest {
     @DisplayName("the SLA listing carries the same date filter as its count branch")
     void slaListingIsDated() {
         assertThat(ChatAggregateRepository.slaListingSql())
-                .contains("CAST(:from AS timestamptz)")
-                .contains("CAST(:to AS timestamptz)")
+                .contains("AND st.created_at >= :from")
+                .contains("AND st.created_at <= :to")
                 .doesNotContain("'RESOLVED'AND")
-                .doesNotContain("timestamptz))ORDER");
+                .doesNotContain(":toORDER");
     }
 
     @Test

@@ -47,9 +47,10 @@ public class ChatAggregateRepository {
     /**
      * The period predicate, applied to every branch on its own {@code created_at}.
      *
-     * <p>Both bounds are nullable and the {@code IS NULL} short-circuit makes an unbounded range
-     * plan exactly as the statement did before dates existed — a question naming no period pays
-     * nothing for the feature.
+     * <p>Both bounds are always supplied — {@code ChatDateRange} substitutes far-past and
+     * far-future sentinels for an open-ended side — so there is no {@code IS NULL} guard to write.
+     * That is not only shorter: a guarded bound cannot use the index, because the planner has to
+     * evaluate the {@code OR} per row. Two plain comparisons stay sargable.
      *
      * <p><b>One column, deliberately.</b> Every area is filtered on when the record was created,
      * never on an area-specific date ({@code paid_at}, {@code check_in_date}, {@code end_at}). Those
@@ -58,10 +59,8 @@ public class ChatAggregateRepository {
      * compared. The reference block states the rule so the assistant can say which it is.
      */
     private static String dated(String column) {
-        return "   AND (CAST(:from AS timestamptz) IS NULL OR " + column
-                + " >= CAST(:from AS timestamptz))\n"
-                + "   AND (CAST(:to AS timestamptz) IS NULL OR " + column
-                + " <= CAST(:to AS timestamptz))\n";
+        return "   AND " + column + " >= :from\n"
+                + "   AND " + column + " <= :to\n";
     }
 
     private static final String COUNT_ALL = """

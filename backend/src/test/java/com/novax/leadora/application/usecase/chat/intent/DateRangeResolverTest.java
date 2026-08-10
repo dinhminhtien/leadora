@@ -115,6 +115,25 @@ class DateRangeResolverTest {
             assertThat(r.from()).isEqualTo(today().minusMonths(3));
         }
 
+        /**
+         * The same trap one unit down: "2 tuần qua" used to match the bare "tuần qua" anchor and
+         * answer for seven days. A period recognised as the wrong period is reported with full
+         * confidence, which is worse than one that is not recognised at all.
+         */
+        @ParameterizedTest(name = "{0} week(s) means {0}x7 days")
+        @ValueSource(ints = {1, 2, 3, 6})
+        void countedWeeksBeatTheAnchor(int weeks) {
+            ChatDateRange r = resolver.detect("lead " + weeks + " tuần qua");
+            assertThat(r.from()).isEqualTo(today().minusDays(weeks * 7L - 1));
+            assertThat(r.to()).isEqualTo(today());
+        }
+
+        @Test
+        @DisplayName("the bare \"tuần qua\" still means seven days")
+        void bareWeekAnchorUnchanged() {
+            assertThat(resolver.detect("lead tuần qua").from()).isEqualTo(today().minusDays(6));
+        }
+
         @Test
         @DisplayName("\"tháng 7\" is July of the current year")
         void monthOfYear() {
@@ -226,11 +245,27 @@ class DateRangeResolverTest {
             assertThat(r.end(clock.zone()).getMinute()).isEqualTo(59);
         }
 
+        /**
+         * An open-ended side resolves to a far-past / far-future sentinel, never to null.
+         *
+         * <p>Null was what the queries used to receive, guarded by {@code (:from IS NULL OR ...)}.
+         * PostgreSQL decides a parameter's type when it prepares the statement, and a parameter
+         * whose only use is {@code ? IS NULL} gives it nothing to work from, so every listing
+         * failed with <i>could not determine data type of parameter</i> — before any value was
+         * bound, therefore always. Retrieval swallows failures, so the assistant simply answered
+         * "no data" to every question. A real timestamp leaves nothing to infer.
+         */
         @Test
-        @DisplayName("an unfiltered range has no bounds at all")
-        void allTimeHasNoBounds() {
-            assertThat(ChatDateRange.allTime().start(clock.zone())).isNull();
-            assertThat(ChatDateRange.allTime().end(clock.zone())).isNull();
+        @DisplayName("an unfiltered range still yields usable bounds, never null")
+        void allTimeStillHasBounds() {
+            ChatDateRange all = ChatDateRange.allTime();
+            assertThat(all.isAllTime()).isTrue();
+            assertThat(all.start(clock.zone())).isNotNull();
+            assertThat(all.end(clock.zone())).isNotNull();
+            // Wide enough that no real record can fall outside it.
+            assertThat(all.start(clock.zone()).getYear()).isLessThanOrEqualTo(1970);
+            assertThat(all.end(clock.zone()).getYear()).isGreaterThanOrEqualTo(2100);
+            assertThat(all.start(clock.zone())).isBefore(all.end(clock.zone()));
         }
     }
 }

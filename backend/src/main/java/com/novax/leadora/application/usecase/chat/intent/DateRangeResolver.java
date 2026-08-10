@@ -52,6 +52,17 @@ public class DateRangeResolver {
             "\\b(\\d{1,2}) thang (qua|gan day|vua qua|truoc)\\b|\\blast (\\d{1,2}) months?\\b");
 
     /**
+     * "2 tuần qua", "last 3 weeks".
+     *
+     * <p>Must be checked before the anchor phrases. Without it, "2 tuần qua" still matched the bare
+     * "tuan qua" anchor and quietly answered for seven days instead of fourteen — the worst kind of
+     * miss, since a period that is merely unrecognised falls back to no filter and says so, while
+     * one recognised as the wrong period is reported confidently.
+     */
+    private static final Pattern LAST_N_WEEKS = Pattern.compile(
+            "\\b(\\d{1,2}) tuan (qua|gan day|vua qua|truoc)\\b|\\blast (\\d{1,2}) weeks?\\b");
+
+    /**
      * "tháng 7", "tháng 12/2026". The negative lookahead keeps it off "thắng 7 deal": stripped of
      * diacritics "thắng" (won) and "tháng" (month) are the same six letters, so without it a
      * question about won deals would be silently narrowed to July.
@@ -102,6 +113,13 @@ public class DateRangeResolver {
             LocalDate today = clock.today();
             return new ChatDateRange(today.minusMonths(Math.max(1, n)), today,
                     "the last " + Math.max(1, n) + " months");
+        }
+
+        Matcher weeks = LAST_N_WEEKS.matcher(text);
+        if (weeks.find()) {
+            int n = Math.max(1, intOf(weeks.group(1), weeks.group(3)));
+            ChatDateRange span = clock.lastDays(n * 7);
+            return new ChatDateRange(span.from(), span.to(), "the last " + n + " weeks");
         }
 
         Matcher days = LAST_N_DAYS.matcher(text);

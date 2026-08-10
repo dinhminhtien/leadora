@@ -31,6 +31,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -285,7 +286,7 @@ public class CrmSnapshotService {
                             .append(" | email: ").append(dash(l.getEmail()))
                             .append(" | source: ").append(dash(l.getSource()))
                             .append(" | assigned to: ").append(assigneeLabel(l.getAssignedUser()))
-                            .append(" | created: ").append(l.getCreatedAt()).append("\n"));
+                            .append(" | created: ").append(ts(l.getCreatedAt())).append("\n"));
         }
         return total;
     }
@@ -357,7 +358,7 @@ public class CrmSnapshotService {
             sb.append(listingHeader("Open tasks, earliest deadline first", Math.min(open, MAX_TASKS), open, CrmArea.TASKS));
             taskRepository.findOpenForChat(scope, CLOSED_TASK_STATUSES, from, to, page(MAX_TASKS)).forEach(t ->
                     sb.append("  - \"").append(t.getTitle())
-                            .append("\" | due ").append(t.getEndAt())
+                            .append("\" | due ").append(ts(t.getEndAt()))
                             .append(" | priority ").append(t.getPriority())
                             .append(" | ").append(t.getStatus())
                             .append(isOverdue(t, now) ? " | OVERDUE" : "").append("\n"));
@@ -428,7 +429,7 @@ public class CrmSnapshotService {
                             .append(" | ").append(p.getStatus())
                             .append(" | amount ").append(p.getAmount())
                             .append(" | due ").append(p.getDueDate())
-                            .append(" | paid at ").append(p.getPaidAt()).append("\n"));
+                            .append(" | paid at ").append(ts(p.getPaidAt())).append("\n"));
         }
         return total;
     }
@@ -486,7 +487,7 @@ public class CrmSnapshotService {
                     sb.append("  - ").append(s.activityType())
                             .append(" on ").append(s.entityType())
                             .append(" | ").append(s.status())
-                            .append(" | deadline ").append(s.deadlineAt())
+                            .append(" | deadline ").append(ts(s.deadlineAt()))
                             // Null here is real: the subject may be unassigned, or no longer
                             // exist at all. Saying so beats a bare dash the model might read
                             // as a missing field.
@@ -685,6 +686,24 @@ public class CrmSnapshotService {
 
     private static String dash(String s) {
         return (s == null || s.isBlank()) ? "-" : s;
+    }
+
+    /**
+     * A stored timestamp, rendered in the business calendar.
+     *
+     * <p><b>Why this is not cosmetic.</b> These come back from the database in UTC, and the prompt
+     * tells the model today's date in {@code Asia/Ho_Chi_Minh}. Printed raw, a lead created at
+     * 01:13 on the 10th locally appears as {@code 2026-08-09T18:13Z}, so the model compares the two
+     * and correctly concludes it was not created today — from data that was shown wrongly. The
+     * error is silent, always in the same direction, and hits everything created between midnight
+     * and 07:00 local, which is a seventh of all records.
+     *
+     * <p>The offset is kept in the output rather than trimmed: it costs a few characters and makes
+     * the timestamp unambiguous against the CURRENT TIME block, which names the same zone.
+     */
+    private String ts(OffsetDateTime instant) {
+        return instant == null ? "-" : instant.atZoneSameInstant(clock.zone()).toOffsetDateTime()
+                .truncatedTo(ChronoUnit.SECONDS).toString();
     }
 
     /** BR-17: overdue is derived, never stored — not closed, and past its {@code end_at}. */

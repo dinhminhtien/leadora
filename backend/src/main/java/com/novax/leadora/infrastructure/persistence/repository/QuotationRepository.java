@@ -40,8 +40,8 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
     @Query("""
             SELECT q FROM QuotationEntity q
             WHERE (:userId IS NULL OR q.deal.assignedUser.userId = :userId)
-              AND (:from IS NULL OR q.createdAt >= :from)
-              AND (:to IS NULL OR q.createdAt <= :to)
+              AND q.createdAt >= :from
+              AND q.createdAt <= :to
             ORDER BY q.createdAt DESC
             """)
     List<QuotationEntity> findRecentForChat(@Param("userId") UUID userId,

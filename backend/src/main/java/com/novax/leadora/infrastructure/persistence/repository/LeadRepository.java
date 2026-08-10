@@ -115,8 +115,8 @@ public interface LeadRepository
     @Query("""
             SELECT l FROM LeadEntity l
             WHERE (:userId IS NULL OR l.assignedUser.userId = :userId)
-              AND (:from IS NULL OR l.createdAt >= :from)
-              AND (:to IS NULL OR l.createdAt <= :to)
+              AND l.createdAt >= :from
+              AND l.createdAt <= :to
             ORDER BY l.createdAt DESC
             """)
     List<LeadEntity> findRecentForChat(@Param("userId") UUID userId,
@@ -131,8 +131,8 @@ public interface LeadRepository
     @Query("""
             SELECT new com.novax.leadora.application.usecase.chat.dto.RepLeadCount(u.fullName, COUNT(l))
             FROM LeadEntity l JOIN l.assignedUser u
-            WHERE (:from IS NULL OR l.createdAt >= :from)
-              AND (:to IS NULL OR l.createdAt <= :to)
+            WHERE l.createdAt >= :from
+              AND l.createdAt <= :to
             GROUP BY u.fullName
             ORDER BY COUNT(l) DESC
             """)
