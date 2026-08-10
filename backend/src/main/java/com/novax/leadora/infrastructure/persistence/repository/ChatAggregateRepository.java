@@ -191,8 +191,15 @@ public class ChatAggregateRepository {
 
     /**
      * @param scopeUserId records assigned to this user, or null for every record
-     * @param from        earliest {@code created_at} to count, or null for unbounded
-     * @param to          latest {@code created_at} to count, or null for unbounded
+     * @param from        earliest {@code created_at} to count — <b>required</b>
+     * @param to          latest {@code created_at} to count — <b>required</b>
+     *
+     * <p><b>The bounds must not be null.</b> The statement compares them directly, with no
+     * {@code IS NULL} guard, because a parameter PostgreSQL only sees in {@code ? IS NULL} cannot
+     * be typed at prepare time — see {@link #dated}. A null therefore makes every comparison
+     * {@code NULL}, and all eight branches return nothing at all: an empty snapshot rather than an
+     * unbounded one, with no error to notice. Pass {@code ChatDateRange.start}/{@code end}, which
+     * substitute far-past and far-future sentinels for an open-ended side.
      */
     public ChatCounts countAll(UUID scopeUserId, OffsetDateTime from, OffsetDateTime to) {
         MapSqlParameterSource params = new MapSqlParameterSource()
@@ -222,6 +229,8 @@ public class ChatAggregateRepository {
      * Unresolved SLA tracking rows within the caller's scope, earliest deadline first.
      *
      * @param scopeUserId records whose subject is assigned to this user, or null for every record
+     * @param from        earliest {@code created_at} — <b>required</b>, see {@link #countAll}
+     * @param to          latest {@code created_at} — <b>required</b>, see {@link #countAll}
      * @param limit       hard cap, applied in SQL
      */
     public List<SlaRow> unresolvedSla(UUID scopeUserId, OffsetDateTime from, OffsetDateTime to,

@@ -146,10 +146,49 @@ class DateRangeResolverTest {
          * Stripped of diacritics "thắng" (won) and "tháng" (month) are the same six letters. Without
          * the guard, a question about won deals was silently narrowed to a month.
          */
+        /**
+         * Vietnamese counts with a classifier after the number, so the collision is not limited to
+         * CRM nouns: "thắng 5 vụ" and "thắng 2 lần" were narrowing whole answers to May and
+         * February, and saying so confidently.
+         */
+        @ParameterizedTest(name = "\"{0}\" is not read as a month")
+        @ValueSource(strings = {
+                "ai thắng 7 deal nhiều nhất",
+                "đã thắng 5 vụ lớn",
+                "thắng 2 lần liên tiếp",
+                "thắng 3 giao dịch lớn"})
+        void winCountsAreNotMonths(String question) {
+            assertThat(resolver.detect(question).isAllTime()).isTrue();
+        }
+
+        /** The genuine month reference must still work. */
         @Test
-        @DisplayName("\"thắng 7 deal\" is not read as July")
-        void wonDealsAreNotAMonth() {
-            assertThat(resolver.detect("ai thắng 7 deal nhiều nhất").isAllTime()).isTrue();
+        @DisplayName("\"tháng 5\" is still May")
+        void aRealMonthStillMatches() {
+            assertThat(resolver.detect("doanh số tháng 5").from())
+                    .isEqualTo(LocalDate.of(today().getYear(), 5, 1));
+        }
+
+        /**
+         * Anchors used to be matched on a literal surrounding space, which ordinary punctuation
+         * defeated — a comma after a leading time phrase is common in Vietnamese.
+         */
+        @ParameterizedTest(name = "punctuation does not hide the period: {0}")
+        @ValueSource(strings = {
+                "Hôm nay, có bao nhiêu lead?",
+                "Liệt kê lead hôm nay.",
+                "hôm nay!",
+                "(hôm nay) có gì mới"})
+        void punctuationDoesNotDefeatTheAnchor(String question) {
+            assertThat(resolver.detect(question).from()).isEqualTo(today());
+        }
+
+        /** The boundary check must still refuse a match inside a longer token. */
+        @Test
+        @DisplayName("\"17 ngày qua\" is 17 days, not the 7-day anchor")
+        void doesNotMatchInsideALongerNumber() {
+            assertThat(resolver.detect("lead 17 ngày qua").from())
+                    .isEqualTo(today().minusDays(16));
         }
 
         @Test
@@ -210,6 +249,30 @@ class DateRangeResolverTest {
             ChatDateRange r = resolver.resolve("còn tháng trước thì sao",
                     List.of("lead hôm nay"));
             assertThat(r.from()).isEqualTo(today().withDayOfMonth(1).minusMonths(1));
+        }
+
+        /**
+         * Inheritance has to be undoable. Without this the first period named in a session pins
+         * every later turn, so "tổng số lead từ trước đến nay" returned today's count — and the
+         * Period line then told the model to present it as covering today. A wrong period is a
+         * wrong number, not merely extra rows.
+         */
+        @ParameterizedTest(name = "\"{0}\" clears an inherited period")
+        @ValueSource(strings = {
+                "tổng số lead từ trước đến nay",
+                "cho tôi con số từ trước tới nay",
+                "bỏ lọc ngày đi",
+                "how many leads of all time"})
+        void anExplicitAllTimeClearsTheInheritedPeriod(String question) {
+            assertThat(resolver.resolve(question, List.of("lead hôm nay")).isAllTime()).isTrue();
+        }
+
+        /** A period named in the same sentence still wins over the reset vocabulary. */
+        @Test
+        @DisplayName("\"tổng số lead hôm nay\" is still today, not all time")
+        void anExplicitPeriodBeatsTheReset() {
+            assertThat(resolver.resolve("tổng số lead hôm nay", List.of()).from())
+                    .isEqualTo(today());
         }
 
         @Test

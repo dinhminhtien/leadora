@@ -69,7 +69,13 @@ public class DateRangeResolver {
      */
     private static final Pattern MONTH_OF_YEAR = Pattern.compile(
             "\\bthang (\\d{1,2})(?:/(\\d{4}))?(?!\\s*\\d)"
-                    + "(?!\\s*(deal|lead|khach|booking|bao gia|quotation|task|cong viec|hop dong))");
+                    + "(?!\\s*(deal|lead|khach|booking|bao gia|quotation|task|cong viec|hop dong"
+                    // Vietnamese counts with a classifier after the number, so "thắng 5 vụ" and
+                    // "thắng 2 lần" also collide with "tháng 5" / "tháng 2". The noun list caught
+                    // the objects but not the counters, and the miss is the expensive kind: the
+                    // whole answer is narrowed to a month and reported as such.
+                    + "|vu|lan|cai|don|ca|chuyen|suat|thuong vu|giao dich|co hoi|don hang"
+                    + "|phi vu|hop dong nao|keo))");
 
     /**
      * Phrases that name one of {@link ChatClock#anchors()}. Insertion-ordered, most specific first,
@@ -141,7 +147,7 @@ public class DateRangeResolver {
         Map<String, ChatDateRange> anchors = clock.anchors();
         for (Map.Entry<String, List<String>> entry : ANCHOR_PHRASES.entrySet()) {
             for (String phrase : entry.getValue()) {
-                if (text.contains(" " + phrase + " ") || text.contains(" " + phrase + "?")) {
+                if (mentions(text, phrase)) {
                     return anchors.get(entry.getKey());
                 }
             }
@@ -165,6 +171,15 @@ public class DateRangeResolver {
         if (!here.isAllTime()) {
             return here;
         }
+        // An explicit "all of it" has to be able to undo an inherited period, or the inheritance
+        // is a one-way door: ask "lead hôm nay", then "tổng số lead từ trước đến nay", and the
+        // second question silently keeps today's window while the Period line instructs the model
+        // to present the figure as covering it. The user is shown today's count as the all-time
+        // total, stated confidently. Unlike the areas this inheritance mirrors, a wrong period
+        // produces a wrong number rather than a few extra rows.
+        if (saysAllTime(IntentClassifier.normalize(current))) {
+            return ChatDateRange.allTime();
+        }
         if (priorUserMessages != null) {
             for (int i = priorUserMessages.size() - 1; i >= 0; i--) {
                 ChatDateRange prior = detect(priorUserMessages.get(i));
@@ -174,6 +189,54 @@ public class DateRangeResolver {
             }
         }
         return ChatDateRange.allTime();
+    }
+
+    /**
+     * Phrases that ask for everything, so an inherited period must be dropped rather than kept.
+     *
+     * <p>Only consulted once the current turn has been found to name no period of its own, so
+     * "tổng số lead hôm nay" is still today — the explicit period in the same sentence wins.
+     */
+    private static final List<String> ALL_TIME_PHRASES = List.of(
+            "tu truoc den nay", "tu truoc toi nay", "tu xua den nay", "tu dau den nay",
+            "tat ca cac thoi diem", "moi thoi diem", "khong gioi han thoi gian",
+            "bo loc ngay", "bo gioi han ngay", "khong loc ngay", "khong theo ngay",
+            "toan bo thoi gian", "ca nam nay lan nam truoc",
+            "all time", "of all time", "all-time", "no date filter", "without date filter",
+            "overall total", "grand total", "since the beginning", "ever");
+
+    /** True when the message explicitly asks to drop any period. */
+    private static boolean saysAllTime(String normalized) {
+        for (String phrase : ALL_TIME_PHRASES) {
+            if (mentions(normalized, phrase)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether {@code phrase} appears as a whole phrase, bounded by anything that is not a letter
+     * or digit.
+     *
+     * <p>Matching on a literal surrounding space, as this once did, is defeated by ordinary
+     * punctuation: "Hôm nay, có bao nhiêu lead?" normalises to a phrase followed by a comma and
+     * did not match, so the question silently fell back to no filter. A comma after a leading time
+     * phrase is common enough in Vietnamese to hit regularly. The boundary check still refuses a
+     * match inside a longer word, which is what the spaces were there for.
+     */
+    private static boolean mentions(String text, String phrase) {
+        int from = 0;
+        while ((from = text.indexOf(phrase, from)) >= 0) {
+            int end = from + phrase.length();
+            boolean leftFree = from == 0 || !Character.isLetterOrDigit(text.charAt(from - 1));
+            boolean rightFree = end >= text.length() || !Character.isLetterOrDigit(text.charAt(end));
+            if (leftFree && rightFree) {
+                return true;
+            }
+            from = end;
+        }
+        return false;
     }
 
     /** One written date means that day; two mean the span between them. */

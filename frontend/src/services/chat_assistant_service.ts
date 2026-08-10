@@ -141,7 +141,6 @@ export const chatAssistantService = {
     let assistantMessage: ChatMessage | undefined;
     let intent: string | undefined;
     let blocked = false;
-    let sawToken = false;
 
     const handleFrame = (frame: string) => {
       const name = /^event:\s*(.*)$/m.exec(frame)?.[1]?.trim();
@@ -155,7 +154,6 @@ export const chatAssistantService = {
       }
 
       if (name === "token") {
-        sawToken = true;
         onToken(String(payload.t ?? ""));
       } else if (name === "start") {
         userMessage = payload.userMessage as ChatMessage;
@@ -165,7 +163,6 @@ export const chatAssistantService = {
       } else if (name === "done") {
         assistantMessage = payload.assistantMessage as ChatMessage;
       } else if (name === "error") {
-        sawToken = true;
         onToken(String(payload.message ?? ""));
       }
     };
@@ -189,16 +186,22 @@ export const chatAssistantService = {
       if (buffer.trim()) handleFrame(buffer);
     } catch (err) {
       if (signal?.aborted) throw err;
-      // The fallback below used to cover only the connection being refused, not the stream
-      // dying midway. A network blip after the first byte therefore threw out of here with no
-      // retry and no reply at all.
-      if (!sawToken) {
+      // The fallback below used to cover only the connection being refused, not the stream dying
+      // midway, so a network blip after the first byte threw out of here with no reply at all.
+      //
+      // Retrying is only safe while the server has no record of the turn. `start` is emitted
+      // straight after the question is persisted, and the gap between that and the first token
+      // spans the whole context gather plus the model's prefill — several seconds. Retrying on
+      // "no token yet" therefore resent questions the server had already stored, giving the
+      // session the same question twice and paying for a second model call. `start` not having
+      // arrived is the real signal that nothing was written.
+      if (userMessage === undefined) {
         const { data } = await chatAssistantService.sendMessage(sessionId, content);
         if (data?.assistantMessage) onToken(data.assistantMessage.content);
         return data;
       }
-      // Some of the answer did arrive: keep it rather than replacing it with an error, and let
-      // the caller reconcile against the server copy.
+      // The turn is already recorded: keep whatever arrived rather than replacing it with an
+      // error, and let the caller reconcile against the server copy.
     }
 
     return {
