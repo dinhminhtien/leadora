@@ -132,12 +132,7 @@ public class SubmitQuotationUseCase {
 
         List<QuotationDetailEntity> details =
                 quotationDetailRepository.findByQuotation_QuotationId(saved.getQuotationId());
-        QuotationDetailEntity detail = details.isEmpty() ? null : details.get(0);
 
-        int nights = detail != null ? detail.getNights() : 0;
-        int numberOfRooms = detail != null ? detail.getQuantity() : 0;
-        BigDecimal pricePerNight = detail != null ? detail.getUnitPrice() : BigDecimal.ZERO;
-
-        return QuotationResponse.fromWithDetail(saved, nights, numberOfRooms, pricePerNight);
+        return QuotationResponse.fromWithDetails(saved, details);
     }
 }

@@ -10,4 +10,6 @@ import java.util.UUID;
 @Repository
 public interface QuotationDetailRepository extends JpaRepository<QuotationDetailEntity, UUID> {
     List<QuotationDetailEntity> findByQuotation_QuotationId(UUID quotationId);
+
+    List<QuotationDetailEntity> findByQuotation_QuotationIdIn(List<UUID> quotationIds);
 }

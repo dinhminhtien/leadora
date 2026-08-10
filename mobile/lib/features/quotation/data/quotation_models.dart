@@ -41,6 +41,35 @@ enum QuotationStatus {
       this == QuotationStatus.sent || this == QuotationStatus.interested;
 }
 
+/// One room type + quantity + rate line within a quotation (UC-14.1/14.5, BR-23).
+/// Dart mirror of backend `QuotationResponse.RoomLineResponse`.
+class RoomLine {
+  const RoomLine({
+    required this.roomType,
+    required this.numberOfRooms,
+    required this.pricePerNight,
+    this.nights,
+    this.lineTotal,
+  });
+
+  final String roomType;
+  final int numberOfRooms;
+  final double pricePerNight;
+  final int? nights;
+  final double? lineTotal;
+
+  factory RoomLine.fromJson(Map<String, dynamic> json) {
+    double? parseNum(Object? v) => v is num ? v.toDouble() : null;
+    return RoomLine(
+      roomType: json['roomType'] as String? ?? '',
+      numberOfRooms: json['numberOfRooms'] as int? ?? 0,
+      pricePerNight: parseNum(json['pricePerNight']) ?? 0,
+      nights: json['nights'] as int?,
+      lineTotal: parseNum(json['lineTotal']),
+    );
+  }
+}
+
 /// Dart mirror of backend `QuotationResponse`.
 class Quotation {
   const Quotation({
@@ -59,6 +88,7 @@ class Quotation {
     this.nights,
     this.numberOfRooms,
     this.pricePerNight,
+    this.roomLines,
     this.subtotal,
     this.discountPercent,
     this.discountAmount,
@@ -78,12 +108,20 @@ class Quotation {
   final String? contactName;
   final String? email;
   final String? phone;
+
+  /// Summary string ("Deluxe Suite" or "Deluxe Suite +1 more") — see [roomLines]
+  /// for the full per-room-type breakdown.
   final String? roomType;
   final DateTime? checkInDate;
   final DateTime? checkOutDate;
   final int? nights;
+
+  /// Aggregate room count across all lines.
   final int? numberOfRooms;
+
+  /// Only set when the quotation has exactly one room line.
   final double? pricePerNight;
+  final List<RoomLine>? roomLines;
   final double? subtotal;
   final double? discountPercent;
   final double? discountAmount;
@@ -114,6 +152,9 @@ class Quotation {
       nights: json['nights'] as int?,
       numberOfRooms: json['numberOfRooms'] as int?,
       pricePerNight: parseNum(json['pricePerNight']),
+      roomLines: (json['roomLines'] as List?)
+          ?.map((e) => RoomLine.fromJson(e as Map<String, dynamic>))
+          .toList(),
       subtotal: parseNum(json['subtotal']),
       discountPercent: parseNum(json['discountPercent']),
       discountAmount: parseNum(json['discountAmount']),
@@ -183,6 +224,26 @@ String _isoDate(DateTime value) =>
     '${value.month.toString().padLeft(2, '0')}-'
     '${value.day.toString().padLeft(2, '0')}';
 
+/// One room type + quantity + rate line submitted on Create/Revise (UC-14.1/14.5,
+/// BR-23). Mirrors backend `RoomLineRequest`.
+class RoomLineRequest {
+  const RoomLineRequest({
+    required this.roomType,
+    required this.numberOfRooms,
+    required this.pricePerNight,
+  });
+
+  final String roomType;
+  final int numberOfRooms;
+  final num pricePerNight;
+
+  Map<String, dynamic> toJson() => {
+    'roomType': roomType.trim(),
+    'numberOfRooms': numberOfRooms,
+    'pricePerNight': pricePerNight,
+  };
+}
+
 /// UC-14.1 — create a quotation against a deal. Mirrors web `CreateQuotationPayload`.
 ///
 /// Always lands as DRAFT: the status is resolved later by an explicit Submit, which
@@ -190,11 +251,9 @@ String _isoDate(DateTime value) =>
 class CreateQuotationPayload {
   const CreateQuotationPayload({
     required this.dealId,
-    required this.roomType,
+    required this.roomLines,
     required this.checkInDate,
     required this.checkOutDate,
-    required this.numberOfRooms,
-    required this.pricePerNight,
     required this.discountPercent,
     required this.paymentPolicy,
     required this.validUntil,
@@ -202,11 +261,11 @@ class CreateQuotationPayload {
   });
 
   final String dealId;
-  final String roomType;
+
+  /// One or more room types, each with its own quantity and rate.
+  final List<RoomLineRequest> roomLines;
   final DateTime checkInDate;
   final DateTime checkOutDate;
-  final int numberOfRooms;
-  final num pricePerNight;
   final num discountPercent;
   final String paymentPolicy;
   final DateTime validUntil;
@@ -215,11 +274,9 @@ class CreateQuotationPayload {
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{
       'dealId': dealId,
-      'roomType': roomType.trim(),
+      'roomLines': roomLines.map((l) => l.toJson()).toList(),
       'checkInDate': _isoDate(checkInDate),
       'checkOutDate': _isoDate(checkOutDate),
-      'numberOfRooms': numberOfRooms,
-      'pricePerNight': pricePerNight,
       'discountPercent': discountPercent,
       'paymentPolicy': paymentPolicy,
       'validUntil': _isoDate(validUntil),
@@ -281,11 +338,9 @@ class SendQuotationPayload {
 /// UC-14.5 — a new version of an existing quotation; the parent becomes SUPERSEDED.
 class ReviseQuotationPayload {
   const ReviseQuotationPayload({
-    required this.roomType,
+    required this.roomLines,
     required this.checkInDate,
     required this.checkOutDate,
-    required this.numberOfRooms,
-    required this.pricePerNight,
     required this.discountPercent,
     required this.paymentPolicy,
     required this.validUntil,
@@ -293,11 +348,10 @@ class ReviseQuotationPayload {
     this.notes,
   });
 
-  final String roomType;
+  /// One or more room types, each with its own quantity and rate.
+  final List<RoomLineRequest> roomLines;
   final DateTime checkInDate;
   final DateTime checkOutDate;
-  final int numberOfRooms;
-  final num pricePerNight;
   final num discountPercent;
   final String paymentPolicy;
   final DateTime validUntil;
@@ -308,11 +362,9 @@ class ReviseQuotationPayload {
 
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{
-      'roomType': roomType.trim(),
+      'roomLines': roomLines.map((l) => l.toJson()).toList(),
       'checkInDate': _isoDate(checkInDate),
       'checkOutDate': _isoDate(checkOutDate),
-      'numberOfRooms': numberOfRooms,
-      'pricePerNight': pricePerNight,
       'discountPercent': discountPercent,
       'paymentPolicy': paymentPolicy,
       'validUntil': _isoDate(validUntil),

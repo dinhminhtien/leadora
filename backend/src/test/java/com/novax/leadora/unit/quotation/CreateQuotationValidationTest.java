@@ -1,6 +1,7 @@
 package com.novax.leadora.unit.quotation;
 
 import com.novax.leadora.api.dto.request.CreateQuotationRequest;
+import com.novax.leadora.api.dto.request.RoomLineRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -26,14 +28,20 @@ class CreateQuotationValidationTest {
         validator = factory.getValidator();
     }
 
+    private RoomLineRequest buildValidRoomLine() {
+        RoomLineRequest line = new RoomLineRequest();
+        line.setRoomType("Deluxe Double");
+        line.setNumberOfRooms(2);
+        line.setPricePerNight(BigDecimal.valueOf(1500000));
+        return line;
+    }
+
     private CreateQuotationRequest buildValidRequest() {
         CreateQuotationRequest req = new CreateQuotationRequest();
         req.setDealId(UUID.randomUUID());
-        req.setRoomType("Deluxe Double");
+        req.setRoomLines(new java.util.ArrayList<>(List.of(buildValidRoomLine())));
         req.setCheckInDate(LocalDate.of(2026, 8, 1));
         req.setCheckOutDate(LocalDate.of(2026, 8, 4));
-        req.setNumberOfRooms(2);
-        req.setPricePerNight(BigDecimal.valueOf(1500000));
         req.setDiscountPercent(BigDecimal.valueOf(5));
         req.setValidUntil(LocalDate.of(2026, 9, 1));
         return req;
@@ -44,6 +52,20 @@ class CreateQuotationValidationTest {
     void testValidRequest() {
         Set<ConstraintViolation<CreateQuotationRequest>> violations = validator.validate(buildValidRequest());
         assertTrue(violations.isEmpty(), "Valid request should have no violations");
+    }
+
+    @Test
+    @DisplayName("UT-QUOT-VAL-01b: Multiple room types + quantities pass validation")
+    void testMultipleRoomLinesValid() {
+        CreateQuotationRequest req = buildValidRequest();
+        RoomLineRequest second = new RoomLineRequest();
+        second.setRoomType("Superior Room");
+        second.setNumberOfRooms(1);
+        second.setPricePerNight(BigDecimal.valueOf(900000));
+        req.getRoomLines().add(second);
+
+        Set<ConstraintViolation<CreateQuotationRequest>> violations = validator.validate(req);
+        assertTrue(violations.isEmpty(), "Multiple valid room lines should have no violations");
     }
 
     @Test
@@ -69,25 +91,27 @@ class CreateQuotationValidationTest {
     }
 
     @Test
-    @DisplayName("UT-QUOT-VAL-04: Zero rooms → @Min violation")
+    @DisplayName("UT-QUOT-VAL-04: Zero rooms on a line → @Min violation")
     void testZeroRoomsTriggersViolation() {
         CreateQuotationRequest req = buildValidRequest();
-        req.setNumberOfRooms(0);
+        req.getRoomLines().get(0).setNumberOfRooms(0);
 
         Set<ConstraintViolation<CreateQuotationRequest>> violations = validator.validate(req);
         assertFalse(violations.isEmpty());
-        assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("numberOfRooms")));
+        assertTrue(violations.stream()
+                .anyMatch(v -> v.getPropertyPath().toString().equals("roomLines[0].numberOfRooms")));
     }
 
     @Test
-    @DisplayName("UT-QUOT-VAL-05: Negative price → @DecimalMin violation")
+    @DisplayName("UT-QUOT-VAL-05: Negative price on a line → @DecimalMin violation")
     void testNegativePriceTriggersViolation() {
         CreateQuotationRequest req = buildValidRequest();
-        req.setPricePerNight(BigDecimal.valueOf(-100));
+        req.getRoomLines().get(0).setPricePerNight(BigDecimal.valueOf(-100));
 
         Set<ConstraintViolation<CreateQuotationRequest>> violations = validator.validate(req);
         assertFalse(violations.isEmpty());
-        assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("pricePerNight")));
+        assertTrue(violations.stream()
+                .anyMatch(v -> v.getPropertyPath().toString().equals("roomLines[0].pricePerNight")));
     }
 
     @Test
@@ -102,14 +126,26 @@ class CreateQuotationValidationTest {
     }
 
     @Test
-    @DisplayName("UT-QUOT-VAL-07: Blank room type → @NotBlank violation")
+    @DisplayName("UT-QUOT-VAL-07: Blank room type on a line → @NotBlank violation")
     void testBlankRoomTypeTriggersViolation() {
         CreateQuotationRequest req = buildValidRequest();
-        req.setRoomType("");
+        req.getRoomLines().get(0).setRoomType("");
 
         Set<ConstraintViolation<CreateQuotationRequest>> violations = validator.validate(req);
         assertFalse(violations.isEmpty());
-        assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("roomType")));
+        assertTrue(violations.stream()
+                .anyMatch(v -> v.getPropertyPath().toString().equals("roomLines[0].roomType")));
+    }
+
+    @Test
+    @DisplayName("UT-QUOT-VAL-07b: Empty roomLines → @NotEmpty violation")
+    void testEmptyRoomLinesTriggersViolation() {
+        CreateQuotationRequest req = buildValidRequest();
+        req.setRoomLines(List.of());
+
+        Set<ConstraintViolation<CreateQuotationRequest>> violations = validator.validate(req);
+        assertFalse(violations.isEmpty());
+        assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("roomLines")));
     }
 
     @Test
