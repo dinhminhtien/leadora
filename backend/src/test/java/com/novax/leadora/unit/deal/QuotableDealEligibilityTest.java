@@ -59,6 +59,7 @@ class QuotableDealEligibilityTest {
      * issues for pagination — because that branch skips the eager {@code fetch} joins and
      * leaves only the predicates under test.
      */
+    @SuppressWarnings("unchecked")
     private Path<Object> applySpecification() {
         Path<Object> statusPath = mock(Path.class);
         Predicate predicate = mock(Predicate.class);

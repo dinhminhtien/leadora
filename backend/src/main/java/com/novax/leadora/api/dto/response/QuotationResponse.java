@@ -118,7 +118,7 @@ public class QuotationResponse {
                 .toList();
 
         Integer totalRooms = details.isEmpty() ? null
-                : details.stream().mapToInt(QuotationDetailEntity::getQuantity).sum();
+                : details.stream().mapToInt(d -> d.getQuantity()).sum();
         Integer nights = details.isEmpty() ? null : details.get(0).getNights();
         BigDecimal pricePerNight = details.size() == 1 ? details.get(0).getUnitPrice() : null;
 

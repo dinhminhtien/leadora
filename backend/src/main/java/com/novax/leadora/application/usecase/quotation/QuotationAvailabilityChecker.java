@@ -40,7 +40,7 @@ public class QuotationAvailabilityChecker {
     public void assertRoomsAvailable(LocalDate checkInDate, LocalDate checkOutDate, List<String> roomTypes) {
         roomTypes.stream()
                 .filter(rt -> rt != null && !rt.isBlank())
-                .map(String::trim)
+                .map(rt -> rt.trim())
                 .distinct()
                 .forEach(roomType -> assertRoomAvailable(checkInDate, checkOutDate, roomType));
     }

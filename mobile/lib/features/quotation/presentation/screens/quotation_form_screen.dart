@@ -140,16 +140,12 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
   final List<_RoomLineState> _roomLines = [];
 
   String? _dealId;
-<<<<<<< Updated upstream
 
   /// The picked deal, kept for display only — [_dealId] stays the value that is validated
   /// and submitted. Null when the form was opened with an `initialDealId` and the deal
   /// itself has not been fetched; the picker field falls back to `dealDetailProvider`.
   Deal? _selectedDeal;
 
-  String? _roomType;
-=======
->>>>>>> Stashed changes
   String _paymentPolicy = 'full_upfront';
   DateTime? _checkIn;
   DateTime? _checkOut;
@@ -567,7 +563,6 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     );
   }
 
-<<<<<<< Updated upstream
   Future<void> _pickDeal() async {
     final picked = await showQuotableDealPicker(context, selectedDealId: _dealId);
     if (picked == null || !mounted) return;
@@ -578,10 +573,7 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     _prefillFromDealHistory(picked.id);
   }
 
-  /// Everything below the header: the stay, the pricing, the live total and the save
-=======
   /// Everything below the header: the stay, the room types, the live total and the save
->>>>>>> Stashed changes
   /// button. Identical in both modes, so it is built once.
   List<Widget> _stayAndPricing(ThemeData theme, ColorScheme scheme) {
     return [

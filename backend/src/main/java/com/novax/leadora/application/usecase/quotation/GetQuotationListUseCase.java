@@ -36,7 +36,7 @@ public class GetQuotationListUseCase {
                     .toList();
         }
 
-        List<UUID> quotationIds = quotations.stream().map(QuotationEntity::getQuotationId).toList();
+        List<UUID> quotationIds = quotations.stream().map(q -> q.getQuotationId()).toList();
         Map<UUID, List<QuotationDetailEntity>> detailsByQuotation = quotationDetailRepository
                 .findByQuotation_QuotationIdIn(quotationIds).stream()
                 .collect(Collectors.groupingBy(d -> d.getQuotation().getQuotationId()));

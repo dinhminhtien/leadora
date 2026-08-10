@@ -92,7 +92,7 @@ public class ConvertToBookingUseCase {
                 // E3: every room type must still be available for the (possibly
                 // re-confirmed) dates — BR-24
                 List<String> roomTypes = quotationDetails.stream()
-                                .map(QuotationDetailEntity::getDescription)
+                                .map(d -> d.getDescription())
                                 .toList();
                 availabilityChecker.assertRoomsAvailable(checkInDate, checkOutDate, roomTypes);
 

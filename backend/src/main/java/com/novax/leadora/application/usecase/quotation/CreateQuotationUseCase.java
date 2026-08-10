@@ -54,7 +54,7 @@ public class CreateQuotationUseCase {
                 // E2: every room type on the quotation must exist and be available for the
                 // requested dates (BR-24)
                 List<String> roomTypes = request.getRoomLines().stream()
-                                .map(RoomLineRequest::getRoomType)
+                                .map(line -> line.getRoomType())
                                 .toList();
                 availabilityChecker.assertRoomsAvailable(request.getCheckInDate(), request.getCheckOutDate(), roomTypes);
 
@@ -75,7 +75,7 @@ public class CreateQuotationUseCase {
 
                 BigDecimal subtotal = request.getRoomLines().stream()
                                 .map(line -> lineSubtotal(line, nights))
-                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
                 BigDecimal discountAmount = subtotal
                                 .multiply(discountPct)
