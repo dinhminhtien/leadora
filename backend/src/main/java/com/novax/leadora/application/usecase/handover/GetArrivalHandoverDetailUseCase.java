@@ -2,7 +2,9 @@ package com.novax.leadora.application.usecase.handover;
 
 import com.novax.leadora.api.dto.response.ArrivalHandoverResponse;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.OpHandoverEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.HandoverStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.OpHandoverRepository;
@@ -35,6 +37,22 @@ public class GetArrivalHandoverDetailUseCase {
             throw new ResourceNotFoundException("Arrival handover", handoverId);
         }
 
+        // BR-44 — the same "is this arrival still real?" rule the list and the readiness update
+        // already apply, so all three arrival endpoints answer alike.
+        //
+        // Without it this endpoint was the loose one of the three: OpHandoverSpecification filters
+        // the list on LIVE_FOR_ARRIVAL and UpdateHandoverReadinessUseCase re-checks it before
+        // writing, but the detail would still render a handover whose booking had been cancelled or
+        // checked out — a row the list deliberately hides. A drawer left open across a cancellation,
+        // or a bookmarked link, was enough to reach it.
+        //
+        // 404 rather than 422, matching the DRAFT branch above: a handover that is not the front
+        // desk's business does not get to confirm it exists.
+        BookingEntity booking = handover.getBooking();
+        if (booking != null && !BookingStatus.LIVE_FOR_ARRIVAL.contains(booking.getStatus())) {
+            throw new ResourceNotFoundException("Arrival handover", handoverId);
+        }
+
         // Deliberately NOT scoped by assignee, unlike the operational detail endpoint.
         //
         // There, one Sales rep must not read another's records (BR-01 / BR-02). Here the assignee
@@ -43,7 +61,7 @@ public class GetArrivalHandoverDetailUseCase {
         // nothing while breaking the obvious case — opening a row from the desk-wide list.
         // The real boundaries are already enforced: the FO role plus HANDOVER_VIEW on the
         // controller, and the DRAFT check above.
-        UUID bookingId = handover.getBooking() != null ? handover.getBooking().getBookingId() : null;
+        UUID bookingId = booking != null ? booking.getBookingId() : null;
         var details = bookingId != null
                 ? bookingDetailRepository.findByBooking_BookingId(bookingId)
                 : Collections.<com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity>emptyList();
