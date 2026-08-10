@@ -1,6 +1,7 @@
 package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.ReviseQuotationRequest;
+import com.novax.leadora.api.dto.request.RoomLineRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.BusinessException;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -68,16 +70,19 @@ public class ReviseQuotationUseCase {
                     "Quotation cannot be revised from status " + parent.getStatus().name(), HttpStatus.CONFLICT);
         }
 
-        // E2: room type must exist and be available for the requested dates (BR-24)
-        availabilityChecker.assertRoomAvailable(request.getCheckInDate(), request.getCheckOutDate(), request.getRoomType());
+        // E2: every room type must exist and be available for the requested dates (BR-24)
+        List<String> roomTypes = request.getRoomLines().stream()
+                .map(RoomLineRequest::getRoomType)
+                .toList();
+        availabilityChecker.assertRoomsAvailable(request.getCheckInDate(), request.getCheckOutDate(), roomTypes);
 
-        // Pricing calculations
+        // Pricing calculations — one line per room type, summed into the quotation total
         long nights = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
         BigDecimal discountPct = request.getDiscountPercent() != null ? request.getDiscountPercent() : BigDecimal.ZERO;
 
-        BigDecimal subtotal = request.getPricePerNight()
-                .multiply(BigDecimal.valueOf(nights))
-                .multiply(BigDecimal.valueOf(request.getNumberOfRooms()));
+        BigDecimal subtotal = request.getRoomLines().stream()
+                .map(line -> lineSubtotal(line, nights))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal discountAmount = subtotal
                 .multiply(discountPct)
@@ -102,7 +107,7 @@ public class ReviseQuotationUseCase {
                 .customer(parent.getCustomer())
                 .createdBy(creator)
                 .version((parent.getVersion() != null ? parent.getVersion() : 1) + 1)
-                .roomType(request.getRoomType())
+                .roomType(roomTypeSummary(request.getRoomLines()))
                 .checkInDate(request.getCheckInDate())
                 .checkOutDate(request.getCheckOutDate())
                 .paymentPolicy(request.getPaymentPolicy())
@@ -119,16 +124,18 @@ public class ReviseQuotationUseCase {
 
         QuotationEntity saved = quotationRepository.save(revision);
 
-        // Save detail line (room)
-        QuotationDetailEntity detail = QuotationDetailEntity.builder()
-                .quotation(saved)
-                .description(request.getRoomType())
-                .quantity(request.getNumberOfRooms())
-                .unitPrice(request.getPricePerNight())
-                .nights((int) nights)
-                .lineTotal(totalAmount)
-                .build();
-        quotationDetailRepository.save(detail);
+        // Save one detail line per room type
+        List<QuotationDetailEntity> details = request.getRoomLines().stream()
+                .map(line -> QuotationDetailEntity.builder()
+                        .quotation(saved)
+                        .description(line.getRoomType())
+                        .quantity(line.getNumberOfRooms())
+                        .unitPrice(line.getPricePerNight())
+                        .nights((int) nights)
+                        .lineTotal(lineSubtotal(line, nights))
+                        .build())
+                .toList();
+        quotationDetailRepository.saveAll(details);
 
         // BR-22: exactly one version stays "active" — supersede the parent now that a
         // new version exists, instead of leaving both live simultaneously.
@@ -177,7 +184,18 @@ public class ReviseQuotationUseCase {
             log.warn("Failed to publish parent quotation supersede activity: {}", e.getMessage());
         }
 
-        return QuotationResponse.fromWithDetail(saved, (int) nights,
-                request.getNumberOfRooms(), request.getPricePerNight());
+        return QuotationResponse.fromWithDetails(saved, details);
+    }
+
+    private static BigDecimal lineSubtotal(RoomLineRequest line, long nights) {
+        return line.getPricePerNight()
+                .multiply(BigDecimal.valueOf(nights))
+                .multiply(BigDecimal.valueOf(line.getNumberOfRooms()));
+    }
+
+    /** Human-readable summary for single-line display surfaces (list, emails, chat). */
+    private static String roomTypeSummary(List<RoomLineRequest> roomLines) {
+        String first = roomLines.get(0).getRoomType();
+        return roomLines.size() == 1 ? first : first + " +" + (roomLines.size() - 1) + " more";
     }
 }
