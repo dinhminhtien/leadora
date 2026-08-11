@@ -96,6 +96,12 @@ export const PAGE_META = {
     "Review the discount and policy exceptions waiting on your decision.",
   ),
 
+  contracts: meta(
+    ROUTE_PATHS.contracts,
+    "Contracts",
+    "Track legal agreements, signature status, and payment terms.",
+  ),
+
   quotationCreate: meta(
     ROUTE_PATHS.quotationCreate,
     "New Quotation",

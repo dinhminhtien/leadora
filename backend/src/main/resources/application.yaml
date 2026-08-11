@@ -199,5 +199,11 @@ resend:
   base-url: ${RESEND_BASE_URL:https://api.resend.com}
   timeout: ${RESEND_TIMEOUT:10s}
 
-
-
+# Contract module configuration
+contract:
+  otp-expiry-seconds: ${CONTRACT_OTP_EXPIRY_SECONDS:900}   # 15 minutes
+  storage:
+    bucket: ${CONTRACT_STORAGE_BUCKET:contract_files}
+    supabase-url: ${SUPABASE_URL}
+    service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
+  portal-base-url: ${CONTRACT_PORTAL_BASE_URL:${app.frontend-url}}

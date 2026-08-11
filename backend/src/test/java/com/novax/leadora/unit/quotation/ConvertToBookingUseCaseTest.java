@@ -1,0 +1,222 @@
+package com.novax.leadora.unit.quotation;
+
+import com.novax.leadora.api.dto.request.ConvertToBookingRequest;
+import com.novax.leadora.api.dto.response.BookingResponse;
+import com.novax.leadora.application.usecase.contract.ActivateContractUseCase;
+import com.novax.leadora.application.usecase.quotation.ConvertToBookingUseCase;
+import com.novax.leadora.application.usecase.quotation.QuotationAccessPolicy;
+import com.novax.leadora.application.usecase.quotation.QuotationAvailabilityChecker;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
+import com.novax.leadora.common.exception.BusinessException;
+import com.novax.leadora.common.exception.ResourceNotFoundException;
+import com.novax.leadora.infrastructure.persistence.entity.*;
+import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus;
+import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
+import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
+import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
+import com.novax.leadora.infrastructure.persistence.repository.ContractRepository;
+import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
+import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class ConvertToBookingUseCaseTest {
+
+    @Mock
+    private QuotationRepository quotationRepository;
+
+    @Mock
+    private BookingRepository bookingRepository;
+
+    @Mock
+    private QuotationDetailRepository quotationDetailRepository;
+
+    @Mock
+    private BookingDetailRepository bookingDetailRepository;
+
+    @Mock
+    private QuotationAccessPolicy quotationAccessPolicy;
+
+    @Mock
+    private QuotationAvailabilityChecker availabilityChecker;
+
+    @Mock
+    private StartSlaTrackingUseCase startSlaTrackingUseCase;
+
+    @Mock
+    private ContractRepository contractRepository;
+
+    @Mock
+    private ActivateContractUseCase activateContractUseCase;
+
+    @InjectMocks
+    private ConvertToBookingUseCase convertToBookingUseCase;
+
+    @Test
+    @DisplayName("UT-CONVERT-01: Throw ResourceNotFoundException if quotation does not exist")
+    void testQuotationNotFound() {
+        UUID quotationId = UUID.randomUUID();
+        when(quotationRepository.findById(quotationId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> 
+                convertToBookingUseCase.execute(quotationId, new ConvertToBookingRequest())
+        );
+    }
+
+    @Test
+    @DisplayName("UT-CONVERT-02: Throw BusinessException if quotation is not ACCEPTED")
+    void testQuotationNotAccepted() {
+        UUID quotationId = UUID.randomUUID();
+        QuotationEntity quotation = QuotationEntity.builder()
+                .quotationId(quotationId)
+                .status(QuotationStatus.SENT)
+                .build();
+
+        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+
+        BusinessException exception = assertThrows(BusinessException.class, () -> 
+                convertToBookingUseCase.execute(quotationId, new ConvertToBookingRequest())
+        );
+        assertEquals("QUOTATION_INVALID_STATUS", exception.getErrorCode());
+        assertEquals(HttpStatus.CONFLICT, exception.getHttpStatus());
+    }
+
+    @Test
+    @DisplayName("UT-CONVERT-03: Throw BusinessException if no contract exists")
+    void testNoContractExists() {
+        UUID quotationId = UUID.randomUUID();
+        QuotationEntity quotation = QuotationEntity.builder()
+                .quotationId(quotationId)
+                .status(QuotationStatus.ACCEPTED)
+                .build();
+
+        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+        when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(Collections.emptyList());
+
+        BusinessException exception = assertThrows(BusinessException.class, () -> 
+                convertToBookingUseCase.execute(quotationId, new ConvertToBookingRequest())
+        );
+        assertEquals("CONTRACT_REQUIRED", exception.getErrorCode());
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getHttpStatus());
+    }
+
+    @Test
+    @DisplayName("UT-CONVERT-04: Throw BusinessException if contract is in DRAFT or SENT status")
+    void testContractNotAcknowledged() {
+        UUID quotationId = UUID.randomUUID();
+        QuotationEntity quotation = QuotationEntity.builder()
+                .quotationId(quotationId)
+                .status(QuotationStatus.ACCEPTED)
+                .build();
+
+        ContractEntity contract = ContractEntity.builder()
+                .id(UUID.randomUUID())
+                .status(ContractStatus.SENT)
+                .version(1)
+                .build();
+
+        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+        when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
+
+        BusinessException exception = assertThrows(BusinessException.class, () -> 
+                convertToBookingUseCase.execute(quotationId, new ConvertToBookingRequest())
+        );
+        assertEquals("CONTRACT_NOT_ACKNOWLEDGED", exception.getErrorCode());
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getHttpStatus());
+    }
+
+    @Test
+    @DisplayName("UT-CONVERT-05: Throw BusinessException if contract is CANCELLED")
+    void testContractInvalidState() {
+        UUID quotationId = UUID.randomUUID();
+        QuotationEntity quotation = QuotationEntity.builder()
+                .quotationId(quotationId)
+                .status(QuotationStatus.ACCEPTED)
+                .build();
+
+        ContractEntity contract = ContractEntity.builder()
+                .id(UUID.randomUUID())
+                .status(ContractStatus.CANCELLED)
+                .version(1)
+                .build();
+
+        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+        when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
+
+        BusinessException exception = assertThrows(BusinessException.class, () -> 
+                convertToBookingUseCase.execute(quotationId, new ConvertToBookingRequest())
+        );
+        assertEquals("CONTRACT_INVALID_STATE", exception.getErrorCode());
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getHttpStatus());
+    }
+
+    @Test
+    @DisplayName("UT-CONVERT-06: Convert successfully with ACKNOWLEDGED contract and trigger activation")
+    void testConvertSuccessfully() {
+        UUID quotationId = UUID.randomUUID();
+        CustomerEntity customer = CustomerEntity.builder().customerId(UUID.randomUUID()).build();
+        QuotationEntity quotation = QuotationEntity.builder()
+                .quotationId(quotationId)
+                .status(QuotationStatus.ACCEPTED)
+                .customer(customer)
+                .checkInDate(LocalDate.now().plusDays(2))
+                .checkOutDate(LocalDate.now().plusDays(5))
+                .totalAmount(BigDecimal.valueOf(5000000))
+                .build();
+
+        ContractEntity contract = ContractEntity.builder()
+                .id(UUID.randomUUID())
+                .status(ContractStatus.ACKNOWLEDGED)
+                .version(1)
+                .build();
+
+        QuotationDetailEntity detail = QuotationDetailEntity.builder()
+                .description("Deluxe Room")
+                .quantity(2)
+                .nights(3)
+                .unitPrice(BigDecimal.valueOf(1000000))
+                .lineTotal(BigDecimal.valueOf(6000000))
+                .build();
+
+        ConvertToBookingRequest request = new ConvertToBookingRequest();
+
+        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+        when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
+        when(quotationDetailRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(detail));
+        
+        when(bookingRepository.save(any(BookingEntity.class))).thenAnswer(inv -> {
+            BookingEntity booking = inv.getArgument(0);
+            booking.setBookingId(UUID.randomUUID());
+            return booking;
+        });
+
+        BookingResponse response = convertToBookingUseCase.execute(quotationId, request);
+
+        assertNotNull(response);
+        assertEquals(BookingStatus.PENDING, response.getStatus());
+        assertEquals(QuotationStatus.CONVERTED, quotation.getStatus());
+
+        // Verify activation is called
+        verify(activateContractUseCase, times(1)).execute(contract.getId());
+        verify(bookingRepository, times(1)).save(any(BookingEntity.class));
+        verify(bookingDetailRepository, times(1)).saveAll(anyList());
+    }
+}

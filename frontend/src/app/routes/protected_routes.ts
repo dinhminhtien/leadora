@@ -23,4 +23,5 @@ export const PROTECTED_ROUTES = [
   ROUTE_PATHS.reporting,
   ROUTE_PATHS.aiAssistant,
   ROUTE_PATHS.activityLogs,
+  ROUTE_PATHS.contracts,
 ] as const;
