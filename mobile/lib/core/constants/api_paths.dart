@@ -141,6 +141,14 @@ class ApiPaths {
   static const String reminders = '/reminders';
   static String reminderById(String id) => '/reminders/$id';
   static String reminderDismiss(String id) => '/reminders/$id/dismiss';
+  static String reminderEscalate(String id) => '/reminders/$id/escalate';
+
+  // Guest feedback (UC-25). The `/public/**` submit + validate endpoints are
+  // deliberately absent: those are the guest's browser flow, not a staff device's.
+  static const String feedbacks = '/feedbacks';
+  static String feedbackById(String id) => '/feedbacks/$id';
+  static String feedbackReviewStatus(String id) =>
+      '/feedbacks/$id/review-status';
 
   // --- Product & service catalogue (ProductServiceController) ---
   // Read-only here: the lead form offers the hotel's real services as

@@ -42,6 +42,7 @@ type TaskTableViewProps = {
   selectedIds: Set<string>;
   onSelectionChange: (next: Set<string>) => void;
   highlightId?: string | null;
+  rowRef?: (id: string) => (el: HTMLElement | null) => void;
   isManager: boolean;
   users: UserSummary[];
   onOpen: (task: Task) => void;
@@ -56,6 +57,7 @@ export function TaskTableView({
   selectedIds,
   onSelectionChange,
   highlightId,
+  rowRef,
   isManager,
   users,
   onOpen,
@@ -206,6 +208,7 @@ export function TaskTableView({
         density={density}
         onRowClick={onOpen}
         highlightId={highlightId}
+        rowRef={rowRef}
         selectedIds={selectedIds}
         onSelectionChange={onSelectionChange}
         emptyTitle="You're all clear"

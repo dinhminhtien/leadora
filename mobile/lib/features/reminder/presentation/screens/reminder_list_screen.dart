@@ -128,6 +128,50 @@ class _ReminderListScreenState extends ConsumerState<ReminderListScreen> {
     );
   }
 
+  /// UC-16.4 — escalate an overdue reminder to the manager.
+  ///
+  /// Confirmed first: escalation notifies someone else and cannot be undone from
+  /// this screen, which is not an outcome a mis-tap on a small icon should
+  /// produce. The server's refusals (`NOT_OVERDUE`, `REMINDER_ALREADY_DONE`,
+  /// `UNAUTHORIZED_ESCALATE`) are surfaced verbatim rather than flattened to a
+  /// generic failure — each tells the user something different about why.
+  Future<void> _escalate(Reminder reminder) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Escalate to manager?'),
+        content: Text(
+          'Your manager will be notified that "${reminder.title}" is overdue.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Escalate'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _controller.escalate(reminder);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Escalated to your manager.')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not escalate this reminder.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final asyncState = ref.watch(reminderListControllerProvider);
@@ -262,8 +306,10 @@ class _ReminderListScreenState extends ConsumerState<ReminderListScreen> {
                           reminder: reminder,
                           highlighted: highlighted,
                           canEdit: permissions.canEdit(reminder),
+                          canEscalate: permissions.canEscalate(reminder),
                           onDismiss: () => _controller.dismiss(reminder),
                           onEdit: () => _openEdit(reminder),
+                          onEscalate: () => _escalate(reminder),
                         );
                       },
                     );
@@ -283,14 +329,18 @@ class _ReminderCard extends StatelessWidget {
     required this.reminder,
     required this.onDismiss,
     required this.onEdit,
+    required this.onEscalate,
     required this.canEdit,
+    required this.canEscalate,
     this.highlighted = false,
   });
 
   final Reminder reminder;
   final VoidCallback onDismiss;
   final VoidCallback onEdit;
+  final VoidCallback onEscalate;
   final bool canEdit;
+  final bool canEscalate;
   final bool highlighted;
 
   @override
@@ -405,6 +455,17 @@ class _ReminderCard extends StatelessWidget {
                   tooltip: 'Edit',
                   icon: const Icon(Icons.edit_outlined),
                   onPressed: onEdit,
+                ),
+              ],
+              // UC-16.4 — only ever shown on an OVERDUE reminder the user may
+              // escalate, so it never competes with Edit/Dismiss on a normal
+              // row (see `ReminderPermissions.canEscalate`).
+              if (canEscalate) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: 'Escalate to manager',
+                  icon: const Icon(Icons.trending_up_rounded),
+                  onPressed: onEscalate,
                 ),
               ],
               if (reminder.isActionable) ...[

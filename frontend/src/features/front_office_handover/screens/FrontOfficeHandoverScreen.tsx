@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Headphones,
   Search,
   Loader2,
   Save,
@@ -12,17 +11,13 @@ import {
   AlertTriangle,
   ConciergeBell,
 } from "lucide-react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/Table";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { useTableControls } from "@/components/ui/table-controls";
 import { Card, CardContent } from "@/components/ui/Card";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import {
@@ -190,6 +185,65 @@ export function FrontOfficeHandoverScreen() {
     ? pageMeta.totalElements
     : (pageData?.totalElements ?? rows.length);
 
+  /** Column set — Blueprint §10.13 arrival desk. */
+  const handoverColumns: ColumnDef<ArrivalHandover>[] = useMemo(() => [
+    {
+      id: "bookingCode",
+      header: "Booking code",
+      sticky: "left",
+      className: "font-semibold",
+      cell: (h) => h.bookingCode || "—",
+    },
+    {
+      id: "guest",
+      header: "Guest",
+      cell: (h) => h.customerName || "—",
+    },
+    {
+      id: "arrival",
+      header: "Arrival date",
+      minWidth: "md",
+      cell: (h) => fmtDate(h.checkInDate),
+    },
+    {
+      id: "room",
+      header: "Room / Service",
+      minWidth: "lg",
+      className: "max-w-[180px] truncate",
+      cell: (h) => <span title={h.roomSummary}>{h.roomSummary || "—"}</span>,
+    },
+    {
+      id: "requests",
+      header: "Special requests",
+      minWidth: "xl",
+      className: "max-w-[180px] truncate text-muted-foreground",
+      cell: (h) => (
+        <span title={h.specialRequests}>
+          {h.specialRequests?.trim() ? h.specialRequests : "—"}
+        </span>
+      ),
+    },
+    {
+      id: "assignedFo",
+      header: "Assigned FO",
+      minWidth: "lg",
+      cell: (h) =>
+        h.assignedFoName ?? (
+          // Only mandatory on submit, so legacy rows have none. "Unassigned" in
+          // warning tone, because it is something somebody needs to fix.
+          <span className="text-warning">Unassigned</span>
+        ),
+    },
+    {
+      id: "ready",
+      header: "Ready",
+      sticky: "right",
+      cell: (h) => <StatusPill size="sm" domain="readiness" value={h.readinessStatus} />,
+    },
+  ], []);
+
+  const controls = useTableControls<ArrivalHandover>("fo-handovers", handoverColumns);
+
   // Clicking a KPI card filters the list by that readiness.
   const filterBy = (readiness: string) => {
     setReadinessFilter((cur) => (cur === readiness ? "" : readiness));
@@ -198,25 +252,18 @@ export function FrontOfficeHandoverScreen() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-slate-800">
-            <Headphones className="size-5 text-blue-600" />
-            Arrival Handover (Front Office)
-          </h1>
-          <p className="text-xs text-slate-400">
-            Handovers sent to the Front Office to prepare for guest arrival — view details and update readiness.
-          </p>
-        </div>
-        <div className="flex items-center gap-2.5">
+      <PageHeader
+        {...PAGE_META.frontOfficeHandover}
+        actions={
+          <div className="flex items-center gap-2.5">
           {/* Suppressed on error: "0 requests" next to a failure message reads as a fact. */}
           {!listQuery.isError && (
             <span className="text-xs font-semibold text-slate-500">{totalElements} requests</span>
           )}
           <Pill text="Front Office" className="bg-blue-100 text-blue-800" />
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* KPI cards — customer arrival requests by readiness */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -331,143 +378,39 @@ export function FrontOfficeHandoverScreen() {
         </CardContent>
       </Card>
 
-      {/* List (UC-22.1) */}
-      <Card className="border-slate-100 bg-white shadow-sm">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Booking code</TableHead>
-                <TableHead>Guest</TableHead>
-                <TableHead>Arrival date</TableHead>
-                <TableHead>Room / Service</TableHead>
-                <TableHead>Special requests</TableHead>
-                <TableHead>Assigned FO</TableHead>
-                <TableHead>Ready</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {listQuery.isLoading && (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-xs text-slate-400">
-                    <Loader2 className="mx-auto mb-1 size-4 animate-spin" /> Loading…
-                  </TableCell>
-                </TableRow>
-              )}
-              {/* A failed request is not an empty desk. Rendering the empty state for any error
-                  told a Front Office user "no arrivals today" when the truth was a 403 or a dead
-                  backend — the single most misleading thing this screen could say. */}
-              {!listQuery.isLoading && listQuery.isError && (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-12">
-                    <div className="flex flex-col items-center justify-center gap-2 text-center">
-                      <span className="flex size-12 items-center justify-center rounded-full bg-rose-50 text-rose-500">
-                        <AlertTriangle className="size-6" />
-                      </span>
-                      <p className="text-sm font-semibold text-slate-700">
-                        {isForbidden(listQuery.error)
-                          ? "You do not have permission to view the arrival desk"
-                          : "Could not load the arrival handovers"}
-                      </p>
-                      <p className="max-w-sm text-xs text-slate-500">
-                        {serverMessage(listQuery.error)}
-                      </p>
-                      {!isForbidden(listQuery.error) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-1"
-                          onClick={() => listQuery.refetch()}
-                        >
-                          Try again
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {!listQuery.isLoading && !listQuery.isError && rows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-12">
-                    <div className="flex flex-col items-center justify-center gap-2 text-center">
-                      <span className="flex size-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                        <ConciergeBell className="size-6" />
-                      </span>
-                      <p className="text-sm font-semibold text-slate-600">
-                        {readinessFilter || search || arrivalDate
-                          ? "No requests match the filters"
-                          : "No arrival requests yet"}
-                      </p>
-                      <p className="max-w-xs text-xs text-slate-400">
-                        Handovers sent by Sales/Reservations after a booking is confirmed appear here for the Front Office to prepare for arrival.
-                      </p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {rows.map((h) => (
-                <TableRow
-                  key={h.handoverId}
-                  ref={setRowRef(h.handoverId)}
-                  className={`cursor-pointer hover:bg-slate-50 ${
-                    highlightedId === h.handoverId ? "bg-amber-50 ring-2 ring-inset ring-amber-400" : ""
-                  }`}
-                  onClick={() => setSelectedId(h.handoverId)}
-                >
-                  <TableCell className="font-semibold text-slate-700">
-                    {h.bookingCode || "—"}
-                  </TableCell>
-                  <TableCell>{h.customerName || "—"}</TableCell>
-                  <TableCell>{fmtDate(h.checkInDate)}</TableCell>
-                  <TableCell className="max-w-[180px] truncate" title={h.roomSummary}>
-                    {h.roomSummary || "—"}
-                  </TableCell>
-                  <TableCell className="max-w-[180px] truncate text-slate-500" title={h.specialRequests}>
-                    {h.specialRequests?.trim() ? h.specialRequests : "—"}
-                  </TableCell>
-                  <TableCell className="text-slate-600">
-                    {h.assignedFoName ?? (
-                      // Only mandatory on submit, so legacy rows have none. Say "unassigned"
-                      // rather than a bare dash — it is a thing somebody needs to fix.
-                      <span className="text-amber-600">Unassigned</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <StatusPill size="sm" domain="readiness" value={h.readinessStatus} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-end gap-2 text-xs">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-          >
-            Previous
-          </Button>
-          {/* Was "Trang {n}/{m}" / "Sau" next to an English "Previous" — every other label on this
-              screen is English, so the two Vietnamese ones were the odd pair out. */}
-          <span className="text-slate-500">
-            Page {page + 1} of {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages - 1}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      )}
+      {/* List (UC-22.1).
+          A failed request is not an empty desk: DataTable renders the error
+          state, not the empty state, when `error` is set — the old hand-rolled
+          body had to special-case that and told a Front Office user "no arrivals
+          today" whenever the backend 403'd. */}
+      <DataTable
+        label="Arrival handovers"
+        rows={rows}
+        columns={controls.visibleColumns}
+        rowId={(h) => h.handoverId}
+        isLoading={listQuery.isLoading}
+        error={listQuery.isError ? listQuery.error : undefined}
+        onRetry={isForbidden(listQuery.error) ? undefined : () => listQuery.refetch()}
+        density={controls.density}
+        sortBy={controls.sortBy}
+        sortDir={controls.sortDir}
+        onSortChange={controls.onSortChange}
+        highlightId={highlightedId}
+        rowRef={setRowRef}
+        onRowClick={(h) => setSelectedId(h.handoverId)}
+        isFiltered={!!readinessFilter || !!search || !!arrivalDate}
+        emptyTitle="No arrival requests yet"
+        emptyMessage="Handovers sent by Sales or Reservations after a booking is confirmed appear here to prepare for arrival."
+        footer={
+          <TablePagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            totalElements={totalElements}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        }
+      />
 
       {/* Detail slide-over (UC-22.2 + UC-22.3) */}
       {selectedId && (
@@ -532,6 +475,11 @@ function ReadinessForm({ id, detail }: { id: string; detail: ArrivalHandover }) 
   const [localError, setLocalError] = useState<string | null>(null);
 
   // BR-44 — a cancelled / no-show / checked-out booking freezes readiness entirely.
+  //
+  // Not dead code, despite the detail endpoint now 404ing those bookings: this guards the CACHED
+  // copy. React Query keeps the last successful payload when a refetch fails, so a drawer left open
+  // across a cancellation keeps rendering the booking as it was. Without this the form would stay
+  // enabled and the user would find out by submitting into a 422.
   const bookingActive = isBookingActive(detail.bookingStatus);
   // POST-4 — from NEED_CLARIFICATION the only move is to amend the note; Sales/Reservation must
   // re-submit before readiness can be confirmed. The server enforces this; we mirror it so the
@@ -549,7 +497,9 @@ function ReadinessForm({ id, detail }: { id: string; detail: ArrivalHandover }) 
     setLocalError(null);
     if (!readiness || !dirty || !bookingActive) return;
     if (needsClarification && !note.trim()) {
-      setLocalError("Please enter the clarification details.");
+      // Same sentence the server sends for E7.2, so the user reads one message whether the
+      // client caught it or the request did.
+      setLocalError("Clarification note is required.");
       return;
     }
     // `mutate`, not `mutateAsync`: an awaited rejection here was an unhandled promise rejection,

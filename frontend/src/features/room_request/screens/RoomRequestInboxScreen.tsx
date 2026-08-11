@@ -1,26 +1,26 @@
 "use client";
 
-import React, { useState } from "react";
-import { BedDouble, CalendarDays, CheckCircle2, Clock, Send, XCircle } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { CalendarDays, CheckCircle2, Clock, Send, XCircle, Eye, Loader2 } from "lucide-react";
 
 
 import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Input } from "@/components/ui/Input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/Table";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { ExportMenu, useTableControls } from "@/components/ui/table-controls";
+import { OwnerCell } from "@/components/ui/row-actions";
 import { apiErrorMessage } from "@/services/api_error";
 import type { RoomRequest, RoomRequestStatus } from "@/services/room_request_service";
+import { quotationService, type Quotation } from "@/services/quotation_service";
+import { QuotationDetailDrawer } from "@/features/quotation/components/QuotationDetailDrawer";
 import {
   useRespondRoomRequest,
   useRoomRequestInbox,
 } from "@/features/room_request/hooks/use_room_requests";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 /**
  * The Reservation team's queue: rooms Sales is waiting on.
@@ -32,6 +32,22 @@ import {
 
 
 const STATUS_FILTERS = ["PENDING", "CONFIRMED", "REJECTED", "all"] as const;
+
+/** Rows per page — mirrors the server page size requested below. */
+const PAGE_SIZE = 10;
+
+const ROOM_REQUEST_EXPORT_HEADERS = [
+  "Quotation", "Customer", "Room type", "Check-in", "Check-out", "Rooms",
+  "Requested by", "Status", "Held until", "Reservation note",
+];
+
+function roomRequestExportRow(r: RoomRequest): (string | number | null | undefined)[] {
+  return [
+    r.quoteNo, r.customerName ?? "", r.roomTypeRequested ?? "",
+    r.checkInDate, r.checkOutDate, r.quantity,
+    r.requestedByName ?? "", r.status, r.heldUntil ?? "", r.reservationNote ?? "",
+  ];
+}
 
 function formatDate(iso?: string): string {
   if (!iso) return "—";
@@ -54,6 +70,7 @@ function defaultHoldUntil(): string {
 }
 
 export function RoomRequestInboxScreen() {
+  const { highlightedId, setRowRef } = useHighlightRow("highlight", "request");
   const [status, setStatus] = useState<string>("PENDING");
   const [page, setPage] = useState(0);
   const { data, isLoading } = useRoomRequestInbox({ status, page, size: 10 });
@@ -64,9 +81,147 @@ export function RoomRequestInboxScreen() {
   const [note, setNote] = useState("");
   const [heldUntil, setHeldUntil] = useState(defaultHoldUntil());
   const [error, setError] = useState("");
+  const [detailTarget, setDetailTarget] = useState<Quotation | null>(null);
+  const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
 
   const rows = data?.content ?? [];
   const totalPages = (typeof data?.page === "object" ? data.page.totalPages : data?.totalPages) ?? 1;
+  const totalElements =
+    (typeof data?.page === "object" ? data.page.totalElements : data?.totalElements) ?? rows.length;
+
+  const handleViewRoomDetails = async (r: RoomRequest) => {
+    if (!r.quotationId) return;
+    setLoadingDetailId(r.requestId);
+    try {
+      const res = await quotationService.getById(r.quotationId);
+      if (res.data) {
+        setDetailTarget(res.data);
+      }
+    } catch (err) {
+      console.error("Failed to load quotation room details", err);
+    } finally {
+      setLoadingDetailId(null);
+    }
+  };
+
+  /**
+   * Column set — Blueprint §10.8.
+   *
+   * The Answer column keeps Confirm/Reject as real buttons rather than folding
+   * them into the overflow menu: this inbox exists to be triaged fast, and
+   * BR-24 makes every pending row a hard block on Sales until it is answered.
+   */
+  const roomRequestColumns: ColumnDef<RoomRequest>[] = useMemo(() => [
+    {
+      id: "quotation",
+      header: "Quotation",
+      sticky: "left",
+      className: "whitespace-nowrap text-xs font-semibold",
+      cell: (r) => (
+        <span className="flex items-center gap-1.5 font-bold text-brand-600 dark:text-brand-400">
+          {r.quoteNo}
+        </span>
+      ),
+    },
+    { id: "customer", header: "Customer", className: "text-xs", cell: (r) => r.customerName ?? "—" },
+    {
+      id: "room",
+      header: "Room Breakdown",
+      minWidth: "lg",
+      className: "text-xs",
+      cell: (r) => (
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-slate-800 dark:text-zinc-200">{r.roomTypeRequested ?? "—"}</span>
+          {r.quotationId && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleViewRoomDetails(r);
+              }}
+              disabled={loadingDetailId === r.requestId}
+              className="inline-flex items-center gap-1 text-[10px] font-bold text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-400 px-2 py-0.5 rounded-md transition border border-brand-200/60"
+              title="View detailed room lines, rates and quantities"
+            >
+              {loadingDetailId === r.requestId ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Eye className="size-3" />
+              )}
+              <span>Room Details</span>
+            </button>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "dates",
+      header: "Dates",
+      minWidth: "lg",
+      cell: (r) => (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs">
+          <CalendarDays className="size-3 text-muted-foreground" />
+          {formatDate(r.checkInDate)} → {formatDate(r.checkOutDate)}
+        </span>
+      ),
+    },
+    {
+      id: "quantity",
+      header: "Rooms",
+      numeric: true,
+      className: "font-semibold",
+      cell: (r) => r.quantity,
+    },
+    {
+      id: "askedBy",
+      header: "Asked by",
+      minWidth: "xl",
+      cell: (r) => <OwnerCell name={r.requestedByName} />,
+    },
+    {
+      id: "status",
+      header: "Status",
+      // Canonical room-request binding (Blueprint §2.7):
+      // PENDING warning · CONFIRMED success · REJECTED danger · SUPERSEDED muted.
+      cell: (r) => (
+        <>
+          <StatusPill size="sm" domain="roomRequest" value={r.status} />
+          {r.status === "CONFIRMED" && r.heldUntil && (
+            <p className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Clock className="size-3" />
+              held to {new Date(r.heldUntil).toLocaleString()}
+            </p>
+          )}
+          {r.status === "REJECTED" && r.reservationNote && (
+            <p className="mt-1 max-w-50 text-[10px] text-muted-foreground">{r.reservationNote}</p>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "answer",
+      header: "Answer",
+      sticky: "right",
+      cell: (r) =>
+        r.status === "PENDING" ? (
+          <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+            <Button size="xs" variant="primary" onClick={() => openAnswer(r, "CONFIRMED")} leftIcon={<CheckCircle2 className="size-3" />}>
+              Confirm
+            </Button>
+            <Button size="xs" variant="secondary" onClick={() => openAnswer(r, "REJECTED")} leftIcon={<XCircle className="size-3" />}>
+              Reject
+            </Button>
+          </div>
+        ) : (
+          <span className="block text-right text-[10px] text-muted-foreground">
+            {r.respondedByName ? `by ${r.respondedByName}` : "—"}
+          </span>
+        ),
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [loadingDetailId]);
+
+  const controls = useTableControls<RoomRequest>("room-requests", roomRequestColumns);
 
   const openAnswer = (request: RoomRequest, initial: "CONFIRMED" | "REJECTED") => {
     setAnswering(request);
@@ -106,16 +261,7 @@ export function RoomRequestInboxScreen() {
 
   return (
     <div className="p-6">
-      <div className="mb-5">
-        <h1 className="flex items-center gap-2 text-lg font-bold text-foreground">
-          <BedDouble className="size-5 text-slate-500" />
-          Room Requests
-        </h1>
-        <p className="mt-1 text-xs text-slate-400 dark:text-zinc-400">
-          Sales cannot send a quotation or create a booking until you confirm the rooms. Check the
-          hotel system, then answer here — including how long you can hold them.
-        </p>
-      </div>
+      <PageHeader {...PAGE_META.roomRequests} />
 
       <div className="mb-3 flex items-center gap-2">
         {STATUS_FILTERS.map((s) => (
@@ -133,118 +279,69 @@ export function RoomRequestInboxScreen() {
         ))}
       </div>
 
-      {isLoading ? (
-        <p className="text-xs text-slate-400">Loading requests…</p>
-      ) : rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center dark:border-zinc-700">
-          <CheckCircle2 className="mx-auto mb-2 size-6 text-emerald-500" />
-          <p className="text-sm font-semibold text-slate-600 dark:text-zinc-300">Nothing waiting</p>
-          <p className="mt-1 text-xs text-slate-400">No room requests with this status.</p>
-        </div>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Quotation</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Room</TableHead>
-              <TableHead>Dates</TableHead>
-              <TableHead>Rooms</TableHead>
-              <TableHead>Asked by</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Answer</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((r) => (
-              <TableRow key={r.requestId}>
-                <TableCell className="whitespace-nowrap text-xs font-semibold">{r.quoteNo}</TableCell>
-                <TableCell className="text-xs">{r.customerName ?? "—"}</TableCell>
-                <TableCell className="text-xs">{r.roomTypeRequested ?? "—"}</TableCell>
-                <TableCell className="whitespace-nowrap text-xs">
-                  <span className="inline-flex items-center gap-1">
-                    <CalendarDays className="size-3 text-slate-400" />
-                    {formatDate(r.checkInDate)} → {formatDate(r.checkOutDate)}
-                  </span>
-                </TableCell>
-                <TableCell className="text-xs font-semibold">{r.quantity}</TableCell>
-                <TableCell className="text-xs">{r.requestedByName ?? "—"}</TableCell>
-                <TableCell>
-                  {/* Canonical room-request binding (Blueprint §2.7):
-                      PENDING warning · CONFIRMED success · REJECTED danger ·
-                      SUPERSEDED muted. */}
-                  <StatusPill size="sm" domain="roomRequest" value={r.status} />
-                  {r.status === "CONFIRMED" && r.heldUntil && (
-                    <p className="mt-1 inline-flex items-center gap-1 text-[10px] text-slate-400">
-                      <Clock className="size-3" />
-                      held to {new Date(r.heldUntil).toLocaleString()}
-                    </p>
-                  )}
-                  {r.status === "REJECTED" && r.reservationNote && (
-                    <p className="mt-1 max-w-50 text-[10px] text-slate-400">{r.reservationNote}</p>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {r.status === "PENDING" ? (
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={() => openAnswer(r, "CONFIRMED")}
-                        leftIcon={<CheckCircle2 className="size-3" />}
-                      >
-                        Confirm
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => openAnswer(r, "REJECTED")}
-                        leftIcon={<XCircle className="size-3" />}
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  ) : (
-                    <span className="text-[10px] text-slate-400">
-                      {r.respondedByName ? `by ${r.respondedByName}` : "—"}
-                    </span>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-
-      {totalPages > 1 && (
-        <div className="mt-3 flex items-center justify-end gap-2">
-          <Button size="sm" variant="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>
-            Previous
-          </Button>
-          <span className="text-xs text-slate-400">
-            Page {page + 1} of {totalPages}
-          </span>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={page + 1 >= totalPages}
-            onClick={() => setPage(page + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      )}
+      <DataTable
+        label="Room requests"
+        rows={rows}
+        columns={controls.visibleColumns}
+        rowId={(r) => r.requestId}
+        isLoading={isLoading}
+        density={controls.density}
+        sortBy={controls.sortBy}
+        sortDir={controls.sortDir}
+        onSortChange={controls.onSortChange}
+        highlightId={highlightedId}
+        rowRef={setRowRef}
+        selectedIds={controls.selectedIds}
+        onSelectionChange={controls.setSelectedIds}
+        bulkActions={
+          <ExportMenu
+            filename={`room-requests-selected-${new Date().toISOString().slice(0, 10)}`}
+            headers={ROOM_REQUEST_EXPORT_HEADERS}
+            rows={rows.filter((r) => controls.selectedIds.has(r.requestId)).map(roomRequestExportRow)}
+          />
+        }
+        isFiltered={status !== "all"}
+        onClearFilters={() => { setStatus("all"); setPage(0); }}
+        emptyTitle="Nothing waiting"
+        emptyMessage="Room requests raised by Sales appear here for you to confirm or reject."
+        footer={
+          <TablePagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            totalElements={totalElements}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        }
+      />
 
       {answering && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl dark:bg-zinc-900">
-            <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100">
-              {decision === "CONFIRMED" ? "Confirm rooms" : "Reject request"}
-            </h2>
-            <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-              {answering.quantity} x {answering.roomTypeRequested ?? "room"} ·{" "}
-              {formatDate(answering.checkInDate)} → {formatDate(answering.checkOutDate)}
-            </p>
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100">
+                  {decision === "CONFIRMED" ? "Confirm rooms" : "Reject request"}
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+                  {answering.quoteNo} · {answering.quantity} x {answering.roomTypeRequested ?? "room"} ·{" "}
+                  {formatDate(answering.checkInDate)} → {formatDate(answering.checkOutDate)}
+                </p>
+              </div>
+              {answering.quotationId && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="xs"
+                  onClick={() => handleViewRoomDetails(answering)}
+                  disabled={loadingDetailId === answering.requestId}
+                  leftIcon={loadingDetailId === answering.requestId ? <Loader2 className="size-3 animate-spin" /> : <Eye className="size-3" />}
+                  className="shrink-0 text-[10px] font-bold"
+                >
+                  Room Details
+                </Button>
+              )}
+            </div>
 
             <div className="mt-4 flex gap-2">
               <Button
@@ -321,6 +418,12 @@ export function RoomRequestInboxScreen() {
           </div>
         </div>
       )}
+
+      {/* Slide-over Drawer for displaying detailed Quotation Room Lines */}
+      <QuotationDetailDrawer
+        quote={detailTarget}
+        onClose={() => setDetailTarget(null)}
+      />
     </div>
   );
 }

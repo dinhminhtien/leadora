@@ -37,9 +37,26 @@ public class ArrivalHandoverResponse {
     private LocalDate checkInDate;   // arrival date
     private LocalDate checkOutDate;
     /**
-     * BookingStatus. The list only shows arrivals whose booking is CONFIRMED / CHECKED_IN, but a
-     * detail view can still be reached by a deep link from an older notification — so the front
-     * desk needs to see when the booking behind it is no longer live (UC-22.1 step 3, BR-44).
+     * BookingStatus (UC-22.1 step 3, BR-44).
+     *
+     * <p>This used to be justified by "a detail view can still be reached by a deep link from an
+     * older notification". That is not true: a HANDOVER notification routes to
+     * {@code /front-office-handover?highlight=<id>}, and the highlight only rings a row that is
+     * already in the list — the drawer opens on a row click alone. A handover the list filters out
+     * is therefore unreachable from the UI, and the arrival endpoints refuse it anyway.
+     *
+     * <p>What the field is actually for, on each side:
+     * <ul>
+     *   <li><b>Operational screens</b> — {@code forOperations} does not filter on booking status, so
+     *       Sales and Reservation legitimately see handovers whose booking has been cancelled or
+     *       checked out, and need this to tell them apart.</li>
+     *   <li><b>Arrival screens</b> — always CONFIRMED or CHECKED_IN on a fresh read, because
+     *       {@code GetArrivalHandoverDetailUseCase} 404s anything else. It still matters for the
+     *       cached copy: React Query keeps the last successful payload when a refetch fails, so the
+     *       drawer can be showing a booking that has since died, and {@code isBookingActive} reads
+     *       this field to keep the readiness form disabled rather than let the user submit into a
+     *       422.</li>
+     * </ul>
      */
     private String bookingStatus;
 

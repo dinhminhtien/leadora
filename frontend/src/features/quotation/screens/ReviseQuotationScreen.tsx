@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
@@ -289,23 +291,19 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
         </Button>
       </div>
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl font-bold text-slate-800">Revise Quotation</h1>
+      <PageHeader
+        {...PAGE_META.quotationRevise}
+        meta={
+          <>
             <Badge variant="info" size="sm" className="font-bold text-[10px]">
               {quotation.quoteNo}
             </Badge>
             <Badge variant="default" size="sm" className="font-bold text-[10px] bg-slate-100 text-slate-500">
               v{quotation.version ?? 1} → v{nextVersion}
             </Badge>
-          </div>
-          <p className="text-xs text-slate-400">
-            Editing a new version of this quotation. Previous version will be saved to history.
-          </p>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Version History collapsible */}
       <Card className="border-slate-100 shadow-sm bg-white">

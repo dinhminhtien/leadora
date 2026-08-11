@@ -13,8 +13,12 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { DataTable, type ColumnDef } from "@/components/ui/data-table";
+import { useTableControls } from "@/components/ui/table-controls";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Badge } from "@/components/ui/Badge";
 import type { Quotation } from "@/services/quotation_service";
 import { usePendingApprovals, useProcessApproval } from "@/features/quotation/hooks/use_quotation_approval";
@@ -291,6 +295,87 @@ export function PendingApprovalsScreen() {
     [pending, search]
   );
 
+  /**
+   * Column set — Blueprint §10.7 approvals queue.
+   *
+   * Discount % and Total are the two figures a manager decides on, so both are
+   * right-aligned numerics and sortable: a queue is triaged by size of the ask.
+   */
+  const approvalColumns: ColumnDef<Quotation>[] = useMemo(() => [
+    {
+      id: "quoteNo",
+      header: "Quote No",
+      sticky: "left",
+      cell: (q) => (
+        <span className="flex items-center gap-1.5 text-xs font-bold text-primary">
+          <FileSpreadsheet className="size-3.5 text-muted-foreground" />
+          {q.quoteNo}
+        </span>
+      ),
+    },
+    {
+      id: "contact",
+      header: "Contact / Deal",
+      cell: (q) => (
+        <>
+          <p className="text-xs font-bold text-foreground">{q.contactName}</p>
+          <p className="text-[10px] text-muted-foreground">{q.dealName}</p>
+        </>
+      ),
+    },
+    {
+      id: "roomType",
+      header: "Room Type",
+      minWidth: "md",
+      cell: (q) =>
+        q.roomType ?? (
+          <span className="flex items-center gap-1 font-semibold text-warning">
+            <AlertTriangle className="size-3" /> Missing
+          </span>
+        ),
+    },
+    {
+      id: "discount",
+      header: "Discount %",
+      numeric: true,
+      sortable: true,
+      cell: (q) => <span className="font-black text-warning">{q.discountPercent ?? 0}%</span>,
+    },
+    {
+      id: "total",
+      header: "Total",
+      numeric: true,
+      sortable: true,
+      className: "font-black",
+      cell: (q) => `${q.amount.toLocaleString("vi-VN")} ₫`,
+    },
+    {
+      id: "submitted",
+      header: "Submitted",
+      minWidth: "lg",
+      className: "text-xs text-muted-foreground",
+      cell: (q) => (q as { sentDate?: string }).sentDate || q.expiryDate || "—",
+    },
+    {
+      id: "action",
+      header: "",
+      width: "w-24",
+      sticky: "right",
+      cell: (q) => (
+        <div className="flex justify-end">
+          <Button variant="secondary" size="xs" onClick={() => handleReview(q)}>
+            Review
+          </Button>
+        </div>
+      ),
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const approvalControls = useTableControls<Quotation>("pending-approvals", approvalColumns, {
+    defaultSortBy: "discount",
+  });
+
   const handleReview = (quote: Quotation) => {
     const current = pending.find((q) => q.id === quote.id);
     if (!current || current.status !== "pending_approval") {
@@ -355,21 +440,17 @@ export function PendingApprovalsScreen() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Pending Approvals</h1>
-          <p className="text-xs text-slate-400">
-            Review quotations with discount authority exceptions. Approve, reject, or request changes.
-          </p>
-        </div>
-        <Badge
-          variant={pending.length > 0 ? "warning" : "success"}
-          className="text-xs px-3 py-1 font-bold self-start sm:self-auto"
-        >
-          {pending.length} Awaiting Review
-        </Badge>
-      </div>
+      <PageHeader
+        {...PAGE_META.pendingApprovals}
+        actions={
+          <Badge
+            variant={pending.length > 0 ? "warning" : "success"}
+            className="text-xs px-3 py-1 font-bold"
+          >
+            {pending.length} Awaiting Review
+          </Badge>
+        }
+      />
 
       {/* E3: Already-processed error */}
       {e3Error && (
@@ -410,75 +491,22 @@ export function PendingApprovalsScreen() {
             />
           </div>
 
-          {isLoading ? (
-            <div className="py-14 text-center text-xs text-slate-400">Loading pending approvals...</div>
-          ) : filtered.length === 0 ? (
-            <div className="py-14 text-center">
-              <ClipboardCheck className="size-10 text-emerald-300 mx-auto mb-2.5" />
-              <p className="text-sm font-semibold text-slate-400">
-                {search ? "No matching quotations found." : "All clear — no pending approvals!"}
-              </p>
-              <p className="text-xs text-slate-300 mt-0.5">
-                New submissions will appear here automatically.
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader className="bg-slate-50 border-b border-slate-100">
-                <TableRow hoverable={false}>
-                  <TableHead className="text-xs font-semibold text-slate-500">Quote No</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500">Contact / Deal</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500">Room Type</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 text-right">Discount %</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 text-right">Total</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500">Submitted</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 text-center">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((q) => (
-                  <TableRow key={q.id} className="hover:bg-slate-50/70 border-b border-slate-100 transition">
-                    <TableCell className="py-3 px-4 text-xs font-bold text-blue-600">
-                      <span className="flex items-center gap-1.5">
-                        <FileSpreadsheet className="size-3.5 text-slate-400" />
-                        {q.quoteNo}
-                      </span>
-                    </TableCell>
-                    <TableCell className="py-3 px-4">
-                      <p className="text-xs font-bold text-slate-700">{q.contactName}</p>
-                      <p className="text-[10px] text-slate-400">{q.dealName}</p>
-                    </TableCell>
-                    <TableCell className="py-3 px-4 text-xs text-slate-500">
-                      {q.roomType ? (
-                        q.roomType
-                      ) : (
-                        <span className="text-amber-500 flex items-center gap-1 font-semibold">
-                          <AlertTriangle className="size-3" /> Missing
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="py-3 px-4 text-xs text-right">
-                      <span className="font-black text-amber-600">{q.discountPercent ?? 0}%</span>
-                    </TableCell>
-                    <TableCell className="py-3 px-4 text-xs text-right font-black text-slate-800">
-                      {q.amount.toLocaleString('vi-VN')} ₫
-                    </TableCell>
-                    <TableCell className="py-3 px-4 text-xs text-slate-400">{(q as { sentDate?: string }).sentDate || q.expiryDate || "—"}</TableCell>
-                    <TableCell className="py-3 px-4 text-center">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleReview(q)}
-                        className="text-xs border-blue-200 text-blue-600 hover:bg-blue-50 font-semibold"
-                      >
-                        Review
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <DataTable
+            label="Quotations awaiting approval"
+            rows={filtered}
+            columns={approvalControls.visibleColumns}
+            rowId={(q) => q.id}
+            isLoading={isLoading}
+            density={approvalControls.density}
+            sortBy={approvalControls.sortBy}
+            sortDir={approvalControls.sortDir}
+            onSortChange={approvalControls.onSortChange}
+            onRowClick={(q) => handleReview(q)}
+            isFiltered={!!search}
+            onClearFilters={() => setSearch("")}
+            emptyTitle="All clear — no pending approvals"
+            emptyMessage="Quotations submitted for a discount exception land here automatically."
+          />
         </CardContent>
       </Card>
 

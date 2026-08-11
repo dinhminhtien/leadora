@@ -3,14 +3,36 @@
 import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ArrowUpDown, ListFilter, Bell, BedDouble, X } from "lucide-react";
+import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ListFilter, Bell, BedDouble, X } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { StatusPill } from "@/components/ui/status-pill";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { DensityMenu } from "@/components/ui/list-toolbar";
+import {
+  ColumnPicker,
+  ExportMenu,
+  RefreshButton,
+  useTableControls,
+} from "@/components/ui/table-controls";
+
+/** Sortable fields the local comparator implements. */
+type SortField = "total" | "validUntil";
+
+const QUOTATION_EXPORT_HEADERS = [
+  "Quote no", "Client", "Deal", "Amount (VND)", "Valid until", "Status",
+];
+
+function quotationExportRow(q: Quotation): (string | number | null | undefined)[] {
+  return [q.quoteNo, q.contactName, q.dealName, q.amount, q.expiryDate, q.status];
+}
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { SendQuotationModal } from "@/features/quotation/components/SendQuotationModal";
+import { QuotationDetailDrawer } from "@/features/quotation/components/QuotationDetailDrawer";
 import { RecordResponseModal } from "@/features/quotation/components/RecordResponseModal";
 import { ConvertToBookingModal } from "@/features/quotation/components/ConvertToBookingModal";
 import { ExpireCloseModal } from "@/features/quotation/components/ExpireCloseModal";
@@ -46,7 +68,7 @@ type ClosureLog = {
 };
 
 export function QuotationListScreen() {
-  const { data: serverQuotes = [], isLoading } = useQuotations();
+  const { data: serverQuotes = [], isLoading, isFetching, refetch } = useQuotations();
   const { user } = useAuthStore();
   const router = useRouter();
   const { highlightedId, setRowRef } = useHighlightRow();
@@ -64,6 +86,7 @@ export function QuotationListScreen() {
   const [closureLogs, setClosureLogs] = useState<ClosureLog[]>([]);
   const [search, setSearch] = useState("");
   const [sendTarget, setSendTarget] = useState<Quotation | null>(null);
+  const [detailTarget, setDetailTarget] = useState<Quotation | null>(null);
   const [responseTarget, setResponseTarget] = useState<Quotation | null>(null);
   const [convertTarget, setConvertTarget] = useState<Quotation | null>(null);
   const [closeTarget, setCloseTarget] = useState<Quotation | null>(null);
@@ -85,13 +108,14 @@ export function QuotationListScreen() {
   const [sortField, setSortField] = useState<"total" | "validUntil" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
-  const handleSort = (field: "total" | "validUntil") => {
-    if (sortField === field) {
-      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDir("asc");
-    }
+  /**
+   * DataTable owns the direction toggle and hands us the resolved direction.
+   * Resetting to page 1 matters: re-sorting while on page 3 otherwise leaves the
+   * user looking at the middle of a list they just reordered.
+   */
+  const handleSort = (field: SortField, dir: "asc" | "desc") => {
+    setSortField(field);
+    setSortDir(dir);
     setCurrentPage(1);
   };
 
@@ -142,6 +166,157 @@ export function QuotationListScreen() {
     const startIndex = (currentPage - 1) * pageSize;
     return sortedQuotes.slice(startIndex, startIndex + pageSize);
   }, [sortedQuotes, currentPage]);
+
+  /**
+   * Column set — Blueprint §10.7.
+   *
+   * `total` and `validUntil` are the only sortable columns because they are the
+   * only two the local comparator implements; marking the rest sortable would
+   * render an affordance that does nothing when clicked.
+   */
+  const quotationColumns: ColumnDef<Quotation>[] = useMemo(() => [
+    {
+      id: "quoteNo",
+      header: "Quote Reference",
+      sticky: "left",
+      cell: (q) => (
+        <span className="flex items-center gap-1.5 text-xs font-bold text-primary">
+          <FileSpreadsheet className="size-3.5 text-muted-foreground" />
+          {q.quoteNo}
+        </span>
+      ),
+    },
+    {
+      id: "client",
+      header: "Client Name",
+      className: "text-xs font-semibold",
+      cell: (q) => q.contactName,
+    },
+    {
+      id: "deal",
+      header: "Linked Deal",
+      minWidth: "lg",
+      className: "text-xs text-muted-foreground",
+      cell: (q) => (
+        <span className="max-w-[180px] truncate block text-xs text-muted-foreground" title={q.dealName}>
+          {q.dealName}
+        </span>
+      ),
+    },
+    {
+      id: "rooms",
+      header: "Rooms",
+      minWidth: "md",
+      cell: (q) => {
+        if (q.roomLines && q.roomLines.length > 0) {
+          const mainLine = q.roomLines[0];
+          const extraCount = q.roomLines.length - 1;
+          const allBreakdown = q.roomLines.map((l) => `${l.roomType} × ${l.numberOfRooms}`).join(", ");
+          return (
+            <div
+              className="flex items-center gap-1.5 text-xs max-w-[220px] overflow-hidden whitespace-nowrap"
+              title={allBreakdown}
+            >
+              <span className="font-medium text-foreground truncate min-w-0">
+                {mainLine.roomType} × {mainLine.numberOfRooms}
+              </span>
+              {extraCount > 0 && (
+                <span className="shrink-0 rounded-md bg-brand-500/10 px-1.5 py-0.5 text-[10px] font-bold text-brand-600 dark:bg-brand-500/20 dark:text-brand-400 cursor-help">
+                  +{extraCount} more
+                </span>
+              )}
+            </div>
+          );
+        }
+        return (
+          <span
+            className="text-xs text-muted-foreground truncate max-w-[200px] block"
+            title={q.roomType ? `${q.roomType} (${q.numberOfRooms ?? 1})` : "—"}
+          >
+            {q.roomType ? `${q.roomType} (${q.numberOfRooms ?? 1})` : "—"}
+          </span>
+        );
+      },
+    },
+    {
+      id: "total",
+      header: "Total",
+      numeric: true,
+      sortable: true,
+      className: "font-bold",
+      cell: (q) => `${q.amount.toLocaleString("vi-VN")} ₫`,
+    },
+    {
+      id: "validUntil",
+      header: "Valid Until",
+      sortable: true,
+      minWidth: "lg",
+      cell: (q) => (
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Calendar className="size-3" />
+          {q.expiryDate}
+        </span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      // Canonical quotation binding (Blueprint §2.7): danger is reserved for
+      // REJECTED — an expired quote is inert, not a failure.
+      cell: (q) => <StatusPill size="sm" domain="quotation" value={q.status} />,
+    },
+    {
+      id: "sla",
+      header: "SLA",
+      minWidth: "xl",
+      cell: (q) => <SlaStatusBadge entityId={q.id} entityType="QUOTATION" />,
+    },
+    {
+      id: "actions",
+      header: "",
+      sticky: "right",
+      cell: (q) => {
+        const primary = getPrimaryAction(q);
+        return (
+          <div
+            className="flex items-center justify-end gap-1.5"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {primary && (
+              <Button
+                variant={primary.tone === "danger" ? "danger" : "primary"}
+                size="xs"
+                isLoading={primary.key === "submit" && submittingId === q.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  primary.onClick();
+                }}
+                leftIcon={<primary.Icon className="size-3" />}
+                className="whitespace-nowrap"
+              >
+                {primary.label}
+              </Button>
+            )}
+            <QuotationActionMenu
+              actions={getMenuActions(q)}
+              isOpen={openActionMenuId === q.id}
+              onToggle={() => setOpenActionMenuId((cur) => (cur === q.id ? null : q.id))}
+              onClose={() => setOpenActionMenuId(null)}
+            />
+          </div>
+        );
+      },
+    },
+    // Cells close over handlers and per-row state that change every render;
+    // rebuilding the column list each pass is correct and cheap for 8 columns.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [submittingId, openActionMenuId]);
+
+  const controls = useTableControls<Quotation>("quotations", quotationColumns, {
+    defaultSortBy: "validUntil",
+  });
 
   const handleSent = (_quotationId: string) => {
     setLocalStatusMap(prev => ({ ...prev, [_quotationId]: "sent" }));
@@ -297,31 +472,26 @@ export function QuotationListScreen() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-start gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Quotes &amp; Price Proposals</h1>
-          <p className="text-xs text-slate-400">
-            Generate, customize, and issue lodging room block or banquet buffet quotations
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={runAutoExpire}
-            isLoading={expireOverdue.isPending}
-            leftIcon={<TimerOff className="size-3.5" />}
-            className="text-xs border-slate-200 text-slate-600 hover:bg-slate-50"
-          >
-            Auto-Expire Overdue
-          </Button>
-          <Link href={ROUTE_PATHS.quotationCreate}>
-            <Button variant="primary" size="sm" leftIcon={<Plus className="size-3.5" />} className="text-xs font-bold">
-              New Quotation
+      <PageHeader
+        {...PAGE_META.quotations}
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              onClick={runAutoExpire}
+              isLoading={expireOverdue.isPending}
+              leftIcon={<TimerOff className="size-4" />}
+            >
+              Auto-Expire Overdue
             </Button>
-          </Link>
-        </div>
-      </div>
+            <Link href={ROUTE_PATHS.quotationCreate}>
+              <Button variant="primary" leftIcon={<Plus className="size-4" />}>
+                New Quotation
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
       {/* Auto-expire result banner */}
       {autoExpireResult !== null && (
@@ -410,194 +580,78 @@ export function QuotationListScreen() {
                 Clear filters
               </button>
             )}
+
+            {/* §2.6 control cluster */}
+            <div className="ml-auto flex items-center gap-2">
+              <RefreshButton onRefresh={() => refetch()} isRefreshing={isFetching} />
+              <ColumnPicker
+                columns={quotationColumns}
+                hiddenIds={controls.hiddenColumnIds}
+                onChange={controls.setHiddenColumnIds}
+                requiredIds={["quoteNo", "actions"]}
+              />
+              <ExportMenu
+                filename={`quotations-${new Date().toISOString().slice(0, 10)}`}
+                headers={QUOTATION_EXPORT_HEADERS}
+                rows={filteredQuotes.map(quotationExportRow)}
+              />
+              <DensityMenu value={controls.density} onChange={controls.setDensity} />
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        <Table>
-          <TableHeader className="bg-slate-50 border-b border-slate-100">
-            <TableRow hoverable={false}>
-              <TableHead className="font-semibold text-xs text-slate-500">Quote Reference</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Client Name</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Linked Deal</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">
-                <button
-                  type="button"
-                  onClick={() => handleSort("total")}
-                  className="flex items-center gap-0.5 hover:text-slate-700"
-                >
-                  Total
-                  {sortField === "total" ? (
-                    sortDir === "asc" ? (
-                      <ChevronUp className="size-3.5 text-blue-500" />
-                    ) : (
-                      <ChevronDown className="size-3.5 text-blue-500" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="size-3 text-slate-300" />
-                  )}
-                </button>
-              </TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">
-                <button
-                  type="button"
-                  onClick={() => handleSort("validUntil")}
-                  className="flex items-center gap-0.5 hover:text-slate-700"
-                >
-                  Valid Until
-                  {sortField === "validUntil" ? (
-                    sortDir === "asc" ? (
-                      <ChevronUp className="size-3.5 text-blue-500" />
-                    ) : (
-                      <ChevronDown className="size-3.5 text-blue-500" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="size-3 text-slate-300" />
-                  )}
-                </button>
-              </TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Status</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">SLA</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500 text-center">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow hoverable={false}>
-                <TableCell colSpan={8} className="py-8 text-center text-slate-400 text-xs">
-                  Loading quotations...
-                </TableCell>
-              </TableRow>
-            ) : paginatedQuotes.length > 0 ? (
-              paginatedQuotes.map((q) => (
-                <TableRow
-                  key={q.id}
-                  ref={setRowRef(q.id)}
-                  className={`border-b border-slate-100 transition ${
-                    highlightedId === q.id ? "bg-amber-50 ring-2 ring-inset ring-amber-400" :
-                    DONE_STATUSES.includes(q.status) ? "opacity-60 hover:opacity-100 bg-slate-50/40 hover:bg-slate-50/80" :
-                    "hover:bg-slate-50/70"
-                  }`}
-                >
-                  <TableCell className="py-3 px-4 text-xs font-bold text-blue-600">
-                    <span className="flex items-center gap-1.5">
-                      <FileSpreadsheet className="size-3.5 text-slate-400" />
-                      {q.quoteNo}
-                    </span>
-                  </TableCell>
-                  <TableCell className="py-3 px-4 text-xs font-bold text-slate-700">{q.contactName}</TableCell>
-                  <TableCell className="py-3 px-4 text-xs text-slate-600 font-semibold">{q.dealName}</TableCell>
-                  <TableCell className="py-3 px-4 text-xs font-black text-slate-800">
-                    {q.amount.toLocaleString('vi-VN')} ₫
-                  </TableCell>
-                  <TableCell className="py-3 px-4 text-xs text-slate-500 font-semibold">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="size-3 text-slate-400" />
-                      {q.expiryDate}
-                    </span>
-                  </TableCell>
-                  <TableCell className="py-3 px-4">
-                    {/*
-                      Canonical quotation binding (Blueprint §2.7). This also
-                      corrects a local divergence: EXPIRED / CLOSED / SUPERSEDED
-                      were rendered `danger` here, but the spec reserves danger
-                      for REJECTED — an expired quote is inert, not a failure.
-                    */}
-                    <StatusPill size="sm" domain="quotation" value={q.status} />
-                  </TableCell>
-                  <TableCell className="py-3 px-4">
-                    <SlaStatusBadge entityId={q.id} entityType="QUOTATION" />
-                  </TableCell>
-                  <TableCell className="py-3 px-4">
-                    <div className="flex justify-center items-center gap-1.5">
-                      {(() => {
-                        const primary = getPrimaryAction(q);
-                        return primary ? (
-                          <Button
-                            variant={primary.tone === "danger" ? "danger" : "primary"}
-                            size="sm"
-                            isLoading={primary.key === "submit" && submittingId === q.id}
-                            onClick={primary.onClick}
-                            leftIcon={<primary.Icon className="size-3" />}
-                            className="px-2.5 py-1 text-[10px] font-bold whitespace-nowrap"
-                          >
-                            {primary.label}
-                          </Button>
-                        ) : null;
-                      })()}
-                      <QuotationActionMenu
-                        actions={getMenuActions(q)}
-                        isOpen={openActionMenuId === q.id}
-                        onToggle={() => setOpenActionMenuId((cur) => (cur === q.id ? null : q.id))}
-                        onClose={() => setOpenActionMenuId(null)}
-                      />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow hoverable={false}>
-                <TableCell colSpan={8} className="py-8 text-center text-slate-400 text-xs">
-                  {activeTab === "active"
-                    ? (search || statusFilter ? "No quotations match your filters." : "No active quotations found.")
-                    : (search || statusFilter ? "No quotations match your filters." : "No completed quotations found.")}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        label="Quotations"
+        rows={paginatedQuotes}
+        columns={controls.visibleColumns}
+        rowId={(q) => q.id}
+        isLoading={isLoading}
+        density={controls.density}
+        sortBy={sortField ?? undefined}
+        sortDir={sortDir}
+        onSortChange={(columnId, dir) => {
+          // Only Total and Valid Until have a comparator; the rest of the header
+          // stays inert rather than offering a sort that does nothing.
+          if (columnId === "total" || columnId === "validUntil") {
+            handleSort(columnId, dir);
+          }
+        }}
+        highlightId={highlightedId}
+        rowRef={setRowRef}
+        onRowClick={(q) => setDetailTarget(q)}
+        selectedIds={controls.selectedIds}
+        onSelectionChange={controls.setSelectedIds}
+        bulkActions={
+          <ExportMenu
+            filename={`quotations-selected-${new Date().toISOString().slice(0, 10)}`}
+            headers={QUOTATION_EXPORT_HEADERS}
+            rows={paginatedQuotes.filter((q) => controls.selectedIds.has(q.id)).map(quotationExportRow)}
+          />
+        }
+        isFiltered={!!search || !!statusFilter}
+        onClearFilters={() => { setSearch(""); setStatusFilter(""); }}
+        emptyTitle={activeTab === "active" ? "No active quotations" : "No completed quotations"}
+        emptyMessage="Quotations you create from a deal will appear here."
+        footer={
+          <TablePagination
+            page={currentPage - 1}
+            pageSize={pageSize}
+            totalElements={filteredQuotes.length}
+            totalPages={totalPages}
+            onPageChange={(p) => setCurrentPage(p + 1)}
+          />
+        }
+      />
 
-      {/* Pagination Controls */}
-      {filteredQuotes.length > pageSize && (
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white px-6 py-4 rounded-xl border border-slate-100 shadow-sm text-xs">
-          <div className="text-slate-500 font-medium">
-            Showing <strong className="text-slate-700">{(currentPage - 1) * pageSize + 1}</strong> to{" "}
-            <strong className="text-slate-700">
-              {Math.min(currentPage * pageSize, filteredQuotes.length)}
-            </strong>{" "}
-            of <strong className="text-slate-700">{filteredQuotes.length}</strong> entries
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              className="border-slate-200 text-slate-600 font-bold px-3 py-1.5 h-8 disabled:opacity-50"
-            >
-              Previous
-            </Button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }).map((_, idx) => {
-                const p = idx + 1;
-                const isCurrent = p === currentPage;
-                return (
-                  <button
-                    key={p}
-                    onClick={() => setCurrentPage(p)}
-                    className={`size-8 rounded-lg font-bold transition flex items-center justify-center ${
-                      isCurrent ? "bg-[#185FA5] text-white shadow-xs" : "text-slate-600 hover:bg-slate-100"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                );
-              })}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-              disabled={currentPage === totalPages}
-              className="border-slate-200 text-slate-600 font-bold px-3 py-1.5 h-8 disabled:opacity-50"
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* Itemized Multi-Room Detailed View Drawer */}
+      <QuotationDetailDrawer
+        quote={detailTarget}
+        onClose={() => setDetailTarget(null)}
+        onSend={(q) => setSendTarget(q)}
+        onConvertToBooking={(q) => setConvertTarget(q)}
+        onRevise={(q) => router.push(ROUTE_PATHS.quotationRevise(q.id))}
+      />
 
       {/* UC-14.4: Send Quotation Modal */}
       {sendTarget && (

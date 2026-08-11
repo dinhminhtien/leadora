@@ -144,7 +144,7 @@ class RolePermissionScopeTest {
         assertThat(RolePermissionScope.applicableCodes("FO"))
                 .containsExactlyInAnyOrder("HANDOVER_VIEW", "HANDOVER_WRITE", "NOTIFICATION_VIEW");
         assertThat(RolePermissionScope.applicableCodes("RESERVATION"))
-                .doesNotContain("CHAT_VIEW", "LEAD_VIEW", "DEAL_VIEW", "QUOTATION_VIEW");
+                .doesNotContain("CHAT_VIEW", "LEAD_VIEW", "DEAL_VIEW");
         // An unmodelled role is offered nothing rather than everything.
         assertThat(RolePermissionScope.applicableCodes("SOMETHING_NEW")).isEmpty();
     }

@@ -80,6 +80,8 @@ export function QuotationActionMenu({
           // Some list variants make the whole row clickable — keep a menu click
           // from also triggering the row.
           onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
           className={cn(
             "flex size-7 items-center justify-center rounded-md border transition-colors",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
