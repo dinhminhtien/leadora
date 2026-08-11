@@ -24,7 +24,10 @@ public class DealWorkflowResolver {
             QuotationStatus.CONVERTED,
             QuotationStatus.PENDING_REVISION,
             QuotationStatus.ACCEPTED,
-            QuotationStatus.INTERESTED);
+            QuotationStatus.INTERESTED,
+            QuotationStatus.PENDING_CUSTOMER_RESPONSE,
+            QuotationStatus.ACCEPTED_BY_CUSTOMER,
+            QuotationStatus.BOOKING_REQUEST);
 
     private static final Set<BookingStatus> ACTIVE_BOOKING_STATUSES = Set.of(
             BookingStatus.PENDING,

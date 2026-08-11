@@ -28,6 +28,9 @@ class SubmitFeedbackUseCaseTest {
     @Mock
     private SalesFeedbackRepository salesFeedbackRepository;
 
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private SubmitFeedbackUseCase submitFeedbackUseCase;
 
@@ -65,6 +68,7 @@ class SubmitFeedbackUseCaseTest {
         assertNotNull(feedback.getSubmittedAt());
 
         verify(salesFeedbackRepository, times(1)).save(feedback);
+        verify(eventPublisher, times(1)).publishEvent(any(com.novax.leadora.application.event.FeedbackSubmittedEvent.class));
     }
 
     @Test

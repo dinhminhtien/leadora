@@ -7,11 +7,14 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import com.novax.leadora.application.listener.WorkflowSyncEntityListener;
+
 @Entity
 @Table(name = "bookings", indexes = {
     @Index(name = "idx_bookings_created_at", columnList = "created_at"),
     @Index(name = "idx_bookings_assigned_user_id", columnList = "assigned_user_id")
 })
+@EntityListeners(WorkflowSyncEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
