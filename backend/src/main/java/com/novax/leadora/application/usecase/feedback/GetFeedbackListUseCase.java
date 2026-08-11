@@ -89,6 +89,7 @@ public class GetFeedbackListUseCase {
 
         return FeedbackResponse.builder()
                 .feedbackId(entity.getFeedbackId())
+                .customerId(entity.getCustomer() != null ? entity.getCustomer().getCustomerId() : null)
                 .customerName(customerName)
                 .bookingCode(bookingCode)
                 .salesStaffName(salesStaffName)
