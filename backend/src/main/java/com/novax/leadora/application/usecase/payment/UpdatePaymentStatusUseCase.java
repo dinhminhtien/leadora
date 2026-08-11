@@ -1,8 +1,14 @@
 package com.novax.leadora.application.usecase.payment;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.novax.leadora.api.dto.request.UpdatePaymentStatusRequest;
 import com.novax.leadora.api.dto.response.PaymentResponse;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
+import com.novax.leadora.application.usecase.activitylog.AuditCorrectionService;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.novax.leadora.infrastructure.persistence.entity.PaymentEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
@@ -28,6 +34,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -45,6 +52,15 @@ public class UpdatePaymentStatusUseCase {
     private final AutoWinDealByPaymentUseCase autoWinDealByPaymentUseCase;
     private final RoomConfirmationReader roomConfirmationReader;
     private final RoomRequestNotifier roomRequestNotifier;
+    private final AuditCorrectionService auditCorrectionService;
+    private final ObjectMapper objectMapper;
+
+    /** Same family BookingStatusTransitionService corrects against, so both paths share one chain. */
+    private static final List<ActivityLogType> BOOKING_FAMILY_TYPES = List.of(
+            ActivityLogType.BOOKING_CREATED,
+            ActivityLogType.BOOKING_CONFIRMED,
+            ActivityLogType.BOOKING_CANCELLED,
+            ActivityLogType.BOOKING_UPDATED);
 
     private static final java.util.concurrent.ConcurrentHashMap<String, Object> activeTxCodes = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -165,6 +181,7 @@ public class UpdatePaymentStatusUseCase {
                 bookingRepository.save(booking);
                 log.info("Booking status updated to CONFIRMED for Booking: {} after payment success",
                         booking.getBookingId());
+                recordBookingConfirmedActivity(booking, payment);
 
                 if (!roomConfirmationReader.isRoomConfirmed(booking.getQuotation())) {
                     roomRequestNotifier.paymentReceivedWithoutRoomConfirmation(booking);
@@ -186,5 +203,42 @@ public class UpdatePaymentStatusUseCase {
         }
 
         return PaymentResponse.from(saved);
+    }
+
+    /**
+     * A deposit landing confirms the booking here rather than through
+     * {@code BookingStatusTransitionService}, and for a long time that meant the most common
+     * confirmation path in the system left no {@code BOOKING_CONFIRMED} row behind: the audit trail
+     * showed bookings that were suddenly CONFIRMED with nothing saying when or why, and any report
+     * asking "how many bookings were confirmed this period" had to fall back on guesswork.
+     *
+     * <p>Routed through {@link AuditCorrectionService#correctPriorActivity} — not a bare publish —
+     * so this row joins the same correction chain the manual transitions build, and a later
+     * cancellation voids the right head.
+     *
+     * <p><b>Not</b> best-effort, and deliberately not wrapped in a swallow-everything catch. The
+     * correction listener is a plain {@code @EventListener} that runs in this very transaction and
+     * rethrows to force a rollback, so catching here would not save the payment — it would only
+     * hide the cause and let the commit fail later with an opaque {@code UnexpectedRollbackException}
+     * after this method had already reported success. On a money path, an audit trail that silently
+     * did not happen is the worse outcome: if the log cannot be written, the confirmation does not
+     * stand, and the caller gets the real reason.
+     */
+    private void recordBookingConfirmedActivity(BookingEntity booking, PaymentEntity payment) {
+        ObjectNode payload = objectMapper.createObjectNode()
+                .put("actor", "SYSTEM")
+                .put("previousStatus", BookingStatus.PENDING.name())
+                .put("newStatus", BookingStatus.CONFIRMED.name())
+                .put("trigger", "PAYMENT_PAID")
+                .put("paymentId", String.valueOf(payment.getPaymentId()));
+        ActivityLogCommand command = ActivityLogCommand.builder()
+                .activityType(ActivityLogType.BOOKING_CONFIRMED)
+                .entityType(EntityType.BOOKING)
+                .entityId(booking.getBookingId())
+                .summary("Booking confirmed automatically after payment was marked PAID")
+                .payload(payload)
+                .reason("Deposit payment confirmed")
+                .build();
+        auditCorrectionService.correctPriorActivity(booking.getBookingId(), BOOKING_FAMILY_TYPES, command);
     }
 }

@@ -30,100 +30,194 @@ public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpec
     // ── UC-23.1 / UC-23.4 report aggregates ───────────────────────────────────
     // Ranges are half-open: [start, end) — see ReportRange.
 
-    // ── UC-23.1: the whole report in two round trips ──────────────────────────
+    // ── UC-23.1: the whole report in one round trip ───────────────────────────
     //
     // Both databases this application talks to are remote (Supabase Postgres, Upstash Redis), so
     // every statement pays an internet round trip. Split across ten small aggregates the report was
     // ten round trips deep: at these table sizes — tens to a couple of hundred rows — the query
-    // work is free and the latency is entirely in the trips. These two native UNION ALL statements
-    // return the same numbers in two.
+    // work is free and the latency is entirely in the trips.
+    //
+    // The headline KPIs and the per-rep table used to be two statements over the same populations,
+    // which meant the two could disagree while both looked plausible. Carrying the owner as an
+    // extra grouping column collapses them into one: the per-rep rows ARE the headline rows before
+    // they are summed, so "the table adds up to the tiles" is now structural rather than a property
+    // somebody has to keep remembering. It also costs one round trip instead of two.
     //
     // Native rather than JPQL because the branches select different entities into one result shape,
     // which HQL set operations handle awkwardly, and because plain SQL could be run against the
     // real database to confirm the numbers before it was wired in.
     //
-    // Two time axes on purpose. Acquisition ("how many deals did we open") belongs to created_at;
-    // outcome ("how many did we win") belongs to closed_at. Measuring outcomes on created_at drops
-    // a deal opened in May and won in July, and dilutes the rate with deals still in flight.
+    // Three time axes on purpose. Acquisition ("how many deals did we open") belongs to created_at;
+    // outcome ("how many did we win") belongs to closed_at; cash belongs to paid_at. Measuring
+    // outcomes on created_at drops a deal opened in May and won in July, and dilutes the rate with
+    // deals still in flight.
+    //
+    // Event dates that have no column of their own — when a lead was qualified, when a booking was
+    // confirmed — are reconstructed from activity_log rather than inferred from the row's CURRENT
+    // status. Counting "leads created in the period whose status is QUALIFIED right now" made the
+    // number fall when a rep did well, because qualifying then converting a lead moved it out of
+    // the bucket; the same mistake UC-23.3 had to unwind for SLA breaches.
 
     /**
-     * Every headline aggregate UC-23.1 needs, as {@code [kind, bucket, count, amount]}.
+     * Every UC-23.1 aggregate, headline and per-rep alike, as
+     * {@code [kind, bucket, ownerId, ownerName, count, amount]}.
      *
-     * <p>{@code kind} names the population — LEAD, DEAL_OPENED, DEAL_CLOSED, QUOTATION, BOOKING,
-     * REVENUE — and {@code bucket} is that population's status. Living on DealRepository is a
-     * compromise: the statement spans five tables and belongs to no single one.
+     * <p>{@code kind} names the population and the time axis it is measured on; {@code bucket} is
+     * that population's status. Sum across owners for a headline KPI; read a single kind across
+     * owners for the per-rep table. A null {@code ownerId} is the unassigned group, deliberately
+     * kept — dropping it is what stopped the per-rep table adding up.
+     *
+     * <p>Owner attribution differs per population, and the difference is meaningful: leads, deals
+     * and bookings go to their assignee, quotations to {@code created_by} (whoever did the work of
+     * drafting it), and revenue to the assignee of the booking the payment sits on.
+     *
+     * <p>Filters are all optional. {@code ownerId} narrows to one rep; {@code source} /
+     * {@code service} / {@code corporate} narrow to a lead segment, which for the non-lead
+     * populations means "whose customer came from a lead matching this segment". {@code segmentOff}
+     * is computed caller-side and short-circuits the segment lookup entirely when no segment filter
+     * was supplied, so the common case pays nothing for the feature.
+     *
+     * <p>{@code source} matches exactly because leads pick it from a fixed list; {@code service}
+     * matches as a case-insensitive substring because {@code interested_service} is free text a rep
+     * typed, and an exact match on free text finds nothing often enough to look like a broken filter.
+     *
+     * <p>A confirmation date is taken from three sources, best evidence first: the confirmation
+     * event, then the deposit that caused it, then the row's own creation date. That last fallback
+     * is not cosmetic — without it, a booking confirmed before this audit trail existed and paid for
+     * outside the system carries no date at all and drops out of <em>every</em> period, quietly
+     * lowering the historical "bookings confirmed" figure instead of dating one record approximately.
+     *
+     * <p>Prose lives here and never inside the statement: Spring Data parses the query text before
+     * Postgres ever sees it, and an apostrophe in a {@code --} comment reads to that parser as the
+     * start of a string literal, which fails repository creation at startup.
+     *
+     * <p>Living on DealRepository is a compromise: the statement spans seven tables and belongs to
+     * no single one.
      */
     @Query(value = """
-            SELECT 'LEAD' AS kind, l.status::text AS bucket, count(*) AS cnt, 0::numeric AS amount
-              FROM leads l
-             WHERE l.created_at >= :start AND l.created_at < :end
-             GROUP BY l.status
-            UNION ALL
-            SELECT 'DEAL_OPENED', d.status::text, count(*), COALESCE(sum(d.expected_revenue), 0)
-              FROM deals d
-             WHERE d.created_at >= :start AND d.created_at < :end
-             GROUP BY d.status
-            UNION ALL
-            SELECT 'DEAL_CLOSED', d.status::text, count(*), COALESCE(sum(d.expected_revenue), 0)
-              FROM deals d
-             WHERE d.closed_at >= :start AND d.closed_at < :end
-             GROUP BY d.status
-            UNION ALL
-            SELECT 'QUOTATION', q.status::text, count(*), 0
-              FROM quotations q
-             WHERE q.created_at >= :start AND q.created_at < :end
-             GROUP BY q.status
-            UNION ALL
-            SELECT 'BOOKING', b.status::text, count(*), 0
-              FROM bookings b
-             WHERE b.created_at >= :start AND b.created_at < :end
-             GROUP BY b.status
-            UNION ALL
-            SELECT 'REVENUE', 'PAID', count(*), COALESCE(sum(p.amount), 0)
-              FROM payments p
-             WHERE p.status = 'PAID'
-               AND ((p.paid_at IS NOT NULL AND p.paid_at >= :start AND p.paid_at < :end) OR (p.paid_at IS NULL AND p.created_at >= :start AND p.created_at < :end))
-            """, nativeQuery = true)
-    List<Object[]> salesPerformanceAggregates(
-            @Param("start") OffsetDateTime start,
-            @Param("end") OffsetDateTime end);
-
-    /**
-     * The per-rep breakdown for UC-23.1, as {@code [kind, ownerId, ownerName, count, amount]}.
-     *
-     * <p>LEFT JOINs throughout so records with no assignee survive as a null-owner group; dropping
-     * them is what stopped the per-rep table adding up to the headline totals.
-     */
-    @Query(value = """
-            SELECT 'LEADS' AS kind, u.user_id AS owner_id, u.full_name AS owner_name,
+            WITH voided_ref AS (
+                SELECT ref_activity_id AS activity_id
+                  FROM activity_log
+                 WHERE record_operation = 'VOIDED' AND ref_activity_id IS NOT NULL
+            ),
+            segment_leads AS (
+                SELECT lk.lead_id, lk.customer_id
+                  FROM leads lk
+                 WHERE (CAST(:source AS text) IS NULL OR lk.source = CAST(:source AS text))
+                   AND (CAST(:service AS text) IS NULL OR lk.interested_service ILIKE '%' || CAST(:service AS text) || '%')
+                   AND (CAST(:corporate AS boolean) IS NULL OR lk.is_corporate = CAST(:corporate AS boolean))
+            ),
+            segment_customers AS (
+                SELECT DISTINCT customer_id FROM segment_leads WHERE customer_id IS NOT NULL
+            ),
+            lead_qualified AS (
+                SELECT a.entity_id AS lead_id, min(a.created_at) AS at
+                  FROM activity_log a
+                 WHERE a.activity_type = 'LEAD_STATUS_UPDATED'
+                   AND a.entity_type = 'LEAD'
+                   AND a.payload->>'newStatus' = 'QUALIFIED'
+                   AND a.record_operation <> 'VOIDED'
+                   AND NOT EXISTS (SELECT 1 FROM voided_ref v WHERE v.activity_id = a.id)
+                 GROUP BY a.entity_id
+            ),
+            booking_confirmed AS (
+                SELECT b.booking_id, b.assigned_user_id, b.customer_id,
+                       COALESCE(al.at, pay.at, b.created_at) AS at
+                  FROM bookings b
+                  LEFT JOIN (SELECT a.entity_id, min(a.created_at) AS at
+                               FROM activity_log a
+                              WHERE a.activity_type = 'BOOKING_CONFIRMED'
+                                AND a.entity_type = 'BOOKING'
+                                AND a.record_operation <> 'VOIDED'
+                                AND NOT EXISTS (SELECT 1 FROM voided_ref v WHERE v.activity_id = a.id)
+                              GROUP BY a.entity_id) al ON al.entity_id = b.booking_id
+                  LEFT JOIN (SELECT p.booking_id, min(p.paid_at) AS at
+                               FROM payments p
+                              WHERE p.status = 'PAID' AND p.paid_at IS NOT NULL
+                              GROUP BY p.booking_id) pay ON pay.booking_id = b.booking_id
+                 WHERE b.status IN ('CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT')
+            )
+            SELECT 'LEAD' AS kind, l.status::text AS bucket,
+                   u.user_id AS owner_id, u.full_name AS owner_name,
                    count(*) AS cnt, 0::numeric AS amount
               FROM leads l LEFT JOIN users u ON u.user_id = l.assigned_user_id
              WHERE l.created_at >= :start AND l.created_at < :end
+               AND (CAST(:ownerId AS uuid) IS NULL OR l.assigned_user_id = CAST(:ownerId AS uuid))
+               AND (CAST(:segmentOff AS boolean) OR l.lead_id IN (SELECT lead_id FROM segment_leads))
+             GROUP BY l.status, u.user_id, u.full_name
+            UNION ALL
+            SELECT 'LEAD_QUALIFIED', 'QUALIFIED', u.user_id, u.full_name, count(*), 0::numeric
+              FROM lead_qualified lq
+                   JOIN leads l ON l.lead_id = lq.lead_id
+                   LEFT JOIN users u ON u.user_id = l.assigned_user_id
+             WHERE lq.at >= :start AND lq.at < :end
+               AND (CAST(:ownerId AS uuid) IS NULL OR l.assigned_user_id = CAST(:ownerId AS uuid))
+               AND (CAST(:segmentOff AS boolean) OR l.lead_id IN (SELECT lead_id FROM segment_leads))
              GROUP BY u.user_id, u.full_name
             UNION ALL
-            SELECT 'DEALS_WON', u.user_id, u.full_name,
+            SELECT 'LEAD_CONVERTED', 'CONVERTED', u.user_id, u.full_name, count(*), 0::numeric
+              FROM leads l LEFT JOIN users u ON u.user_id = l.assigned_user_id
+             WHERE l.converted_at >= :start AND l.converted_at < :end
+               AND (CAST(:ownerId AS uuid) IS NULL OR l.assigned_user_id = CAST(:ownerId AS uuid))
+               AND (CAST(:segmentOff AS boolean) OR l.lead_id IN (SELECT lead_id FROM segment_leads))
+             GROUP BY u.user_id, u.full_name
+            UNION ALL
+            SELECT 'LEAD_COHORT_CONVERTED', 'CONVERTED', u.user_id, u.full_name, count(*), 0::numeric
+              FROM leads l LEFT JOIN users u ON u.user_id = l.assigned_user_id
+             WHERE l.created_at >= :start AND l.created_at < :end
+               AND l.converted_at IS NOT NULL
+               AND (CAST(:ownerId AS uuid) IS NULL OR l.assigned_user_id = CAST(:ownerId AS uuid))
+               AND (CAST(:segmentOff AS boolean) OR l.lead_id IN (SELECT lead_id FROM segment_leads))
+             GROUP BY u.user_id, u.full_name
+            UNION ALL
+            SELECT 'DEAL_OPENED', d.status::text, u.user_id, u.full_name,
                    count(*), COALESCE(sum(d.expected_revenue), 0)
               FROM deals d LEFT JOIN users u ON u.user_id = d.assigned_user_id
-             WHERE d.closed_at >= :start AND d.closed_at < :end AND d.status = 'WON'
+             WHERE d.created_at >= :start AND d.created_at < :end
+               AND (CAST(:ownerId AS uuid) IS NULL OR d.assigned_user_id = CAST(:ownerId AS uuid))
+               AND (CAST(:segmentOff AS boolean) OR d.customer_id IN (SELECT customer_id FROM segment_customers))
+             GROUP BY d.status, u.user_id, u.full_name
+            UNION ALL
+            SELECT 'DEAL_CLOSED', d.status::text, u.user_id, u.full_name,
+                   count(*), COALESCE(sum(d.expected_revenue), 0)
+              FROM deals d LEFT JOIN users u ON u.user_id = d.assigned_user_id
+             WHERE d.closed_at >= :start AND d.closed_at < :end
+               AND (CAST(:ownerId AS uuid) IS NULL OR d.assigned_user_id = CAST(:ownerId AS uuid))
+               AND (CAST(:segmentOff AS boolean) OR d.customer_id IN (SELECT customer_id FROM segment_customers))
+             GROUP BY d.status, u.user_id, u.full_name
+            UNION ALL
+            SELECT 'QUOTATION', q.status::text, u.user_id, u.full_name, count(*), 0::numeric
+              FROM quotations q LEFT JOIN users u ON u.user_id = q.created_by
+             WHERE q.created_at >= :start AND q.created_at < :end
+               AND (CAST(:ownerId AS uuid) IS NULL OR q.created_by = CAST(:ownerId AS uuid))
+               AND (CAST(:segmentOff AS boolean) OR q.customer_id IN (SELECT customer_id FROM segment_customers))
+             GROUP BY q.status, u.user_id, u.full_name
+            UNION ALL
+            SELECT 'BOOKING_CONFIRMED', 'CONFIRMED', u.user_id, u.full_name, count(*), 0::numeric
+              FROM booking_confirmed bc LEFT JOIN users u ON u.user_id = bc.assigned_user_id
+             WHERE bc.at >= :start AND bc.at < :end
+               AND (CAST(:ownerId AS uuid) IS NULL OR bc.assigned_user_id = CAST(:ownerId AS uuid))
+               AND (CAST(:segmentOff AS boolean) OR bc.customer_id IN (SELECT customer_id FROM segment_customers))
              GROUP BY u.user_id, u.full_name
             UNION ALL
-            SELECT 'BOOKINGS', u.user_id, u.full_name, count(*), 0
-              FROM bookings b LEFT JOIN users u ON u.user_id = b.assigned_user_id
-             WHERE b.created_at >= :start AND b.created_at < :end
-               AND b.status IN ('CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT')
-             GROUP BY u.user_id, u.full_name
-            UNION ALL
-            SELECT 'REVENUE', u.user_id, u.full_name, count(*), COALESCE(sum(p.amount), 0)
+            SELECT 'REVENUE', 'PAID', u.user_id, u.full_name, count(*), COALESCE(sum(p.amount), 0)
               FROM payments p
                    LEFT JOIN bookings b ON b.booking_id = p.booking_id
                    LEFT JOIN users u ON u.user_id = b.assigned_user_id
              WHERE p.status = 'PAID'
                AND ((p.paid_at IS NOT NULL AND p.paid_at >= :start AND p.paid_at < :end) OR (p.paid_at IS NULL AND p.created_at >= :start AND p.created_at < :end))
+               AND (CAST(:ownerId AS uuid) IS NULL OR b.assigned_user_id = CAST(:ownerId AS uuid))
+               AND (CAST(:segmentOff AS boolean) OR b.customer_id IN (SELECT customer_id FROM segment_customers))
              GROUP BY u.user_id, u.full_name
             """, nativeQuery = true)
-    List<Object[]> salesPerformanceByOwner(
+    List<Object[]> salesPerformanceAggregates(
             @Param("start") OffsetDateTime start,
-            @Param("end") OffsetDateTime end);
+            @Param("end") OffsetDateTime end,
+            @Param("ownerId") String ownerId,
+            @Param("source") String source,
+            @Param("service") String service,
+            @Param("corporate") String corporate,
+            @Param("segmentOff") boolean segmentOff);
 
     /** {@code [status, count, sumExpectedRevenue]} over deals *opened* in the range. */
     @Query("""

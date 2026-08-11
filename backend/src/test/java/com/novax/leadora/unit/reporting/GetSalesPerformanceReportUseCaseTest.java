@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -21,6 +22,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -36,38 +38,37 @@ class GetSalesPerformanceReportUseCaseTest {
 
     private GetSalesPerformanceReportUseCase useCase;
 
-    /** [kind, bucket, count, amount] */
-    private final List<Object[]> aggregates = new ArrayList<>();
-    /** [kind, ownerId, ownerName, count, amount] */
-    private final List<Object[]> byOwner = new ArrayList<>();
+    /** [kind, bucket, ownerId, ownerName, count, amount] */
+    private final List<Object[]> rows = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
         useCase = new GetSalesPerformanceReportUseCase(
                 dealRepository, new ReportRangeFactory("Asia/Ho_Chi_Minh"));
-        when(dealRepository.salesPerformanceAggregates(any(), any())).thenReturn(aggregates);
-        when(dealRepository.salesPerformanceByOwner(any(), any())).thenReturn(byOwner);
+        when(dealRepository.salesPerformanceAggregates(
+                any(), any(), any(), any(), any(), any(), anyBoolean())).thenReturn(rows);
     }
 
+    /** A row nobody is assigned to — the shape most headline-only assertions need. */
     private void agg(String kind, String bucket, long count, long amount) {
-        aggregates.add(new Object[] { kind, bucket, count, BigDecimal.valueOf(amount) });
+        rows.add(new Object[] { kind, bucket, null, null, count, BigDecimal.valueOf(amount) });
     }
 
-    private void owner(String kind, UUID id, String name, long count, long amount) {
-        byOwner.add(new Object[] { kind, id, name, count, BigDecimal.valueOf(amount) });
+    private void agg(String kind, String bucket, UUID id, String name, long count, long amount) {
+        rows.add(new Object[] { kind, bucket, id, name, count, BigDecimal.valueOf(amount) });
     }
 
     private SalesPerformanceReportResponse run() {
-        return useCase.execute(LocalDate.now().minusDays(30), LocalDate.now());
+        return useCase.execute(SalesPerformanceFilter.period(LocalDate.now().minusDays(30), LocalDate.now()));
     }
 
     @Test
-    @DisplayName("the whole report costs two database round trips")
-    void reportIsTwoRoundTrips() {
+    @DisplayName("the whole report costs one database round trip")
+    void reportIsOneRoundTrip() {
         run();
 
-        verify(dealRepository, times(1)).salesPerformanceAggregates(any(), any());
-        verify(dealRepository, times(1)).salesPerformanceByOwner(any(), any());
+        verify(dealRepository, times(1)).salesPerformanceAggregates(
+                any(), any(), any(), any(), any(), any(), anyBoolean());
         verifyNoMoreInteractions(dealRepository);
     }
 
@@ -126,13 +127,48 @@ class GetSalesPerformanceReportUseCaseTest {
         agg("LEAD", "QUALIFIED", 1, 0);
         agg("LEAD", "CONVERTED", 21, 0);
         agg("LEAD", "LOST", 12, 0);
+        agg("LEAD_COHORT_CONVERTED", "CONVERTED", 21, 0);
 
         SalesPerformanceReportResponse report = run();
 
         assertThat(report.getLeadsCreated()).isEqualTo(41);
-        assertThat(report.getQualifiedLeads()).isEqualTo(1);
-        assertThat(report.getLeadsConverted()).isEqualTo(21);
         assertThat(report.getLeadConversionRate()).isEqualTo(51.22);
+    }
+
+    @Test
+    @DisplayName("qualifying a lead and then converting it does not erase the qualification")
+    void qualifiedIsCountedByEventNotByCurrentStatus() {
+        // Ten leads raised, every one of them qualified and then converted: by the end of the
+        // period not a single lead still *sits* in QUALIFIED.
+        agg("LEAD", "CONVERTED", 10, 0);
+        agg("LEAD_QUALIFIED", "QUALIFIED", 10, 0);
+        agg("LEAD_CONVERTED", "CONVERTED", 10, 0);
+        agg("LEAD_COHORT_CONVERTED", "CONVERTED", 10, 0);
+
+        SalesPerformanceReportResponse report = run();
+
+        assertThat(report.getQualifiedLeads())
+                .as("counting current status reported 0 here — a perfect period scored as a blank one")
+                .isEqualTo(10);
+        assertThat(report.getLeadsConverted()).isEqualTo(10);
+        assertThat(report.getLeadConversionRate()).isEqualTo(100.0);
+    }
+
+    @Test
+    @DisplayName("conversion rate compares one population with itself, so a backlog month cannot exceed 100%")
+    void conversionRateIsCohortBased() {
+        // A quiet month for new leads, spent converting a backlog raised earlier.
+        agg("LEAD", "NEW", 4, 0);
+        agg("LEAD_CONVERTED", "CONVERTED", 30, 0);     // conversions that happened in the period
+        agg("LEAD_COHORT_CONVERTED", "CONVERTED", 1, 0); // of this month's four, one converted
+
+        SalesPerformanceReportResponse report = run();
+
+        assertThat(report.getLeadsConverted()).as("activity in the period").isEqualTo(30);
+        assertThat(report.getCohortConverted()).isEqualTo(1);
+        assertThat(report.getLeadConversionRate())
+                .as("30/4 would have printed 750%")
+                .isEqualTo(25.0);
     }
 
     @Test
@@ -157,23 +193,12 @@ class GetSalesPerformanceReportUseCaseTest {
         agg("QUOTATION", "SENT", 8, 0);
         agg("QUOTATION", "CONVERTED", 2, 0);
         // Far more bookings than quotations — walk-ins, or bookings raised without a quote.
-        agg("BOOKING", "CONFIRMED", 40, 0);
+        agg("BOOKING_CONFIRMED", "CONFIRMED", 40, 0);
 
         SalesPerformanceReportResponse report = run();
 
         assertThat(report.getBookingsConfirmed()).isEqualTo(40);
         assertThat(report.getQuotationToBookingRate()).isEqualTo(20.0);   // 2 of 10 quotations
-    }
-
-    @Test
-    @DisplayName("confirmed bookings include checked-in and checked-out")
-    void bookingsCountEveryWonState() {
-        agg("BOOKING", "CONFIRMED", 2, 0);
-        agg("BOOKING", "CHECKED_IN", 3, 0);
-        agg("BOOKING", "CHECKED_OUT", 4, 0);
-        agg("BOOKING", "CANCELLED", 9, 0);
-
-        assertThat(run().getBookingsConfirmed()).isEqualTo(9);
     }
 
     @Test
@@ -185,12 +210,17 @@ class GetSalesPerformanceReportUseCaseTest {
     }
 
     @Test
+    @DisplayName("the report names the time zone its day boundaries were cut in")
+    void reportStatesItsTimeZone() {
+        assertThat(run().getTimezone()).isEqualTo("Asia/Ho_Chi_Minh");
+    }
+
+    @Test
     @DisplayName("unassigned records get their own row so the breakdown reconciles with the total")
     @SuppressWarnings("null")
     void unassignedRecordsGetTheirOwnRow() {
-        agg("LEAD", "NEW", 10, 0);
-        owner("LEADS", UUID.randomUUID(), "Mai Anh", 7, 0);
-        owner("LEADS", null, null, 3, 0);   // nobody assigned
+        agg("LEAD", "NEW", UUID.randomUUID(), "Mai Anh", 7, 0);
+        agg("LEAD", "NEW", 3, 0);   // nobody assigned
 
         SalesPerformanceReportResponse report = run();
 
@@ -212,10 +242,10 @@ class GetSalesPerformanceReportUseCaseTest {
     @DisplayName("one owner's four metrics merge into a single row")
     void metricsMergePerOwner() {
         UUID id = UUID.randomUUID();
-        owner("LEADS", id, "Mai Anh", 4, 0);
-        owner("DEALS_WON", id, "Mai Anh", 3, 37_000);
-        owner("BOOKINGS", id, "Mai Anh", 4, 0);
-        owner("REVENUE", id, "Mai Anh", 2, 255_036_292L);
+        agg("LEAD", "NEW", id, "Mai Anh", 4, 0);
+        agg("DEAL_CLOSED", "WON", id, "Mai Anh", 3, 37_000);
+        agg("BOOKING_CONFIRMED", "CONFIRMED", id, "Mai Anh", 4, 0);
+        agg("REVENUE", "PAID", id, "Mai Anh", 2, 255_036_292L);
 
         assertThat(run().getReps()).singleElement().satisfies(row -> {
             assertThat(row.getName()).isEqualTo("Mai Anh");
@@ -228,12 +258,42 @@ class GetSalesPerformanceReportUseCaseTest {
     }
 
     @Test
+    @DisplayName("a rep's lost deals stay out of their won column")
+    void lostDealsDoNotLandInTheWonColumn() {
+        UUID id = UUID.randomUUID();
+        agg("DEAL_CLOSED", "WON", id, "Mai Anh", 2, 200);
+        agg("DEAL_CLOSED", "LOST", id, "Mai Anh", 5, 900);
+
+        assertThat(run().getReps()).singleElement().satisfies(row -> {
+            assertThat(row.getDealsWon()).isEqualTo(2);
+            assertThat(row.getWonValue()).isEqualByComparingTo(BigDecimal.valueOf(200));
+        });
+    }
+
+    @Test
+    @DisplayName("the per-rep rows sum to the headline, because they are the same rows")
+    void perRepRowsSumToTheHeadline() {
+        UUID one = UUID.randomUUID();
+        UUID two = UUID.randomUUID();
+        agg("DEAL_CLOSED", "WON", one, "Mai Anh", 3, 300);
+        agg("DEAL_CLOSED", "WON", two, "Quang", 4, 400);
+        agg("DEAL_CLOSED", "WON", 1, 100);              // unassigned
+
+        SalesPerformanceReportResponse report = run();
+
+        assertThat(report.getReps().stream()
+                .mapToLong(SalesPerformanceReportResponse.RepRow::getDealsWon).sum())
+                .isEqualTo(report.getDealsWon())
+                .isEqualTo(8);
+    }
+
+    @Test
     @DisplayName("an owner id arriving as a string still merges into one row")
     void ownerIdAsStringIsAccepted() {
         // A native query hands back whatever the driver mapped uuid to.
         UUID id = UUID.randomUUID();
-        byOwner.add(new Object[] { "LEADS", id.toString(), "Mai Anh", 4L, BigDecimal.ZERO });
-        byOwner.add(new Object[] { "DEALS_WON", id, "Mai Anh", 1L, BigDecimal.TEN });
+        rows.add(new Object[] { "LEAD", "NEW", id.toString(), "Mai Anh", 4L, BigDecimal.ZERO });
+        rows.add(new Object[] { "DEAL_CLOSED", "WON", id, "Mai Anh", 1L, BigDecimal.TEN });
 
         assertThat(run().getReps()).singleElement().satisfies(row -> {
             assertThat(row.getLeads()).isEqualTo(4);
@@ -242,21 +302,34 @@ class GetSalesPerformanceReportUseCaseTest {
     }
 
     @Test
-    @DisplayName("an unassigned bucket with nothing in it is not rendered")
-    void emptyUnassignedBucketIsDropped() {
-        owner("LEADS", null, null, 0, 0);
-        owner("LEADS", UUID.randomUUID(), "Mai Anh", 5, 0);
+    @DisplayName("an owner the query touched but who did nothing is not rendered")
+    void ownerWithNoActivityIsDropped() {
+        agg("LEAD", "NEW", 0, 0);                                   // empty unassigned bucket
+        agg("LEAD", "NEW", UUID.randomUUID(), "Mai Anh", 5, 0);
 
         assertThat(run().getReps()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("a rep who only appears in a headline-only kind does not become a row")
+    void headlineOnlyKindsDoNotCreateRepRows() {
+        agg("LEAD_QUALIFIED", "QUALIFIED", UUID.randomUUID(), "Mai Anh", 9, 0);
+
+        SalesPerformanceReportResponse report = run();
+
+        assertThat(report.getQualifiedLeads()).isEqualTo(9);
+        assertThat(report.getReps())
+                .as("the rep table shows leads, wins, bookings and cash — not every kind counted")
+                .isEmpty();
     }
 
     @Test
     @DisplayName("reps are ranked by revenue, with the unassigned row kept last")
     @SuppressWarnings("null")
     void repsAreRankedByRevenue() {
-        owner("REVENUE", UUID.randomUUID(), "Low", 1, 100);
-        owner("REVENUE", UUID.randomUUID(), "High", 1, 900);
-        owner("REVENUE", null, null, 1, 500);
+        agg("REVENUE", "PAID", UUID.randomUUID(), "Low", 1, 100);
+        agg("REVENUE", "PAID", UUID.randomUUID(), "High", 1, 900);
+        agg("REVENUE", "PAID", 1, 500);
 
         assertThat(run().getReps()).extracting(SalesPerformanceReportResponse.RepRow::getName)
                 .containsExactly("High", "Low", "(Unassigned)");
@@ -266,8 +339,8 @@ class GetSalesPerformanceReportUseCaseTest {
     @DisplayName("an unknown discriminator is ignored rather than corrupting another bucket")
     void unknownKindIsIgnored() {
         UUID id = UUID.randomUUID();
-        owner("LEADS", id, "Mai Anh", 4, 0);
-        owner("SOMETHING_NEW", id, "Mai Anh", 99, 99);
+        agg("LEAD", "NEW", id, "Mai Anh", 4, 0);
+        agg("SOMETHING_NEW", "X", id, "Mai Anh", 99, 99);
 
         assertThat(run().getReps()).singleElement()
                 .satisfies(row -> assertThat(row.getLeads()).isEqualTo(4));
@@ -284,5 +357,44 @@ class GetSalesPerformanceReportUseCaseTest {
         assertThat(report.getQuotationToBookingRate()).isZero();
         assertThat(report.getRevenue()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(report.getReps()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("filters reach the query, and an empty segment short-circuits the segment lookup")
+    void filtersArePassedThrough() {
+        UUID rep = UUID.randomUUID();
+        useCase.execute(new SalesPerformanceFilter(
+                LocalDate.now().minusDays(7), LocalDate.now(), rep, "Website", "Banquet Hall", true));
+
+        ArgumentCaptor<String> owner = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> source = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> service = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> corporate = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Boolean> segmentOff = ArgumentCaptor.forClass(Boolean.class);
+        verify(dealRepository).salesPerformanceAggregates(
+                any(), any(), owner.capture(), source.capture(), service.capture(),
+                corporate.capture(), segmentOff.capture());
+
+        assertThat(owner.getValue()).isEqualTo(rep.toString());
+        assertThat(source.getValue()).isEqualTo("Website");
+        assertThat(service.getValue()).isEqualTo("Banquet Hall");
+        assertThat(corporate.getValue()).isEqualTo("true");
+        assertThat(segmentOff.getValue()).isFalse();
+    }
+
+    @Test
+    @DisplayName("the unfiltered screen sends nulls, not empty strings, so the SQL casts stay NULL")
+    void unfilteredRequestSendsNulls() {
+        useCase.execute(new SalesPerformanceFilter(null, null, null, "", "  ", null));
+
+        ArgumentCaptor<String> source = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Boolean> segmentOff = ArgumentCaptor.forClass(Boolean.class);
+        verify(dealRepository).salesPerformanceAggregates(
+                any(), any(), any(), source.capture(), any(), any(), segmentOff.capture());
+
+        assertThat(source.getValue()).isNull();
+        assertThat(segmentOff.getValue())
+                .as("a blank filter box must not turn into a segment nobody matches")
+                .isTrue();
     }
 }

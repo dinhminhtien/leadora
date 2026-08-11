@@ -37,7 +37,10 @@ class ReportResponseCacheRoundTripTest {
         SalesPerformanceReportResponse original = SalesPerformanceReportResponse.builder()
                 .dateFrom(LocalDate.of(2026, 7, 1))
                 .dateTo(LocalDate.of(2026, 7, 31))
+                .timezone("Asia/Ho_Chi_Minh")
                 .leadsCreated(10)
+                .qualifiedLeads(6)
+                .cohortConverted(4)
                 .dealsWon(3)
                 .winRate(75.0)
                 .wonValue(BigDecimal.valueOf(900))
@@ -55,7 +58,10 @@ class ReportResponseCacheRoundTripTest {
         SalesPerformanceReportResponse restored = roundTrip(original, SalesPerformanceReportResponse.class);
 
         assertThat(restored.getDateFrom()).isEqualTo(original.getDateFrom());
+        assertThat(restored.getTimezone()).isEqualTo("Asia/Ho_Chi_Minh");
         assertThat(restored.getLeadsCreated()).isEqualTo(10);
+        assertThat(restored.getQualifiedLeads()).isEqualTo(6);
+        assertThat(restored.getCohortConverted()).isEqualTo(4);
         assertThat(restored.getWinRate()).isEqualTo(75.0);
         assertThat(restored.getWonValue()).isEqualByComparingTo(BigDecimal.valueOf(900));
         assertThat(restored.getReps()).hasSize(2);
@@ -150,5 +156,59 @@ class ReportResponseCacheRoundTripTest {
         assertThat(restored.getBreachedCount()).isEqualTo(1);
         assertThat(restored.getByActivityType()).singleElement()
                 .satisfies(row -> assertThat(row.getActivityLabel()).isEqualTo("Lead Response"));
+    }
+
+    @Test
+    @DisplayName("UC-23.6 survives the round trip with all five levels of nesting")
+    void repScorecardRoundTrips() {
+        RepScorecardResponse original = RepScorecardResponse.builder()
+                .dateFrom(LocalDate.of(2026, 7, 1))
+                .dateTo(LocalDate.of(2026, 7, 30))
+                .timezone("Asia/Ho_Chi_Minh")
+                .periodMonths(1.0)
+                .weights(RepScorecardResponse.Weights.builder()
+                        .outcome(30).efficiency(25).velocity(15).discipline(20).quality(10).build())
+                .team(RepScorecardResponse.TeamBaseline.builder()
+                        .repCount(2).winRate(55.0).csat(4.1).medianScore(63.5).build())
+                .reps(List.of(RepScorecardResponse.RepScorecard.builder()
+                        .userId(java.util.UUID.randomUUID())
+                        .name("Mai Anh")
+                        .metrics(RepScorecardResponse.RepMetrics.builder()
+                                .revenue(BigDecimal.valueOf(90_000_000))
+                                .dealsWon(6).dealsClosed(8).winRate(75.0)
+                                .firstResponseHours(3.5).csat(4.5).csatSamples(4)
+                                .activeDays(22).sampleSize(9)
+                                .build())
+                        .score(RepScorecardResponse.RepScore.builder()
+                                .outcome(80.0).efficiency(70.0).velocity(65.0)
+                                .discipline(null).quality(90.0)
+                                .total(74.2).weightCovered(80.0).build())
+                        .lowConfidence(false)
+                        .ranked(true)
+                        .rank(1)
+                        .dataGaps(List.of("No SLA reached an outcome in this period."))
+                        .topLostReasons(List.of(RepScorecardResponse.LostReason.builder()
+                                .reason("Price too high").count(7).build()))
+                        .build()))
+                .build();
+
+        RepScorecardResponse restored = roundTrip(original, RepScorecardResponse.class);
+
+        assertThat(restored.getPeriodMonths()).isEqualTo(1.0);
+        assertThat(restored.getWeights().getOutcome()).isEqualTo(30.0);
+        assertThat(restored.getTeam().getMedianScore()).isEqualTo(63.5);
+        assertThat(restored.getReps()).singleElement().satisfies(rep -> {
+            assertThat(rep.getName()).isEqualTo("Mai Anh");
+            assertThat(rep.getRank()).isEqualTo(1);
+            assertThat(rep.getMetrics().getWinRate()).isEqualTo(75.0);
+            assertThat(rep.getMetrics().getRevenue()).isEqualByComparingTo(BigDecimal.valueOf(90_000_000));
+            assertThat(rep.getScore().getTotal()).isEqualTo(74.2);
+            assertThat(rep.getScore().getDiscipline())
+                    .as("an unscored axis must come back unscored, not as zero")
+                    .isNull();
+            assertThat(rep.getDataGaps()).hasSize(1);
+            assertThat(rep.getTopLostReasons()).singleElement()
+                    .satisfies(r -> assertThat(r.getCount()).isEqualTo(7));
+        });
     }
 }

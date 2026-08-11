@@ -4,14 +4,19 @@ import com.novax.leadora.api.dto.request.SaveReportLogRequest;
 import com.novax.leadora.api.dto.response.DashboardSummaryResponse;
 import com.novax.leadora.api.dto.response.PipelineProgressionReportResponse;
 import com.novax.leadora.api.dto.response.QuotationOutcomeReportResponse;
+import com.novax.leadora.api.dto.response.RepScorecardAiReviewResponse;
+import com.novax.leadora.api.dto.response.RepScorecardResponse;
 import com.novax.leadora.api.dto.response.ReportLogResponse;
 import com.novax.leadora.api.dto.response.SalesPerformanceReportResponse;
 import com.novax.leadora.api.dto.response.TaskPerformanceReportResponse;
 import com.novax.leadora.application.usecase.reporting.GetDashboardSummaryUseCase;
 import com.novax.leadora.application.usecase.reporting.GetPipelineProgressionReportUseCase;
 import com.novax.leadora.application.usecase.reporting.GetQuotationOutcomeReportUseCase;
+import com.novax.leadora.application.usecase.reporting.GetRepScorecardUseCase;
 import com.novax.leadora.application.usecase.reporting.GetSalesPerformanceReportUseCase;
+import com.novax.leadora.application.usecase.reporting.RepScorecardAiReviewUseCase;
 import com.novax.leadora.application.usecase.reporting.GetTaskPerformanceReportUseCase;
+import com.novax.leadora.application.usecase.reporting.SalesPerformanceFilter;
 import com.novax.leadora.application.usecase.reporting.SaveReportLogUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import com.novax.leadora.common.security.CurrentUserProvider;
@@ -26,6 +31,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 @Slf4j
 @RestController
@@ -45,6 +51,8 @@ public class ReportingController {
     private final GetTaskPerformanceReportUseCase getTaskPerformanceReportUseCase;
     private final GetPipelineProgressionReportUseCase getPipelineProgressionReportUseCase;
     private final GetQuotationOutcomeReportUseCase getQuotationOutcomeReportUseCase;
+    private final GetRepScorecardUseCase getRepScorecardUseCase;
+    private final RepScorecardAiReviewUseCase repScorecardAiReviewUseCase;
     private final CurrentUserProvider currentUserProvider;
 
     /**
@@ -60,17 +68,90 @@ public class ReportingController {
         return ResponseEntity.ok(ApiResponse.success(summary));
     }
 
-    /** UC-23.1 — View Sales Performance Statistics Report (Sales Manager). */
+    /**
+     * UC-23.1 — View Sales Performance Statistics Report (Sales Manager).
+     *
+     * <p>Every filter is optional and the screen opens with none of them set, which is the shape
+     * the query is tuned for.
+     */
     @GetMapping("/sales-performance")
     @PreAuthorize("hasAnyRole('MANAGER','ADMIN') and @access.can('REPORTING_VIEW')")
     public ResponseEntity<ApiResponse<SalesPerformanceReportResponse>> getSalesPerformance(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) UUID assignedUserId,
+            @RequestParam(required = false) String source,
+            @RequestParam(required = false) String interestedService,
+            @RequestParam(required = false) Boolean corporate
+    ) {
+        UserEntity actor = currentUserProvider.resolve(null);
+        SalesPerformanceFilter filter = new SalesPerformanceFilter(
+                dateFrom, dateTo, assignedUserId, source, interestedService, corporate);
+        SalesPerformanceReportResponse report = getSalesPerformanceReportUseCase.execute(filter);
+        auditView(actor, "VIEW_SALES_PERFORMANCE", dateFrom, dateTo, sourceRecordCount(report));
+        return ResponseEntity.ok(ApiResponse.success(report));
+    }
+
+    /**
+     * How many source records the report summarised. {@code dealsTotal} alone used to stand in for
+     * this, which quietly logged "deals opened" under a column called result count — a number that
+     * could read as zero for a period full of leads, quotations and cash.
+     */
+    private static int sourceRecordCount(SalesPerformanceReportResponse report) {
+        long total = report.getLeadsCreated() + report.getDealsTotal()
+                + report.getQuotationsCreated() + report.getBookingsConfirmed();
+        return (int) Math.min(total, Integer.MAX_VALUE);
+    }
+
+    /**
+     * UC-23.6 — Rep Performance Scorecard (Sales Manager).
+     *
+     * <p>Manager/Admin only and never scoped to self: this report exists to compare people, so
+     * handing it to the people being compared is a different feature with different consent.
+     *
+     * <p>An unbounded period is narrowed to the last 30 days inside the use case — see there for
+     * why scoring "all of history" is not a coherent request.
+     */
+    @GetMapping("/rep-scorecard")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN') and @access.can('REPORTING_VIEW')")
+    public ResponseEntity<ApiResponse<RepScorecardResponse>> getRepScorecard(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo
     ) {
         UserEntity actor = currentUserProvider.resolve(null);
-        SalesPerformanceReportResponse report = getSalesPerformanceReportUseCase.execute(dateFrom, dateTo);
-        auditView(actor, "VIEW_SALES_PERFORMANCE", dateFrom, dateTo, (int) report.getDealsTotal());
+        RepScorecardResponse report = getRepScorecardUseCase.execute(dateFrom, dateTo);
+        // Audited like every other report view, and for a stronger reason: this one scores people.
+        auditView(actor, "VIEW_REP_SCORECARD", report.getDateFrom(), report.getDateTo(),
+                report.getReps().size());
         return ResponseEntity.ok(ApiResponse.success(report));
+    }
+
+    /**
+     * UC-23.7 — AI review of the rep scorecard.
+     *
+     * <p>POST rather than GET despite being read-only: it spends an external LLM quota per call, and
+     * a GET invites a browser, a prefetcher or a retry to spend it again on the caller's behalf.
+     *
+     * <p>The model receives no caller-supplied text — only a payload this server builds from the
+     * scorecard — so there is nothing here for a prompt injection to ride in on.
+     */
+    @PostMapping("/rep-scorecard/ai-review")
+    @PreAuthorize("hasAnyRole('MANAGER','ADMIN') and @access.can('REPORTING_VIEW')")
+    public ResponseEntity<ApiResponse<RepScorecardAiReviewResponse>> reviewRepScorecard(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) UUID userId,
+            @RequestParam(required = false, defaultValue = "vi") String language
+    ) {
+        UserEntity actor = currentUserProvider.resolve(null);
+        boolean vietnamese = !"en".equalsIgnoreCase(language);
+        RepScorecardAiReviewResponse review =
+                repScorecardAiReviewUseCase.execute(dateFrom, dateTo, userId, vietnamese);
+        // Audited whether or not the model answered: the request to have a person reviewed by an AI
+        // is the event worth recording, not the paragraph that came back.
+        auditView(actor, userId == null ? "AI_REVIEW_TEAM_SCORECARD" : "AI_REVIEW_REP_SCORECARD",
+                review.getDateFrom(), review.getDateTo(), review.isGenerated() ? 1 : 0);
+        return ResponseEntity.ok(ApiResponse.success(review));
     }
 
     /**

@@ -31,12 +31,33 @@ public class SalesPerformanceReportResponse {
 
     private LocalDate dateFrom;
     private LocalDate dateTo;
+    /**
+     * The business time zone the day boundaries were resolved in. Stored timestamps are
+     * {@code timestamptz}, so "31 July" means nothing until a zone is named; without this field a
+     * reader checking the numbers by hand has no way to know which seven hours went where.
+     */
+    private String timezone;
 
-    // Leads
+    // Leads — three questions, three time axes.
+
+    /** Leads raised in the period (created_at). */
     private long leadsCreated;
-    private long qualifiedLeads;         // leads that reached QUALIFIED (UC-23.1)
+    /**
+     * Leads that <b>reached</b> QUALIFIED during the period, dated by the event itself.
+     *
+     * <p>Not "leads created in the period whose status is QUALIFIED right now": that version fell
+     * when a rep qualified a lead and then converted it, because the lead left the bucket. The
+     * event date is reconstructed from activity_log, which is append-only with an explicit
+     * correction chain, so voided transitions do not count.
+     */
+    private long qualifiedLeads;
+    /** Conversions that <b>happened</b> during the period (leads.converted_at), whenever raised. */
     private long leadsConverted;
-    private double leadConversionRate;   // %
+    /** Of the leads raised in this period, how many have ever converted — same population as
+     *  {@link #leadsCreated}, which is what makes the rate below meaningful. */
+    private long cohortConverted;
+    /** % cohortConverted / leadsCreated. */
+    private double leadConversionRate;
 
     // Deals — two time axes, deliberately.
     //
@@ -67,6 +88,17 @@ public class SalesPerformanceReportResponse {
     private double quotationAcceptanceRate; // %
 
     // Bookings & revenue
+
+    /**
+     * Bookings <b>confirmed</b> during the period, dated by the confirmation event.
+     *
+     * <p>The event date comes from activity_log, falling back to the first PAID payment on the
+     * booking: a deposit landing is what confirms a booking on the automatic path, so for records
+     * predating that path's audit logging the payment date <em>is</em> the confirmation date.
+     *
+     * <p>Bookings later cancelled are excluded rather than counted and reversed — a confirmation
+     * that did not survive is not business won.
+     */
     private long bookingsConfirmed;
     /**
      * % of quotations raised in the period that went on to become a booking.
