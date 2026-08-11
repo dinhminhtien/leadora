@@ -210,6 +210,12 @@ export const PAGE_META = {
     "Review and moderate the feedback guests submit after their stay.",
   ),
 
+  sentimentAnalytics: meta(
+    ROUTE_PATHS.sentimentAnalytics,
+    "Sentiment AI",
+    "Aspect-based sentiment analysis and customer satisfaction trends.",
+  ),
+
   notifications: meta(
     ROUTE_PATHS.notifications,
     "Alerts",

@@ -199,5 +199,10 @@ resend:
   base-url: ${RESEND_BASE_URL:https://api.resend.com}
   timeout: ${RESEND_TIMEOUT:10s}
 
+# ABSA Engine Configuration
+absa:
+  engine:
+    url: ${ABSA_ENGINE_URL:https://timano4--leadora-absa-engine-fastapi-app.modal.run}
+
 
 
