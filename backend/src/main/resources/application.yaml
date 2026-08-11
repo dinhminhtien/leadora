@@ -57,19 +57,6 @@ spring:
         boot:
           allow_jdbc_metadata_access: false
 
-  mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:${SPRING_MAIL_USERNAME:leadora.novax@gmail.com}}
-    password: ${MAIL_PASSWORD:${SPRING_MAIL_PASSWORD:}}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
-
   data:
     redis:
       url: ${REDIS_URL:redis://localhost:6379}
@@ -192,9 +179,25 @@ app:
     provider: ${APP_BANK_PROVIDER:sepay}
     api-token: ${APP_BANK_API_TOKEN:dummy-token}
     api-url: ${APP_BANK_API_URL:https://my.sepay.vn/plus/api/transactions}
+  deal:
+    probability:
+      inquiry: ${DEAL_PROBABILITY_INQUIRY:10}
+      qualification: ${DEAL_PROBABILITY_QUALIFICATION:30}
+      quotation-sent: ${DEAL_PROBABILITY_QUOTATION_SENT:50}
+      negotiation: ${DEAL_PROBABILITY_NEGOTIATION:70}
+      pending-confirmation: ${DEAL_PROBABILITY_PENDING_CONFIRMATION:80}
+      booking-confirmed: ${DEAL_PROBABILITY_BOOKING_CONFIRMED:90}
 
 # Supabase environment fallbacks (prevents startup crash if environment variables are not set)
 SUPABASE_URL: ${SUPABASE_URL}
 SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+
+# Resend API Configuration for production email infrastructure
+resend:
+  api-key: ${RESEND_API_KEY:}
+  default-from: ${RESEND_FROM_EMAIL:noreply@leadora.id.vn}
+  base-url: ${RESEND_BASE_URL:https://api.resend.com}
+  timeout: ${RESEND_TIMEOUT:10s}
+
 
 

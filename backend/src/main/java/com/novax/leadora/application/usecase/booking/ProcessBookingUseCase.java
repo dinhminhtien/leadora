@@ -24,7 +24,8 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import com.novax.leadora.infrastructure.integration.email.EmailService;
+import com.novax.leadora.application.usecase.email.event.BookingConfirmedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 
 @Slf4j
@@ -35,7 +36,7 @@ public class ProcessBookingUseCase {
     private final BookingRepository bookingRepository;
     private final BookingDetailRepository bookingDetailRepository;
     private final NotificationRepository notificationRepository;
-    private final EmailService emailService;
+    private final ApplicationEventPublisher eventPublisher;
     private final BookingStatusTransitionService bookingStatusTransitionService;
     private final CurrentUserProvider currentUserProvider;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
@@ -104,9 +105,9 @@ public class ProcessBookingUseCase {
 
         if (oldStatus != BookingStatus.CONFIRMED && newStatus == BookingStatus.CONFIRMED) {
             try {
-                emailService.sendBookingConfirmationEmail(saved, details);
+                eventPublisher.publishEvent(new BookingConfirmedEvent(saved, details));
             } catch (Exception e) {
-                log.warn("Booking confirmation email failed for booking code {}: {}", saved.getBookingCode(), e.getMessage());
+                log.warn("Booking confirmation email event failed for booking code {}: {}", saved.getBookingCode(), e.getMessage());
             }
         }
 

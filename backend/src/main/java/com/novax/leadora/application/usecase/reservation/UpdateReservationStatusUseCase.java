@@ -16,7 +16,8 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepo
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
 import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepository;
-import com.novax.leadora.infrastructure.integration.email.EmailService;
+import com.novax.leadora.application.usecase.email.event.FeedbackInvitationEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import com.novax.leadora.application.usecase.booking.BookingStatusTransitionService;
 import com.novax.leadora.application.usecase.booking.TransitionActor;
 import lombok.RequiredArgsConstructor;
@@ -39,7 +40,7 @@ public class UpdateReservationStatusUseCase {
     private final BookingRepository bookingRepository;
     private final BookingDetailRepository bookingDetailRepository;
     private final SalesFeedbackRepository salesFeedbackRepository;
-    private final EmailService emailService;
+    private final ApplicationEventPublisher eventPublisher;
     private final BookingStatusTransitionService bookingStatusTransitionService;
     private final PaymentRepository paymentRepository;
 
@@ -162,16 +163,12 @@ public class UpdateReservationStatusUseCase {
                     salesFeedbackRepository.save(feedback);
 
                     String feedbackLink = frontendUrl + "/feedback/" + token;
-                    try {
-                        emailService.sendFeedbackInvitationEmail(
-                                booking.getCustomer().getEmail(),
-                                booking.getCustomer().getFullName(),
-                                feedbackLink
-                        );
-                        log.info("Feedback invitation successfully generated and sent for booking: {}. Link: {}", id, feedbackLink);
-                    } catch (Exception e) {
-                        log.error("Failed to send feedback invitation email for booking: {}. Link was: {}", id, feedbackLink, e);
-                    }
+                    eventPublisher.publishEvent(new FeedbackInvitationEvent(
+                            booking.getCustomer().getEmail(),
+                            booking.getCustomer().getFullName(),
+                            feedbackLink
+                    ));
+                    log.info("Feedback invitation event published for booking: {}. Link: {}", id, feedbackLink);
                 }
             }
         }

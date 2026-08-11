@@ -4,6 +4,7 @@ import com.novax.leadora.api.dto.response.DealResponse;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -11,6 +12,24 @@ import java.util.UUID;
 
 @Component
 public class DealMapper {
+
+    @Value("${app.deal.probability.inquiry:10}")
+    private int inquiryProbability;
+
+    @Value("${app.deal.probability.qualification:30}")
+    private int qualificationProbability;
+
+    @Value("${app.deal.probability.quotation-sent:50}")
+    private int quotationSentProbability;
+
+    @Value("${app.deal.probability.negotiation:70}")
+    private int negotiationProbability;
+
+    @Value("${app.deal.probability.pending-confirmation:80}")
+    private int pendingConfirmationProbability;
+
+    @Value("${app.deal.probability.booking-confirmed:90}")
+    private int bookingConfirmedProbability;
 
     public DealResponse mapToResponse(DealEntity deal) {
         String contactName = deal.getCustomer() != null ? deal.getCustomer().getFullName() : "N/A";
@@ -137,27 +156,27 @@ public class DealMapper {
             return 0;
         }
         if (stage == null) {
-            return 10;
+            return inquiryProbability;
         }
         switch (stage) {
             case INQUIRY:
-                return 10;
+                return inquiryProbability;
             case QUALIFICATION:
-                return 30;
+                return qualificationProbability;
             case QUOTATION_SENT:
-                return 50;
+                return quotationSentProbability;
             case NEGOTIATION:
-                return 70;
+                return negotiationProbability;
             case PENDING_CONFIRMATION:
-                return 80;
+                return pendingConfirmationProbability;
             case BOOKING_CONFIRMED:
-                return 90;
+                return bookingConfirmedProbability;
             case CLOSED_WON:
                 return 100;
             case CLOSED_LOST:
                 return 0;
             default:
-                return 10;
+                return inquiryProbability;
         }
     }
 }

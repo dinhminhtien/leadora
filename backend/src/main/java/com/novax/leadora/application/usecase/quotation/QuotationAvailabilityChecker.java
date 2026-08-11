@@ -34,4 +34,14 @@ public class QuotationAvailabilityChecker {
                     "Room type \"" + roomType + "\" is not a valid, active room product", HttpStatus.BAD_REQUEST);
         }
     }
+
+    /** Same gate as {@link #assertRoomAvailable}, applied to every distinct room type
+     * on a multi-line quotation (UC-14.1/14.5: multiple room types per stay). */
+    public void assertRoomsAvailable(LocalDate checkInDate, LocalDate checkOutDate, List<String> roomTypes) {
+        roomTypes.stream()
+                .filter(rt -> rt != null && !rt.isBlank())
+                .map(rt -> rt.trim())
+                .distinct()
+                .forEach(roomType -> assertRoomAvailable(checkInDate, checkOutDate, roomType));
+    }
 }

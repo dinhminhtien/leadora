@@ -13,6 +13,17 @@ export type QuotationStatus =
   | "accepted"
   | "pending_revision";
 
+export type RoomLine = {
+  roomType: string;
+  numberOfRooms: number;
+  pricePerNight: number;
+};
+
+export type RoomLineDetail = RoomLine & {
+  nights?: number;
+  lineTotal?: number;
+};
+
 export type Quotation = {
   id: string;
   quoteNo: string;
@@ -25,12 +36,16 @@ export type Quotation = {
   customerId?: string;
   email?: string;
   phone?: string;
+  /** Summary string ("Deluxe Suite" or "Deluxe Suite +1 more") — see `roomLines` for the full breakdown. */
   roomType?: string;
+  /** Aggregate room count across all lines. */
   numberOfRooms?: number;
   checkInDate?: string;
   checkOutDate?: string;
   nights?: number;
+  /** Only set when the quotation has exactly one room line. */
   pricePerNight?: number;
+  roomLines?: RoomLineDetail[];
   paymentPolicy?: string;
   subtotal?: number;
   discountPercent?: number;
@@ -88,11 +103,9 @@ export type TrackCustomerResponsePayload = {
 };
 
 export type ReviseQuotationPayload = {
-  roomType: string;
+  roomLines: RoomLine[];
   checkInDate: string;
   checkOutDate: string;
-  numberOfRooms: number;
-  pricePerNight: number;
   discountPercent: number;
   paymentPolicy: string;
   validUntil: string;
@@ -104,11 +117,9 @@ export type ReviseQuotationPayload = {
 
 export type CreateQuotationPayload = {
   dealId: string;
-  roomType: string;
+  roomLines: RoomLine[];
   checkInDate: string;
   checkOutDate: string;
-  numberOfRooms: number;
-  pricePerNight: number;
   discountPercent: number;
   paymentPolicy: string;
   validUntil: string;

@@ -84,9 +84,17 @@ public class ConvertToBookingUseCase {
                 // booking rather than blocking the conversion.
                 //
 
-                // E3: room must still be available for the (possibly re-confirmed) dates —
-                // BR-24
-                availabilityChecker.assertRoomAvailable(checkInDate, checkOutDate, quotation.getRoomType());
+                // Line items may span several room types (BR-23) — fetch them once, up front,
+                // both for the availability re-check below and to copy into booking details.
+                List<QuotationDetailEntity> quotationDetails = quotationDetailRepository
+                                .findByQuotation_QuotationId(quotationId);
+
+                // E3: every room type must still be available for the (possibly
+                // re-confirmed) dates — BR-24
+                List<String> roomTypes = quotationDetails.stream()
+                                .map(d -> d.getDescription())
+                                .toList();
+                availabilityChecker.assertRoomsAvailable(checkInDate, checkOutDate, roomTypes);
 
                 // Generate booking code from year + quotation UUID prefix (unique per
                 // quotation)
@@ -111,9 +119,6 @@ public class ConvertToBookingUseCase {
 
                 // Copy quotation line items into booking details, holding inventory for each
                 // room/service
-                List<QuotationDetailEntity> quotationDetails = quotationDetailRepository
-                                .findByQuotation_QuotationId(quotationId);
-
                 List<BookingDetailEntity> bookingDetails = quotationDetails.stream()
                                 .map(detail -> BookingDetailEntity.builder()
                                                 .booking(saved)

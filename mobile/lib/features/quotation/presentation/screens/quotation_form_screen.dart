@@ -112,13 +112,32 @@ const _paymentPolicies = <String, String>{
 /// remains the authority on where Submit routes.
 const _discountApprovalThreshold = 10;
 
+/// Editable state for one room-type row (UC-14.1/14.5, BR-23: multiple room types +
+/// quantity per quotation). Not a `Quotation` model — just the controllers backing a
+/// single row of the form.
+class _RoomLineState {
+  _RoomLineState({this.roomType, String rooms = '1', String price = ''})
+    : roomsController = TextEditingController(text: rooms),
+      priceController = TextEditingController(text: price);
+
+  String? roomType;
+  final TextEditingController roomsController;
+  final TextEditingController priceController;
+
+  void dispose() {
+    roomsController.dispose();
+    priceController.dispose();
+  }
+}
+
 class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _rooms;
-  late final TextEditingController _pricePerNight;
   late final TextEditingController _discount;
   late final TextEditingController _notes;
   final _changeReason = TextEditingController();
+
+  /// One or more room types, each with its own quantity and rate.
+  final List<_RoomLineState> _roomLines = [];
 
   String? _dealId;
 
@@ -127,7 +146,6 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
   /// itself has not been fetched; the picker field falls back to `dealDetailProvider`.
   Deal? _selectedDeal;
 
-  String? _roomType;
   String _paymentPolicy = 'full_upfront';
   DateTime? _checkIn;
   DateTime? _checkOut;
@@ -143,8 +161,6 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     super.initState();
     final q = widget.quotation;
 
-    _rooms = TextEditingController(text: '1');
-    _pricePerNight = TextEditingController();
     _discount = TextEditingController(text: '0');
     _notes = TextEditingController();
 
@@ -154,6 +170,7 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
       _applyTemplateValues(q);
     } else {
       _dealId = widget.initialDealId;
+      _roomLines.add(_RoomLineState());
       if (_dealId != null) {
         // Best-effort: this deal may already have an earlier quotation — seed the same
         // fields from it once the list resolves. See _prefillFromDealHistory.
@@ -170,17 +187,41 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
   static String _plain(num v) =>
       v == v.roundToDouble() ? v.toInt().toString() : v.toString();
 
-  /// Copies the stay/pricing fields from [source] onto the current controllers — the
-  /// same field set a revision pre-fills from the quotation being revised, reused so a
-  /// fresh create for a deal that was already quoted starts from that quote instead of
-  /// blank. Leaves `_dealId` untouched.
+  /// Rebuilds [_roomLines] from [source]'s per-room-type breakdown — the same field set
+  /// a revision pre-fills from the quotation being revised, reused so a fresh create for a
+  /// deal that was already quoted starts from that quote instead of blank. Falls back to
+  /// the single-line legacy shape (`roomType`/`numberOfRooms`/`pricePerNight`) for
+  /// quotations the backend hasn't attached a breakdown to. Leaves `_dealId` untouched.
   void _applyTemplateValues(Quotation source) {
-    _rooms.text = '${source.numberOfRooms ?? 1}';
-    _pricePerNight.text = source.pricePerNight == null ? '' : _plain(source.pricePerNight!);
+    for (final line in _roomLines) {
+      line.dispose();
+    }
+    _roomLines.clear();
+
+    final lines = source.roomLines;
+    if (lines != null && lines.isNotEmpty) {
+      for (final l in lines) {
+        _roomLines.add(
+          _RoomLineState(
+            roomType: _roomTypes.contains(l.roomType) ? l.roomType : null,
+            rooms: '${l.numberOfRooms}',
+            price: _plain(l.pricePerNight),
+          ),
+        );
+      }
+    } else {
+      // The room type may be free text the catalogue does not list — only preselect a
+      // dropdown value that exists, otherwise the field would show blank but validate.
+      _roomLines.add(
+        _RoomLineState(
+          roomType: _roomTypes.contains(source.roomType) ? source.roomType : null,
+          rooms: '${source.numberOfRooms ?? 1}',
+          price: source.pricePerNight == null ? '' : _plain(source.pricePerNight!),
+        ),
+      );
+    }
+
     _discount.text = _plain(source.discountPercent ?? 0);
-    // The room type may be free text the catalogue does not list — only preselect a
-    // dropdown value that exists, otherwise the field would show blank but validate.
-    _roomType = _roomTypes.contains(source.roomType) ? source.roomType : null;
     _checkIn = source.checkInDate;
     _checkOut = source.checkOutDate;
     _validUntil = source.validUntil;
@@ -225,7 +266,10 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
 
   @override
   void dispose() {
-    for (final c in [_rooms, _pricePerNight, _discount, _notes, _changeReason]) {
+    for (final line in _roomLines) {
+      line.dispose();
+    }
+    for (final c in [_discount, _notes, _changeReason]) {
       c.dispose();
     }
     super.dispose();
@@ -237,15 +281,38 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     return diff > 0 ? diff : 0;
   }
 
-  int get _roomCount => int.tryParse(_rooms.text.trim()) ?? 0;
-  double get _price => double.tryParse(_pricePerNight.text.trim()) ?? 0;
+  double _lineSubtotal(_RoomLineState line) {
+    final rooms = int.tryParse(line.roomsController.text.trim()) ?? 0;
+    final price = double.tryParse(line.priceController.text.trim()) ?? 0;
+    return price * _nights * rooms;
+  }
+
+  int get _totalRooms => _roomLines.fold(
+    0,
+    (sum, l) => sum + (int.tryParse(l.roomsController.text.trim()) ?? 0),
+  );
+
   double get _discountPct => double.tryParse(_discount.text.trim()) ?? 0;
 
-  double get _subtotal => _price * _nights * _roomCount;
+  double get _subtotal => _roomLines.fold(0.0, (sum, l) => sum + _lineSubtotal(l));
   double get _discountAmount => _subtotal * _discountPct / 100;
   double get _total => _subtotal - _discountAmount;
 
   bool get _needsApproval => _discountPct > _discountApprovalThreshold;
+
+  bool get _hasDuplicateRoomTypes {
+    final types = _roomLines.map((l) => l.roomType).whereType<String>().toList();
+    return types.toSet().length != types.length;
+  }
+
+  void _addRoomLine() {
+    setState(() => _roomLines.add(_RoomLineState()));
+  }
+
+  void _removeRoomLine(int index) {
+    if (_roomLines.length == 1) return;
+    setState(() => _roomLines.removeAt(index).dispose());
+  }
 
   Future<void> _pickDate({
     required DateTime? current,
@@ -289,19 +356,22 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     // Dropdown and date state live outside the Form, so they are checked by hand. A
     // revision inherits its deal, so only create requires one to be chosen.
     final formOk = _formKey.currentState!.validate();
+    final missingRoomType = _roomLines.any((l) => l.roomType == null);
     final missing =
-        (!_isRevise && _dealId == null) || _roomType == null || _validUntil == null;
-    if (!formOk || missing || _nights <= 0) {
+        (!_isRevise && _dealId == null) || missingRoomType || _validUntil == null;
+    if (!formOk || missing || _nights <= 0 || _hasDuplicateRoomTypes) {
       setState(() => _autovalidate = true);
-      if (missing || _nights <= 0) {
+      if (missing || _nights <= 0 || _hasDuplicateRoomTypes) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               _nights <= 0
                   ? 'Check-out must be at least one night after check-in.'
+                  : _hasDuplicateRoomTypes
+                  ? 'Each room type can only be added once — adjust the quantity instead.'
                   : _isRevise
-                  ? 'Select a room type and a validity date.'
-                  : 'Select a deal, a room type and a validity date.',
+                  ? 'Select a room type for every row and a validity date.'
+                  : 'Select a deal, a room type for every row, and a validity date.',
             ),
           ),
         );
@@ -314,6 +384,16 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     final router = GoRouter.of(context);
     final actions = ref.read(quotationActionsProvider);
 
+    final roomLines = _roomLines
+        .map(
+          (l) => RoomLineRequest(
+            roomType: l.roomType!,
+            numberOfRooms: int.parse(l.roomsController.text.trim()),
+            pricePerNight: double.parse(l.priceController.text.trim()),
+          ),
+        )
+        .toList();
+
     try {
       final Quotation quotation;
       final String message;
@@ -322,11 +402,9 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
         quotation = await actions.revise(
           widget.quotation!.id,
           ReviseQuotationPayload(
-            roomType: _roomType!,
+            roomLines: roomLines,
             checkInDate: _checkIn!,
             checkOutDate: _checkOut!,
-            numberOfRooms: _roomCount,
-            pricePerNight: _price,
             discountPercent: _discountPct,
             paymentPolicy: _paymentPolicy,
             validUntil: _validUntil!,
@@ -339,11 +417,9 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
         quotation = await actions.create(
           CreateQuotationPayload(
             dealId: _dealId!,
-            roomType: _roomType!,
+            roomLines: roomLines,
             checkInDate: _checkIn!,
             checkOutDate: _checkOut!,
-            numberOfRooms: _roomCount,
-            pricePerNight: _price,
             discountPercent: _discountPct,
             paymentPolicy: _paymentPolicy,
             validUntil: _validUntil!,
@@ -497,7 +573,7 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
     _prefillFromDealHistory(picked.id);
   }
 
-  /// Everything below the header: the stay, the pricing, the live total and the save
+  /// Everything below the header: the stay, the room types, the live total and the save
   /// button. Identical in both modes, so it is built once.
   List<Widget> _stayAndPricing(ThemeData theme, ColorScheme scheme) {
     return [
@@ -506,21 +582,6 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
                 icon: Icons.hotel_outlined,
                 child: Column(
                   children: [
-                    DropdownButtonFormField<String>(
-                      initialValue: _roomType,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Room type *',
-                        prefixIcon: Icon(Icons.bed_outlined),
-                      ),
-                      items: [
-                        for (final rt in _roomTypes)
-                          DropdownMenuItem(value: rt, child: Text(rt)),
-                      ],
-                      onChanged: (v) => setState(() => _roomType = v),
-                      validator: (v) => v == null ? 'Select a room type' : null,
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
                     _DateField(
                       label: 'Check-in *',
                       value: _checkIn,
@@ -548,18 +609,29 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
                       ),
                       helper: _nights > 0 ? '$_nights night${_nights == 1 ? "" : "s"}' : null,
                     ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+
+              // One card per room type — each with its own quantity and rate (BR-23).
+              SectionCard(
+                title: 'Room types',
+                icon: Icons.meeting_room_outlined,
+                child: Column(
+                  children: [
+                    for (var i = 0; i < _roomLines.length; i++) ...[
+                      if (i > 0) const SizedBox(height: AppSpacing.lg),
+                      _roomLineRow(i),
+                    ],
                     const SizedBox(height: AppSpacing.lg),
-                    TextFormField(
-                      controller: _rooms,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'Number of rooms *',
-                        prefixIcon: Icon(Icons.meeting_room_outlined),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: _addRoomLine,
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('Add room type'),
                       ),
-                      validator: _validateRooms,
-                      onChanged: (_) => setState(() {}),
                     ),
                   ],
                 ),
@@ -571,18 +643,6 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
                 icon: Icons.payments_outlined,
                 child: Column(
                   children: [
-                    TextFormField(
-                      controller: _pricePerNight,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'Price per night (VND) *',
-                        prefixIcon: Icon(Icons.attach_money_rounded),
-                      ),
-                      validator: _validatePrice,
-                      onChanged: (_) => setState(() {}),
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
                     TextFormField(
                       controller: _discount,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -639,10 +699,21 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
                 icon: Icons.calculate_outlined,
                 child: Column(
                   children: [
+                    for (final line in _roomLines)
+                      if (line.roomType != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                          child: InfoRow(
+                            label:
+                                '${line.roomType} × '
+                                '${line.roomsController.text.trim().isEmpty ? 0 : line.roomsController.text.trim()}',
+                            value: Formatters.money(_lineSubtotal(line)),
+                          ),
+                        ),
                     InfoRow(
                       label: 'Subtotal',
                       value: '${Formatters.money(_subtotal)}'
-                          '${_nights > 0 ? "  ($_roomCount x $_nights night${_nights == 1 ? "" : "s"})" : ""}',
+                          '${_nights > 0 ? "  ($_totalRooms rooms x $_nights night${_nights == 1 ? "" : "s"})" : ""}',
                     ),
                     InfoRow(
                       label: 'Discount',
@@ -718,6 +789,85 @@ class _QuotationFormScreenState extends ConsumerState<QuotationFormScreen> {
               ),
               const SizedBox(height: AppSpacing.xl),
     ];
+  }
+
+  /// One room-type row: room type dropdown, quantity, rate, and — once a second row
+  /// exists — a way to remove it.
+  Widget _roomLineRow(int index) {
+    final line = _roomLines[index];
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: line.roomType,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Room type *',
+                    prefixIcon: Icon(Icons.bed_outlined),
+                  ),
+                  items: [
+                    for (final rt in _roomTypes)
+                      DropdownMenuItem(value: rt, child: Text(rt)),
+                  ],
+                  onChanged: (v) => setState(() => line.roomType = v),
+                  validator: (v) => v == null ? 'Select a room type' : null,
+                ),
+              ),
+              if (_roomLines.length > 1) ...[
+                const SizedBox(width: AppSpacing.sm),
+                IconButton(
+                  onPressed: () => _removeRoomLine(index),
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  tooltip: 'Remove room type',
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: line.roomsController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'Quantity *',
+                    prefixIcon: Icon(Icons.meeting_room_outlined),
+                  ),
+                  validator: _validateRooms,
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: TextFormField(
+                  controller: line.priceController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'Price/night (VND) *',
+                    prefixIcon: Icon(Icons.attach_money_rounded),
+                  ),
+                  validator: _validatePrice,
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 

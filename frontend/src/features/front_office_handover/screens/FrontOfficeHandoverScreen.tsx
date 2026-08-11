@@ -107,7 +107,10 @@ export function FrontOfficeHandoverScreen() {
   const [readinessFilter, setReadinessFilter] = useState("");
   const [arrivalDate, setArrivalDate] = useState("");
   const [assignedFoUserId, setAssignedFoUserId] = useState("");
-  const [deskWide, setDeskWide] = useState(false);
+  // On by default: a front desk is a shift rota, so opening the screen has to show every arrival
+  // the desk is responsible for, not just the rows assigned to whoever happens to be logged in.
+  // Scoping to your own queue is the deliberate narrowing, which is what the checkbox is for.
+  const [deskWide, setDeskWide] = useState(true);
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [foStaff, setFoStaff] = useState<UserSummary[]>([]);
@@ -148,7 +151,10 @@ export function FrontOfficeHandoverScreen() {
     readinessStatus: readinessFilter || undefined,
     arrivalDate: arrivalDate || undefined,
     assignedFoUserId: assignedFoUserId || undefined,
-    deskWide: deskWide || undefined,
+    // Sent explicitly, never elided to `undefined` when false. Axios drops undefined params, so
+    // `deskWide || undefined` silently handed the decision to the server's default — unticking the
+    // box would stop meaning "my queue" the moment that default changed.
+    deskWide,
     page,
     size: PAGE_SIZE,
   });
@@ -158,7 +164,7 @@ export function FrontOfficeHandoverScreen() {
     search: search || undefined,
     arrivalDate: arrivalDate || undefined,
     assignedFoUserId: assignedFoUserId || undefined,
-    deskWide: deskWide || undefined,
+    deskWide,
   });
   const summary = summaryQuery.data;
 
@@ -353,8 +359,8 @@ export function FrontOfficeHandoverScreen() {
             </div>
           )}
           {/* A front desk is a shift rota: when the assignee is off duty, whoever is on duty still
-              has to prepare the arrival. Off by default so the list opens on your own queue.
-              Pointless for a supervisor, who is never scoped in the first place. */}
+              has to prepare the arrival. On by default for that reason; untick to narrow the list
+              to your own queue. Pointless for a supervisor, who is never scoped in the first place. */}
           {!isSupervisor && (
           <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-slate-600">
             <input

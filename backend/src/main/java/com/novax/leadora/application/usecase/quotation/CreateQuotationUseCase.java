@@ -1,6 +1,7 @@
 package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.CreateQuotationRequest;
+import com.novax.leadora.api.dto.request.RoomLineRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
@@ -27,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -49,9 +51,12 @@ public class CreateQuotationUseCase {
                         throw new IllegalArgumentException("Check-out date must be after check-in date");
                 }
 
-                // E2: room type must exist and be available for the requested dates (BR-24)
-                availabilityChecker.assertRoomAvailable(request.getCheckInDate(), request.getCheckOutDate(),
-                                request.getRoomType());
+                // E2: every room type on the quotation must exist and be available for the
+                // requested dates (BR-24)
+                List<String> roomTypes = request.getRoomLines().stream()
+                                .map(line -> line.getRoomType())
+                                .toList();
+                availabilityChecker.assertRoomsAvailable(request.getCheckInDate(), request.getCheckOutDate(), roomTypes);
 
                 // 2. Fetch deal and get linked customer
                 DealEntity deal = dealRepository.findById(request.getDealId())
@@ -62,15 +67,15 @@ public class CreateQuotationUseCase {
                         throw new IllegalArgumentException("The selected deal does not have a linked customer");
                 }
 
-                // 3. Calculate pricing
+                // 3. Calculate pricing — one line per room type, summed into the quotation total
                 long nights = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
                 BigDecimal discountPct = request.getDiscountPercent() != null
                                 ? request.getDiscountPercent()
                                 : BigDecimal.ZERO;
 
-                BigDecimal subtotal = request.getPricePerNight()
-                                .multiply(BigDecimal.valueOf(nights))
-                                .multiply(BigDecimal.valueOf(request.getNumberOfRooms()));
+                BigDecimal subtotal = request.getRoomLines().stream()
+                                .map(line -> lineSubtotal(line, nights))
+                                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 
                 BigDecimal discountAmount = subtotal
                                 .multiply(discountPct)
@@ -97,7 +102,7 @@ public class CreateQuotationUseCase {
                                 .createdBy(creator)
                                 .version(1)
                                 .status(status)
-                                .roomType(request.getRoomType())
+                                .roomType(roomTypeSummary(request.getRoomLines()))
                                 .checkInDate(request.getCheckInDate())
                                 .checkOutDate(request.getCheckOutDate())
                                 .paymentPolicy(request.getPaymentPolicy())
@@ -111,17 +116,19 @@ public class CreateQuotationUseCase {
 
                 QuotationEntity saved = quotationRepository.save(quotation);
 
-                // 6. Save detail line (room)
-                QuotationDetailEntity detail = QuotationDetailEntity.builder()
-                                .quotation(saved)
-                                .description(request.getRoomType())
-                                .quantity(request.getNumberOfRooms())
-                                .unitPrice(request.getPricePerNight())
-                                .nights((int) nights)
-                                .lineTotal(totalAmount)
-                                .build();
+                // 6. Save one detail line per room type
+                List<QuotationDetailEntity> details = request.getRoomLines().stream()
+                                .map(line -> QuotationDetailEntity.builder()
+                                                .quotation(saved)
+                                                .description(line.getRoomType())
+                                                .quantity(line.getNumberOfRooms())
+                                                .unitPrice(line.getPricePerNight())
+                                                .nights((int) nights)
+                                                .lineTotal(lineSubtotal(line, nights))
+                                                .build())
+                                .toList();
 
-                quotationDetailRepository.save(detail);
+                quotationDetailRepository.saveAll(details);
 
                 // Publish Activity Log event
                 try {
@@ -143,7 +150,18 @@ public class CreateQuotationUseCase {
 
                 dealWorkflowSyncService.syncPipelineStage(deal.getDealId());
 
-                return QuotationResponse.fromWithDetail(saved, (int) nights,
-                                request.getNumberOfRooms(), request.getPricePerNight());
+                return QuotationResponse.fromWithDetails(saved, details);
+        }
+
+        private static BigDecimal lineSubtotal(RoomLineRequest line, long nights) {
+                return line.getPricePerNight()
+                                .multiply(BigDecimal.valueOf(nights))
+                                .multiply(BigDecimal.valueOf(line.getNumberOfRooms()));
+        }
+
+        /** Human-readable summary for single-line display surfaces (list, emails, chat). */
+        private static String roomTypeSummary(List<RoomLineRequest> roomLines) {
+                String first = roomLines.get(0).getRoomType();
+                return roomLines.size() == 1 ? first : first + " +" + (roomLines.size() - 1) + " more";
         }
 }

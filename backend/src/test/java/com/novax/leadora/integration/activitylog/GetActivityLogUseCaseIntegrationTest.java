@@ -10,12 +10,17 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.ActiveProfiles;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+        "spring.ai.google.genai.vertex-ai=false",
+        "spring.ai.google.genai.api-key=dummy-api-key",
+        "spring.ai.google.genai.embedding.api-key=dummy-api-key"
+})
 @ActiveProfiles("dev")
 class GetActivityLogUseCaseIntegrationTest {
 
     @Autowired
     private GetActivityLogUseCase getActivityLogUseCase;
+
 
     @Test
     void testEffectiveViewQuery() {
