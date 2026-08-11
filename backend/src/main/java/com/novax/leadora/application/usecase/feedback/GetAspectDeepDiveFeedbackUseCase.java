@@ -2,38 +2,96 @@ package com.novax.leadora.application.usecase.feedback;
 
 import com.novax.leadora.api.dto.response.FeedbackResponse;
 import com.novax.leadora.common.security.CurrentUserProvider;
-import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.SalesFeedbackEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepository;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
-import java.util.UUID;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class GetFeedbackDetailUseCase {
+public class GetAspectDeepDiveFeedbackUseCase {
 
     private final SalesFeedbackRepository salesFeedbackRepository;
     private final CurrentUserProvider currentUserProvider;
 
     @Transactional(readOnly = true)
-    public FeedbackResponse execute(UUID feedbackId, String headerUserId) {
+    public Page<FeedbackResponse> execute(
+            String aspect,
+            String sentiment,
+            OffsetDateTime startDate,
+            OffsetDateTime endDate,
+            int page,
+            int size,
+            String headerUserId
+    ) {
         UserEntity actor = currentUserProvider.resolve(headerUserId);
         String roleName = actor.getRole() != null ? actor.getRole().getRoleName().trim().toUpperCase() : "";
 
-        SalesFeedbackEntity entity = salesFeedbackRepository.findById(feedbackId)
-                .orElseThrow(() -> new ResourceNotFoundException("Feedback", feedbackId));
+        Specification<SalesFeedbackEntity> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
 
-        // Enforce data boundary: SALES can only view their own assigned feedback
-        if (("SALES".equalsIgnoreCase(roleName) || "SALES_STAFF".equalsIgnoreCase(roleName)) &&
-                (entity.getSalesStaff() == null || !entity.getSalesStaff().getUserId().equals(actor.getUserId()))) {
-            throw new AccessDeniedException("You do not have permission to access this feedback");
+            // 1. Role Scoping
+            if ("SALES".equalsIgnoreCase(roleName) || "SALES_STAFF".equalsIgnoreCase(roleName)) {
+                predicates.add(cb.equal(root.get("salesStaff").get("userId"), actor.getUserId()));
+            }
+
+            // 2. Only submitted feedbacks
+            predicates.add(cb.isNotNull(root.get("submittedAt")));
+
+            // 3. Date Range
+            if (startDate != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("submittedAt"), startDate));
+            }
+            if (endDate != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("submittedAt"), endDate));
+            }
+
+            // 4. Aspect Sentiment Filter
+            if (StringUtils.hasText(aspect) && StringUtils.hasText(sentiment)) {
+                String columnName = mapAspectToColumnName(aspect);
+                predicates.add(cb.equal(root.get(columnName), sentiment));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "submittedAt"));
+        Page<SalesFeedbackEntity> feedbackPage = salesFeedbackRepository.findAll(spec, pageable);
+
+        return feedbackPage.map(this::mapToResponse);
+    }
+
+    private String mapAspectToColumnName(String aspect) {
+        switch (aspect.toLowerCase().trim()) {
+            case "attitude":
+                return "absaAttitudeSentiment";
+            case "speed":
+                return "absaSpeedSentiment";
+            case "accuracy":
+                return "absaAccuracySentiment";
+            case "facility":
+                return "absaFacilitySentiment";
+            case "price":
+                return "absaPriceSentiment";
+            default:
+                throw new IllegalArgumentException("Unknown aspect: " + aspect);
         }
+    }
 
+    private FeedbackResponse mapToResponse(SalesFeedbackEntity entity) {
         String customerName = entity.getCustomer() != null ? entity.getCustomer().getFullName() : "N/A";
         String bookingCode = entity.getBooking() != null ? entity.getBooking().getBookingCode() : "N/A";
         String salesStaffName = entity.getSalesStaff() != null ? entity.getSalesStaff().getFullName() : "N/A";
@@ -68,4 +126,3 @@ public class GetFeedbackDetailUseCase {
                 .build();
     }
 }
-

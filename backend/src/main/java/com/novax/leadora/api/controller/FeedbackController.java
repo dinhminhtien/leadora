@@ -27,8 +27,11 @@ public class FeedbackController {
     private final GetFeedbackListUseCase getFeedbackListUseCase;
     private final GetFeedbackDetailUseCase getFeedbackDetailUseCase;
     private final UpdateFeedbackReviewStatusUseCase updateFeedbackReviewStatusUseCase;
+    private final ReanalyzeFeedbackUseCase reanalyzeFeedbackUseCase;
 
     // --- Public Guest Endpoints ---
+    // ... rest of the code is unchanged until post mapping
+
 
     @GetMapping("/public/{token}/validate")
     public ResponseEntity<ApiResponse<FeedbackTokenValidationResponse>> validateToken(@PathVariable String token) {
@@ -83,4 +86,15 @@ public class FeedbackController {
         updateFeedbackReviewStatusUseCase.execute(id, request, headerUserId);
         return ResponseEntity.ok(ApiResponse.success(null, "Feedback review status updated successfully"));
     }
+
+    @PostMapping("/{id}/re-analyze")
+    @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN') and @access.can('FEEDBACK_WRITE')")
+    public ResponseEntity<ApiResponse<Void>> reanalyzeFeedback(
+            @PathVariable UUID id,
+            @RequestHeader(value = "X-User-Id", required = false) String headerUserId
+    ) {
+        reanalyzeFeedbackUseCase.execute(id, headerUserId);
+        return ResponseEntity.ok(ApiResponse.success(null, "Feedback sentiment analysis re-triggered successfully"));
+    }
 }
+

@@ -102,6 +102,18 @@ public class GetFeedbackListUseCase {
                 .reviewedByName(reviewedByName)
                 .reviewedAt(entity.getReviewedAt())
                 .createdAt(entity.getCreatedAt())
+                .absaAttitudeSentiment(entity.getAbsaAttitudeSentiment())
+                .absaAttitudeConfidence(entity.getAbsaAttitudeConfidence())
+                .absaSpeedSentiment(entity.getAbsaSpeedSentiment())
+                .absaSpeedConfidence(entity.getAbsaSpeedConfidence())
+                .absaAccuracySentiment(entity.getAbsaAccuracySentiment())
+                .absaAccuracyConfidence(entity.getAbsaAccuracyConfidence())
+                .absaFacilitySentiment(entity.getAbsaFacilitySentiment())
+                .absaFacilityConfidence(entity.getAbsaFacilityConfidence())
+                .absaPriceSentiment(entity.getAbsaPriceSentiment())
+                .absaPriceConfidence(entity.getAbsaPriceConfidence())
+                .absaStatus(entity.getAbsaStatus())
                 .build();
     }
 }
+

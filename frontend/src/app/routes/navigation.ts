@@ -211,6 +211,12 @@ export const NAV_GROUPS: NavGroup[] = [
         hint: "Guest reviews",
       },
       {
+        href: ROUTE_PATHS.sentimentAnalytics,
+        label: "Sentiment AI",
+        icon: ChartNoAxesCombined,
+        hint: "ABSA customer reviews analytics",
+      },
+      {
         href: ROUTE_PATHS.notifications,
         label: "Alerts",
         icon: Bell,

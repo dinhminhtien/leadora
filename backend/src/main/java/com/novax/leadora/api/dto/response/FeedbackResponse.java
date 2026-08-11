@@ -30,4 +30,17 @@ public class FeedbackResponse {
     private String reviewedByName;
     private OffsetDateTime reviewedAt;
     private OffsetDateTime createdAt;
+
+    private String absaAttitudeSentiment;
+    private java.math.BigDecimal absaAttitudeConfidence;
+    private String absaSpeedSentiment;
+    private java.math.BigDecimal absaSpeedConfidence;
+    private String absaAccuracySentiment;
+    private java.math.BigDecimal absaAccuracyConfidence;
+    private String absaFacilitySentiment;
+    private java.math.BigDecimal absaFacilityConfidence;
+    private String absaPriceSentiment;
+    private java.math.BigDecimal absaPriceConfidence;
+    private String absaStatus;
 }
+

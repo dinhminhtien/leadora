@@ -40,5 +40,9 @@ public enum ActivityLogType {
     // to the log file, so BR-37's "old value / new value / actor / target" was not queryable and
     // the POST-2 audit requirement of UC-22.3 was unmet.
     HANDOVER_SUBMITTED,
-    HANDOVER_READINESS_UPDATED
+    HANDOVER_READINESS_UPDATED,
+
+    // Feedback events
+    FEEDBACK_SUBMITTED,
+    FEEDBACK_REVIEW_STATUS_UPDATED
 }
