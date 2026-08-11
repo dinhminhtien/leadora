@@ -207,3 +207,10 @@ contract:
     supabase-url: ${SUPABASE_URL}
     service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
   portal-base-url: ${CONTRACT_PORTAL_BASE_URL:${app.frontend-url}}
+# ABSA Engine Configuration
+absa:
+  engine:
+    url: ${ABSA_ENGINE_URL:https://timano4--leadora-absa-engine-fastapi-app.modal.run}
+
+
+

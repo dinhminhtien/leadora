@@ -11,4 +11,5 @@ public enum EntityType {
     /** Operational / arrival handover (UC-20.x, UC-22.x). */
     HANDOVER,
     CONTRACT
+    FEEDBACK
 }

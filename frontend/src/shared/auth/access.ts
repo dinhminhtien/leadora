@@ -122,6 +122,7 @@ const ROUTE_PERMISSION: Record<string, string> = {
   [ROUTE_PATHS.reporting]: "REPORTING_VIEW",
   [ROUTE_PATHS.sla]: "SLA_VIEW",
   [ROUTE_PATHS.customerFeedback]: "FEEDBACK_VIEW",
+  [ROUTE_PATHS.sentimentAnalytics]: "FEEDBACK_VIEW",
   [ROUTE_PATHS.aiAssistant]: "CHAT_VIEW",
 };
 

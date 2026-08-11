@@ -51,4 +51,7 @@ public enum ActivityLogType {
     CONTRACT_CANCELLED,
     CONTRACT_EXPIRED,
     CONTRACT_SUPERSEDED
+    // Feedback events
+    FEEDBACK_SUBMITTED,
+    FEEDBACK_REVIEW_STATUS_UPDATED
 }

@@ -4,6 +4,7 @@ export const PROTECTED_ROUTES = [
   ROUTE_PATHS.dashboard,
   ROUTE_PATHS.identityAccess,
   ROUTE_PATHS.customerFeedback,
+  ROUTE_PATHS.sentimentAnalytics,
   ROUTE_PATHS.leads,
   ROUTE_PATHS.customerProfiles,
   ROUTE_PATHS.followUpTasks,
