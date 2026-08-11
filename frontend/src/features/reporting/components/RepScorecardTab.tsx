@@ -476,7 +476,8 @@ function RepDetail({ rep, teamMedian }: { rep: RepScorecardRow; teamMedian?: num
             <MetricRow label="Lead → conversion" value={days(m.leadToConversionDays)} />
             <MetricRow label="SLA on time" value={`${m.slaOnTime} / ${m.slaDecided}`} sub={pct(m.slaComplianceRate)} />
             <MetricRow label="Tasks completed" value={`${m.tasksCompleted} / ${m.tasksTotal}`} sub={pct(m.taskCompletionRate)} />
-            <MetricRow label="Tasks overdue" value={String(m.tasksOverdue)} sub={pct(m.taskOverdueRate)} />
+            <MetricRow label="Tasks overdue (open now)" value={String(m.tasksOverdue)} sub={pct(m.taskOverdueRate)} />
+            <MetricRow label="Tasks finished on time" value={`${m.tasksOnTime} / ${m.tasksOnTime + m.tasksLate}`} sub={pct(m.taskPunctualityRate)} />
             <MetricRow label="Avg discount" value={pct(m.avgDiscountPercent)} />
             <MetricRow label="Paid on time" value={`${m.collectionOnTime} / ${m.collectionTotal}`} sub={pct(m.collectionOnTimeRate)} />
             <MetricRow label="Forecast hit" value={`${m.forecastHit} / ${m.forecastTotal}`} sub={pct(m.forecastAccuracyRate)} />

@@ -154,7 +154,12 @@ export type RepMetrics = {
   tasksCompleted: number;
   tasksOverdue: number;
   taskCompletionRate?: number;
+  /** Share of the still-open queue running past its deadline. */
   taskOverdueRate?: number;
+  tasksOnTime: number;
+  tasksLate: number;
+  /** % finished on time. Not derivable from taskOverdueRate — that one only sees open work. */
+  taskPunctualityRate?: number;
   avgDiscountPercent?: number;
   quotationRoots: number;
   quotationRevisions: number;
@@ -213,6 +218,7 @@ export type RepScorecardReport = {
     quotationAcceptanceRate?: number;
     slaComplianceRate?: number;
     taskCompletionRate?: number;
+    taskPunctualityRate?: number;
     collectionOnTimeRate?: number;
     forecastAccuracyRate?: number;
     csat?: number;
@@ -268,25 +274,74 @@ export type TaskStaffRow = {
   name: string;
   total: number;
   completed: number;
-  overdue: number;
   completionRate: number;
+  /** Still open and past the deadline. */
+  openOverdue: number;
+  /** Finished, but after the deadline — the column the old report had no way to show. */
+  resolvedLate: number;
+  resolvedOnTime: number;
+  /** Null when this person finished nothing datable in the period. */
+  punctualityRate?: number;
+  avgCycleHours?: number;
   unassigned?: boolean;
 };
 
+/** A labelled count — activity kinds, overdue aging bands, priorities. */
+export type TaskCountRow = { key: string; label: string; count: number };
+
+/**
+ * UC-23.2 — three questions on three axes, deliberately not one figure.
+ *
+ * `raised` counts work that came in, `resolved` counts work finished and whether it was on time,
+ * and the open-queue figures are measured against the clock and belong to no period at all.
+ */
 export type TaskPerformanceReport = {
   dateFrom?: string;
   dateTo?: string;
+  timezone?: string;
+
+  // Raised in the period (created_at)
   totalTasks: number;
   completed: number;
   open: number;
   cancelled: number;
-  /** BR-17 derived flag: past end_at and not finished. Never a stored status. */
-  overdue: number;
   completionRate: number;
-  overdueRate: number;
   priorityLow: number;
   priorityMedium: number;
   priorityHigh: number;
+  activityMix?: TaskCountRow[];
+  /** Tasks attached to no lead, customer or deal — effort that never reaches the pipeline. */
+  orphanTasks: number;
+  orphanRate: number;
+
+  // Resolved in the period (completed_at)
+  resolvedTotal: number;
+  resolvedOnTime: number;
+  /** Finished late. Invisible in the old report, which stopped counting a task once it closed. */
+  resolvedLate: number;
+  /** Finished with no deadline recorded — held out of punctuality rather than credited as on time. */
+  resolvedNoDeadline: number;
+  /** Null, never zero, when nothing finished in the period carried a deadline. */
+  punctualityRate?: number;
+  avgCycleHours: number;
+  /** Completed tasks carrying no completion time, from before the column existed. */
+  completedUndated: number;
+  /** % of completed tasks that could be judged for punctuality at all. */
+  punctualityCoverage: number;
+
+  // The open queue right now (BR-17, derived from the clock)
+  openOverdue: number;
+  /** % openOverdue / open. */
+  overdueRate: number;
+  avgDaysOverdue: number;
+  overdueAging?: TaskCountRow[];
+  overdueByPriority?: TaskCountRow[];
+
+  // SLA, classified by the same rules as UC-23.3
+  slaDecided: number;
+  slaOnTime: number;
+  slaComplianceRate: number;
+
   /** True when the caller is scoped to their own tasks rather than the whole team. */
   ownScope?: boolean;
   staff: TaskStaffRow[];

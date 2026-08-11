@@ -397,4 +397,52 @@ class GetRepScorecardUseCaseTest {
         assertThat(rep(report, ANNA).isRanked()).isFalse();
         assertThat(rep(report, BINH).getRank()).isEqualTo(1);
     }
+
+    @Test
+    @DisplayName("finishing every task late no longer scores full marks for discipline")
+    void chronicLatenessIsVisibleToTheScorecard() {
+        // Ten tasks, all completed, every one after its deadline. The overdue count is zero — a
+        // completed task is not an open one — so scoring discipline on the queue alone gave this
+        // rep a clean sheet, while UC-23.2 said their punctuality was 0%. Two reports, one person,
+        // opposite conclusions.
+        sales("DEAL_CLOSED", "WON", ANNA, "Anna", 5, 50_000);
+        discipline("TASKS_TOTAL", ANNA, "Anna", 10, 0);
+        discipline("TASKS_COMPLETED", ANNA, "Anna", 10, 0);
+        discipline("TASKS_OVERDUE", ANNA, "Anna", 0, 0);
+        discipline("TASKS_LATE", ANNA, "Anna", 10, 0);
+
+        RepScorecard anna = rep(run(), ANNA);
+
+        assertThat(anna.getMetrics().getTasksLate()).isEqualTo(10);
+        assertThat(anna.getMetrics().getTaskPunctualityRate())
+                .as("agrees with what UC-23.2 reports for the same period")
+                .isZero();
+        assertThat(anna.getMetrics().getTaskOverdueRate())
+                .as("still zero, and still true — nothing is running late right now")
+                .isZero();
+    }
+
+    @Test
+    @DisplayName("task punctuality is measured on finished work, not on the open queue")
+    void punctualityAndQueueAreSeparateSignals() {
+        sales("DEAL_CLOSED", "WON", ANNA, "Anna", 5, 50_000);
+        discipline("TASKS_TOTAL", ANNA, "Anna", 20, 0);
+        discipline("TASKS_OVERDUE", ANNA, "Anna", 4, 0);
+        discipline("TASKS_ON_TIME", ANNA, "Anna", 12, 0);
+        discipline("TASKS_LATE", ANNA, "Anna", 4, 0);
+
+        RepScorecard anna = rep(run(), ANNA);
+
+        assertThat(anna.getMetrics().getTaskPunctualityRate()).as("12 of the 16 judged").isEqualTo(75.0);
+        assertThat(anna.getMetrics().getTaskOverdueRate()).as("4 of the 20 raised").isEqualTo(20.0);
+    }
+
+    @Test
+    @DisplayName("a rep who finished nothing datable has no punctuality figure, not a zero")
+    void noDatableTaskMeansNoPunctualityFigure() {
+        sales("DEAL_CLOSED", "WON", ANNA, "Anna", 3, 30_000);
+        discipline("TASKS_TOTAL", ANNA, "Anna", 5, 0);
+
+        assertThat(rep(run(), ANNA).getMetrics().getTaskPunctualityRate()).isNull();
+    }
 }

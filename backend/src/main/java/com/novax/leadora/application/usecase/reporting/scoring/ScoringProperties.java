@@ -115,6 +115,9 @@ public class ScoringProperties {
         private double taskCompletionTarget = 95;
         private double taskOverdueFloor = 40;
         private double taskOverdueTarget = 5;
+        /** Finished-on-time share. Distinct from the overdue rate: that one only sees open work. */
+        private double taskPunctualityFloor = 50;
+        private double taskPunctualityTarget = 95;
         private double collectionOnTimeFloor = 50;
         private double collectionOnTimeTarget = 95;
         private double forecastAccuracyFloor = 30;

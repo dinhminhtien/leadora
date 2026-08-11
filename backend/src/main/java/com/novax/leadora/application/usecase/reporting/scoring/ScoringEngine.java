@@ -75,6 +75,12 @@ public class ScoringEngine {
                         t.getTaskCompletionFloor(), t.getTaskCompletionTarget()),
                 metrics.getTasksTotal() == 0 ? null
                         : linear(metrics.getTaskOverdueRate(), t.getTaskOverdueFloor(), t.getTaskOverdueTarget()),
+                // Punctuality is not derivable from the overdue rate, and leaving it out was how a
+                // rep who finished every task days late still scored full marks here: a completed
+                // task is no longer open, so it left the overdue count the moment it was done.
+                rateScore(metrics.getTasksOnTime(), metrics.getTasksOnTime() + metrics.getTasksLate(),
+                        team.getTaskPunctualityRate(),
+                        t.getTaskPunctualityFloor(), t.getTaskPunctualityTarget()),
                 rateScore(metrics.getCollectionOnTime(), metrics.getCollectionTotal(), team.getCollectionOnTimeRate(),
                         t.getCollectionOnTimeFloor(), t.getCollectionOnTimeTarget()),
                 rateScore(metrics.getForecastHit(), metrics.getForecastTotal(), team.getForecastAccuracyRate(),

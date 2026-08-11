@@ -94,7 +94,15 @@ public interface RepScorecardRepository extends Repository<DealEntity, UUID> {
      * caller can show "3 of 4" next to the percentage. A rate with no denominator on screen is how
      * a rep with two tasks ends up outranking one with forty.
      *
-     * <p>{@code TASKS_OVERDUE} follows BR-17: overdue is derived from the clock, never stored.
+     * <p>{@code TASKS_OVERDUE} follows BR-17: overdue is derived from the clock, never stored. It
+     * measures the <b>open queue</b> — work still running past its deadline — and nothing else.
+     *
+     * <p>{@code TASKS_ON_TIME} and {@code TASKS_LATE} measure something different and cannot be
+     * derived from it: whether finished work beat its deadline. A rep who completes every task three
+     * days late has an overdue count of zero, because a completed task is no longer open — so
+     * scoring discipline on the queue alone awarded full marks for chronic lateness, and disagreed
+     * with what UC-23.2 says about the same person in the same period. Two reports contradicting
+     * each other about somebody's punctuality is not a rounding difference.
      */
     @Query(value = """
             SELECT 'TASKS_TOTAL' AS metric, u.user_id AS owner_id, u.full_name AS owner_name,
@@ -112,6 +120,20 @@ public interface RepScorecardRepository extends Repository<DealEntity, UUID> {
               FROM tasks t LEFT JOIN users u ON u.user_id = t.assigned_user_id
              WHERE t.end_at >= :start AND t.end_at < :end
                AND t.end_at < now() AND t.status NOT IN ('COMPLETED', 'CANCELLED')
+             GROUP BY u.user_id, u.full_name
+            UNION ALL
+            SELECT 'TASKS_ON_TIME', u.user_id, u.full_name, count(*), 0::numeric
+              FROM tasks t LEFT JOIN users u ON u.user_id = t.assigned_user_id
+             WHERE t.completed_at >= :start AND t.completed_at < :end
+               AND t.status = 'COMPLETED'
+               AND t.end_at IS NOT NULL AND t.completed_at <= t.end_at
+             GROUP BY u.user_id, u.full_name
+            UNION ALL
+            SELECT 'TASKS_LATE', u.user_id, u.full_name, count(*), 0::numeric
+              FROM tasks t LEFT JOIN users u ON u.user_id = t.assigned_user_id
+             WHERE t.completed_at >= :start AND t.completed_at < :end
+               AND t.status = 'COMPLETED'
+               AND t.end_at IS NOT NULL AND t.completed_at > t.end_at
              GROUP BY u.user_id, u.full_name
             UNION ALL
             SELECT 'DISCOUNT_PCT', u.user_id, u.full_name, count(*), COALESCE(avg(q.discount_percent), 0)

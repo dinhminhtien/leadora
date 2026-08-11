@@ -91,4 +91,59 @@ public class TaskEntity extends BaseEntity {
     @Column(name = "overdue_notified", nullable = false)
     private Boolean overdueNotified = false;
 
+    /**
+     * When the task was actually finished — the difference between "still running late" and
+     * "finished late".
+     *
+     * <p>Without it, a task completed three days after its deadline was not counted as late at all:
+     * it had left the OPEN status, and overdue was only ever measured against tasks still open. A
+     * period in which every task was finished late scored 0% overdue, and the figure improved as the
+     * team cleared its backlog rather than as it became punctual.
+     *
+     * <p>Nullable, and it stays null for tasks completed before this column existed. UC-23.2 reports
+     * how many completed tasks it cannot place rather than guessing from {@code updated_at}, which
+     * moves whenever anyone edits the row afterwards.
+     */
+    @Column(name = "completed_at")
+    private OffsetDateTime completedAt;
+
+    /**
+     * Kept in step with the status by the entity itself, not by whichever use case happened to
+     * change it.
+     *
+     * <p>Stamping it at the call site looked sufficient because one service completes tasks
+     * explicitly — but {@code UpdateTaskUseCase} also completes them, by resolving a status name out
+     * of the request, so the literal never appears in its code and the second path silently produced
+     * completed tasks with no completion time. Every one of those would have dropped out of the
+     * punctuality figures this column exists to produce. An invariant that two call sites have to
+     * remember is an invariant that will be forgotten; this one is maintained here instead.
+     */
+    public void setStatus(TaskStatus status) {
+        this.status = status;
+        stampCompletedAt();
+    }
+
+    @PrePersist
+    @PreUpdate
+    void stampCompletedAtOnSave() {
+        stampCompletedAt();
+    }
+
+    /**
+     * Sets the completion timestamp on the way into COMPLETED and clears it on the way back out.
+     *
+     * <p>Only stamps when empty, so re-saving an already completed task does not move a historical
+     * completion date into the current month and reshape a period that has already been reported on.
+     * Reopening genuinely un-completes the task: a stale timestamp would keep it counted as work
+     * finished in the month it was previously closed in, while it also shows up as open and overdue.
+     */
+    private void stampCompletedAt() {
+        if (this.status == TaskStatus.COMPLETED) {
+            if (this.completedAt == null) {
+                this.completedAt = OffsetDateTime.now();
+            }
+        } else {
+            this.completedAt = null;
+        }
+    }
 }
