@@ -214,3 +214,28 @@ absa:
 
 
 
+
+# ── UC-23.1 / UC-23.6 reporting ──────────────────────────────────────────────
+# The zone day boundaries are cut in. Stored timestamps are timestamptz, so "31 July" is ambiguous
+# until a zone is named; resolving it in UTC for a UTC+7 business drops every record created before
+# 07:00 local into the previous day.
+leadora:
+  reporting:
+    zone: ${LEADORA_REPORTING_ZONE:Asia/Ho_Chi_Minh}
+  # UC-23.6 rep scorecard. These are the numbers people are judged against — they live here, in the
+  # open, precisely because they are judgement calls and not measurements. Set the targets to the
+  # real quota before anyone reads a score as meaningful.
+  scoring:
+    min-sample: ${SCORING_MIN_SAMPLE:5}          # below this many settled outcomes → lowConfidence
+    shrinkage: ${SCORING_SHRINKAGE:5}            # phantom average events blended into every rate
+    min-active-days: ${SCORING_MIN_ACTIVE_DAYS:10}
+    forecast-tolerance-days: ${SCORING_FORECAST_TOLERANCE_DAYS:7}
+    weights:
+      outcome: ${SCORING_WEIGHT_OUTCOME:30}
+      efficiency: ${SCORING_WEIGHT_EFFICIENCY:25}
+      velocity: ${SCORING_WEIGHT_VELOCITY:15}
+      discipline: ${SCORING_WEIGHT_DISCIPLINE:20}
+      quality: ${SCORING_WEIGHT_QUALITY:10}
+    targets:
+      revenue-per-month: ${SCORING_TARGET_REVENUE_PER_MONTH:200000000}
+      deals-won-per-month: ${SCORING_TARGET_DEALS_WON_PER_MONTH:5}

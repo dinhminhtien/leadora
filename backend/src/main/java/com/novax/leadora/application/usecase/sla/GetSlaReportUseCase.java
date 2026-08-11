@@ -37,31 +37,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class GetSlaReportUseCase {
 
-    /** How a record is counted once the deadline question is settled. */
-    private enum Outcome {
-        /** Finished inside the deadline. */
-        RESOLVED_ON_TIME,
-        /** Finished, but the deadline had already passed — a breach that was later cleaned up. */
-        RESOLVED_LATE,
-        /** Unresolved and past the deadline. */
-        OPEN_BREACHED,
-        /** Unresolved, past the warning threshold, deadline not reached. */
-        WARNING,
-        /** Unresolved and comfortably inside the deadline. */
-        WITHIN_SLA,
-        /**
-         * Marked RESOLVED but with no {@code resolved_at}, so whether the deadline was met cannot be
-         * established either way.
-         *
-         * <p>These used to be counted as on-time. That is the same flattering bias this report was
-         * rewritten to remove — it credits compliance to records that carry no evidence of it, and
-         * on the live data it was inflating the on-time count by five. They are now held out of the
-         * compliance rate entirely and surfaced on their own, so a gap in the data reads as a gap
-         * rather than as a good result.
-         */
-        UNDETERMINED
-    }
-
     /**
      * Display names for the activity types SLA rules are written against.
      *
@@ -119,7 +94,7 @@ public class GetSlaReportUseCase {
             OffsetDateTime deadlineAt = (OffsetDateTime) row[4];
             OffsetDateTime resolvedAt = (OffsetDateTime) row[5];
 
-            Outcome outcome = classify(status, warningAt, deadlineAt, resolvedAt, now);
+            SlaOutcome outcome = SlaOutcomeClassifier.classify(status, warningAt, deadlineAt, resolvedAt, now);
             Double processingHours = processingHours(startedAt, resolvedAt);
 
             overall.add(outcome, processingHours);
@@ -168,31 +143,6 @@ public class GetSlaReportUseCase {
                 .build();
     }
 
-    /**
-     * A missed deadline is a breach whether or not somebody has since resolved it. {@code status}
-     * only decides <em>whether</em> the record finished; {@code resolvedAt vs deadlineAt} decides
-     * whether it finished in time.
-     */
-    private static Outcome classify(SlaStatus status, OffsetDateTime warningAt,
-                                    OffsetDateTime deadlineAt, OffsetDateTime resolvedAt,
-                                    OffsetDateTime now) {
-        boolean finished = status == SlaStatus.RESOLVED || resolvedAt != null;
-        if (finished) {
-            if (resolvedAt == null || deadlineAt == null) {
-                // Closed, but nothing records when — neither met nor missed can be shown.
-                return Outcome.UNDETERMINED;
-            }
-            return resolvedAt.isAfter(deadlineAt) ? Outcome.RESOLVED_LATE : Outcome.RESOLVED_ON_TIME;
-        }
-        if (status == SlaStatus.BREACHED || (deadlineAt != null && now.isAfter(deadlineAt))) {
-            return Outcome.OPEN_BREACHED;
-        }
-        if (warningAt != null && now.isAfter(warningAt)) {
-            return Outcome.WARNING;
-        }
-        return Outcome.WITHIN_SLA;
-    }
-
     private static Double processingHours(OffsetDateTime startedAt, OffsetDateTime resolvedAt) {
         if (startedAt == null || resolvedAt == null) {
             return null;
@@ -231,7 +181,7 @@ public class GetSlaReportUseCase {
         double processingHours;
         int processingSamples;
 
-        void add(Outcome outcome, Double hours) {
+        void add(SlaOutcome outcome, Double hours) {
             switch (outcome) {
                 case RESOLVED_ON_TIME -> resolvedOnTime++;
                 case RESOLVED_LATE -> resolvedLate++;

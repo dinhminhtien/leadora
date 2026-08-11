@@ -96,7 +96,9 @@ class BookingConcurrencyTest {
                                 dealWorkflowResolver,
                                 autoWinDealByPaymentUseCase,
                                 roomConfirmationReader,
-                                roomRequestNotifier);
+                                roomRequestNotifier,
+                                auditCorrectionService,
+                                objectMapper);
 
                 bookingId = UUID.randomUUID();
                 paymentId = UUID.randomUUID();

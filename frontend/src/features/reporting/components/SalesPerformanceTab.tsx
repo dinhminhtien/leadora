@@ -11,20 +11,42 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
-import { useReportRange, useSalesPerformanceReport } from "@/features/reporting/hooks/use_reporting";
+import {
+  useReportRange,
+  useSalesPerformanceFilters,
+  useSalesPerformanceReport,
+  useSalesReps,
+} from "@/features/reporting/hooks/use_reporting";
 import { StatTile, Meter, SegmentBar, EmptyReport, ReportDateRange, ReportHeader, Note, VIZ, compact, vndCompact } from "./viz";
+import { SalesPerformanceFilters } from "./SalesPerformanceFilters";
 import { downloadReportCsv, periodLabel, reportFilename } from "./export";
 
 const vnd = (n?: number) => `${(n ?? 0).toLocaleString("vi-VN")} ₫`;
 const pct = (n?: number) => `${(n ?? 0).toFixed(1)}%`;
 
+const segmentLabel = (corporate: string) =>
+  corporate === "true" ? "Corporate" : corporate === "false" ? "Individual" : "All";
+
 export function SalesPerformanceTab() {
   const range = useReportRange();
-  const { data, isLoading, isError } = useSalesPerformanceReport(range.params, range.enabled);
+  const filters = useSalesPerformanceFilters();
+  const params = React.useMemo(
+    () => ({ ...range.params, ...filters.params }),
+    [range.params, filters.params],
+  );
+  const { data, isLoading, isError } = useSalesPerformanceReport(params, range.enabled);
+  // Cached under the same query key the filter bar already uses, so this costs no extra request.
+  const { data: reps = [] } = useSalesReps();
+  const repLabel =
+    reps.find((r) => r.userId === filters.assignedUserId)?.fullName ?? filters.assignedUserId;
 
+  // Revenue and closed deals belong in this check too: a period spent collecting on bookings sold
+  // earlier has no new leads or quotations, and the old test declared that an empty report while
+  // real money sat in the response.
   const hasData =
     !!data &&
-    data.leadsCreated + data.dealsTotal + data.quotationsCreated + data.bookingsConfirmed > 0;
+    data.leadsCreated + data.dealsTotal + data.quotationsCreated + data.bookingsConfirmed
+      + data.dealsWon + data.dealsLost + (data.revenue ?? 0) > 0;
 
   const handleExport = () => {
     if (!data) return;
@@ -33,15 +55,19 @@ export function SalesPerformanceTab() {
       meta: [
         ["Report", "Sales Performance Statistics (UC-23.1)"],
         ["Period", periodLabel(range.dateFrom, range.dateTo)],
+        ["Time zone", data.timezone ?? "—"],
+        ["Sales rep", filters.assignedUserId ? repLabel : "Whole team"],
+        ["Lead source", filters.source || "Any"],
+        ["Service", filters.interestedService || "Any"],
+        ["Segment", segmentLabel(filters.corporate)],
         ["Generated at", new Date().toLocaleString("vi-VN")],
       ],
       sections: [
         {
-          title: "Opened in period (by creation date)",
+          title: "Raised in period (by creation date)",
           rows: [
             ["New leads", data.leadsCreated],
-            ["Qualified leads", data.qualifiedLeads],
-            ["Converted leads", data.leadsConverted],
+            ["…of which have since converted", data.cohortConverted],
             ["Lead conversion rate (%)", data.leadConversionRate],
             ["Deals opened", data.dealsTotal],
             ["Still open", data.dealsOpen],
@@ -53,8 +79,11 @@ export function SalesPerformanceTab() {
           ],
         },
         {
-          title: "Closed in period (by close date)",
+          title: "Happened in period (by event date)",
           rows: [
+            ["Leads qualified", data.qualifiedLeads],
+            ["Leads converted", data.leadsConverted],
+            ["Bookings confirmed", data.bookingsConfirmed],
             ["Deals won", data.dealsWon],
             ["Deals lost", data.dealsLost],
             ["Win rate (%)", data.winRate],
@@ -63,10 +92,7 @@ export function SalesPerformanceTab() {
         },
         {
           title: "Collected in period (by payment date)",
-          rows: [
-            ["Revenue (VND)", data.revenue],
-            ["Bookings confirmed", data.bookingsConfirmed],
-          ],
+          rows: [["Revenue (VND)", data.revenue]],
         },
       ],
       tables: [
@@ -96,6 +122,8 @@ export function SalesPerformanceTab() {
         invalid={range.invalid}
       />
 
+      <SalesPerformanceFilters {...filters} />
+
       {isLoading && (
         <div className="flex items-center gap-2 p-6 text-sm text-slate-400">
           <Loader2 className="size-4 animate-spin" /> Aggregating data…
@@ -110,15 +138,17 @@ export function SalesPerformanceTab() {
           {/* KPI tiles */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatTile
-              label="New leads"
+              label="New leads (raised in period)"
               value={compact(data.leadsCreated)}
-              sub={`Converted ${data.leadsConverted} · ${pct(data.leadConversionRate)}`}
+              sub={`${data.cohortConverted} have since converted · ${pct(data.leadConversionRate)}`}
               icon={<Users className="size-3.5" />}
             />
+            {/* Counted on when the lead was qualified, not on what its status happens to be now:
+                qualifying a lead and then converting it used to remove it from this tile. */}
             <StatTile
-              label="Qualified leads"
+              label="Leads qualified (in period)"
               value={compact(data.qualifiedLeads)}
-              sub={`of ${data.leadsCreated} new leads`}
+              sub={`${data.leadsConverted} converted in the same window`}
               icon={<Users className="size-3.5" />}
             />
             {/* Won/lost are counted by close date while "deals opened" is counted by creation
@@ -150,12 +180,12 @@ export function SalesPerformanceTab() {
               icon={<ReceiptText className="size-3.5" />}
             />
             <StatTile
-              label="Bookings confirmed"
+              label="Bookings confirmed (in period)"
               value={compact(data.bookingsConfirmed)}
               icon={<Hotel className="size-3.5" />}
             />
             <StatTile
-              label="Deals opened"
+              label="Deals opened (raised in period)"
               value={compact(data.dealsTotal)}
               sub={`${data.dealsOpen} still open`}
               icon={<BriefcaseBusiness className="size-3.5" />}
@@ -163,9 +193,18 @@ export function SalesPerformanceTab() {
             <StatTile
               label="Lead conversion rate"
               value={pct(data.leadConversionRate)}
+              sub={`${data.cohortConverted} of ${data.leadsCreated} raised here`}
               icon={<TrendingUp className="size-3.5" />}
             />
           </div>
+
+          <Note>
+            Three time axes, deliberately. <strong>Raised in period</strong> counts what was created
+            (new leads, deals opened, quotations). <strong>Happened in period</strong> counts events
+            on their own date — a lead qualified, a booking confirmed, a deal won — whenever the
+            record was raised. <strong>Collected</strong> follows the payment date. Day boundaries
+            are cut in {data.timezone ?? "the business time zone"}.
+          </Note>
 
           {/* Deal outcomes + conversion meters */}
           <div className="grid gap-3 lg:grid-cols-2">
