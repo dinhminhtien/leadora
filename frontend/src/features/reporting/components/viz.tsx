@@ -185,18 +185,24 @@ export function Note({ children }: { children: React.ReactNode }) {
 
 /* ── Horizontal labeled bars (per-mark distribution — stages, statuses, types) ─ */
 
-export type HBarItem = { label: string; value: number; color: string; sub?: string };
+export type HBarItem = { label: string; value: number; color: string; sub?: string; target?: number };
 
 export function HBarList({ items }: { items: HBarItem[] }) {
+  const [hoveredIdx, setHoveredIdx] = React.useState<number | null>(null);
   const max = Math.max(1, ...items.map((i) => i.value));
   return (
-    <div className="space-y-2">
-      {items.map((it) => (
-        <div key={it.label} className="flex items-center gap-2 text-[11px]">
+    <div className="space-y-2 relative">
+      {items.map((it, idx) => (
+        <div
+          key={it.label}
+          className="group relative flex items-center gap-2 text-[11px] p-1 rounded-lg transition-colors hover:bg-slate-50/80"
+          onMouseEnter={() => setHoveredIdx(idx)}
+          onMouseLeave={() => setHoveredIdx(null)}
+        >
           <span className="w-28 shrink-0 truncate text-slate-600" title={it.label}>{it.label}</span>
-          <div className="h-3.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+          <div className="h-3.5 flex-1 overflow-hidden rounded-full bg-slate-100 relative">
             <div
-              className="h-full rounded-full transition-[width] duration-300"
+              className="h-full rounded-full transition-all duration-300 group-hover:brightness-95"
               style={{ width: `${(it.value / max) * 100}%`, background: it.color, minWidth: it.value > 0 ? 6 : 0 }}
             />
           </div>
@@ -204,6 +210,21 @@ export function HBarList({ items }: { items: HBarItem[] }) {
             {it.value}
             {it.sub ? <span className="ml-1 font-normal text-slate-400">{it.sub}</span> : null}
           </span>
+
+          {/* Interactive Hover Tooltip */}
+          {hoveredIdx === idx && (
+            <div className="absolute left-1/2 -top-10 z-30 pointer-events-none -translate-x-1/2 bg-slate-900/90 text-white text-[11px] px-3 py-1.5 rounded-lg shadow-xl border border-slate-700 animate-in fade-in duration-150 whitespace-nowrap">
+              <div className="font-bold text-slate-200">{it.label}: <span className="text-emerald-400">{it.value.toLocaleString("vi-VN")} {it.sub ?? ""}</span></div>
+              {it.target ? (
+                <div className="text-[10px] text-slate-300 mt-0.5 flex items-center gap-1">
+                  <span>Target: {it.target.toLocaleString("vi-VN")}</span>
+                  <span className="font-semibold text-sky-400">
+                    ({Math.round((it.value / it.target) * 100)}%)
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -295,30 +316,31 @@ export function SegmentBar({
   segments: Segment[];
   height?: number;
 }) {
+  const [hoveredSeg, setHoveredSeg] = React.useState<Segment | null>(null);
   const shown = segments.filter((s) => s.value > 0);
   const total = shown.reduce((a, s) => a + s.value, 0) || 1;
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 relative">
       {/* 2px surface gap between fills — the white gap does the separating, not a stroke. */}
       <div
-        className="flex w-full gap-0.5 overflow-hidden rounded-full"
+        className="flex w-full gap-0.5 overflow-hidden rounded-full relative"
         style={{ height, background: VIZ.surface }}
       >
         {shown.map((s) => {
           const widthPct = (s.value / total) * 100;
           // Only place the value inside the fill when it comfortably fits (~>9% width).
           const showInline = widthPct > 9;
-          // flex-grow (not width %) so the 2px gaps are subtracted from the track by flexbox
-          // instead of overflowing it and clipping the last segment.
           return (
             <div
               key={s.label}
-              className="flex h-full min-w-0 items-center justify-center text-[10px] font-bold tabular-nums"
+              className="flex h-full min-w-0 items-center justify-center text-[10px] font-bold tabular-nums cursor-pointer transition-opacity hover:opacity-90"
               style={{
                 flex: `${s.value} 1 0`,
                 background: s.color,
                 color: textOnFill(s.color),
               }}
+              onMouseEnter={() => setHoveredSeg(s)}
+              onMouseLeave={() => setHoveredSeg(null)}
               title={`${s.label}: ${s.value}`}
             >
               {showInline ? s.value : ""}
@@ -326,6 +348,13 @@ export function SegmentBar({
           );
         })}
       </div>
+
+      {/* Floating Hover Tooltip */}
+      {hoveredSeg && (
+        <div className="absolute left-1/2 -top-10 z-30 pointer-events-none -translate-x-1/2 bg-slate-900/90 text-white text-[11px] px-3 py-1.5 rounded-lg shadow-xl border border-slate-700 animate-in fade-in duration-150 whitespace-nowrap">
+          <div className="font-bold text-slate-200">{hoveredSeg.label}: <span className="text-emerald-400">{hoveredSeg.value.toLocaleString("vi-VN")}</span> <span className="text-slate-400">({Math.round((hoveredSeg.value / total) * 100)}%)</span></div>
+        </div>
+      )}
       {/* Legend is always present for ≥2 series — identity never rides color alone. */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
         {segments.map((s) => (

@@ -46,6 +46,8 @@ import 'package:leadora_mobile/features/handover/presentation/screens/handover_l
 import 'package:leadora_mobile/features/quotation/presentation/screens/quotation_form_screen.dart';
 import 'package:leadora_mobile/features/quotation/presentation/screens/quotation_detail_screen.dart';
 import 'package:leadora_mobile/features/quotation/presentation/screens/quotation_list_screen.dart';
+import 'package:leadora_mobile/features/feedback/presentation/screens/feedback_detail_screen.dart';
+import 'package:leadora_mobile/features/feedback/presentation/screens/feedback_list_screen.dart';
 import 'package:leadora_mobile/features/reminder/presentation/screens/reminder_list_screen.dart';
 import 'package:leadora_mobile/features/sla/presentation/screens/sla_list_screen.dart';
 import 'package:leadora_mobile/features/task/presentation/screens/task_detail_screen.dart';
@@ -388,6 +390,56 @@ final Map<String, Object?> _cannedByPath = {
       'deadlineAt': _iso(const Duration(hours: 3)),
     },
   ],
+  // Guest feedback (UC-25). Two rows on purpose: one fully scored with a long
+  // comment (the worst case for card height at a large text scale) and one with
+  // no rating at all, which must render "Not rated" rather than zero stars.
+  '/feedbacks': {
+    'content': [
+      {
+        'feedbackId': 'f1',
+        'customerName': 'Nguyen Thi Hong Nhung',
+        'bookingCode': 'BK-240815',
+        'salesStaffName': 'Minh Nguyen',
+        'rating': 5,
+        'ratingAttitude': 5,
+        'ratingSpeed': 4,
+        'ratingAccuracy': 5,
+        'comment':
+            'The team handled our banquet booking beautifully — the room was ready early and every special request was met.',
+        'reviewStatus': 'PENDING',
+        'submittedAt': _iso(const Duration(days: -2)),
+        'createdAt': _iso(const Duration(days: -2)),
+      },
+      {
+        'feedbackId': 'f2',
+        'customerName': 'Tran Van C',
+        'bookingCode': 'BK-240712',
+        'salesStaffName': 'Sales Staff',
+        'rating': null,
+        'comment': null,
+        'reviewStatus': 'REVIEWED',
+        'reviewedByName': 'Manager',
+        'submittedAt': _iso(const Duration(days: -9)),
+        'createdAt': _iso(const Duration(days: -9)),
+      },
+    ],
+    'page': {'size': 20, 'number': 0, 'totalElements': 2, 'totalPages': 1},
+  },
+  '/feedbacks/f1': {
+    'feedbackId': 'f1',
+    'customerName': 'Nguyen Thi Hong Nhung',
+    'bookingCode': 'BK-240815',
+    'salesStaffName': 'Minh Nguyen',
+    'rating': 5,
+    'ratingAttitude': 5,
+    'ratingSpeed': 4,
+    'ratingAccuracy': 5,
+    'comment':
+        'The team handled our banquet booking beautifully — the room was ready early and every special request was met.',
+    'reviewStatus': 'PENDING',
+    'submittedAt': _iso(const Duration(days: -2)),
+    'createdAt': _iso(const Duration(days: -2)),
+  },
   '/reminders': [
     {
       'reminderId': 'r1',
@@ -883,6 +935,20 @@ void main() {
     'ReminderListScreen',
     () => const ReminderListScreen(),
     expectText: 'Prepare site-visit agenda',
+  );
+
+  // Guest feedback. The list card stacks a name, a star row, a two-line comment
+  // and a footer, so it is one of the taller cards in the app — worth pinning
+  // across every viewport and text scale.
+  smokeTest(
+    'FeedbackListScreen',
+    () => const FeedbackListScreen(),
+    expectText: 'Nguyen Thi Hong Nhung',
+  );
+  smokeTest(
+    'FeedbackDetailScreen',
+    () => const FeedbackDetailScreen(feedbackId: 'f1'),
+    expectText: 'Service breakdown',
   );
 
   // Profile

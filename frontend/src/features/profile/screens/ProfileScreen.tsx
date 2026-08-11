@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -19,6 +19,9 @@ import {
   KeyRound,
   AlertTriangle,
   CheckCircle2,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 
 import { useMyProfile, useUpdateProfile, useChangePassword } from "@/features/profile/hooks/use_profile";
@@ -29,9 +32,13 @@ import { createSupabaseBrowserClient } from "@/services/supabase/client";
 import { CropDialog } from "@/features/profile/components/CropDialog";
 import { resolveAccessToken } from "@/services/api_client";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
+import { useUiStore } from "@/stores/ui_store";
+import type { TableDensity } from "@/components/ui/data-table";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Badge } from "@/components/ui/Badge";
 
 // ── Validation schemas ────────────────────────────────────────────────────────
@@ -120,6 +127,34 @@ export function ProfileScreen() {
   const updateProfileMutation = useUpdateProfile();
   const changePasswordMutation = useChangePassword();
   const { updateUserFields } = useAuthStore();
+  const { theme, setTheme } = useUiStore();
+
+  /**
+   * Default table density. Written to the same `leadora.table.*` namespace the
+   * list toolbars read, under a `__default` view key, so a preference set here
+   * applies to every list the user has not overridden individually.
+   */
+  const [defaultDensity, setDefaultDensityState] = useState<TableDensity>("comfortable");
+
+  // Read after mount — touching localStorage during render desynchronises the
+  // server and client passes and React throws away the markup.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("leadora.table.__default.density");
+      if (raw) setDefaultDensityState(JSON.parse(raw) as TableDensity);
+    } catch {
+      /* blocked or corrupt storage — the default stands */
+    }
+  }, []);
+
+  const setDefaultDensity = (d: TableDensity) => {
+    setDefaultDensityState(d);
+    try {
+      window.localStorage.setItem("leadora.table.__default.density", JSON.stringify(d));
+    } catch {
+      /* private mode — the choice still applies for this session */
+    }
+  };
 
   const [showCurrentPw, setShowCurrentPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
@@ -360,13 +395,7 @@ export function ProfileScreen() {
         }
       `}</style>
       
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-slate-800">Profile Settings</h1>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Manage your account information and security settings
-        </p>
-      </div>
+      <PageHeader {...PAGE_META.profile} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
@@ -730,6 +759,147 @@ export function ProfileScreen() {
                   </Button>
                 </div>
               </form>
+            </CardContent>
+          </Card>
+
+          {/* ── Preferences (§10.2) ─────────────────────────────────────────── */}
+          <Card className="shadow-md border border-zinc-200 dark:border-zinc-850">
+            <CardHeader>
+              <div>
+                <CardTitle>Preferences</CardTitle>
+                <CardDescription className="mt-1">
+                  How Leadora looks and behaves for you. Saved on this device.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-6 flex flex-col gap-5">
+              {/* Theme. Light/Dark only — the store persists a concrete choice
+                  rather than a "system" mode, so offering System here would be a
+                  control that silently does nothing. */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Appearance</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Switch between the light and dark palette.
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-muted p-0.5">
+                  {([
+                    { value: "light" as const, label: "Light", Icon: Sun },
+                    { value: "dark" as const, label: "Dark", Icon: Moon },
+                  ]).map(({ value, label, Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setTheme(value)}
+                      aria-pressed={theme === value}
+                      className={`inline-flex items-center gap-1.5 rounded px-2.5 h-7 text-[12.5px] font-medium transition-colors
+                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500
+                        ${theme === value
+                          ? "bg-surface text-foreground shadow-elev-1"
+                          : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      <Icon className="size-3.5" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="h-px bg-border" />
+
+              {/* Table density — the same setting the list toolbars write, shown
+                  here so it is discoverable without opening a table first. */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Default table density</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Applies to lists that you have not set individually.
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-muted p-0.5">
+                  {(["comfortable", "compact", "ultra"] as const).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setDefaultDensity(d)}
+                      aria-pressed={defaultDensity === d}
+                      className={`rounded px-2.5 h-7 text-[12.5px] font-medium capitalize transition-colors
+                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500
+                        ${defaultDensity === d
+                          ? "bg-surface text-foreground shadow-elev-1"
+                          : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="h-px bg-border" />
+
+              {/* Keyboard cheatsheet (§6.1) */}
+              <div>
+                <p className="text-xs font-semibold text-foreground">Keyboard shortcuts</p>
+                <p className="mt-0.5 mb-2.5 text-[11px] text-muted-foreground">
+                  Press <kbd className="rounded border border-border bg-muted px-1 font-mono text-[10px]">?</kbd> anywhere for the full reference.
+                </p>
+                <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                  {[
+                    ["⌘ K", "Command palette"],
+                    ["/", "Focus list search"],
+                    ["g then l", "Go to Leads"],
+                    ["g then t", "Go to Follow-up Tasks"],
+                    ["j / k", "Move row cursor"],
+                    ["Enter", "Open focused row"],
+                  ].map(([keys, what]) => (
+                    <div key={keys} className="flex items-center justify-between gap-3">
+                      <dt className="text-[11.5px] text-muted-foreground">{what}</dt>
+                      <dd>
+                        <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-foreground">
+                          {keys}
+                        </kbd>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ── Sessions (§10.2) ───────────────────────────────────────────── */}
+          <Card className="shadow-md border border-zinc-200 dark:border-zinc-850">
+            <CardHeader>
+              <div>
+                <CardTitle>Sessions</CardTitle>
+                <CardDescription className="mt-1">
+                  Where your account is currently signed in.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-6">
+              {/* Honest about the server model: one 24h token, no session
+                  registry to list or revoke. A fake "active devices" table here
+                  would imply a control the backend cannot honour. */}
+              <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/50 px-3.5 py-3">
+                <Monitor className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground">
+                    Single active session
+                  </p>
+                  <p className="mt-1 text-[11.5px] leading-[17px] text-muted-foreground">
+                    Leadora issues one access token per sign-in, valid for 24 hours.
+                    Signing in elsewhere does not end this session, and signing out
+                    revokes the token immediately. There is no per-device session
+                    list to manage.
+                  </p>
+                  {profile?.lastLoginAt && (
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Last sign-in: <span className="font-medium text-foreground">{formatDate(profile.lastLoginAt)}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
 

@@ -249,6 +249,92 @@ export function DensityMenu({
 }
 
 /* ------------------------------------------------------------------ *
+ * Advanced filter — §9.1.2 "filters that don't fit the toolbar row"
+ * ------------------------------------------------------------------ */
+
+/**
+ * Holds the filters that would otherwise overflow the toolbar: date ranges,
+ * amount bounds, owner pickers.
+ *
+ * The trigger carries a count badge so a collapsed panel can never hide *that*
+ * a list is filtered — only *which* filters are applied. A user staring at an
+ * unexpectedly short list must be able to see why without opening anything;
+ * that is also what `ActiveFilterChips` is for.
+ */
+export function AdvancedFilter({
+  children,
+  activeCount = 0,
+  onClear,
+  label = "Filters",
+  className,
+}: {
+  children: React.ReactNode;
+  activeCount?: number;
+  onClear?: () => void;
+  label?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          size="sm"
+          variant={activeCount > 0 ? "primary" : "secondary"}
+          leftIcon={<SlidersHorizontal className="size-3.5" />}
+          title={label}
+          className={className}
+        >
+          <span className="hidden lg:inline">{label}</span>
+          {activeCount > 0 && (
+            <span className="numeric ml-1 rounded-full bg-white/25 px-1.5 text-[10px] font-bold">
+              {activeCount}
+            </span>
+          )}
+        </Button>
+      </PopoverTrigger>
+
+      <PopoverContent align="end" className="w-[19rem] p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            {label}
+          </p>
+          {activeCount > 0 && onClear && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="rounded text-[11px] font-medium text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+        <div className="space-y-3">{children}</div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Labelled row inside `AdvancedFilter`, so every panel lines up the same way. */
+export function FilterField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-medium text-muted-foreground">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Toolbar shell
  * ------------------------------------------------------------------ */
 

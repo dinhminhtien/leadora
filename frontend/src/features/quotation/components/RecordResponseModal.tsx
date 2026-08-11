@@ -132,9 +132,9 @@ export function RecordResponseModal({ quote, onClose, onRecorded }: RecordRespon
       <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl border border-slate-100">
+      <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl border border-slate-100 max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-slate-100">
+        <div className="shrink-0 flex items-start justify-between px-5 pt-5 pb-4 border-b border-slate-100 z-10 bg-white">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
               <MessageSquare className="size-4 text-blue-600" />
@@ -160,7 +160,7 @@ export function RecordResponseModal({ quote, onClose, onRecorded }: RecordRespon
             <p className="text-sm font-bold text-slate-700">Response recorded successfully</p>
           </div>
         ) : (
-          <div className="px-5 py-4 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
             {/* Response selector */}
             <div>
               <p className="text-xs font-semibold text-slate-600 mb-2.5">
@@ -249,25 +249,27 @@ export function RecordResponseModal({ quote, onClose, onRecorded }: RecordRespon
               </div>
             )}
 
-            {/* Actions */}
-            <div className="flex gap-2 pt-1">
-              <Button
-                variant="primary"
-                className="flex-1 text-xs font-bold"
-                onClick={handleSubmit}
-                isLoading={trackResponse.isPending}
-              >
-                Record Response
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1 text-xs border-slate-200 text-slate-600"
-                onClick={onClose}
-                disabled={trackResponse.isPending}
-              >
-                Cancel
-              </Button>
-            </div>
+          </div>
+        )}
+
+        {!success && (
+          <div className="shrink-0 mt-auto border-t border-slate-100 bg-white px-5 py-4 z-10 flex gap-2">
+            <Button
+              variant="primary"
+              className="flex-1 text-xs font-bold"
+              onClick={handleSubmit}
+              isLoading={trackResponse.isPending}
+            >
+              Record Response
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1 text-xs border-slate-200 text-slate-600"
+              onClick={onClose}
+              disabled={trackResponse.isPending}
+            >
+              Cancel
+            </Button>
           </div>
         )}
       </div>

@@ -29,8 +29,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -64,6 +70,9 @@ class UpdateHandoverReadinessUseCaseTest {
     @Mock
     private CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
 
+    @Mock
+    private PlatformTransactionManager transactionManager;
+
     private UpdateHandoverReadinessUseCase useCase;
 
     private UUID handoverId;
@@ -73,7 +82,8 @@ class UpdateHandoverReadinessUseCaseTest {
     void setUp() {
         useCase = new UpdateHandoverReadinessUseCase(
                 opHandoverRepository, notificationRepository, activityLogPublisher, new ObjectMapper(),
-                createInteractionTimelineUseCase);
+                createInteractionTimelineUseCase, transactionManager);
+        when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         handoverId = UUID.randomUUID();
         actor = UserEntity.builder().userId(UUID.randomUUID()).fullName("FO Desk").build();
     }
@@ -324,6 +334,59 @@ class UpdateHandoverReadinessUseCaseTest {
         assertThat(response.getReadinessStatus()).isEqualTo("READY_FOR_ARRIVAL");
     }
 
+    // ------------------------------------------------------------- who touched whose arrival
+
+    @Test
+    @DisplayName("Editing a colleague's arrival is allowed, but the audit row says so")
+    void flagsAReadinessUpdateMadeOnSomeoneElsesArrival() {
+        OpHandoverEntity handover = handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+        handover.setAssignedFoUserId(UUID.randomUUID()); // a different Front Office user
+
+        // Not refused: the desk is a shift rota, so whoever is on duty has to be able to act.
+        var response = useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
+        assertThat(response.getReadinessStatus()).isEqualTo("READY_FOR_ARRIVAL");
+
+        ArgumentCaptor<JsonNode> payload = ArgumentCaptor.forClass(JsonNode.class);
+        verify(activityLogPublisher).publish(
+                org.mockito.ArgumentMatchers.eq(ActivityLogType.HANDOVER_READINESS_UPDATED),
+                org.mockito.ArgumentMatchers.eq(EntityType.HANDOVER),
+                org.mockito.ArgumentMatchers.eq(handoverId),
+                org.mockito.ArgumentMatchers.contains("other than the assignee"),
+                payload.capture());
+        assertThat(payload.getValue().get("updatedByAssignee").asBoolean()).isFalse();
+        assertThat(payload.getValue().get("assignedFoUserId").isNull()).isFalse();
+    }
+
+    @Test
+    @DisplayName("The assignee working their own arrival is not flagged")
+    void doesNotFlagTheAssigneeWorkingTheirOwnArrival() {
+        OpHandoverEntity handover = handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+        handover.setAssignedFoUserId(actor.getUserId());
+
+        useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
+
+        ArgumentCaptor<JsonNode> payload = ArgumentCaptor.forClass(JsonNode.class);
+        verify(activityLogPublisher).publish(any(), any(), any(),
+                org.mockito.ArgumentMatchers.contains("REVIEWED -> READY_FOR_ARRIVAL"), payload.capture());
+        assertThat(payload.getValue().get("updatedByAssignee").asBoolean()).isTrue();
+    }
+
+    @Test
+    @DisplayName("An unassigned arrival counts as nobody's, not as somebody else's")
+    void doesNotFlagAnUnassignedArrival() {
+        // Legacy rows predate assigned_fo_user_id and handover_uc22.sql does not backfill it, so
+        // NULL is a real state. Reporting those as "edited someone else's" would cry wolf on every
+        // migrated record.
+        handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+
+        useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
+
+        ArgumentCaptor<JsonNode> payload = ArgumentCaptor.forClass(JsonNode.class);
+        verify(activityLogPublisher).publish(any(), any(), any(), any(), payload.capture());
+        assertThat(payload.getValue().get("updatedByAssignee").asBoolean()).isTrue();
+        assertThat(payload.getValue().get("assignedFoUserId").isNull()).isTrue();
+    }
+
     // ------------------------------------------------------------------ POST-6 timeline
 
     @Test
@@ -340,6 +403,40 @@ class UpdateHandoverReadinessUseCaseTest {
         assertThat(entry.getValue().getDescription())
                 .contains("BK-001")
                 .contains("REVIEWED -> READY_FOR_ARRIVAL");
+    }
+
+    @Test
+    @DisplayName("POST-6 — inside a transaction the write is deferred, and runs in a NEW one")
+    void defersTheTimelineWritePastCommitAndRunsItInItsOwnTransaction() {
+        // The production path. execute() is @Transactional, so synchronization is always active and
+        // the fallback branch every other timeline test exercises is never taken in a running app.
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+
+            useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
+
+            // Nothing written yet: readiness has not committed, so neither has its timeline entry.
+            verify(createInteractionTimelineUseCase, never()).execute(any());
+
+            List<TransactionSynchronization> syncs =
+                    TransactionSynchronizationManager.getSynchronizations();
+            assertThat(syncs).hasSize(1);
+            syncs.get(0).afterCommit();
+
+            verify(createInteractionTimelineUseCase).execute(any());
+
+            // REQUIRES_NEW, not REQUIRED. Inside afterCommit the transaction that just committed is
+            // still bound to the thread, so a joining call is never flushed and the row is dropped
+            // silently when the EntityManager closes.
+            ArgumentCaptor<TransactionDefinition> definition =
+                    ArgumentCaptor.forClass(TransactionDefinition.class);
+            verify(transactionManager).getTransaction(definition.capture());
+            assertThat(definition.getValue().getPropagationBehavior())
+                    .isEqualTo(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test

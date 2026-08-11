@@ -51,6 +51,7 @@ import { isTaskOverdue } from "@/shared/design/status-tokens";
 import { useAuthStore } from "@/stores/auth_store";
 import { hasFullAccess } from "@/shared/auth/access";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { PAGE_META } from "@/app/routes/page_meta";
 import {
   useResolveTask,
   useTasks,
@@ -92,9 +93,12 @@ const PRIORITY_FILTERS = ["HIGH", "MEDIUM", "LOW"] as const;
 /** §9.1.6 — Tasks uses 50 per page "for productivity". */
 const PAGE_SIZE = 50;
 
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
+
 export function TaskWorkspaceScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { highlightedId, setRowRef } = useHighlightRow("highlight", "task");
   const user = useAuthStore((s) => s.user);
   const isManager = hasFullAccess(user);
 
@@ -306,9 +310,7 @@ export function TaskWorkspaceScreen() {
   return (
     <div className="flex min-h-[calc(100vh-8rem)] flex-col">
       <PageHeader
-        crumbs={[{ label: "Activities" }, { label: "Follow-up tasks" }]}
-        title="Follow-up tasks"
-        subtitle="Plan, execute, hand over and close the work behind every lead, customer and deal."
+        {...PAGE_META.followUpTasks}
         actions={
           <>
             <Button
@@ -447,7 +449,8 @@ export function TaskWorkspaceScreen() {
             tasks={tasks}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
-            highlightId={highlightId}
+            highlightId={highlightedId}
+            rowRef={setRowRef}
             isManager={isManager}
             users={users}
             onBulkPriority={bulkSetPriority}

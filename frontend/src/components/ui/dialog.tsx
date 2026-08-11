@@ -86,7 +86,7 @@ const DialogContent = React.forwardRef<
           if (!dismissible) e.preventDefault();
         }}
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 flex w-full -translate-x-1/2 -translate-y-1/2 flex-col",
+          "fixed left-1/2 top-1/2 z-50 flex w-full -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden",
           "rounded-xl border border-border bg-card text-card-foreground shadow-elev-3",
           "duration-[240ms] data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
           "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
@@ -101,7 +101,7 @@ const DialogContent = React.forwardRef<
           <DialogPrimitive.Close
             aria-label="Close dialog"
             className={cn(
-              "absolute right-4 top-4 grid size-8 place-items-center rounded-md text-muted-foreground",
+              "absolute right-4 top-4 grid size-8 place-items-center rounded-md text-muted-foreground z-20",
               "transition-colors hover:bg-muted hover:text-foreground",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-card",
               "disabled:pointer-events-none",
@@ -124,7 +124,7 @@ function DialogHeader({
   return (
     <div
       className={cn(
-        "flex shrink-0 flex-col gap-1 border-b border-border px-6 py-4 pr-14",
+        "flex shrink-0 flex-col gap-1 border-b border-border px-6 py-4 pr-14 bg-card z-10",
         className,
       )}
       {...props}
@@ -145,7 +145,7 @@ function DialogBody({
   );
 }
 
-/** Footer: primary right, secondary beside it, destructive left (§2.10). */
+/** Footer: primary right, secondary beside it, destructive left (§2.10). Fixed at bottom. */
 function DialogFooter({
   className,
   ...props
@@ -153,7 +153,7 @@ function DialogFooter({
   return (
     <div
       className={cn(
-        "flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border px-6 py-4",
+        "flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border bg-card px-6 py-4 mt-auto z-10",
         className,
       )}
       {...props}

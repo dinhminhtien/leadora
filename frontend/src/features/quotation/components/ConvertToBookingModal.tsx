@@ -166,9 +166,9 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
       <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative z-10 w-full max-w-lg mx-4 bg-white rounded-2xl shadow-xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+      <div className="relative z-10 w-full max-w-lg mx-4 bg-white rounded-2xl shadow-xl border border-slate-100 max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="sticky top-0 bg-white flex items-start justify-between px-5 pt-5 pb-4 border-b border-slate-100 z-10">
+        <div className="shrink-0 bg-white flex items-start justify-between px-5 pt-5 pb-4 border-b border-slate-100 z-10">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
               <Building2 className="size-4 text-emerald-600" />
@@ -206,7 +206,7 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
             <p className="text-[10px] text-slate-400">Reservation Staff notified · SLA tracking started</p>
           </div>
         ) : (
-          <div className="px-5 py-4 space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-5">
             {/* Step banner */}
             <div className="flex items-center gap-2 text-[10px] text-slate-500 font-semibold">
               <span className="flex items-center gap-1">
@@ -380,26 +380,28 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
               </div>
             )}
 
-            {/* Actions */}
-            <div className="flex gap-2 pt-1">
-              <Button
-                variant="primary"
-                className="flex-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-700"
-                onClick={handleConvert}
-                isLoading={convertToBooking.isPending}
-                leftIcon={<Building2 className="size-3.5" />}
-              >
-                Confirm &amp; Convert to Booking
-              </Button>
-              <Button
-                variant="outline"
-                className="text-xs border-slate-200 text-slate-600 px-4"
-                onClick={onClose}
-                disabled={convertToBooking.isPending}
-              >
-                Cancel
-              </Button>
-            </div>
+          </div>
+        )}
+
+        {!success && (
+          <div className="shrink-0 mt-auto border-t border-slate-100 bg-white px-5 py-4 z-10 flex gap-2">
+            <Button
+              variant="primary"
+              className="flex-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-700"
+              onClick={handleConvert}
+              isLoading={convertToBooking.isPending}
+              leftIcon={<Building2 className="size-3.5" />}
+            >
+              Confirm &amp; Convert to Booking
+            </Button>
+            <Button
+              variant="outline"
+              className="text-xs border-slate-200 text-slate-600 px-4"
+              onClick={onClose}
+              disabled={convertToBooking.isPending}
+            >
+              Cancel
+            </Button>
           </div>
         )}
       </div>

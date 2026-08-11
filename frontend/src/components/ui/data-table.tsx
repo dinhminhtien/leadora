@@ -94,6 +94,12 @@ type DataTableProps<T> = {
   onRowClick?: (row: T) => void;
   /** Highlighted row (deep-link `?highlight=`), flashed by the caller. */
   highlightId?: string | null;
+  /**
+   * Per-row ref callback, for callers that scroll a deep-linked row into view
+   * (`use_highlight_row`). Without this the row is tinted but a user arriving
+   * from a notification still has to hunt for it down the page.
+   */
+  rowRef?: (id: string) => (el: HTMLTableRowElement | null) => void;
 
   /** Omit to disable selection entirely. */
   selectedIds?: Set<string>;
@@ -130,6 +136,7 @@ export function DataTable<T>({
   density = "comfortable",
   onRowClick,
   highlightId,
+  rowRef,
   selectedIds,
   onSelectionChange,
   bulkActions,
@@ -147,6 +154,10 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const selectable = !!selectedIds && !!onSelectionChange;
   const [cursor, setCursor] = React.useState(0);
+  // The j/k row cursor is only meaningful while the body has keyboard focus.
+  // Painting it unconditionally put a stray accent line across the first row of
+  // every table the moment it rendered, which reads as a selected or broken row.
+  const [bodyFocused, setBodyFocused] = React.useState(false);
   const bodyRef = React.useRef<HTMLTableSectionElement>(null);
 
   const selectedCount = selectedIds?.size ?? 0;
@@ -335,6 +346,14 @@ export function DataTable<T>({
             ref={bodyRef}
             tabIndex={rows.length > 0 ? 0 : -1}
             onKeyDown={onKeyDown}
+            onFocus={() => setBodyFocused(true)}
+            onBlur={(e) => {
+              // Focus moving between cells inside the body is not a blur of the
+              // body itself — only clear when it leaves the subtree entirely.
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                setBodyFocused(false);
+              }
+            }}
             className="focus-visible:outline-none"
           >
             {rows.length === 0 ? (
@@ -371,21 +390,29 @@ export function DataTable<T>({
                 return (
                   <tr
                     key={id}
+                    ref={rowRef?.(id)}
+                    onPointerDownCapture={() => setCursor(i)}
+                    onMouseDownCapture={() => setCursor(i)}
+                    onFocusCapture={() => setCursor(i)}
                     onClick={() => onRowClick?.(row)}
                     aria-selected={isSelected || undefined}
+                    // Sticky cells below use `bg-inherit`, so every row-level tint
+                    // (hover, selected, highlighted) has to live here on the row —
+                    // otherwise the pinned columns keep their own background and
+                    // the tint visibly stops partway across the row.
                     className={cn(
-                      "border-b border-border transition-colors last:border-b-0",
+                      "border-b border-border bg-surface transition-colors last:border-b-0",
                       rowHeight,
                       onRowClick && "cursor-pointer",
                       "hover:bg-surface-2",
-                      isSelected && "bg-brand-500/[0.07]",
-                      isHighlighted && "bg-warning/10",
-                      isCursor && "ring-1 ring-inset ring-brand-500/40",
+                      isSelected && "bg-brand-500/[0.08]",
+                      isHighlighted && "bg-brand-500/[0.14] font-medium ring-1 ring-inset ring-brand-500/30",
+                      isCursor && bodyFocused && !isHighlighted && !isSelected && "bg-brand-500/[0.06]",
                     )}
                   >
                     {selectable && (
                       <td
-                        className={cn("sticky left-0 z-10 w-10 bg-surface", cellPad)}
+                        className={cn("sticky left-0 z-10 w-10 bg-inherit", cellPad)}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <Checkbox
@@ -400,13 +427,13 @@ export function DataTable<T>({
                       <td
                         key={col.id}
                         className={cn(
-                          "text-[13px] text-foreground",
+                          "text-[13px] text-foreground bg-inherit",
                           cellPad,
                           col.width,
                           col.numeric && "numeric text-right",
                           col.minWidth && MIN_WIDTH_CLASS[col.minWidth],
-                          col.sticky === "left" && "sticky left-10 z-10 bg-surface",
-                          col.sticky === "right" && "sticky right-0 z-10 bg-surface",
+                          col.sticky === "left" && "sticky left-10 z-10 bg-inherit",
+                          col.sticky === "right" && "sticky right-0 z-10 bg-inherit",
                           col.className,
                         )}
                       >

@@ -8,6 +8,8 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, AlertCircle, CheckCircle2, Calculator, User, Mail, Phone, Plus, Trash2, BedDouble } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
