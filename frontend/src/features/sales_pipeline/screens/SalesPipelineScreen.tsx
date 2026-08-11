@@ -21,6 +21,8 @@ import {
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { dealService, type PipelineDealCardResponse, type Deal } from "@/services/deal_service";
@@ -456,19 +458,10 @@ export function SalesPipelineScreen() {
         </div>
       )}
 
-      {/* Header and Controls */}
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <div className="flex items-center gap-2.5">
-          <span className="p-2 rounded-lg bg-[#E6F1FB] border border-[#85B7EB]/30">
-            <Briefcase className="size-5 text-[#185FA5]" />
-          </span>
-          <div>
-            <h1 className="text-lg font-bold text-slate-800">Sales Pipeline Board</h1>
-            <p className="text-[11px] text-slate-400">Drag or shift contract deals across hotel booking sales stages</p>
-          </div>
-        </div>
+      <PageHeader {...PAGE_META.salesPipeline} />
 
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+      {/* Board controls */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 w-full">
           {/* Search bar - UC-11.2 Search and Filter Pipeline Deals */}
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
@@ -497,7 +490,6 @@ export function SalesPipelineScreen() {
               ))}
             </select>
           </div>
-        </div>
       </div>
 
       {/* Summary KPI Ribbon */}

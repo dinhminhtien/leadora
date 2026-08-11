@@ -9,30 +9,33 @@ import {
   Building2,
   Phone,
   Mail,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
-  UserCog,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/status-pill";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { DensityMenu } from "@/components/ui/list-toolbar";
+import {
+  ColumnPicker,
+  ExportMenu,
+  RefreshButton,
+  useTableControls,
+} from "@/components/ui/table-controls";
+import { OwnerCell } from "@/components/ui/row-actions";
 import { CustomerDetailDrawer } from "@/features/customer_profile/components/CustomerDetailDrawer";
 import { Input } from "@/components/ui/Input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/Table";
 import { useCustomers, useCreateCustomer, useCustomerStats } from "@/features/customer_profile/hooks/use_customer_profiles";
 import { useQuery } from "@tanstack/react-query";
 import { userService } from "@/services/user_service";
 import type { Customer, CustomerType, CustomerListParams } from "@/services/customer_profile_service";
 import { toast } from "@/stores/toast_store";
 import { getApiErrorMessage } from "@/lib/api_error";
+
+/** Rows per page — mirrors the server page size requested below. */
+const PAGE_SIZE = 10;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -294,12 +297,13 @@ export function CustomerProfileListScreen() {
     customerType: typeFilter || undefined,
     status: statusFilter || undefined,
     page,
-    size: 10,
+    size: PAGE_SIZE,
     sortBy: "createdAt",
     sortDir: "desc",
   }), [debouncedSearch, typeFilter, statusFilter, page]);
 
-  const { data, isLoading } = useCustomers(params);
+  const { data, isLoading, isFetching, refetch } = useCustomers(params);
+  const controls = useTableControls<Customer>("customers", CUSTOMER_COLUMNS);
   const { data: statsData } = useCustomerStats();
   const { data: usersData } = useQuery({
     queryKey: ["users-list-summary"],
@@ -336,23 +340,18 @@ export function CustomerProfileListScreen() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Customer Profiles</h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Manage individual and corporate customer relationships
-          </p>
-        </div>
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => setIsCreateOpen(true)}
-          leftIcon={<UserPlus className="size-3.5" />}
-        >
-          New Customer
-        </Button>
-      </div>
+      <PageHeader
+        {...PAGE_META.customerProfiles}
+        actions={
+          <Button
+            variant="primary"
+            onClick={() => setIsCreateOpen(true)}
+            leftIcon={<UserPlus className="size-4" />}
+          >
+            New Customer
+          </Button>
+        }
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -410,67 +409,61 @@ export function CustomerProfileListScreen() {
             <option value="ACTIVE">Active</option>
             <option value="INACTIVE">Inactive</option>
           </select>
+
+          {/* §2.6 control cluster */}
+          <div className="ml-auto flex items-center gap-2">
+            <RefreshButton onRefresh={() => refetch()} isRefreshing={isFetching} />
+            <ColumnPicker
+              columns={CUSTOMER_COLUMNS}
+              hiddenIds={controls.hiddenColumnIds}
+              onChange={controls.setHiddenColumnIds}
+              requiredIds={["customer"]}
+            />
+            <ExportMenu
+              filename={`customers-${new Date().toISOString().slice(0, 10)}`}
+              headers={CUSTOMER_EXPORT_HEADERS}
+              rows={customers.map(customerExportRow)}
+            />
+            <DensityMenu value={controls.density} onChange={controls.setDensity} />
+          </div>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        <Table>
-          <TableHeader className="bg-slate-50 border-b border-slate-100">
-            <TableRow hoverable={false}>
-              <TableHead className="text-xs font-semibold text-slate-500 pl-4">Customer</TableHead>
-              <TableHead className="text-xs font-semibold text-slate-500">Type</TableHead>
-              <TableHead className="text-xs font-semibold text-slate-500">Contact</TableHead>
-              <TableHead className="text-xs font-semibold text-slate-500">Company</TableHead>
-              <TableHead className="text-xs font-semibold text-slate-500">Assigned To</TableHead>
-              <TableHead className="text-xs font-semibold text-slate-500">Status</TableHead>
-              <TableHead className="text-xs font-semibold text-slate-500">Joined</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow hoverable={false}>
-                <TableCell colSpan={7} className="py-12 text-center">
-                  <Loader2 className="size-5 animate-spin text-slate-400 mx-auto" />
-                </TableCell>
-              </TableRow>
-            ) : customers.length === 0 ? (
-              <TableRow hoverable={false}>
-                <TableCell colSpan={7} className="py-12 text-center text-slate-400 text-xs">
-                  No customer profiles found.
-                </TableCell>
-              </TableRow>
-            ) : (
-              customers.map(c => <CustomerRow key={c.customerId} customer={c} onClick={() => setDetailCustomer(c)} />)
-            )}
-          </TableBody>
-        </Table>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
-            <span className="text-xs text-slate-400">
-              Page {page + 1} of {totalPages} · {totalElements} customers
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                disabled={page === 0}
-                onClick={() => handlePageChange(page - 1)}
-                className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
-              >
-                <ChevronLeft className="size-4 text-slate-600" />
-              </button>
-              <button
-                disabled={page >= totalPages - 1}
-                onClick={() => handlePageChange(page + 1)}
-                className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
-              >
-                <ChevronRight className="size-4 text-slate-600" />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      <DataTable
+        label="Customers"
+        rows={customers}
+        columns={controls.visibleColumns}
+        rowId={(c) => c.customerId}
+        isLoading={isLoading}
+        density={controls.density}
+        sortBy={controls.sortBy}
+        sortDir={controls.sortDir}
+        onSortChange={controls.onSortChange}
+        selectedIds={controls.selectedIds}
+        onSelectionChange={controls.setSelectedIds}
+        bulkActions={
+          <ExportMenu
+            filename={`customers-selected-${new Date().toISOString().slice(0, 10)}`}
+            headers={CUSTOMER_EXPORT_HEADERS}
+            rows={customers.filter((c) => controls.selectedIds.has(c.customerId)).map(customerExportRow)}
+          />
+        }
+        onRowClick={(c) => setDetailCustomer(c)}
+        isFiltered={!!search || !!typeFilter || !!statusFilter}
+        onClearFilters={() => { setSearch(""); setTypeFilter(""); setStatusFilter(""); setPage(0); }}
+        emptyTitle="No customer profiles yet"
+        emptyMessage="Convert a qualified lead, or create a customer directly."
+        emptyAction={{ label: "New Customer", onClick: () => setIsCreateOpen(true) }}
+        footer={
+          <TablePagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            totalElements={totalElements}
+            totalPages={totalPages}
+            onPageChange={handlePageChange}
+          />
+        }
+      />
 
       {isCreateOpen && (
         <CreateCustomerDrawer
@@ -488,73 +481,107 @@ export function CustomerProfileListScreen() {
   );
 }
 
-function CustomerRow({ customer, onClick }: { customer: Customer; onClick: () => void }) {
-  const ac = avatarColor(customer.fullName);
-  const joined = new Date(customer.createdAt).toLocaleDateString("en-GB", {
-    day: "2-digit", month: "short", year: "numeric",
-  });
-
-  return (
-    <TableRow className="hover:bg-slate-50/70 border-b border-slate-100 cursor-pointer transition" onClick={onClick}>
-      <TableCell className="py-3 pl-4">
-        <div className="flex items-center gap-2.5">
-          <span className={`size-8 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ${ac}`}>
-            {initials(customer.fullName)}
-          </span>
-          <div>
-            <p className="text-xs font-semibold text-slate-800">{customer.fullName}</p>
-            {customer.email && (
-              <p className="text-[10px] text-slate-400 truncate max-w-[160px]">{customer.email}</p>
-            )}
-          </div>
-        </div>
-      </TableCell>
-      <TableCell className="py-3">
-        <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${TYPE_BADGE[customer.customerType]}`}>
-          {TYPE_LABEL[customer.customerType]}
+/** Column set — Blueprint §10.5. Shared by the table and the column picker. */
+const CUSTOMER_COLUMNS: ColumnDef<Customer>[] = [
+  {
+    id: "customer",
+    header: "Customer",
+    sticky: "left",
+    cell: (customer) => (
+      <div className="flex items-center gap-2.5">
+        <span className={`size-8 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ${avatarColor(customer.fullName)}`}>
+          {initials(customer.fullName)}
         </span>
-      </TableCell>
-      <TableCell className="py-3">
-        <div className="space-y-0.5">
-          {customer.phone && (
-            <div className="flex items-center gap-1">
-              <Phone className="size-3 text-slate-400 shrink-0" />
-              <span className="text-[11px] text-slate-600">{customer.phone}</span>
-            </div>
-          )}
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-foreground">{customer.fullName}</p>
           {customer.email && (
-            <div className="flex items-center gap-1">
-              <Mail className="size-3 text-slate-400 shrink-0" />
-              <span className="text-[11px] text-slate-500 truncate max-w-[140px]">{customer.email}</span>
-            </div>
+            <p className="max-w-[160px] truncate text-[10px] text-muted-foreground">{customer.email}</p>
           )}
         </div>
-      </TableCell>
-      <TableCell className="py-3">
-        {customer.companyName ? (
-          <div className="flex items-center gap-1.5">
-            <Building2 className="size-3.5 text-slate-400 shrink-0" />
-            <span className="text-xs text-slate-600">{customer.companyName}</span>
+      </div>
+    ),
+  },
+  {
+    id: "type",
+    header: "Type",
+    cell: (customer) => (
+      <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${TYPE_BADGE[customer.customerType]}`}>
+        {TYPE_LABEL[customer.customerType]}
+      </span>
+    ),
+  },
+  {
+    id: "contact",
+    header: "Contact",
+    minWidth: "md",
+    cell: (customer) => (
+      <div className="space-y-0.5">
+        {customer.phone && (
+          <div className="flex items-center gap-1">
+            <Phone className="size-3 shrink-0 text-muted-foreground" />
+            <span className="text-[11px] text-foreground">{customer.phone}</span>
           </div>
-        ) : (
-          <span className="text-xs text-slate-300">—</span>
         )}
-      </TableCell>
-      <TableCell className="py-3">
-        {customer.assignedUserName ? (
-          <div className="flex items-center gap-1.5">
-            <UserCog className="size-3.5 text-slate-400" />
-            <span className="text-xs text-slate-600">{customer.assignedUserName}</span>
+        {customer.email && (
+          <div className="flex items-center gap-1">
+            <Mail className="size-3 shrink-0 text-muted-foreground" />
+            <span className="max-w-[140px] truncate text-[11px] text-muted-foreground">{customer.email}</span>
           </div>
-        ) : (
-          <span className="text-xs text-slate-300">Unassigned</span>
         )}
-      </TableCell>
-      <TableCell className="py-3">
-        {/* Canonical customer status binding (Blueprint §2.7). */}
-        <StatusPill size="sm" domain="customer" value={customer.status} />
-      </TableCell>
-      <TableCell className="py-3 text-xs text-slate-500 whitespace-nowrap">{joined}</TableCell>
-    </TableRow>
-  );
+      </div>
+    ),
+  },
+  {
+    id: "company",
+    header: "Company",
+    minWidth: "lg",
+    cell: (customer) =>
+      customer.companyName ? (
+        <div className="flex items-center gap-1.5">
+          <Building2 className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="text-xs text-foreground">{customer.companyName}</span>
+        </div>
+      ) : (
+        <span className="text-xs text-muted-foreground">—</span>
+      ),
+  },
+  {
+    id: "owner",
+    header: "Assigned To",
+    minWidth: "lg",
+    cell: (customer) => <OwnerCell name={customer.assignedUserName} />,
+  },
+  {
+    id: "status",
+    header: "Status",
+    // Canonical customer status binding (Blueprint §2.7).
+    cell: (customer) => <StatusPill size="sm" domain="customer" value={customer.status} />,
+  },
+  {
+    id: "joined",
+    header: "Joined",
+    minWidth: "md",
+    className: "whitespace-nowrap text-xs text-muted-foreground",
+    cell: (customer) =>
+      new Date(customer.createdAt).toLocaleDateString("en-GB", {
+        day: "2-digit", month: "short", year: "numeric",
+      }),
+  },
+];
+
+const CUSTOMER_EXPORT_HEADERS = [
+  "Name", "Type", "Company", "Email", "Phone", "Assigned to", "Status", "Joined",
+];
+
+function customerExportRow(c: Customer): (string | number | null | undefined)[] {
+  return [
+    c.fullName,
+    TYPE_LABEL[c.customerType],
+    c.companyName ?? "",
+    c.email ?? "",
+    c.phone ?? "",
+    c.assignedUserName ?? "Unassigned",
+    c.status,
+    c.createdAt,
+  ];
 }

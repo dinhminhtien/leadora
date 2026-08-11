@@ -18,6 +18,7 @@ import * as React from "react";
 import type { UseMutationResult } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/Button";
+import { BlockedHint } from "@/components/ui/guarded-action";
 import {
   Dialog,
   DialogBody,
@@ -179,7 +180,16 @@ function TaskCompleteBody({
           )}
         </DialogBody>
 
-        <DialogFooter>
+        <DialogFooter className="flex-wrap">
+          {/* BR-16 stated up front rather than only after a failed click. The
+              button stays enabled on purpose: clicking it moves focus to the
+              note field, which is more useful than a dead control. */}
+          {missing && (
+            <BlockedHint
+              className="mr-auto w-full sm:w-auto"
+              reason="A completion note is required before a task can be closed (BR-16)."
+            />
+          )}
           <Button
             variant="ghost"
             onClick={() => onOpenChange(false)}

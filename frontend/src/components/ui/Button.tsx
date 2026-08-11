@@ -39,7 +39,7 @@ export type ButtonVariant =
 
 export type ButtonSize = "xs" | "sm" | "md" | "lg" | "icon" | "icon-sm";
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   isLoading?: boolean;

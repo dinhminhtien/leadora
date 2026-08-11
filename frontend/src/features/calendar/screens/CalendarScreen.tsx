@@ -40,6 +40,7 @@ import { ListSkeleton } from "@/components/ui/skeletons";
 import { toast } from "@/stores/toast_store";
 import { apiErrorCopy } from "@/shared/design/error-messages";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { PAGE_META } from "@/app/routes/page_meta";
 import {
   useResolveTask,
   useUpdateTaskById,
@@ -255,9 +256,7 @@ export function CalendarScreen() {
   return (
     <div className="flex min-h-[calc(100vh-8rem)] flex-col">
       <PageHeader
-        crumbs={[{ label: "Activities" }, { label: "Calendar" }]}
-        title="Calendar"
-        subtitle="Follow-up tasks, reminders and stays on one timeline."
+        {...PAGE_META.calendar}
         actions={
           <Button
             variant="primary"

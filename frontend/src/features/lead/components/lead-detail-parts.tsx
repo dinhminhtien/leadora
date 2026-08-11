@@ -39,6 +39,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
+import { BlockedHint } from "@/components/ui/guarded-action";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/Input";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -523,11 +524,14 @@ export function OverviewTab({
         <LeadStatusActions lead={lead} canReopen={canReopen} />
       </div>
 
-      {/* Say *why* Convert is unavailable rather than just omitting the button. */}
+      {/* Say *why* Convert is unavailable rather than just omitting the button.
+          Uses the shared `BlockedHint` so a blocked rule looks identical here,
+          on the task dialog and in the booking form. */}
       {!locked && !convertible && (
-        <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-          Assign this lead to a sales rep before it can be converted.
-        </p>
+        <BlockedHint
+          tone="warning"
+          reason="Assign this lead to a sales rep before it can be converted (BR-07)."
+        />
       )}
 
       {/* …and *why* the forward move is greyed out. Only for the BR-05 case:
@@ -537,29 +541,36 @@ export function OverviewTab({
         statusGate.next &&
         !statusGate.unassigned &&
         statusGate.missingForFollowUp.length > 0 && (
-          <p className="flex flex-wrap items-center gap-1 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-            <span>
-              To mark this lead as {LEAD_STATUS_LABEL[statusGate.next]} it needs{" "}
-              {statusGate.missingForFollowUp.join(" and ")}.
-            </span>
-            <button
-              type="button"
-              onClick={onEdit}
-              className="font-semibold underline underline-offset-2 hover:opacity-80"
-            >
-              Add it now
-            </button>
-            <span>— you can still mark it Lost.</span>
-          </p>
+          <BlockedHint
+            tone="warning"
+            reason={
+              <span className="flex flex-wrap items-center gap-1">
+                <span>
+                  To mark this lead as {LEAD_STATUS_LABEL[statusGate.next]} it needs{" "}
+                  {statusGate.missingForFollowUp.join(" and ")} (BR-05).
+                </span>
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="font-semibold underline underline-offset-2 hover:opacity-80"
+                >
+                  Add it now
+                </button>
+                <span>— you can still mark it Lost.</span>
+              </span>
+            }
+          />
         )}
       {locked && (
-        <p className="rounded-md border border-border bg-muted px-3 py-2 text-[12px] text-muted-foreground">
-          {status === "CONVERTED"
-            ? "This lead has been converted and is kept as a locked historical record."
-            : canReopen
-              ? "This lead is closed as lost. Reopen it if the guest came back — it returns to the pipeline as New."
-              : "This lead is closed as lost and can no longer be edited. Ask a manager to reopen it if the guest came back."}
-        </p>
+        <BlockedHint
+          reason={
+            status === "CONVERTED"
+              ? "This lead has been converted and is kept as a locked historical record (BR-08)."
+              : canReopen
+                ? "This lead is closed as lost. Reopen it if the guest came back — it returns to the pipeline as New."
+                : "This lead is closed as lost and can no longer be edited. Ask a manager to reopen it if the guest came back."
+          }
+        />
       )}
 
       {/* The three sections stack in the drawer and sit side by side on the page.

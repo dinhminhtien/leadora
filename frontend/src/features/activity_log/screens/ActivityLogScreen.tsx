@@ -8,6 +8,10 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
+import { timelineEventIcon } from "@/components/ui/timeline";
+import { timelineEventKind } from "@/shared/design/timeline-events";
 import { Badge } from "@/components/ui/Badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { activityLogService, type ActivityLog, type ActorType, type RecordOperation } from "@/services/activity_log_service";
@@ -305,20 +309,11 @@ export function ActivityLogScreen() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2 text-zinc-800 dark:text-zinc-100">
-            <History className="size-5 text-primary" />
-            Activity Log & Audit Trail
-          </h1>
-          <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
-            Immutable audit logging for CRM actions and identity operations to guarantee compliance.
-          </p>
-        </div>
-
-        {/* View mode toggle & Raw/Effective filter */}
-        <div className="flex items-center gap-3 self-start md:self-auto">
+      <PageHeader
+        {...PAGE_META.activityLogs}
+        actions={
+          /* View mode toggle & Raw/Effective filter */
+          <div className="flex items-center gap-3">
           {/* RAW / EFFECTIVE Switcher */}
           <div className="flex items-center p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs">
             <button
@@ -366,8 +361,9 @@ export function ActivityLogScreen() {
               <GitFork className="size-4" />
             </button>
           </div>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Tabs */}
       <div className="flex border-b border-zinc-200 dark:border-zinc-800 gap-4">
@@ -646,9 +642,23 @@ export function ActivityLogScreen() {
 
                 return (
                   <div key={log.id} className="relative">
-                    {/* Circle icon marker */}
+                    {/* Circle icon marker.
+                        Every human-actor entry used to render the same generic
+                        `User` glyph, so a login, an approval and a deletion were
+                        indistinguishable in the icon column — the one thing that
+                        column exists to convey. The icon now comes from the
+                        canonical event registry (§9.8), keyed on the activity
+                        type. Machine-actor rows keep `Cpu`, which is a genuine
+                        actor distinction rather than an event one. */}
                     <span className={`absolute -left-8.75 md:-left-10.75 top-1.5 flex items-center justify-center rounded-full size-6 md:size-8 ring-4 ring-white dark:ring-zinc-950 ${style.iconBg}`}>
-                      {isSystem ? <Cpu className="size-3 md:size-4" /> : <User className="size-3 md:size-4" />}
+                      {isSystem ? (
+                        <Cpu className="size-3 md:size-4" />
+                      ) : (
+                        (() => {
+                          const EventIcon = timelineEventIcon(timelineEventKind(log.activityType));
+                          return <EventIcon className="size-3 md:size-4" />;
+                        })()
+                      )}
                     </span>
 
                     {/* Card container */}

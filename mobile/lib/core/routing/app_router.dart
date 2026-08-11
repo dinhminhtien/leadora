@@ -42,6 +42,8 @@ import '../../features/quotation/presentation/screens/quotation_pending_approval
 import '../../features/reminder/presentation/screens/reminder_form_screen.dart';
 import '../../features/reminder/presentation/screens/reminder_list_screen.dart';
 import '../../features/sla/presentation/screens/sla_list_screen.dart';
+import '../../features/feedback/presentation/screens/feedback_detail_screen.dart';
+import '../../features/feedback/presentation/screens/feedback_list_screen.dart';
 import '../../features/task/data/task_models.dart';
 import '../../features/task/presentation/screens/task_detail_screen.dart';
 import '../../features/task/presentation/screens/task_form_screen.dart';
@@ -212,6 +214,21 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: RouteNames.sla,
         builder: (_, state) =>
             SlaListScreen(highlightId: state.uri.queryParameters['highlight']),
+      ),
+      GoRoute(
+        path: Routes.feedbacks,
+        name: RouteNames.feedbacks,
+        builder: (_, _) => const FeedbackListScreen(),
+        routes: [
+          GoRoute(
+            path: Routes.feedbackDetailSub,
+            name: RouteNames.feedbackDetail,
+            // By id, not by pushed object: this is reachable from a
+            // notification deep link where no list row exists.
+            builder: (_, state) =>
+                FeedbackDetailScreen(feedbackId: state.pathParameters['id']!),
+          ),
+        ],
       ),
       GoRoute(
         path: Routes.reminders,

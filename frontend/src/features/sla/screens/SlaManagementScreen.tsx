@@ -10,6 +10,8 @@ import {
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Badge } from "@/components/ui/Badge";
 import { useAuthStore } from "@/stores/auth_store";
 import { Portal } from "@/components/ui/Portal";
@@ -1123,13 +1125,7 @@ export function SlaManagementScreen() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-slate-800">SLA Management</h1>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Monitor deadlines, configure rules, and review performance reports
-        </p>
-      </div>
+      <PageHeader {...PAGE_META.sla} />
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200">

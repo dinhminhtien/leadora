@@ -117,6 +117,13 @@ class MoreScreen extends ConsumerWidget {
                   label: 'SLA monitoring',
                   onTap: () => context.pushNamed(RouteNames.sla),
                 ),
+                // Guest feedback (UC-25). Read-only for Sales; Manager/Admin
+                // also get the review-status transition on the detail screen.
+                _MoreTile(
+                  icon: Icons.reviews_outlined,
+                  label: 'Guest feedback',
+                  onTap: () => context.pushNamed(RouteNames.feedbacks),
+                ),
               ],
             ),
           ),

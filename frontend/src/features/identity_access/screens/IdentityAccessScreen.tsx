@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Users, ShieldCheck, Search, UserPlus, X, AlertCircle, Loader2, ServerCrash,
-  ChevronLeft, ChevronRight, Pencil, KeyRound, Check, Plus, Save, RotateCcw,
+  Pencil, KeyRound, Check, Plus, Save, RotateCcw,
   Target, Building2, Briefcase, GitBranch, ClipboardList, FileText, MessagesSquare,
   CalendarCheck, BedDouble, PackageCheck, CreditCard, Bell, AlarmClock, Timer,
   BarChart3, Star, Bot, DoorOpen, type LucideIcon,
@@ -11,10 +11,19 @@ import {
 import { Card, CardContent } from "@/components/ui/Card";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { DensityMenu } from "@/components/ui/list-toolbar";
+import {
+  ColumnPicker,
+  ExportMenu,
+  RefreshButton,
+  useTableControls,
+} from "@/components/ui/table-controls";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import {
   useUserAccounts, useCreateUser, useUpdateUser,
   useRoles, usePermissions, useSetRolePermissions,
@@ -52,7 +61,85 @@ const NAME_ALLOWED = /^[\p{L}\s.'-]+$/u;
 // Rows per page + fixed column widths so the table height (and the pagination bar
 // below it) stays constant across pages — mirrors the Leads list.
 const PAGE_SIZE = 10;
-const COL_WIDTHS = ["21%", "24%", "11%", "11%", "14%", "11%", "8%"];
+const USER_EXPORT_HEADERS = ["Full name", "Email", "Role", "Status", "Last login", "Created"];
+
+function userExportRow(u: UserAccount): (string | number | null | undefined)[] {
+  return [u.fullName, u.email, roleLabel(u.roleName), u.status, u.lastLoginAt ?? "Never", u.createdAt];
+}
+
+/**
+ * Column set for the accounts list (UC-6.1).
+ *
+ * The row-action column is `required` in the picker: hiding Edit would strip the
+ * only way an Admin can open an account, which a column toggle should never do.
+ */
+function buildUserColumns(
+  onEdit: (user: UserAccount) => void,
+): ColumnDef<UserAccount>[] {
+  return [
+    {
+      id: "user",
+      header: "Staff Member",
+      sticky: "left",
+      cell: (u) => (
+        <div className="flex items-center gap-2.5">
+          <Avatar name={u.fullName} />
+          <span className="truncate text-xs font-bold text-foreground" title={u.fullName}>{u.fullName}</span>
+        </div>
+      ),
+    },
+    {
+      id: "email",
+      header: "Email",
+      minWidth: "md",
+      className: "text-xs text-muted-foreground",
+      cell: (u) => <span className="block truncate" title={u.email}>{u.email}</span>,
+    },
+    {
+      id: "role",
+      header: "Role",
+      cell: (u) => <Badge variant="primary" size="sm" className="font-bold text-[10px]">{roleLabel(u.roleName)}</Badge>,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (u) => <StatusBadge status={u.status} />,
+    },
+    {
+      id: "lastLogin",
+      header: "Last Login",
+      minWidth: "lg",
+      className: "whitespace-nowrap text-xs",
+      cell: (u) => (
+        <span className={u.lastLoginAt ? "text-muted-foreground" : "italic text-muted-foreground/60"}>
+          {formatLastLogin(u.lastLoginAt)}
+        </span>
+      ),
+    },
+    {
+      id: "created",
+      header: "Created",
+      minWidth: "xl",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (u) => formatDate(u.createdAt),
+    },
+    {
+      id: "actions",
+      header: "",
+      sticky: "right",
+      cell: (u) => (
+        <div className="flex justify-end">
+          <Button variant="secondary" size="xs" onClick={() => onEdit(u)} leftIcon={<Pencil className="size-3" />}>
+            Edit
+          </Button>
+        </div>
+      ),
+    },
+  ];
+}
+
+/** Stable list for the column picker — the picker only needs ids and headers. */
+const USER_COLUMNS_STATIC = buildUserColumns(() => {});
 
 /** Short date, e.g. "28 Jul 2026". */
 function formatDate(value?: string | null) {
@@ -313,12 +400,18 @@ function UsersTab({ roles }: { roles: Role[] }) {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const { data: resp, isLoading, isError } = useUserAccounts({
+  const { data: resp, isLoading, isError, isFetching, refetch } = useUserAccounts({
     search: search || undefined,
     roleId: roleFilter === "" ? undefined : Number(roleFilter),
     status: statusFilter || undefined,
     sortBy: "createdAt", sortDir: "desc", page, size: PAGE_SIZE,
   });
+
+  const userColumns = useMemo(
+    () => buildUserColumns((user) => setDrawer({ mode: "edit", user })),
+    [],
+  );
+  const controls = useTableControls<UserAccount>("users", userColumns);
 
   const pageData = resp?.data;
   const users = pageData?.content ?? [];
@@ -349,120 +442,54 @@ function UsersTab({ roles }: { roles: Role[] }) {
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
           </select>
 
-          <div className="ml-auto flex items-center gap-3">
-            <span className="text-xs text-slate-400 hidden lg:block">
-              {isLoading ? "Loading…" : <>Showing <strong className="text-slate-700">{users.length}</strong> of {totalElements}</>}
-            </span>
+          <div className="ml-auto flex items-center gap-2">
+            <RefreshButton onRefresh={() => refetch()} isRefreshing={isFetching} />
+            <ColumnPicker
+              columns={USER_COLUMNS_STATIC}
+              hiddenIds={controls.hiddenColumnIds}
+              onChange={controls.setHiddenColumnIds}
+              requiredIds={["user", "actions"]}
+            />
+            <ExportMenu
+              filename={`users-${new Date().toISOString().slice(0, 10)}`}
+              headers={USER_EXPORT_HEADERS}
+              rows={users.map(userExportRow)}
+            />
+            <DensityMenu value={controls.density} onChange={controls.setDensity} />
             <Button variant="primary" size="sm" onClick={() => setDrawer({ mode: "create" })}
-              leftIcon={<UserPlus className="size-3.5" />}
-              className="bg-primary hover:bg-primary/90 text-white text-xs font-semibold">
+              leftIcon={<UserPlus className="size-3.5" />}>
               Create User
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-20 gap-2 text-slate-400">
-            <Loader2 className="size-5 animate-spin" /> Loading…
-          </div>
-        ) : isError ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-2 text-rose-500">
-            <ServerCrash className="size-8 mb-1" />
-            <p className="text-sm font-semibold">Server error — please contact your Admin.</p>
-          </div>
-        ) : users.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-            <Users className="size-10 mb-3 opacity-30" />
-            <p className="text-sm font-medium">No user accounts found</p>
-          </div>
-        ) : (
-          <Table className="table-fixed">
-            <colgroup>
-              {COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
-            </colgroup>
-            <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
-              <TableRow hoverable={false}>
-                <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Staff Member</TableHead>
-                <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Email</TableHead>
-                <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Role</TableHead>
-                <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
-                <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Last Login</TableHead>
-                <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Created</TableHead>
-                <TableHead className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map(u => (
-                <TableRow key={u.userId} className="hover:bg-blue-50/40 border-b border-slate-100 transition">
-                  <TableCell className="py-3 px-4 border-b-0">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={u.fullName} />
-                      <span className="text-xs font-bold text-slate-800 truncate" title={u.fullName}>{u.fullName}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="py-3 px-4 text-xs text-slate-600 border-b-0">
-                    <span className="block truncate" title={u.email}>{u.email}</span>
-                  </TableCell>
-                  <TableCell className="py-3 px-4 border-b-0">
-                    <Badge variant="primary" size="sm" className="font-bold text-[10px]">{roleLabel(u.roleName)}</Badge>
-                  </TableCell>
-                  <TableCell className="py-3 px-4 border-b-0"><StatusBadge status={u.status} /></TableCell>
-                  <TableCell className="py-3 px-4 text-xs whitespace-nowrap border-b-0">
-                    <span className={u.lastLoginAt ? "text-slate-500" : "text-slate-300 italic"}>
-                      {formatLastLogin(u.lastLoginAt)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="py-3 px-4 text-xs text-slate-400 whitespace-nowrap border-b-0">
-                    {formatDate(u.createdAt)}
-                  </TableCell>
-                  <TableCell className="py-3 px-4 text-right border-b-0">
-                    <Button variant="outline" size="sm" onClick={() => setDrawer({ mode: "edit", user: u })}
-                      leftIcon={<Pencil className="size-3" />}
-                      className="border-slate-200 text-slate-600 text-[11px] font-semibold">Edit</Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {/* Filler rows keep the table height — and the pagination bar below — fixed. */}
-              {Array.from({ length: Math.max(0, PAGE_SIZE - users.length) }).map((_, i) => (
-                <TableRow key={`filler-${i}`} hoverable={false} className="border-b border-slate-100">
-                  <TableCell colSpan={COL_WIDTHS.length} className="py-3 px-4 border-b-0" aria-hidden="true">
-                    <span className="invisible flex items-center gap-2.5"><span className="size-7" /><span className="text-xs">.</span></span>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50/50">
-            <p className="text-xs text-slate-500">
-              Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong>
-              <span className="text-slate-400 ml-2">· {totalElements} results</span>
-            </p>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">
-                <ChevronLeft className="size-3.5" /> Prev
-              </button>
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => Math.max(0, Math.min(page - 2, totalPages - 5)) + i).map(p => (
-                <button key={p} onClick={() => setPage(p)}
-                  className={`size-7 text-xs font-semibold rounded-lg border transition
-                    ${p === page ? "bg-primary text-white border-primary shadow-sm" : "border-slate-200 text-slate-500 hover:bg-white"}`}>
-                  {p + 1}
-                </button>
-              ))}
-              <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">
-                Next <ChevronRight className="size-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      <DataTable
+        label="User accounts"
+        rows={users}
+        columns={controls.visibleColumns}
+        rowId={(u) => u.userId}
+        isLoading={isLoading}
+        error={isError ? new Error("Server error — please contact your Admin.") : undefined}
+        density={controls.density}
+        sortBy={controls.sortBy}
+        sortDir={controls.sortDir}
+        onSortChange={controls.onSortChange}
+        isFiltered={!!search || roleFilter !== "" || !!statusFilter}
+        onClearFilters={() => { setSearchInput(""); setRoleFilter(""); setStatusFilter(""); setPage(0); }}
+        emptyTitle="No user accounts found"
+        emptyMessage="Create the first staff account to get started."
+        emptyAction={{ label: "Create User", onClick: () => setDrawer({ mode: "create" }) }}
+        footer={
+          <TablePagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            totalElements={totalElements}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        }
+      />
 
       {drawer && (
         <UserFormDrawer mode={drawer.mode} user={drawer.user} roles={roles} onClose={() => setDrawer(null)} />
@@ -1022,10 +1049,7 @@ export function IdentityAccessScreen() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-slate-800">Identity &amp; Access Control</h1>
-        <p className="text-xs text-slate-400">Manage internal user accounts, assign roles, and configure role permissions</p>
-      </div>
+      <PageHeader {...PAGE_META.identityAccess} />
 
       {/* Tabs */}
       <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-100 border border-slate-200 w-fit">

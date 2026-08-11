@@ -2,12 +2,23 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Search, User, XCircle, Info, Calendar, ArrowRight, Loader2, AlertCircle, RefreshCw, LogIn, LogOut } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { ExportMenu, useTableControls } from "@/components/ui/table-controls";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Badge } from "@/components/ui/Badge";
 import { StatusPill } from "@/components/ui/status-pill";
 import { reservationStatusService, type ReservationStatus } from "@/services/reservation_status_service";
+
+const RESERVATION_EXPORT_HEADERS = [
+  "Guest", "Reservation ref", "Room type", "Check-in", "Check-out", "Total (VND)", "Status",
+];
+
+function reservationExportRow(r: ReservationStatus): (string | number | null | undefined)[] {
+  return [r.guestName, r.reservationNo, r.roomType, r.checkInDate, r.checkOutDate, r.totalAmount, r.status];
+}
 import { ReservationDetailDrawer } from "@/features/reservation_status/components/ReservationDetailDrawer";
 import { toast } from "@/stores/toast_store";
 import { useAuthStore } from "@/stores/auth_store";
@@ -17,6 +28,63 @@ export function ReservationStatusScreen() {
   const { user } = useAuthStore();
   const userRole = getUserRole(user);
   const canWrite = user?.permissions?.includes("RESERVATION_WRITE") ?? false;
+
+  /** Column set — Blueprint §10.10 front-desk view. */
+  const reservationColumns: ColumnDef<ReservationStatus>[] = useMemo(() => [
+    {
+      id: "guest",
+      header: "Guest Name",
+      sticky: "left",
+      cell: (res) => (
+        <span className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+          <User className="size-3.5 text-muted-foreground" />
+          {res.guestName}
+        </span>
+      ),
+    },
+    {
+      id: "ref",
+      header: "Reservation Ref",
+      className: "text-xs font-bold",
+      cell: (res) => res.reservationNo,
+    },
+    {
+      id: "roomType",
+      header: "Room Type",
+      minWidth: "md",
+      className: "text-xs text-muted-foreground",
+      cell: (res) => res.roomType,
+    },
+    {
+      id: "stay",
+      header: "Check-in / Check-out",
+      minWidth: "lg",
+      cell: (res) => (
+        <span className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
+          <Calendar className="size-3" />
+          {res.checkInDate}
+          <ArrowRight className="size-3" />
+          {res.checkOutDate}
+        </span>
+      ),
+    },
+    {
+      id: "amount",
+      header: "Total Amount",
+      numeric: true,
+      className: "font-bold",
+      cell: (res) => `${res.totalAmount?.toLocaleString("vi-VN") ?? 0} ₫`,
+    },
+    {
+      id: "status",
+      header: "Occupancy Status",
+      // Canonical booking binding (Blueprint §2.7) — the hand-rolled ternary this
+      // replaced fell through to neutral grey for REJECTED and NO_SHOW.
+      cell: (res) => <StatusPill size="sm" domain="booking" value={res.status} />,
+    },
+  ], []);
+
+  const controls = useTableControls<ReservationStatus>("reservations", reservationColumns);
 
   const [reservations, setReservations] = useState<ReservationStatus[]>([]);
   const [totalElements, setTotalElements] = useState(0);
@@ -163,21 +231,19 @@ export function ReservationStatusScreen() {
 
   return (
     <div className="space-y-6" style={{ scrollbarGutter: "stable" }}>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Lodging & Rooms Status</h1>
-          <p className="text-xs text-slate-400">Track current room occupancy, check-in dates, and guest bookings</p>
-        </div>
-        <div className="flex items-center gap-3 self-start sm:self-auto">
-          <Button variant="outline" size="sm" onClick={fetchList} className="flex items-center gap-1.5 text-xs text-slate-600 bg-white h-9">
-            <RefreshCw className="size-3.5" />
-            Refresh
-          </Button>
-          <Badge variant="primary" className="text-xs h-9 px-3 flex items-center justify-center font-bold uppercase bg-blue-100 text-blue-800 rounded-lg">
-            PMS Live Sync
-          </Badge>
-        </div>
-      </div>
+      <PageHeader
+        {...PAGE_META.reservationStatus}
+        actions={
+          <>
+            <Button variant="secondary" onClick={fetchList} leftIcon={<RefreshCw className="size-4" />}>
+              Refresh
+            </Button>
+            <Badge variant="primary" className="text-xs h-9 px-3 flex items-center justify-center font-bold uppercase bg-blue-100 text-blue-800 rounded-lg">
+              PMS Live Sync
+            </Badge>
+          </>
+        }
+      />
 
       {error && (
         <div className="flex items-center gap-2 p-4 text-sm text-red-800 bg-red-50 rounded-xl border border-red-100">
@@ -251,108 +317,39 @@ export function ReservationStatusScreen() {
         </CardContent>
       </Card>
 
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="w-full overflow-x-auto">
-          <Table className="w-full table-fixed min-w-300">
-            <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
-              <TableRow hoverable={false}>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[22%] text-left! whitespace-nowrap">Guest Name</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[12%] text-center! whitespace-nowrap">Reservation Ref</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[16%] text-left! whitespace-nowrap">Room Type</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[22%] text-center! whitespace-nowrap">Check-in / Check-out</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[13%] text-center! whitespace-nowrap">Total Amount</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[15%] text-center! whitespace-nowrap">Occupancy Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow hoverable={false}>
-                  <TableCell colSpan={6} className="py-12 text-center text-slate-400 text-xs">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <Loader2 className="size-6 text-blue-500 animate-spin" />
-                      <span>Loading reservations...</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : reservations.length > 0 ? (
-                reservations.map((res) => (
-                  <TableRow
-                    key={res.id}
-                    onClick={() => handleOpenDetail(res.id)}
-                    className="hover:bg-slate-50/70 border-b border-slate-100 transition cursor-pointer"
-                  >
-                    <TableCell className="py-3! px-4! text-xs! font-bold! text-slate-800! text-left! whitespace-nowrap">
-                      <span className="flex items-center gap-1.5">
-                        <User className="size-3.5 text-slate-400" />
-                        {res.guestName}
-                      </span>
-                    </TableCell>
-                    <TableCell className="py-3! px-4! text-xs! font-bold! text-slate-700! text-center! whitespace-nowrap">{res.reservationNo}</TableCell>
-                    <TableCell className="py-3! px-4! text-xs! text-slate-600! text-left! whitespace-nowrap">{res.roomType}</TableCell>
-                    <TableCell className="py-3! px-4! text-xs! text-slate-500! text-center! whitespace-nowrap">
-                      <span className="flex items-center justify-center gap-1">
-                        <Calendar className="size-3 text-slate-400" />
-                        {res.checkInDate}
-                        <ArrowRight className="size-3 text-slate-400" />
-                        {res.checkOutDate}
-                      </span>
-                    </TableCell>
-                    <TableCell className="py-3! px-4! text-xs! font-bold! text-slate-700! text-center! whitespace-nowrap">
-                      {res.totalAmount?.toLocaleString("vi-VN")} ₫
-                    </TableCell>
-                    <TableCell className="py-3! px-4! text-center! whitespace-nowrap">
-                      <div className="flex justify-center">
-                        {/*
-                          Canonical booking binding (Blueprint §2.7). The
-                          hand-rolled ternary this replaces also silently fell
-                          through to `default` for REJECTED and NO_SHOW, so two
-                          failure states rendered as neutral grey.
-                        */}
-                        <StatusPill size="sm" domain="booking" value={res.status} />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-              ))
-            ) : (
-              <TableRow hoverable={false}>
-                <TableCell colSpan={6} className="py-8 text-center text-slate-400 text-xs">
-                  No reservations matched your query.
-                </TableCell>
-              </TableRow>
-            )}
-            </TableBody>
-          </Table>
-        </div>
-
-        {/* Pagination Section */}
-        {totalPages > 1 && (
-          <div className="flex justify-between items-center px-4 py-3 bg-slate-50 border-t border-slate-100 text-xs">
-            <span className="text-slate-500">
-              Showing page {currentPage + 1} of {totalPages} ({totalElements} elements)
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage === 0}
-                onClick={() => setCurrentPage(currentPage - 1)}
-                className="py-1 px-3 border-slate-200"
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage === totalPages - 1}
-                onClick={() => setCurrentPage(currentPage + 1)}
-                className="py-1 px-3 border-slate-200"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
+      <DataTable
+        label="Reservations"
+        rows={reservations}
+        columns={controls.visibleColumns}
+        rowId={(r) => r.id}
+        isLoading={loading}
+        density={controls.density}
+        sortBy={controls.sortBy}
+        sortDir={controls.sortDir}
+        onSortChange={controls.onSortChange}
+        onRowClick={(r) => handleOpenDetail(r.id)}
+        selectedIds={controls.selectedIds}
+        onSelectionChange={controls.setSelectedIds}
+        bulkActions={
+          <ExportMenu
+            filename={`reservations-selected-${new Date().toISOString().slice(0, 10)}`}
+            headers={RESERVATION_EXPORT_HEADERS}
+            rows={reservations.filter((r) => controls.selectedIds.has(r.id)).map(reservationExportRow)}
+          />
+        }
+        isFiltered={!!search || !!statusFilter}
+        emptyTitle="No reservations"
+        emptyMessage="Confirmed bookings appear here as arrivals approach."
+        footer={
+          <TablePagination
+            page={currentPage}
+            pageSize={pageSize}
+            totalElements={totalElements}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
+        }
+      />
 
       <ReservationDetailDrawer
         reservation={showDetailModal ? detailData : null}
