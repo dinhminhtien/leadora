@@ -36,8 +36,10 @@ public enum ActivityLogType {
     INVALID_TOKEN_ACCESS,
     FEEDBACK_LINK_EXPIRED,
 
-    // Handover (UC-20.x Sales/Reservation, UC-22.3 Front Office). The module previously wrote only
-    // to the log file, so BR-37's "old value / new value / actor / target" was not queryable and
+    // Handover (UC-20.x Sales/Reservation, UC-22.3 Front Office). The module
+    // previously wrote only
+    // to the log file, so BR-37's "old value / new value / actor / target" was not
+    // queryable and
     // the POST-2 audit requirement of UC-22.3 was unmet.
     HANDOVER_SUBMITTED,
     HANDOVER_READINESS_UPDATED,
@@ -50,7 +52,7 @@ public enum ActivityLogType {
     CONTRACT_ACTIVATED,
     CONTRACT_CANCELLED,
     CONTRACT_EXPIRED,
-    CONTRACT_SUPERSEDED
+    CONTRACT_SUPERSEDED,
     // Feedback events
     FEEDBACK_SUBMITTED,
     FEEDBACK_REVIEW_STATUS_UPDATED
