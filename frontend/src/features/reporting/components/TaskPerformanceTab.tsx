@@ -313,9 +313,7 @@ export function TaskPerformanceTab() {
                       <TableHead>Staff</TableHead>
                       <TableHead className="text-right">Raised</TableHead>
                       <TableHead className="text-right">Completed</TableHead>
-                      <TableHead className="text-right">Open overdue</TableHead>
-                      <TableHead className="text-right">On time</TableHead>
-                      <TableHead className="text-right">Late</TableHead>
+                      <TableHead className="text-right">Overdue</TableHead>
                       <TableHead className="text-right">Punctuality</TableHead>
                       <TableHead className="text-right">Avg cycle</TableHead>
                     </TableRow>
@@ -323,7 +321,7 @@ export function TaskPerformanceTab() {
                   <TableBody>
                     {data.staff.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-6 text-center text-xs text-slate-400">
+                        <TableCell colSpan={6} className="py-6 text-center text-xs text-slate-400">
                           No per-staff data for this period.
                         </TableCell>
                       </TableRow>
@@ -334,11 +332,30 @@ export function TaskPerformanceTab() {
                           {s.name}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">{s.total}</TableCell>
-                        <TableCell className="text-right tabular-nums text-emerald-600">{s.completed}</TableCell>
-                        <TableCell className="text-right tabular-nums text-rose-600">{s.openOverdue}</TableCell>
-                        <TableCell className="text-right tabular-nums text-emerald-600">{s.resolvedOnTime}</TableCell>
-                        <TableCell className="text-right tabular-nums text-amber-600">{s.resolvedLate}</TableCell>
-                        <TableCell className="text-right font-semibold tabular-nums">{optPct(s.punctualityRate)}</TableCell>
+                        <TableCell className="text-right tabular-nums text-emerald-600">
+                          {s.completed}
+                          <span className="ml-1 font-normal text-slate-400">{pct(s.completionRate)}</span>
+                        </TableCell>
+                        {/* Zero overdue is a result worth reading, so it stays ink rather than a
+                            washed-out red; only an actual backlog earns the alarm colour. */}
+                        <TableCell
+                          className={`text-right font-semibold tabular-nums ${
+                            s.openOverdue > 0 ? "text-rose-600" : "text-slate-400"
+                          }`}
+                        >
+                          {s.openOverdue}
+                        </TableCell>
+                        {/* On-time and late were their own columns. They are the numerator and the
+                            denominator of the percentage beside them, so they belong under it —
+                            a rate with no counts is unreadable, two extra columns is just wide. */}
+                        <TableCell className="text-right tabular-nums">
+                          <span className="font-semibold">{optPct(s.punctualityRate)}</span>
+                          {s.resolvedOnTime + s.resolvedLate > 0 && (
+                            <span className="ml-1 font-normal text-slate-400">
+                              {s.resolvedOnTime}/{s.resolvedOnTime + s.resolvedLate}
+                            </span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right tabular-nums text-slate-500">{hrs(s.avgCycleHours)}</TableCell>
                       </TableRow>
                     ))}
@@ -347,9 +364,15 @@ export function TaskPerformanceTab() {
               </div>
               <div className="px-4 pb-3">
                 <Note>
+                  {/* A column of zeroes with nothing said about it reads as a broken feature rather
+                      than as a clean queue. Say which one it is. */}
+                  {data.openOverdue === 0
+                    ? `Nobody is running late: all ${data.open} open task${data.open === 1 ? "" : "s"} are still within their deadline. `
+                    : ""}
                   Ranked by punctuality, not by how many tasks each person raised — volume measures
-                  how work was recorded rather than how it went. A dash means nobody could be judged:
-                  that person finished nothing with a recorded deadline in this period.
+                  how work was recorded rather than how it went. Punctuality shows the on-time count
+                  over the tasks that could be judged; a dash means that person finished nothing with
+                  a recorded deadline in this period.
                   {data.staff.some((s) => s.unassigned) &&
                     ` Tasks with nobody assigned are grouped into their own row so the columns add up to the ${data.totalTasks} in the headline figure.`}
                 </Note>
