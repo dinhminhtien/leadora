@@ -22,9 +22,12 @@ import com.novax.leadora.infrastructure.persistence.repository.OpHandoverReposit
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
@@ -85,6 +88,7 @@ public class UpdateHandoverReadinessUseCase {
     private final ActivityLogPublisher activityLogPublisher;
     private final ObjectMapper objectMapper;
     private final CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
+    private final PlatformTransactionManager transactionManager;
 
     @Transactional
     public ArrivalHandoverResponse execute(UUID handoverId, UpdateReadinessStatusRequest request, UserEntity actor) {
@@ -213,7 +217,6 @@ public class UpdateHandoverReadinessUseCase {
 
     /**
      * POST-6 — mirror of the Sales-side timeline write in {@code UpdateHandoverUseCase}: same
-     * association resolution (deal via the booking's quotation, plus the customer), same
      * association resolution (deal via the booking's quotation, plus the customer), so the two
      * halves of a handover read as one thread of activity.
      *
@@ -227,14 +230,24 @@ public class UpdateHandoverReadinessUseCase {
      * just made is silently rolled back behind a 500. A try/catch alone does not buy best-effort
      * semantics; it only hides where the failure came from.
      *
-     * <p>Registering an {@code afterCommit} callback gives the property the catch was reaching for:
-     * the timeline write runs in its own fresh transaction once readiness is durably committed, so
-     * it can neither roll the update back nor leave a timeline entry for an update that never
-     * landed. The request object is still built <em>inside</em> the transaction, because reading
-     * {@code booking.getQuotation().getDeal()} after commit would hit a detached proxy.
+     * <p>Registering an {@code afterCommit} callback fixes the ordering: the write happens only once
+     * readiness is durably committed, so it can never leave a timeline entry for an update that
+     * never landed. The request object is still built <em>inside</em> the transaction, because
+     * reading {@code booking.getQuotation().getDeal()} after commit would hit a detached proxy.
      *
-     * <p>The direct-call fallback is for callers with no transaction synchronization active — unit
-     * tests, and any future caller outside a transaction — where there is nothing to defer past.
+     * <p><b>But deferring alone is not enough, and this is the subtle part.</b> Inside
+     * {@code afterCommit} the original transaction's resources are still bound to the thread, so
+     * {@code isExistingTransaction()} is still true. A REQUIRED call would therefore <em>join the
+     * transaction that has just committed</em> — a participating transaction never runs
+     * {@code doCommit}, so nothing is ever flushed, and the row is discarded without an exception
+     * when the {@code EntityManager} is closed a moment later. Spring's own
+     * {@code TransactionSynchronization} javadoc spells this out: "use PROPAGATION_REQUIRES_NEW for
+     * any transactional operation that is called from here". Hence {@link #writeTimelineQuietly}
+     * runs the write through a REQUIRES_NEW template rather than calling the use case directly.
+     *
+     * <p>The direct-call fallback is for callers with no transaction synchronization active. It
+     * goes through the same REQUIRES_NEW template, so the two paths differ only in <em>when</em> the
+     * write runs, never in how it commits.
      *
      * <p>The type is {@code HANDOVER_READINESS}, paired with the Sales side's
      * {@code HANDOVER_SUBMISSION}. Both are system-written values that the manual-logging endpoint
@@ -294,10 +307,17 @@ public class UpdateHandoverReadinessUseCase {
     /**
      * Never throws. Spring propagates an exception raised in {@code afterCommit} to whoever called
      * commit, which would put us right back to failing the request over a timeline row.
+     *
+     * <p>REQUIRES_NEW rather than a plain call — see {@link #recordOnTimeline}: from inside
+     * {@code afterCommit} a REQUIRED call silently joins the transaction that already committed and
+     * is never flushed.
      */
     private void writeTimelineQuietly(CreateInteractionTimelineRequest timelineReq, UUID handoverId) {
         try {
-            createInteractionTimelineUseCase.execute(timelineReq);
+            TransactionTemplate inItsOwnTransaction = new TransactionTemplate(transactionManager);
+            inItsOwnTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            inItsOwnTransaction.executeWithoutResult(status ->
+                    createInteractionTimelineUseCase.execute(timelineReq));
         } catch (Exception e) {
             log.error("Failed to record Interaction Timeline for handover {}: {}",
                     handoverId, e.getMessage());

@@ -29,8 +29,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -64,6 +70,9 @@ class UpdateHandoverReadinessUseCaseTest {
     @Mock
     private CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
 
+    @Mock
+    private PlatformTransactionManager transactionManager;
+
     private UpdateHandoverReadinessUseCase useCase;
 
     private UUID handoverId;
@@ -73,7 +82,8 @@ class UpdateHandoverReadinessUseCaseTest {
     void setUp() {
         useCase = new UpdateHandoverReadinessUseCase(
                 opHandoverRepository, notificationRepository, activityLogPublisher, new ObjectMapper(),
-                createInteractionTimelineUseCase);
+                createInteractionTimelineUseCase, transactionManager);
+        when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         handoverId = UUID.randomUUID();
         actor = UserEntity.builder().userId(UUID.randomUUID()).fullName("FO Desk").build();
     }
@@ -393,6 +403,40 @@ class UpdateHandoverReadinessUseCaseTest {
         assertThat(entry.getValue().getDescription())
                 .contains("BK-001")
                 .contains("REVIEWED -> READY_FOR_ARRIVAL");
+    }
+
+    @Test
+    @DisplayName("POST-6 — inside a transaction the write is deferred, and runs in a NEW one")
+    void defersTheTimelineWritePastCommitAndRunsItInItsOwnTransaction() {
+        // The production path. execute() is @Transactional, so synchronization is always active and
+        // the fallback branch every other timeline test exercises is never taken in a running app.
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+
+            useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
+
+            // Nothing written yet: readiness has not committed, so neither has its timeline entry.
+            verify(createInteractionTimelineUseCase, never()).execute(any());
+
+            List<TransactionSynchronization> syncs =
+                    TransactionSynchronizationManager.getSynchronizations();
+            assertThat(syncs).hasSize(1);
+            syncs.get(0).afterCommit();
+
+            verify(createInteractionTimelineUseCase).execute(any());
+
+            // REQUIRES_NEW, not REQUIRED. Inside afterCommit the transaction that just committed is
+            // still bound to the thread, so a joining call is never flushed and the row is dropped
+            // silently when the EntityManager closes.
+            ArgumentCaptor<TransactionDefinition> definition =
+                    ArgumentCaptor.forClass(TransactionDefinition.class);
+            verify(transactionManager).getTransaction(definition.capture());
+            assertThat(definition.getValue().getPropagationBehavior())
+                    .isEqualTo(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test

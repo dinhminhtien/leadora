@@ -68,9 +68,13 @@ public class ArrivalHandoverController {
      *                         and no supervisor role reaches this endpoint any more, so in practice
      *                         it is always ignored: a Front Office Staff's visibility is decided by
      *                         the scope below rather than by a request parameter.
-     * @param deskWide         Front Office Staff default to their own queue (plus arrivals nobody
-     *                         is assigned to yet). Set this to take over the whole desk — a shift
-     *                         rota needs it when the assignee is off duty.
+     * @param deskWide         omitted, a Front Office Staff is scoped to their own queue (plus
+     *                         arrivals nobody is assigned to yet). Set this to take over the whole
+     *                         desk — a shift rota needs it when the assignee is off duty.
+     *                         <p>Note the web client sends {@code deskWide=true} on load: the desk
+     *                         opens on every arrival and narrows to your own queue on request. The
+     *                         API default stays {@code false} so a caller that omits the parameter
+     *                         gets the narrower answer rather than the wider one.
      */
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ArrivalHandoverResponse>>> list(

@@ -549,7 +549,9 @@ function ReadinessForm({ id, detail }: { id: string; detail: ArrivalHandover }) 
     setLocalError(null);
     if (!readiness || !dirty || !bookingActive) return;
     if (needsClarification && !note.trim()) {
-      setLocalError("Please enter the clarification details.");
+      // Same sentence the server sends for E7.2, so the user reads one message whether the
+      // client caught it or the request did.
+      setLocalError("Clarification note is required.");
       return;
     }
     // `mutate`, not `mutateAsync`: an awaited rejection here was an unhandled promise rejection,
