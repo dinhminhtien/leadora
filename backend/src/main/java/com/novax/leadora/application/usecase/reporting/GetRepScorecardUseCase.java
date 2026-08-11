@@ -260,6 +260,8 @@ public class GetRepScorecardUseCase {
                 case "TASKS_TOTAL" -> acc.tasksTotal += count;
                 case "TASKS_COMPLETED" -> acc.tasksCompleted += count;
                 case "TASKS_OVERDUE" -> acc.tasksOverdue += count;
+                case "TASKS_ON_TIME" -> acc.tasksOnTime += count;
+                case "TASKS_LATE" -> acc.tasksLate += count;
                 case "DISCOUNT_PCT" -> acc.avgDiscountPercent = count > 0 ? value : null;
                 case "QUOTATION_ROOTS" -> acc.quotationRoots += count;
                 case "QUOTATION_REVISIONS" -> acc.quotationRevisions += count;
@@ -338,6 +340,8 @@ public class GetRepScorecardUseCase {
         long slaOnTime = 0;
         long tasks = 0;
         long tasksDone = 0;
+        long tasksOnTime = 0;
+        long tasksJudged = 0;
         long collections = 0;
         long collectionsOnTime = 0;
         long forecasts = 0;
@@ -360,6 +364,8 @@ public class GetRepScorecardUseCase {
             slaOnTime += a.slaOnTime;
             tasks += a.tasksTotal;
             tasksDone += a.tasksCompleted;
+            tasksOnTime += a.tasksOnTime;
+            tasksJudged += a.tasksOnTime + a.tasksLate;
             collections += a.collectionTotal;
             collectionsOnTime += a.collectionOnTime;
             forecasts += a.forecastTotal;
@@ -377,6 +383,7 @@ public class GetRepScorecardUseCase {
                 .quotationAcceptanceRate(rate(accepted, quotes))
                 .slaComplianceRate(rate(slaOnTime, slaDecided))
                 .taskCompletionRate(rate(tasksDone, tasks))
+                .taskPunctualityRate(rate(tasksOnTime, tasksJudged))
                 .collectionOnTimeRate(rate(collectionsOnTime, collections))
                 .forecastAccuracyRate(rate(forecastHits, forecasts))
                 .csat(csatCount == 0 ? null : ReportingUtils.round2(csatSum / csatCount))
@@ -520,6 +527,8 @@ public class GetRepScorecardUseCase {
         long tasksTotal;
         long tasksCompleted;
         long tasksOverdue;
+        long tasksOnTime;
+        long tasksLate;
         Double avgDiscountPercent;
         long quotationRoots;
         long quotationRevisions;
@@ -537,8 +546,11 @@ public class GetRepScorecardUseCase {
         final Map<String, Long> lostReasons = new LinkedHashMap<>();
 
         boolean hasAnything() {
+            // tasksOnTime/tasksLate sit on the completed_at axis, so a rep whose only activity was
+            // finishing work raised in an earlier period has measurable data and no tasksTotal.
             return leadsCreated > 0 || dealsWon > 0 || dealsLost > 0 || quotationsCreated > 0
                     || bookingsConfirmed > 0 || tasksTotal > 0 || slaDecided > 0
+                    || tasksOnTime > 0 || tasksLate > 0
                     || csatSamples > 0 || activeDays > 0
                     || revenue.compareTo(BigDecimal.ZERO) != 0;
         }
@@ -582,6 +594,9 @@ public class GetRepScorecardUseCase {
                     .tasksOverdue(tasksOverdue)
                     .taskCompletionRate(rate(tasksCompleted, tasksTotal))
                     .taskOverdueRate(rate(tasksOverdue, tasksTotal))
+                    .tasksOnTime(tasksOnTime)
+                    .tasksLate(tasksLate)
+                    .taskPunctualityRate(rate(tasksOnTime, tasksOnTime + tasksLate))
                     .avgDiscountPercent(avgDiscountPercent)
                     .quotationRoots(quotationRoots)
                     .quotationRevisions(quotationRevisions)

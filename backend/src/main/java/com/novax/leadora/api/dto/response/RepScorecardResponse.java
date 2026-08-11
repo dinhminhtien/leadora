@@ -82,6 +82,7 @@ public class RepScorecardResponse {
         private Double quotationAcceptanceRate;
         private Double slaComplianceRate;
         private Double taskCompletionRate;
+        private Double taskPunctualityRate;
         private Double collectionOnTimeRate;
         private Double forecastAccuracyRate;
         private Double csat;
@@ -169,7 +170,14 @@ public class RepScorecardResponse {
         private long tasksCompleted;
         private long tasksOverdue;
         private Double taskCompletionRate;
+        /** Share of the still-open queue running past its deadline. */
         private Double taskOverdueRate;
+        /** Tasks finished in the period that beat their deadline. */
+        private long tasksOnTime;
+        /** Tasks finished in the period, but after their deadline. */
+        private long tasksLate;
+        /** % onTime / (onTime + late). Null when nothing datable was finished. */
+        private Double taskPunctualityRate;
         private Double avgDiscountPercent;
         private long quotationRoots;
         private long quotationRevisions;

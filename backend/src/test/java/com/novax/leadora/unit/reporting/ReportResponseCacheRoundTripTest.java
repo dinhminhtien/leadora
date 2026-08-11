@@ -73,11 +73,25 @@ class ReportResponseCacheRoundTripTest {
     @DisplayName("UC-23.2 survives the cache round trip")
     void taskPerformanceRoundTrips() {
         TaskPerformanceReportResponse original = TaskPerformanceReportResponse.builder()
-                .totalTasks(10).completed(6).overdue(2)
-                .completionRate(60.0).overdueRate(20.0)
+                .timezone("Asia/Ho_Chi_Minh")
+                .totalTasks(10).completed(6).open(4).openOverdue(2)
+                .completionRate(60.0).overdueRate(50.0)
+                .resolvedTotal(6).resolvedOnTime(4).resolvedLate(2).punctualityRate(66.67)
+                .completedUndated(3).punctualityCoverage(50.0)
+                .avgDaysOverdue(4.5).avgCycleHours(31.2)
+                .orphanTasks(1).orphanRate(10.0)
+                .slaDecided(5).slaOnTime(4).slaComplianceRate(80.0)
+                .activityMix(List.of(TaskPerformanceReportResponse.CountRow.builder()
+                        .key("CALL").label("Call").count(6).build()))
+                .overdueAging(List.of(TaskPerformanceReportResponse.CountRow.builder()
+                        .key("D1_3").label("1–3 days late").count(2).build()))
+                .overdueByPriority(List.of(TaskPerformanceReportResponse.CountRow.builder()
+                        .key("HIGH").label("High").count(1).build()))
                 .ownScope(true)
                 .staff(List.of(TaskPerformanceReportResponse.StaffRow.builder()
-                        .name("Mai Anh").total(7).completed(5).overdue(1)
+                        .name("Mai Anh").total(7).completed(5).openOverdue(1)
+                        .resolvedOnTime(4).resolvedLate(1).punctualityRate(80.0)
+                        .avgCycleHours(20.0)
                         .completionRate(71.43).build()))
                 .build();
 
@@ -85,8 +99,19 @@ class ReportResponseCacheRoundTripTest {
 
         assertThat(restored.getTotalTasks()).isEqualTo(10);
         assertThat(restored.isOwnScope()).isTrue();
+        assertThat(restored.getTimezone()).isEqualTo("Asia/Ho_Chi_Minh");
+        assertThat(restored.getResolvedLate()).isEqualTo(2);
+        assertThat(restored.getPunctualityRate()).isEqualTo(66.67);
+        assertThat(restored.getPunctualityCoverage()).isEqualTo(50.0);
+        assertThat(restored.getActivityMix()).singleElement()
+                .satisfies(row -> assertThat(row.getLabel()).isEqualTo("Call"));
+        assertThat(restored.getOverdueByPriority()).singleElement()
+                .satisfies(row -> assertThat(row.getKey()).isEqualTo("HIGH"));
         assertThat(restored.getStaff()).singleElement()
-                .satisfies(row -> assertThat(row.getCompletionRate()).isEqualTo(71.43));
+                .satisfies(row -> {
+                    assertThat(row.getCompletionRate()).isEqualTo(71.43);
+                    assertThat(row.getPunctualityRate()).isEqualTo(80.0);
+                });
     }
 
     @Test

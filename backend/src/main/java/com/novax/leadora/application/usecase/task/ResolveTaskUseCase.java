@@ -65,6 +65,9 @@ public class ResolveTaskUseCase {
 
         // Step 3-4 (POST-1): mark task COMPLETED
         task.setResultNote(resultNote.trim());
+        // completed_at is stamped by TaskEntity itself — see stampCompletedAt(). Doing it here as
+        // well would be a second mechanism for one invariant, and the other path that completes a
+        // task (UpdateTaskUseCase) would still have needed its own copy.
         task.setStatus(TaskStatus.COMPLETED);
         taskRepository.save(task);
 

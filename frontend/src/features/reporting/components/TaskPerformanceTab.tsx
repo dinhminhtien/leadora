@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Loader2, ClipboardList, CheckCircle2, AlertTriangle, XCircle, User } from "lucide-react";
+import { Loader2, ClipboardList, CheckCircle2, AlertTriangle, User, Timer, Unlink } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,14 +12,36 @@ import {
 } from "@/components/ui/Table";
 import { Card, CardContent } from "@/components/ui/Card";
 import { useReportRange, useTaskPerformanceReport } from "@/features/reporting/hooks/use_reporting";
-import { StatTile, Meter, SegmentBar, EmptyReport, ReportDateRange, ReportHeader, Note, VIZ } from "./viz";
+import type { TaskCountRow } from "@/services/reporting_service";
+import { StatTile, Meter, SegmentBar, HBarList, EmptyReport, ReportDateRange, ReportHeader, Note, VIZ } from "./viz";
 import { downloadReportCsv, periodLabel, reportFilename } from "./export";
 
 const pct = (n?: number) => `${(n ?? 0).toFixed(1)}%`;
+const optPct = (n?: number) => (n === null || n === undefined ? "—" : `${n.toFixed(1)}%`);
+const hrs = (n?: number) => (n === null || n === undefined ? "—" : `${n.toFixed(1)}h`);
+
+/** Aging bands run light → dark with severity; a single hue, because this is a magnitude scale. */
+const AGING_COLORS: Record<string, string> = {
+  D1_3: VIZ.priLow,
+  D4_7: VIZ.priMed,
+  D8_PLUS: VIZ.priHigh,
+};
+const PRIORITY_COLORS: Record<string, string> = {
+  HIGH: VIZ.priHigh,
+  MEDIUM: VIZ.priMed,
+  LOW: VIZ.priLow,
+};
+
+const asBars = (rows: TaskCountRow[] | undefined, colors: Record<string, string>, fallback: string) =>
+  (rows ?? []).map((r) => ({ label: r.label, value: r.count, color: colors[r.key] ?? fallback }));
 
 export function TaskPerformanceTab() {
   const range = useReportRange();
   const { data, isLoading, isError } = useTaskPerformanceReport(range.params, range.enabled);
+
+  // A period can have no tasks raised and still have real work in it: tasks opened earlier and
+  // finished here. Emptiness has to be judged on all three axes, not just the first.
+  const hasData = !!data && (data.totalTasks > 0 || data.resolvedTotal > 0 || data.openOverdue > 0);
 
   const handleExport = () => {
     if (!data) return;
@@ -28,31 +50,68 @@ export function TaskPerformanceTab() {
       meta: [
         ["Report", "Follow-up Task Performance (UC-23.2)"],
         ["Period", periodLabel(range.dateFrom, range.dateTo)],
+        ["Time zone", data.timezone ?? "—"],
         ["Scope", data.ownScope ? "Own assigned tasks" : "Team-wide"],
         ["Generated at", new Date().toLocaleString("vi-VN")],
       ],
       sections: [
         {
-          title: "Summary",
+          title: "Raised in period (by creation date)",
           rows: [
             ["Total tasks", data.totalTasks],
-            ["Completed", data.completed],
-            ["Open", data.open],
+            ["…of which completed", data.completed],
+            ["Still open", data.open],
             ["Cancelled", data.cancelled],
-            ["Overdue", data.overdue],
             ["Completion rate (%)", data.completionRate],
-            ["Overdue rate (%)", data.overdueRate],
             ["Priority high", data.priorityHigh],
             ["Priority medium", data.priorityMedium],
             ["Priority low", data.priorityLow],
+            ["Not linked to any lead/customer/deal", data.orphanTasks],
+            ["Orphan rate (%)", data.orphanRate],
+          ],
+        },
+        {
+          title: "Resolved in period (by completion date)",
+          rows: [
+            ["Tasks finished", data.resolvedTotal],
+            ["Finished on time", data.resolvedOnTime],
+            ["Finished late", data.resolvedLate],
+            ["Finished with no deadline set", data.resolvedNoDeadline],
+            ["Punctuality rate (%)", data.punctualityRate ?? "not measurable"],
+            ["Average cycle time (hours)", data.avgCycleHours],
+            ["Completed without a completion time", data.completedUndated],
+            ["Punctuality coverage (%)", data.punctualityCoverage],
+          ],
+        },
+        {
+          title: "Open queue right now",
+          rows: [
+            ["Open and overdue", data.openOverdue],
+            ["Overdue rate of open tasks (%)", data.overdueRate],
+            ["Average days overdue", data.avgDaysOverdue],
+            ...(data.overdueByPriority ?? []).map(
+              (r) => [`Overdue — ${r.label} priority`, r.count] as [string, number],
+            ),
+          ],
+        },
+        {
+          title: "SLA",
+          rows: [
+            ["SLAs with a settled outcome", data.slaDecided],
+            ["Met on time", data.slaOnTime],
+            ["Compliance rate (%)", data.slaComplianceRate],
           ],
         },
       ],
       tables: [
         {
           title: "Performance by staff",
-          headers: ["Staff", "Total", "Completed", "Overdue", "Completion rate (%)"],
-          rows: data.staff.map((s) => [s.name, s.total, s.completed, s.overdue, s.completionRate]),
+          headers: ["Staff", "Raised", "Completed", "Completion (%)", "Open overdue",
+            "Finished on time", "Finished late", "Punctuality (%)", "Avg cycle (h)"],
+          rows: data.staff.map((s) => [
+            s.name, s.total, s.completed, s.completionRate, s.openOverdue,
+            s.resolvedOnTime, s.resolvedLate, s.punctualityRate ?? "", s.avgCycleHours ?? "",
+          ]),
         },
       ],
     });
@@ -64,7 +123,7 @@ export function TaskPerformanceTab() {
         title="Follow-up Task Performance"
         period={periodLabel(range.dateFrom, range.dateTo)}
         onExport={handleExport}
-        disabled={!data || data.totalTasks === 0}
+        disabled={!hasData}
       />
 
       <ReportDateRange
@@ -91,90 +150,155 @@ export function TaskPerformanceTab() {
       )}
       {isError && <p className="p-4 text-sm text-rose-500">Failed to load the report. Please try again.</p>}
 
-      {data && !isLoading && data.totalTasks === 0 && <EmptyReport />}
+      {data && !isLoading && !hasData && <EmptyReport />}
 
-      {data && !isLoading && data.totalTasks > 0 && (
+      {data && !isLoading && hasData && (
         <>
-          {/* KPI tiles — status accents reserved for the good/bad numbers, others stay ink. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatTile label="Total tasks" value={String(data.totalTasks)} icon={<ClipboardList className="size-3.5" />} />
             <StatTile
-              label="Completed"
-              value={String(data.completed)}
-              sub={`Rate ${pct(data.completionRate)}`}
+              label="Tasks raised (in period)"
+              value={String(data.totalTasks)}
+              sub={`${data.completed} since completed · ${pct(data.completionRate)}`}
+              icon={<ClipboardList className="size-3.5" />}
+            />
+            {/* The figure the report previously could not produce: finishing a task late used to
+                remove it from the overdue count entirely. */}
+            <StatTile
+              label="Finished on time (in period)"
+              value={String(data.resolvedOnTime)}
+              sub={`${data.resolvedLate} late · ${optPct(data.punctualityRate)} punctual`}
               icon={<CheckCircle2 className="size-3.5" />}
               accent={VIZ.good}
             />
             <StatTile
-              label="Overdue"
-              value={String(data.overdue)}
-              sub={`Rate ${pct(data.overdueRate)}`}
+              label="Raised here & still overdue"
+              value={String(data.openOverdue)}
+              sub={`${pct(data.overdueRate)} of open · avg ${data.avgDaysOverdue.toFixed(1)}d late`}
               icon={<AlertTriangle className="size-3.5" />}
               accent={VIZ.critical}
             />
             <StatTile
-              label="Cancelled"
-              value={String(data.cancelled)}
-              sub={`Open ${data.open}`}
-              icon={<XCircle className="size-3.5" />}
+              label="Average cycle time"
+              value={hrs(data.avgCycleHours)}
+              sub={`${data.resolvedTotal} tasks finished`}
+              icon={<Timer className="size-3.5" />}
             />
           </div>
 
-          {/* Completion + status composition */}
+          <Note>
+            Three questions, three answers. <strong>Raised</strong> counts follow-up work that came
+            in, by creation date. <strong>Finished</strong> counts work completed in this period and
+            whether it beat its deadline, whenever the task was raised. <strong>Open &amp;
+            overdue</strong> is measured against the clock right now and belongs to no period. A
+            single &ldquo;overdue&rdquo; figure used to stand for all three, and it dropped a task
+            the moment it was completed — so a period in which everything was finished late scored
+            zero. Day boundaries are cut in {data.timezone ?? "the business time zone"}.
+          </Note>
+
           <div className="grid gap-3 lg:grid-cols-2">
             <Card className="border-slate-100 bg-white shadow-sm">
               <CardContent className="space-y-4 p-4">
                 <div>
                   <div className="mb-1.5 flex items-baseline justify-between">
-                    <h3 className="text-sm font-bold text-slate-700">Completion rate</h3>
-                    <span className="text-sm font-extrabold" style={{ color: VIZ.good }}>{pct(data.completionRate)}</span>
+                    <h3 className="text-sm font-bold text-slate-700">Punctuality</h3>
+                    <span className="text-sm font-extrabold" style={{ color: VIZ.good }}>{optPct(data.punctualityRate)}</span>
                   </div>
-                  <Meter value={data.completionRate} fill={VIZ.good} track={VIZ.trackGreen} />
+                  <Meter value={data.punctualityRate ?? 0} fill={VIZ.good} track={VIZ.trackGreen} />
+                  <Note>
+                    {data.punctualityRate === undefined || data.punctualityRate === null
+                      ? "Nothing finished in this period carried a deadline, so punctuality cannot be judged either way."
+                      : `${data.resolvedOnTime} of ${data.resolvedOnTime + data.resolvedLate} finished tasks beat their deadline.`}
+                    {data.resolvedNoDeadline > 0 &&
+                      ` ${data.resolvedNoDeadline} more had no deadline set and are held out rather than counted as on time.`}
+                    {data.completedUndated > 0 &&
+                      ` Punctuality is measurable for ${pct(data.punctualityCoverage)} of completed tasks — ${data.completedUndated} were finished before completion times were recorded.`}
+                  </Note>
                 </div>
                 <div>
                   <div className="mb-1.5 flex items-baseline justify-between">
-                    <h3 className="text-sm font-bold text-slate-700">Overdue rate</h3>
+                    <h3 className="text-sm font-bold text-slate-700">Overdue share of the open queue</h3>
                     <span className="text-sm font-extrabold" style={{ color: VIZ.critical }}>{pct(data.overdueRate)}</span>
                   </div>
                   <Meter value={data.overdueRate} fill={VIZ.critical} track={VIZ.trackRed} />
                   <Note>
-                    Overdue is derived, not stored: past the task&apos;s end time and not yet
-                    completed or cancelled. It is evaluated when the report runs.
+                    Derived, never stored (BR-17): past the task&apos;s end time and not yet
+                    completed or cancelled, evaluated when the report runs.
                   </Note>
                 </div>
               </CardContent>
             </Card>
 
             <Card className="border-slate-100 bg-white shadow-sm">
-              <CardContent className="space-y-2 p-4">
-                <h3 className="text-sm font-bold text-slate-700">Status breakdown</h3>
-                {/* Overdue is a derived flag on OPEN tasks (overdue ⊆ open), so split Open into
-                    "On track" (open − overdue) + "Overdue" — mutually exclusive, summing to total. */}
+              <CardContent className="space-y-3 p-4">
+                <h3 className="text-sm font-bold text-slate-700">Status of the tasks raised here</h3>
                 <SegmentBar
                   segments={[
                     { label: "Completed", value: data.completed, color: VIZ.good },
-                    { label: "On track", value: Math.max(0, data.open - data.overdue), color: VIZ.open },
-                    { label: "Overdue", value: data.overdue, color: VIZ.critical },
+                    { label: "On track", value: Math.max(0, data.open - data.openOverdue), color: VIZ.open },
+                    { label: "Overdue", value: data.openOverdue, color: VIZ.critical },
                     { label: "Cancelled", value: data.cancelled, color: VIZ.muted },
                   ]}
                 />
+                <div className="pt-1">
+                  <h3 className="mb-2 text-sm font-bold text-slate-700">How overdue, and how urgent</h3>
+                  {data.openOverdue > 0 ? (
+                    <div className="space-y-3">
+                      <HBarList items={asBars(data.overdueAging, AGING_COLORS, VIZ.critical)} />
+                      <HBarList items={asBars(data.overdueByPriority, PRIORITY_COLORS, VIZ.open)} />
+                      <Note>
+                        Three of four high-priority tasks overdue is a different situation from three
+                        of forty low-priority ones. The report used to show priority and overdue as
+                        separate totals, so that difference could not be seen.
+                      </Note>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400">Nothing in the queue is running late.</p>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Priority distribution — ordinal blue ramp (High darkest → Low lightest) */}
-          <Card className="border-slate-100 bg-white shadow-sm">
-            <CardContent className="space-y-2 p-4">
-              <h3 className="text-sm font-bold text-slate-700">Distribution by priority</h3>
-              <SegmentBar
-                segments={[
-                  { label: "High", value: data.priorityHigh, color: VIZ.priHigh },
-                  { label: "Medium", value: data.priorityMedium, color: VIZ.priMed },
-                  { label: "Low", value: data.priorityLow, color: VIZ.priLow },
-                ]}
-              />
-            </CardContent>
-          </Card>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Card className="border-slate-100 bg-white shadow-sm">
+              <CardContent className="space-y-2 p-4">
+                <h3 className="text-sm font-bold text-slate-700">What kind of follow-up work</h3>
+                {data.activityMix && data.activityMix.length > 0 ? (
+                  <HBarList items={asBars(data.activityMix, {}, VIZ.open)} />
+                ) : (
+                  <p className="text-[11px] text-slate-400">No activity type recorded on these tasks.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-100 bg-white shadow-sm">
+              <CardContent className="space-y-3 p-4">
+                <h3 className="text-sm font-bold text-slate-700">Priority mix &amp; linkage</h3>
+                <SegmentBar
+                  segments={[
+                    { label: "High", value: data.priorityHigh, color: VIZ.priHigh },
+                    { label: "Medium", value: data.priorityMedium, color: VIZ.priMed },
+                    { label: "Low", value: data.priorityLow, color: VIZ.priLow },
+                  ]}
+                />
+                <div className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                  <Unlink className="mt-0.5 size-3.5 shrink-0 text-slate-400" />
+                  <p className="text-[11px] leading-relaxed text-slate-600">
+                    <strong>{data.orphanTasks}</strong> task{data.orphanTasks === 1 ? "" : "s"} (
+                    {pct(data.orphanRate)}) are attached to no lead, customer or deal — effort that
+                    never shows up against an opportunity.
+                  </p>
+                </div>
+                {data.slaDecided > 0 && (
+                  <p className="text-[11px] text-slate-500">
+                    SLA: <strong>{data.slaOnTime}</strong> of {data.slaDecided} settled on time (
+                    {pct(data.slaComplianceRate)}) — classified by the same rules as the SLA
+                    Compliance tab, so a breach resolved late still counts as a breach.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Per-staff breakdown */}
           <Card className="border-slate-100 bg-white shadow-sm">
@@ -187,16 +311,17 @@ export function TaskPerformanceTab() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Staff</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="text-right">Raised</TableHead>
                       <TableHead className="text-right">Completed</TableHead>
                       <TableHead className="text-right">Overdue</TableHead>
-                      <TableHead className="text-right">Completion</TableHead>
+                      <TableHead className="text-right">Punctuality</TableHead>
+                      <TableHead className="text-right">Avg cycle</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {data.staff.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={5} className="py-6 text-center text-xs text-slate-400">
+                        <TableCell colSpan={6} className="py-6 text-center text-xs text-slate-400">
                           No per-staff data for this period.
                         </TableCell>
                       </TableRow>
@@ -207,22 +332,51 @@ export function TaskPerformanceTab() {
                           {s.name}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">{s.total}</TableCell>
-                        <TableCell className="text-right tabular-nums text-emerald-600">{s.completed}</TableCell>
-                        <TableCell className="text-right tabular-nums text-rose-600">{s.overdue}</TableCell>
-                        <TableCell className="text-right font-semibold tabular-nums">{pct(s.completionRate)}</TableCell>
+                        <TableCell className="text-right tabular-nums text-emerald-600">
+                          {s.completed}
+                          <span className="ml-1 font-normal text-slate-400">{pct(s.completionRate)}</span>
+                        </TableCell>
+                        {/* Zero overdue is a result worth reading, so it stays ink rather than a
+                            washed-out red; only an actual backlog earns the alarm colour. */}
+                        <TableCell
+                          className={`text-right font-semibold tabular-nums ${
+                            s.openOverdue > 0 ? "text-rose-600" : "text-slate-400"
+                          }`}
+                        >
+                          {s.openOverdue}
+                        </TableCell>
+                        {/* On-time and late were their own columns. They are the numerator and the
+                            denominator of the percentage beside them, so they belong under it —
+                            a rate with no counts is unreadable, two extra columns is just wide. */}
+                        <TableCell className="text-right tabular-nums">
+                          <span className="font-semibold">{optPct(s.punctualityRate)}</span>
+                          {s.resolvedOnTime + s.resolvedLate > 0 && (
+                            <span className="ml-1 font-normal text-slate-400">
+                              {s.resolvedOnTime}/{s.resolvedOnTime + s.resolvedLate}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-slate-500">{hrs(s.avgCycleHours)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </div>
-              {data.staff.some((s) => s.unassigned) && (
-                <div className="px-4 pb-3">
-                  <Note>
-                    Tasks with nobody assigned are grouped into their own row so the column adds up
-                    to the {data.totalTasks} in the headline figure.
-                  </Note>
-                </div>
-              )}
+              <div className="px-4 pb-3">
+                <Note>
+                  {/* A column of zeroes with nothing said about it reads as a broken feature rather
+                      than as a clean queue. Say which one it is. */}
+                  {data.openOverdue === 0
+                    ? `Nobody is running late: all ${data.open} open task${data.open === 1 ? "" : "s"} are still within their deadline. `
+                    : ""}
+                  Ranked by punctuality, not by how many tasks each person raised — volume measures
+                  how work was recorded rather than how it went. Punctuality shows the on-time count
+                  over the tasks that could be judged; a dash means that person finished nothing with
+                  a recorded deadline in this period.
+                  {data.staff.some((s) => s.unassigned) &&
+                    ` Tasks with nobody assigned are grouped into their own row so the columns add up to the ${data.totalTasks} in the headline figure.`}
+                </Note>
+              </div>
             </CardContent>
           </Card>
         </>
