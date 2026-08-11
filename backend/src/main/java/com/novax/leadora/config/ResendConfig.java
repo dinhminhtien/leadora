@@ -22,6 +22,7 @@ public class ResendConfig {
                 .requestFactory(requestFactory)
                 .defaultHeader("Authorization", "Bearer " + properties.apiKey())
                 .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader("User-Agent", "Leadora-CRM/1.0")
                 .build();
     }
 }
