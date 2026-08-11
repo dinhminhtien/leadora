@@ -532,6 +532,11 @@ function ReadinessForm({ id, detail }: { id: string; detail: ArrivalHandover }) 
   const [localError, setLocalError] = useState<string | null>(null);
 
   // BR-44 — a cancelled / no-show / checked-out booking freezes readiness entirely.
+  //
+  // Not dead code, despite the detail endpoint now 404ing those bookings: this guards the CACHED
+  // copy. React Query keeps the last successful payload when a refetch fails, so a drawer left open
+  // across a cancellation keeps rendering the booking as it was. Without this the form would stay
+  // enabled and the user would find out by submitting into a 422.
   const bookingActive = isBookingActive(detail.bookingStatus);
   // POST-4 — from NEED_CLARIFICATION the only move is to amend the note; Sales/Reservation must
   // re-submit before readiness can be confirmed. The server enforces this; we mirror it so the
@@ -549,7 +554,9 @@ function ReadinessForm({ id, detail }: { id: string; detail: ArrivalHandover }) 
     setLocalError(null);
     if (!readiness || !dirty || !bookingActive) return;
     if (needsClarification && !note.trim()) {
-      setLocalError("Please enter the clarification details.");
+      // Same sentence the server sends for E7.2, so the user reads one message whether the
+      // client caught it or the request did.
+      setLocalError("Clarification note is required.");
       return;
     }
     // `mutate`, not `mutateAsync`: an awaited rejection here was an unhandled promise rejection,

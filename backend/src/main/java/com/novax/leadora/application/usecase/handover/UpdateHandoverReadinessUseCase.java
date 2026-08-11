@@ -22,9 +22,12 @@ import com.novax.leadora.infrastructure.persistence.repository.OpHandoverReposit
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
@@ -85,6 +88,7 @@ public class UpdateHandoverReadinessUseCase {
     private final ActivityLogPublisher activityLogPublisher;
     private final ObjectMapper objectMapper;
     private final CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
+    private final PlatformTransactionManager transactionManager;
 
     @Transactional
     public ArrivalHandoverResponse execute(UUID handoverId, UpdateReadinessStatusRequest request, UserEntity actor) {
@@ -141,6 +145,24 @@ public class UpdateHandoverReadinessUseCase {
             notifyClarificationNeeded(saved, actor);
         }
 
+        // Whether this write touched an arrival somebody else is responsible for.
+        //
+        // The desk is deliberately not locked to the assignee: a front desk is a shift rota, and
+        // whoever is on duty when the guest walks in has to be able to act. Enforcing ownership
+        // here would strand an arrival whose assignee is off shift, and the only way out —
+        // Sales reassigning it — resets the readiness to PENDING_REVIEW and throws away the review
+        // work already done (UpdateHandoverUseCase, re-submit branch).
+        //
+        // So this stays a matter of professional conduct rather than a permission. What the code
+        // owes in return is a trail: the fact that A edited B's arrival must be answerable later,
+        // not reconstructed from guesswork. Recorded in the activity row (queryable) and raised to
+        // WARN in the log (greppable) — the plain UpdatedBy field cannot show it, because it names
+        // the actor without ever naming who was supposed to act.
+        UUID assignedFoUserId = saved.getAssignedFoUserId();
+        boolean actedOnAnotherDesk = assignedFoUserId != null
+                && actor != null
+                && !assignedFoUserId.equals(actor.getUserId());
+
         // POST-2 / BR-37 — a queryable audit row, not just a line in the log file. The old value
         // matters as much as the new one: without it the trail cannot show what actually changed.
         // Wrapped because an audit write must never turn a completed business operation into an
@@ -150,7 +172,9 @@ public class UpdateHandoverReadinessUseCase {
                     .put("bookingCode", booking != null ? booking.getBookingCode() : null)
                     .put("previousReadiness", previousReadiness != null ? previousReadiness.name() : null)
                     .put("newReadiness", newReadiness.name())
-                    .put("handoverStatus", saved.getStatus() != null ? saved.getStatus().name() : null);
+                    .put("handoverStatus", saved.getStatus() != null ? saved.getStatus().name() : null)
+                    .put("assignedFoUserId", assignedFoUserId != null ? assignedFoUserId.toString() : null)
+                    .put("updatedByAssignee", !actedOnAnotherDesk);
             if (newReadiness == ReadinessStatus.NEED_CLARIFICATION) {
                 payload.put("clarificationNote", saved.getClarificationNote());
             }
@@ -158,7 +182,8 @@ public class UpdateHandoverReadinessUseCase {
                     ActivityLogType.HANDOVER_READINESS_UPDATED,
                     EntityType.HANDOVER,
                     saved.getHandoverId(),
-                    "Arrival readiness " + previousReadiness + " -> " + newReadiness,
+                    "Arrival readiness " + previousReadiness + " -> " + newReadiness
+                            + (actedOnAnotherDesk ? " (updated by someone other than the assignee)" : ""),
                     payload);
         } catch (Exception e) {
             log.warn("Failed to publish handover readiness activity: {}", e.getMessage());
@@ -166,9 +191,17 @@ public class UpdateHandoverReadinessUseCase {
 
         // BR-37 — same shape as the Sales-side handover log lines, so one grep for "[AUDIT] Action:"
         // returns both halves of a handover instead of only the half Sales wrote.
-        log.info("[AUDIT] Action: UPDATE_HANDOVER_READINESS, TargetRecord: {}, OldReadiness: {}, NewReadiness: {}, Status: {}, UpdatedBy: {}, Timestamp: {}",
+        log.info("[AUDIT] Action: UPDATE_HANDOVER_READINESS, TargetRecord: {}, OldReadiness: {}, NewReadiness: {}, Status: {}, AssignedTo: {}, UpdatedBy: {}, Timestamp: {}",
                 saved.getHandoverId(), previousReadiness, newReadiness, saved.getStatus(),
-                actor != null ? actor.getUserId() : null, OffsetDateTime.now());
+                assignedFoUserId, actor != null ? actor.getUserId() : null, OffsetDateTime.now());
+
+        // WARN, not INFO: this is the line somebody goes looking for when a shift disputes who
+        // changed an arrival, so it has to stand out from the ordinary readiness traffic.
+        if (actedOnAnotherDesk) {
+            log.warn("[AUDIT] Action: UPDATE_HANDOVER_READINESS_ON_ANOTHER_DESK, TargetRecord: {}, AssignedTo: {}, UpdatedBy: {}, OldReadiness: {}, NewReadiness: {}, Timestamp: {}",
+                    saved.getHandoverId(), assignedFoUserId, actor.getUserId(),
+                    previousReadiness, newReadiness, OffsetDateTime.now());
+        }
 
         // POST-6 — the Front Office half of the handover has to reach the customer's interaction
         // timeline too. Sales writes HANDOVER_SUBMISSION there when it hands over (UC-20.4); without
@@ -184,7 +217,6 @@ public class UpdateHandoverReadinessUseCase {
 
     /**
      * POST-6 — mirror of the Sales-side timeline write in {@code UpdateHandoverUseCase}: same
-     * association resolution (deal via the booking's quotation, plus the customer), same
      * association resolution (deal via the booking's quotation, plus the customer), so the two
      * halves of a handover read as one thread of activity.
      *
@@ -198,14 +230,24 @@ public class UpdateHandoverReadinessUseCase {
      * just made is silently rolled back behind a 500. A try/catch alone does not buy best-effort
      * semantics; it only hides where the failure came from.
      *
-     * <p>Registering an {@code afterCommit} callback gives the property the catch was reaching for:
-     * the timeline write runs in its own fresh transaction once readiness is durably committed, so
-     * it can neither roll the update back nor leave a timeline entry for an update that never
-     * landed. The request object is still built <em>inside</em> the transaction, because reading
-     * {@code booking.getQuotation().getDeal()} after commit would hit a detached proxy.
+     * <p>Registering an {@code afterCommit} callback fixes the ordering: the write happens only once
+     * readiness is durably committed, so it can never leave a timeline entry for an update that
+     * never landed. The request object is still built <em>inside</em> the transaction, because
+     * reading {@code booking.getQuotation().getDeal()} after commit would hit a detached proxy.
      *
-     * <p>The direct-call fallback is for callers with no transaction synchronization active — unit
-     * tests, and any future caller outside a transaction — where there is nothing to defer past.
+     * <p><b>But deferring alone is not enough, and this is the subtle part.</b> Inside
+     * {@code afterCommit} the original transaction's resources are still bound to the thread, so
+     * {@code isExistingTransaction()} is still true. A REQUIRED call would therefore <em>join the
+     * transaction that has just committed</em> — a participating transaction never runs
+     * {@code doCommit}, so nothing is ever flushed, and the row is discarded without an exception
+     * when the {@code EntityManager} is closed a moment later. Spring's own
+     * {@code TransactionSynchronization} javadoc spells this out: "use PROPAGATION_REQUIRES_NEW for
+     * any transactional operation that is called from here". Hence {@link #writeTimelineQuietly}
+     * runs the write through a REQUIRES_NEW template rather than calling the use case directly.
+     *
+     * <p>The direct-call fallback is for callers with no transaction synchronization active. It
+     * goes through the same REQUIRES_NEW template, so the two paths differ only in <em>when</em> the
+     * write runs, never in how it commits.
      *
      * <p>The type is {@code HANDOVER_READINESS}, paired with the Sales side's
      * {@code HANDOVER_SUBMISSION}. Both are system-written values that the manual-logging endpoint
@@ -265,10 +307,17 @@ public class UpdateHandoverReadinessUseCase {
     /**
      * Never throws. Spring propagates an exception raised in {@code afterCommit} to whoever called
      * commit, which would put us right back to failing the request over a timeline row.
+     *
+     * <p>REQUIRES_NEW rather than a plain call — see {@link #recordOnTimeline}: from inside
+     * {@code afterCommit} a REQUIRED call silently joins the transaction that already committed and
+     * is never flushed.
      */
     private void writeTimelineQuietly(CreateInteractionTimelineRequest timelineReq, UUID handoverId) {
         try {
-            createInteractionTimelineUseCase.execute(timelineReq);
+            TransactionTemplate inItsOwnTransaction = new TransactionTemplate(transactionManager);
+            inItsOwnTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            inItsOwnTransaction.executeWithoutResult(status ->
+                    createInteractionTimelineUseCase.execute(timelineReq));
         } catch (Exception e) {
             log.error("Failed to record Interaction Timeline for handover {}: {}",
                     handoverId, e.getMessage());
