@@ -1,5 +1,6 @@
 package com.novax.leadora.api.dto.response;
 
+import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import lombok.Builder;
 import lombok.Getter;
@@ -7,6 +8,7 @@ import lombok.Getter;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -27,6 +29,7 @@ public class QuotationResponse {
     private Integer numberOfRooms;
     private Integer nights;
     private BigDecimal pricePerNight;
+    private List<RoomLineResponse> roomLines;
     private BigDecimal subtotal;
     private BigDecimal discountPercent;
     private BigDecimal discountAmount;
@@ -41,6 +44,17 @@ public class QuotationResponse {
     private java.util.UUID parentQuotationId;
     private String changeReason;
     private OffsetDateTime createdAt;
+
+    /** One room type + quantity + rate line within the quotation (UC-14.1/14.5). */
+    @Getter
+    @Builder
+    public static class RoomLineResponse {
+        private String roomType;
+        private Integer numberOfRooms;
+        private BigDecimal pricePerNight;
+        private Integer nights;
+        private BigDecimal lineTotal;
+    }
 
     public static QuotationResponse from(QuotationEntity entity) {
         String customerId = entity.getCustomer() != null
@@ -83,23 +97,47 @@ public class QuotationResponse {
                 .build();
     }
 
-    public static QuotationResponse fromWithDetail(QuotationEntity entity, int nights,
-                                                    Integer numberOfRooms, BigDecimal pricePerNight) {
+    /**
+     * Same as {@link #from(QuotationEntity)}, plus the per-room-type breakdown
+     * (BR-23: quantity/room type). {@code roomType}/{@code numberOfRooms}/{@code pricePerNight}
+     * stay populated as an aggregate/summary for clients that only render the single-line
+     * legacy shape (list, send/convert modals); {@code roomLines} carries the full detail.
+     */
+    public static QuotationResponse fromWithDetails(QuotationEntity entity, List<QuotationDetailEntity> details) {
+        String customerId = entity.getCustomer() != null
+                ? entity.getCustomer().getCustomerId().toString() : null;
+
+        List<RoomLineResponse> roomLines = details.stream()
+                .map(d -> RoomLineResponse.builder()
+                        .roomType(d.getDescription())
+                        .numberOfRooms(d.getQuantity())
+                        .pricePerNight(d.getUnitPrice())
+                        .nights(d.getNights())
+                        .lineTotal(d.getLineTotal())
+                        .build())
+                .toList();
+
+        Integer totalRooms = details.isEmpty() ? null
+                : details.stream().mapToInt(d -> d.getQuantity()).sum();
+        Integer nights = details.isEmpty() ? null : details.get(0).getNights();
+        BigDecimal pricePerNight = details.size() == 1 ? details.get(0).getUnitPrice() : null;
+
         return QuotationResponse.builder()
                 .id(entity.getQuotationId().toString())
                 .quoteNo("QT-" + entity.getQuotationId().toString().substring(0, 8).toUpperCase())
                 .dealId(entity.getDeal() != null ? entity.getDeal().getDealId() : null)
                 .dealName(entity.getDeal() != null ? entity.getDeal().getDealName() : "")
-                .customerId(entity.getCustomer() != null ? entity.getCustomer().getCustomerId() : null)
+                .customerId(customerId != null ? UUID.fromString(customerId) : null)
                 .contactName(entity.getCustomer() != null ? entity.getCustomer().getFullName() : "")
                 .email(entity.getCustomer() != null ? entity.getCustomer().getEmail() : "")
                 .phone(entity.getCustomer() != null ? entity.getCustomer().getPhone() : "")
                 .roomType(entity.getRoomType())
                 .checkInDate(entity.getCheckInDate())
                 .checkOutDate(entity.getCheckOutDate())
-                .numberOfRooms(numberOfRooms)
+                .numberOfRooms(totalRooms)
                 .nights(nights)
                 .pricePerNight(pricePerNight)
+                .roomLines(roomLines)
                 .paymentPolicy(entity.getPaymentPolicy())
                 .subtotal(entity.getSubtotal())
                 .discountPercent(entity.getDiscountPercent())
