@@ -4,6 +4,7 @@ import com.novax.leadora.api.dto.request.ConvertToBookingRequest;
 import com.novax.leadora.api.dto.response.BookingResponse;
 import com.novax.leadora.application.usecase.contract.ActivateContractUseCase;
 import com.novax.leadora.application.usecase.quotation.ConvertToBookingUseCase;
+import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 import com.novax.leadora.application.usecase.quotation.QuotationAccessPolicy;
 import com.novax.leadora.application.usecase.quotation.QuotationAvailabilityChecker;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
@@ -66,6 +67,9 @@ class ConvertToBookingUseCaseTest {
 
     @Mock
     private ActivateContractUseCase activateContractUseCase;
+
+    @Mock
+    private DealWorkflowSyncService dealWorkflowSyncService;
 
     @InjectMocks
     private ConvertToBookingUseCase convertToBookingUseCase;
@@ -172,6 +176,8 @@ class ConvertToBookingUseCaseTest {
     @DisplayName("UT-CONVERT-06: Convert successfully with ACKNOWLEDGED contract and trigger activation")
     void testConvertSuccessfully() {
         UUID quotationId = UUID.randomUUID();
+        UUID dealId = UUID.randomUUID();
+        DealEntity deal = DealEntity.builder().dealId(dealId).build();
         CustomerEntity customer = CustomerEntity.builder().customerId(UUID.randomUUID()).build();
         QuotationEntity quotation = QuotationEntity.builder()
                 .quotationId(quotationId)
@@ -180,6 +186,7 @@ class ConvertToBookingUseCaseTest {
                 .checkInDate(LocalDate.now().plusDays(2))
                 .checkOutDate(LocalDate.now().plusDays(5))
                 .totalAmount(BigDecimal.valueOf(5000000))
+                .deal(deal)
                 .build();
 
         ContractEntity contract = ContractEntity.builder()
@@ -218,5 +225,62 @@ class ConvertToBookingUseCaseTest {
         verify(activateContractUseCase, times(1)).execute(contract.getId());
         verify(bookingRepository, times(1)).save(any(BookingEntity.class));
         verify(bookingDetailRepository, times(1)).saveAll(anyList());
+        verify(dealWorkflowSyncService, times(1)).syncPipelineStage(dealId);
+    }
+
+    @Test
+    @DisplayName("UT-CONVERT-07: Convert successfully with ACCEPTED_BY_CUSTOMER status and set status to BOOKING_REQUEST")
+    void testConvertSuccessfullyAcceptedByCustomer() {
+        UUID quotationId = UUID.randomUUID();
+        UUID dealId = UUID.randomUUID();
+        DealEntity deal = DealEntity.builder().dealId(dealId).build();
+        CustomerEntity customer = CustomerEntity.builder().customerId(UUID.randomUUID()).build();
+        QuotationEntity quotation = QuotationEntity.builder()
+                .quotationId(quotationId)
+                .status(QuotationStatus.ACCEPTED_BY_CUSTOMER)
+                .customer(customer)
+                .checkInDate(LocalDate.now().plusDays(2))
+                .checkOutDate(LocalDate.now().plusDays(5))
+                .totalAmount(BigDecimal.valueOf(5000000))
+                .deal(deal)
+                .build();
+
+        ContractEntity contract = ContractEntity.builder()
+                .id(UUID.randomUUID())
+                .status(ContractStatus.ACKNOWLEDGED)
+                .version(1)
+                .build();
+
+        QuotationDetailEntity detail = QuotationDetailEntity.builder()
+                .description("Deluxe Room")
+                .quantity(2)
+                .nights(3)
+                .unitPrice(BigDecimal.valueOf(1000000))
+                .lineTotal(BigDecimal.valueOf(6000000))
+                .build();
+
+        ConvertToBookingRequest request = new ConvertToBookingRequest();
+
+        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+        when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
+        when(quotationDetailRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(detail));
+        
+        when(bookingRepository.save(any(BookingEntity.class))).thenAnswer(inv -> {
+            BookingEntity booking = inv.getArgument(0);
+            booking.setBookingId(UUID.randomUUID());
+            return booking;
+        });
+
+        BookingResponse response = convertToBookingUseCase.execute(quotationId, request);
+
+        assertNotNull(response);
+        assertEquals(BookingStatus.PENDING, response.getStatus());
+        assertEquals(QuotationStatus.BOOKING_REQUEST, quotation.getStatus());
+
+        // Verify activation is called
+        verify(activateContractUseCase, times(1)).execute(contract.getId());
+        verify(bookingRepository, times(1)).save(any(BookingEntity.class));
+        verify(bookingDetailRepository, times(1)).saveAll(anyList());
+        verify(dealWorkflowSyncService, times(1)).syncPipelineStage(dealId);
     }
 }

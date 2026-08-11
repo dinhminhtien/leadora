@@ -29,6 +29,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import com.novax.leadora.config.QuotationProperties;
+import com.novax.leadora.infrastructure.persistence.entity.QuotationConfirmationTokenEntity;
+import com.novax.leadora.infrastructure.persistence.repository.QuotationConfirmationTokenRepository;
+import java.security.SecureRandom;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -44,6 +51,28 @@ public class SendQuotationUseCase {
     private final SystemAuditLogService systemAuditLogService;
     private final ActivityLogPublisher activityLogPublisher;
     private final ObjectMapper objectMapper;
+    private final QuotationConfirmationTokenRepository tokenRepository;
+    private final QuotationProperties quotationProperties;
+
+    private static final SecureRandom secureRandom = new SecureRandom();
+
+    private String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
+    private String hashSha256(String data) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(data.getBytes(StandardCharsets.UTF_8));
+            return bytesToHex(hash);
+        } catch (Exception e) {
+            throw new RuntimeException("SHA-256 hashing not available", e);
+        }
+    }
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, SendQuotationRequest request) {
@@ -68,15 +97,41 @@ public class SendQuotationUseCase {
         UserEntity actor = currentUserProvider.resolve(null);
         String actorRole = actor.getRole() != null ? actor.getRole().getRoleName() : null;
 
+        // Generate secure link token (64-char hex)
+        byte[] tokenBytes = new byte[32];
+        secureRandom.nextBytes(tokenBytes);
+        String tokenHex = bytesToHex(tokenBytes);
+        String tokenHash = hashSha256(tokenHex);
+
+        // Delete any existing token for this quotation to prevent leaks
+        tokenRepository.deleteByQuotationId(quotation.getQuotationId());
+
+        // Save token to DB (valid for 24 hours)
+        QuotationConfirmationTokenEntity tokenEntity = QuotationConfirmationTokenEntity.builder()
+                .quotationId(quotation.getQuotationId())
+                .tokenHash(tokenHash)
+                .expiresAt(OffsetDateTime.now().plusHours(24))
+                .build();
+        tokenRepository.save(tokenEntity);
+
+        String portalBase = quotationProperties.getPortalBaseUrl();
+        if (portalBase == null || portalBase.isBlank()) {
+            portalBase = "http://localhost:3000";
+        }
+        if (portalBase.endsWith("/")) {
+            portalBase = portalBase.substring(0, portalBase.length() - 1);
+        }
+        String secureLink = portalBase + "/portal/quotations/" + quotation.getQuotationId() + "?token=" + tokenHex;
+
         // POST-3: send the email FIRST when method is EMAIL (UC-14.4 E4) — a delivery
         // failure must surface as an error, not silently leave the quotation marked
-        // SENT when the customer never actually received it.
+        // PENDING_CUSTOMER_RESPONSE when the customer never actually received it.
         if (isEmail) {
-            quotationEmailService.sendQuotationEmail(quotation, request, actor.getFullName());
+            quotationEmailService.sendQuotationEmail(quotation, request, actor.getFullName(), secureLink);
         }
 
-        // POST-1: Update status to SENT
-        quotation.setStatus(QuotationStatus.SENT);
+        // POST-1: Update status to PENDING_CUSTOMER_RESPONSE
+        quotation.setStatus(QuotationStatus.PENDING_CUSTOMER_RESPONSE);
         quotation.setSentAt(OffsetDateTime.now());
         QuotationEntity saved = quotationRepository.save(quotation);
 
@@ -95,7 +150,7 @@ public class SendQuotationUseCase {
         sendLogRepository.save(sendLog);
 
         systemAuditLogService.log("QUOTATION", "QUOTATION", quotationId, "SENT", actor,
-                "APPROVED", "SENT", "via " + request.getSendMethod() + " to " + request.getRecipientName());
+                "APPROVED", "PENDING_CUSTOMER_RESPONSE", "via " + request.getSendMethod() + " to " + request.getRecipientName());
 
         try {
             ObjectNode payload = objectMapper.createObjectNode()
@@ -103,12 +158,12 @@ public class SendQuotationUseCase {
                     .put("recipientName", request.getRecipientName())
                     .put("recipientEmail", request.getRecipientEmail())
                     .put("previousStatus", "APPROVED")
-                    .put("newStatus", "SENT");
+                    .put("newStatus", "PENDING_CUSTOMER_RESPONSE");
             activityLogPublisher.publish(
                     ActivityLogType.QUOTATION_UPDATED,
                     EntityType.QUOTATION,
                     saved.getQuotationId(),
-                    "Quotation sent to customer",
+                    "Quotation sent to customer (pending customer response)",
                     payload
             );
         } catch (Exception e) {

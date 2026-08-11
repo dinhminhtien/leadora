@@ -49,7 +49,8 @@ public class GetSalesPerformanceReportUseCase {
             BookingStatus.CHECKED_OUT.name());
     /** A quotation the customer said yes to, whether or not it became a booking yet. */
     private static final Set<String> ACCEPTED_QUOTATIONS = Set.of(
-            QuotationStatus.ACCEPTED.name(), QuotationStatus.CONVERTED.name());
+            QuotationStatus.ACCEPTED.name(), QuotationStatus.CONVERTED.name(),
+            QuotationStatus.ACCEPTED_BY_CUSTOMER.name(), QuotationStatus.BOOKING_REQUEST.name());
 
     private static final int MAX_REPS = 50;
     private static final String UNASSIGNED_LABEL = "(Unassigned)";
@@ -91,7 +92,8 @@ public class GetSalesPerformanceReportUseCase {
         long quotationsCreated = totals.count(KIND_QUOTATION)
                 - totals.count(KIND_QUOTATION, QuotationStatus.SUPERSEDED.name());
         long quotationsAccepted = totals.countIn(KIND_QUOTATION, ACCEPTED_QUOTATIONS);
-        long quotationsConverted = totals.count(KIND_QUOTATION, QuotationStatus.CONVERTED.name());
+        long quotationsConverted = totals.count(KIND_QUOTATION, QuotationStatus.CONVERTED.name())
+                + totals.count(KIND_QUOTATION, QuotationStatus.BOOKING_REQUEST.name());
 
         long bookingsConfirmed = totals.countIn(KIND_BOOKING, CONFIRMED_BOOKINGS);
         BigDecimal revenue = totals.amount(KIND_REVENUE, "PAID");

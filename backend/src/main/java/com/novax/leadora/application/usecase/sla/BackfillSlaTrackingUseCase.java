@@ -31,7 +31,8 @@ public class BackfillSlaTrackingUseCase {
     private static final Set<QuotationStatus> COMPLETED_STATUSES = Set.of(
             QuotationStatus.SENT, QuotationStatus.ACCEPTED, QuotationStatus.INTERESTED,
             QuotationStatus.CONVERTED, QuotationStatus.CLOSED, QuotationStatus.EXPIRED,
-            QuotationStatus.REJECTED
+            QuotationStatus.REJECTED, QuotationStatus.PENDING_CUSTOMER_RESPONSE,
+            QuotationStatus.ACCEPTED_BY_CUSTOMER, QuotationStatus.BOOKING_REQUEST
     );
 
     /**

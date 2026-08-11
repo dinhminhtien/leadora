@@ -55,7 +55,14 @@ public class QuotationEmailService {
         + "<tr style=\"background:#1e3a5f;\"><td style=\"padding:12px 16px;color:#bfdbfe;font-weight:600;\">Total Amount</td>"
         + "<td style=\"padding:12px 16px;color:#ffffff;font-weight:700;font-size:16px;\">${total}</td></tr>"
         + "</table>"
-        + "<p style=\"color:#6b7280;font-size:12px;margin:20px 0 0;\">To accept, revise, or enquire about this quotation, please reply to this email or contact your sales representative.</p>"
+        // CTA Button
+        + "<div style=\"text-align:center;margin:30px 0;\">"
+        + "<a href=\"${secureLink}\" style=\"background:#1e3a5f;color:#ffffff;padding:12px 28px;text-decoration:none;font-weight:bold;border-radius:4px;display:inline-block;box-shadow:0 2px 4px rgba(0,0,0,0.1);\">Review & Accept Quotation</a>"
+        + "</div>"
+        + "<p style=\"color:#6b7280;font-size:12px;margin:20px 0 0;\">"
+        + "If the button above does not work, please copy and paste this URL into your browser:<br>"
+        + "<span style=\"color:#1e3a5f;\">${secureLink}</span>"
+        + "</p>"
         + "</td></tr>"
         // Footer
         + "<tr><td style=\"background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb;\">"
@@ -63,7 +70,7 @@ public class QuotationEmailService {
         + "</td></tr>"
         + "</table></td></tr></table></body></html>";
 
-    public void sendQuotationEmail(QuotationEntity quotation, SendQuotationRequest request, String senderName) {
+    public void sendQuotationEmail(QuotationEntity quotation, SendQuotationRequest request, String senderName, String secureLink) {
         String recipientEmail = request.getRecipientEmail();
         if (recipientEmail == null || recipientEmail.isBlank()) {
             log.warn("No recipient email provided for quotation {} — skipping email send", quotation.getQuotationId());
@@ -72,7 +79,7 @@ public class QuotationEmailService {
 
         try {
             String quoteNo = "QT-" + quotation.getQuotationId().toString().substring(0, 8).toUpperCase();
-            String htmlContent = buildEmailBody(quotation, quoteNo, request, senderName);
+            String htmlContent = buildEmailBody(quotation, quoteNo, request, senderName, secureLink);
 
             EmailRequest emailRequest = new EmailRequest(
                     null,
@@ -82,7 +89,7 @@ public class QuotationEmailService {
                     "Room Quotation " + quoteNo + " — Leadora Hotel",
                     htmlContent,
                     List.of(),
-                    quotation.getQuotationId() != null ? "quotation-" + quotation.getQuotationId() : null
+                    quotation.getQuotationId() != null ? "quotation-" + quotation.getQuotationId() + "-" + java.util.UUID.randomUUID() : null
             );
 
             emailGateway.send(emailRequest);
@@ -93,7 +100,7 @@ public class QuotationEmailService {
         }
     }
 
-    private String buildEmailBody(QuotationEntity q, String quoteNo, SendQuotationRequest req, String senderNameOverride) {
+    private String buildEmailBody(QuotationEntity q, String quoteNo, SendQuotationRequest req, String senderNameOverride, String secureLink) {
         String customerName = (q.getCustomer() != null && q.getCustomer().getFullName() != null)
                 ? q.getCustomer().getFullName() : req.getRecipientName();
         String roomType   = q.getRoomType()     != null ? escapeHtml(q.getRoomType())     : "—";
@@ -108,17 +115,18 @@ public class QuotationEmailService {
                 : "";
         String senderName = senderNameOverride != null ? escapeHtml(senderNameOverride) : "Leadora Sales Team";
 
-        return templateRenderer.render(QUOTATION_EMAIL_TEMPLATE, Map.of(
-                "quoteNo", quoteNo,
-                "customerName", escapeHtml(customerName),
-                "personalMsg", personalMsg,
-                "roomType", roomType,
-                "checkIn", checkIn,
-                "checkOut", checkOut,
-                "policy", policy,
-                "validUntil", validUntil,
-                "total", total,
-                "senderName", senderName
+        return templateRenderer.render(QUOTATION_EMAIL_TEMPLATE, Map.ofEntries(
+                Map.entry("quoteNo", quoteNo),
+                Map.entry("customerName", escapeHtml(customerName)),
+                Map.entry("personalMsg", personalMsg),
+                Map.entry("roomType", roomType),
+                Map.entry("checkIn", checkIn),
+                Map.entry("checkOut", checkOut),
+                Map.entry("policy", policy),
+                Map.entry("validUntil", validUntil),
+                Map.entry("total", total),
+                Map.entry("senderName", senderName),
+                Map.entry("secureLink", secureLink)
         ));
     }
 

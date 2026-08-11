@@ -51,9 +51,9 @@ import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 // statuses would hide a quotation the staff still needs to act on.
 const ACTIVE_STATUSES: Quotation["status"][] = [
   "draft", "pending_approval", "approved", "sent", "accepted", "interested",
-  "pending_revision", "rejected",
+  "pending_revision", "rejected", "pending_customer_response",
 ];
-const DONE_STATUSES: Quotation["status"][] = ["converted", "closed", "expired"];
+const DONE_STATUSES: Quotation["status"][] = ["converted", "closed", "expired", "accepted_by_customer", "booking_request"];
 
 type ClosureLog = {
   id: string;
@@ -455,15 +455,15 @@ export function QuotationListScreen() {
     const actions: QuotationMenuAction[] = [];
     // Revise is already the primary action for rejected/pending_revision — only
     // list it here for statuses where it's a secondary option.
-    if (["sent", "draft", "interested"].includes(q.status)) {
+    if (["sent", "draft", "interested", "pending_customer_response"].includes(q.status)) {
       actions.push({ key: "revise", label: "Revise", Icon: GitBranch, onClick: () => router.push(ROUTE_PATHS.quotationRevise(q.id)) });
     }
-    if (!["converted", "expired", "closed"].includes(q.status)) {
+    if (!["converted", "expired", "closed", "accepted_by_customer", "booking_request"].includes(q.status)) {
       actions.push({ key: "close", label: "Close", Icon: Archive, onClick: () => setCloseTarget(q), tone: "danger" });
     }
     // Sending and converting are both gated on a confirmed room, so let the rep ask as
     // early as they like rather than only from inside those modals.
-    if (!["converted", "expired", "closed"].includes(q.status)) {
+    if (!["converted", "expired", "closed", "accepted_by_customer", "booking_request"].includes(q.status)) {
       actions.push({ key: "rooms", label: "Room Confirmation", Icon: BedDouble, onClick: () => setRoomTarget(q), tone: "primary" });
     }
     actions.push({ key: "remind", label: "Add Reminder", Icon: Bell, onClick: () => setReminderTarget(q) });

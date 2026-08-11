@@ -45,8 +45,8 @@ public class GetQuotationOutcomeReportUseCase {
         long superseded = ReportingUtils.countOf(counts, QuotationStatus.SUPERSEDED);
         long total = counts.values().stream().mapToLong(Long::longValue).sum() - superseded;
 
-        long accepted = ReportingUtils.countOf(counts, QuotationStatus.ACCEPTED);
-        long converted = ReportingUtils.countOf(counts, QuotationStatus.CONVERTED);
+        long accepted = ReportingUtils.countOf(counts, QuotationStatus.ACCEPTED) + ReportingUtils.countOf(counts, QuotationStatus.ACCEPTED_BY_CUSTOMER);
+        long converted = ReportingUtils.countOf(counts, QuotationStatus.CONVERTED) + ReportingUtils.countOf(counts, QuotationStatus.BOOKING_REQUEST);
 
         long approved = quotationRepository.countApproved(
                 range.start(), range.endExclusive(), QuotationStatus.SUPERSEDED);
@@ -72,7 +72,7 @@ public class GetQuotationOutcomeReportUseCase {
                 .dateTo(to)
                 .total(total)
                 .superseded(superseded)
-                .sent(ReportingUtils.countOf(counts, QuotationStatus.SENT))
+                .sent(ReportingUtils.countOf(counts, QuotationStatus.SENT) + ReportingUtils.countOf(counts, QuotationStatus.PENDING_CUSTOMER_RESPONSE))
                 .rejected(ReportingUtils.countOf(counts, QuotationStatus.REJECTED))
                 .expired(ReportingUtils.countOf(counts, QuotationStatus.EXPIRED))
                 .accepted(accepted)
@@ -100,6 +100,9 @@ public class GetQuotationOutcomeReportUseCase {
             case ACCEPTED -> "Accepted";
             case INTERESTED -> "Interested";
             case SUPERSEDED -> "Superseded (older version)";
+            case PENDING_CUSTOMER_RESPONSE -> "Pending customer response";
+            case ACCEPTED_BY_CUSTOMER -> "Accepted by customer";
+            case BOOKING_REQUEST -> "Booking request";
         };
     }
 }

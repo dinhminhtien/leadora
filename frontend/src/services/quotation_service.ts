@@ -11,7 +11,10 @@ export type QuotationStatus =
   | "converted"
   | "interested"
   | "accepted"
-  | "pending_revision";
+  | "pending_revision"
+  | "pending_customer_response"
+  | "accepted_by_customer"
+  | "booking_request";
 
 export type RoomLine = {
   roomType: string;
@@ -204,6 +207,22 @@ export const quotationService = {
 
   async expireOverdue(payload: ExpireOverduePayload): Promise<ApiResponse<ExpireOverdueResult>> {
     const response = await apiClient.post<ApiResponse<ExpireOverdueResult>>(`${ENDPOINT}/expire-overdue`, payload);
+    return response.data;
+  },
+
+  // Public Endpoints (Customer Portal)
+  async publicGetById(id: string, token: string): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.get<ApiResponse<Quotation>>(`/public/quotations/${id}?token=${token}`);
+    return response.data;
+  },
+
+  async publicRequestOtp(id: string, token: string): Promise<ApiResponse<void>> {
+    const response = await apiClient.post<ApiResponse<void>>(`/public/quotations/${id}/request-otp?token=${token}`);
+    return response.data;
+  },
+
+  async publicConfirmOtp(id: string, token: string, otpCode: string): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(`/public/quotations/${id}/confirm-otp?token=${token}`, { otpCode });
     return response.data;
   },
 };
