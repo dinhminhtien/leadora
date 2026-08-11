@@ -141,6 +141,24 @@ public class UpdateHandoverReadinessUseCase {
             notifyClarificationNeeded(saved, actor);
         }
 
+        // Whether this write touched an arrival somebody else is responsible for.
+        //
+        // The desk is deliberately not locked to the assignee: a front desk is a shift rota, and
+        // whoever is on duty when the guest walks in has to be able to act. Enforcing ownership
+        // here would strand an arrival whose assignee is off shift, and the only way out —
+        // Sales reassigning it — resets the readiness to PENDING_REVIEW and throws away the review
+        // work already done (UpdateHandoverUseCase, re-submit branch).
+        //
+        // So this stays a matter of professional conduct rather than a permission. What the code
+        // owes in return is a trail: the fact that A edited B's arrival must be answerable later,
+        // not reconstructed from guesswork. Recorded in the activity row (queryable) and raised to
+        // WARN in the log (greppable) — the plain UpdatedBy field cannot show it, because it names
+        // the actor without ever naming who was supposed to act.
+        UUID assignedFoUserId = saved.getAssignedFoUserId();
+        boolean actedOnAnotherDesk = assignedFoUserId != null
+                && actor != null
+                && !assignedFoUserId.equals(actor.getUserId());
+
         // POST-2 / BR-37 — a queryable audit row, not just a line in the log file. The old value
         // matters as much as the new one: without it the trail cannot show what actually changed.
         // Wrapped because an audit write must never turn a completed business operation into an
@@ -150,7 +168,9 @@ public class UpdateHandoverReadinessUseCase {
                     .put("bookingCode", booking != null ? booking.getBookingCode() : null)
                     .put("previousReadiness", previousReadiness != null ? previousReadiness.name() : null)
                     .put("newReadiness", newReadiness.name())
-                    .put("handoverStatus", saved.getStatus() != null ? saved.getStatus().name() : null);
+                    .put("handoverStatus", saved.getStatus() != null ? saved.getStatus().name() : null)
+                    .put("assignedFoUserId", assignedFoUserId != null ? assignedFoUserId.toString() : null)
+                    .put("updatedByAssignee", !actedOnAnotherDesk);
             if (newReadiness == ReadinessStatus.NEED_CLARIFICATION) {
                 payload.put("clarificationNote", saved.getClarificationNote());
             }
@@ -158,7 +178,8 @@ public class UpdateHandoverReadinessUseCase {
                     ActivityLogType.HANDOVER_READINESS_UPDATED,
                     EntityType.HANDOVER,
                     saved.getHandoverId(),
-                    "Arrival readiness " + previousReadiness + " -> " + newReadiness,
+                    "Arrival readiness " + previousReadiness + " -> " + newReadiness
+                            + (actedOnAnotherDesk ? " (updated by someone other than the assignee)" : ""),
                     payload);
         } catch (Exception e) {
             log.warn("Failed to publish handover readiness activity: {}", e.getMessage());
@@ -166,9 +187,17 @@ public class UpdateHandoverReadinessUseCase {
 
         // BR-37 — same shape as the Sales-side handover log lines, so one grep for "[AUDIT] Action:"
         // returns both halves of a handover instead of only the half Sales wrote.
-        log.info("[AUDIT] Action: UPDATE_HANDOVER_READINESS, TargetRecord: {}, OldReadiness: {}, NewReadiness: {}, Status: {}, UpdatedBy: {}, Timestamp: {}",
+        log.info("[AUDIT] Action: UPDATE_HANDOVER_READINESS, TargetRecord: {}, OldReadiness: {}, NewReadiness: {}, Status: {}, AssignedTo: {}, UpdatedBy: {}, Timestamp: {}",
                 saved.getHandoverId(), previousReadiness, newReadiness, saved.getStatus(),
-                actor != null ? actor.getUserId() : null, OffsetDateTime.now());
+                assignedFoUserId, actor != null ? actor.getUserId() : null, OffsetDateTime.now());
+
+        // WARN, not INFO: this is the line somebody goes looking for when a shift disputes who
+        // changed an arrival, so it has to stand out from the ordinary readiness traffic.
+        if (actedOnAnotherDesk) {
+            log.warn("[AUDIT] Action: UPDATE_HANDOVER_READINESS_ON_ANOTHER_DESK, TargetRecord: {}, AssignedTo: {}, UpdatedBy: {}, OldReadiness: {}, NewReadiness: {}, Timestamp: {}",
+                    saved.getHandoverId(), assignedFoUserId, actor.getUserId(),
+                    previousReadiness, newReadiness, OffsetDateTime.now());
+        }
 
         // POST-6 — the Front Office half of the handover has to reach the customer's interaction
         // timeline too. Sales writes HANDOVER_SUBMISSION there when it hands over (UC-20.4); without

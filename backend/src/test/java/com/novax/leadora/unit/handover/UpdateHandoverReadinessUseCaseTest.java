@@ -324,6 +324,59 @@ class UpdateHandoverReadinessUseCaseTest {
         assertThat(response.getReadinessStatus()).isEqualTo("READY_FOR_ARRIVAL");
     }
 
+    // ------------------------------------------------------------- who touched whose arrival
+
+    @Test
+    @DisplayName("Editing a colleague's arrival is allowed, but the audit row says so")
+    void flagsAReadinessUpdateMadeOnSomeoneElsesArrival() {
+        OpHandoverEntity handover = handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+        handover.setAssignedFoUserId(UUID.randomUUID()); // a different Front Office user
+
+        // Not refused: the desk is a shift rota, so whoever is on duty has to be able to act.
+        var response = useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
+        assertThat(response.getReadinessStatus()).isEqualTo("READY_FOR_ARRIVAL");
+
+        ArgumentCaptor<JsonNode> payload = ArgumentCaptor.forClass(JsonNode.class);
+        verify(activityLogPublisher).publish(
+                org.mockito.ArgumentMatchers.eq(ActivityLogType.HANDOVER_READINESS_UPDATED),
+                org.mockito.ArgumentMatchers.eq(EntityType.HANDOVER),
+                org.mockito.ArgumentMatchers.eq(handoverId),
+                org.mockito.ArgumentMatchers.contains("other than the assignee"),
+                payload.capture());
+        assertThat(payload.getValue().get("updatedByAssignee").asBoolean()).isFalse();
+        assertThat(payload.getValue().get("assignedFoUserId").isNull()).isFalse();
+    }
+
+    @Test
+    @DisplayName("The assignee working their own arrival is not flagged")
+    void doesNotFlagTheAssigneeWorkingTheirOwnArrival() {
+        OpHandoverEntity handover = handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+        handover.setAssignedFoUserId(actor.getUserId());
+
+        useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
+
+        ArgumentCaptor<JsonNode> payload = ArgumentCaptor.forClass(JsonNode.class);
+        verify(activityLogPublisher).publish(any(), any(), any(),
+                org.mockito.ArgumentMatchers.contains("REVIEWED -> READY_FOR_ARRIVAL"), payload.capture());
+        assertThat(payload.getValue().get("updatedByAssignee").asBoolean()).isTrue();
+    }
+
+    @Test
+    @DisplayName("An unassigned arrival counts as nobody's, not as somebody else's")
+    void doesNotFlagAnUnassignedArrival() {
+        // Legacy rows predate assigned_fo_user_id and handover_uc22.sql does not backfill it, so
+        // NULL is a real state. Reporting those as "edited someone else's" would cry wolf on every
+        // migrated record.
+        handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+
+        useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
+
+        ArgumentCaptor<JsonNode> payload = ArgumentCaptor.forClass(JsonNode.class);
+        verify(activityLogPublisher).publish(any(), any(), any(), any(), payload.capture());
+        assertThat(payload.getValue().get("updatedByAssignee").asBoolean()).isTrue();
+        assertThat(payload.getValue().get("assignedFoUserId").isNull()).isTrue();
+    }
+
     // ------------------------------------------------------------------ POST-6 timeline
 
     @Test
