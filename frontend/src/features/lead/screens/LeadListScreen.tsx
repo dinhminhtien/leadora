@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/table-controls";
 import { OwnerCell } from "@/components/ui/row-actions";
 import { LeadDetailDrawer } from "@/features/lead/components/LeadDetailDrawer";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -610,10 +611,11 @@ function buildLeadColumns({
 export function LeadListScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { highlightedId, setRowRef } = useHighlightRow("lead", "highlight");
   // `/leads?lead=<id>` opens that lead's drawer straight away. Every link to a lead in the
   // app points here — notifications, SLA escalations, task drawers, customer profiles — and
   // the old `/leads/{id}` page redirects here too. There is no full-page lead detail.
-  const deepLinkId = searchParams.get("lead");
+  const deepLinkId = searchParams.get("lead") || searchParams.get("highlight");
 
   const user = useAuthStore(s => s.user);
   const role = getUserRole(user);
@@ -1071,6 +1073,8 @@ export function LeadListScreen() {
             rows={leads.filter((l) => controls.selectedIds.has(l.leadId)).map(leadExportRow)}
           />
         }
+        highlightId={highlightedId}
+        rowRef={setRowRef}
         onRowClick={(lead) =>
           isStaff && ownerView === "created"
             ? setEditingLeadId(lead.leadId)

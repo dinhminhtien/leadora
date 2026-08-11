@@ -93,9 +93,12 @@ const PRIORITY_FILTERS = ["HIGH", "MEDIUM", "LOW"] as const;
 /** §9.1.6 — Tasks uses 50 per page "for productivity". */
 const PAGE_SIZE = 50;
 
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
+
 export function TaskWorkspaceScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { highlightedId, setRowRef } = useHighlightRow("highlight", "task");
   const user = useAuthStore((s) => s.user);
   const isManager = hasFullAccess(user);
 
@@ -446,7 +449,8 @@ export function TaskWorkspaceScreen() {
             tasks={tasks}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
-            highlightId={highlightId}
+            highlightId={highlightedId}
+            rowRef={setRowRef}
             isManager={isManager}
             users={users}
             onBulkPriority={bulkSetPriority}

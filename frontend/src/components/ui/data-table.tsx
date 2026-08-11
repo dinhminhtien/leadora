@@ -391,6 +391,9 @@ export function DataTable<T>({
                   <tr
                     key={id}
                     ref={rowRef?.(id)}
+                    onPointerDownCapture={() => setCursor(i)}
+                    onMouseDownCapture={() => setCursor(i)}
+                    onFocusCapture={() => setCursor(i)}
                     onClick={() => onRowClick?.(row)}
                     aria-selected={isSelected || undefined}
                     // Sticky cells below use `bg-inherit`, so every row-level tint
@@ -402,9 +405,9 @@ export function DataTable<T>({
                       rowHeight,
                       onRowClick && "cursor-pointer",
                       "hover:bg-surface-2",
-                      isSelected && "bg-brand-500/[0.07]",
-                      isHighlighted && "bg-warning/10",
-                      isCursor && bodyFocused && "bg-brand-500/[0.10]",
+                      isSelected && "bg-brand-500/[0.08]",
+                      isHighlighted && "bg-brand-500/[0.14] font-medium ring-1 ring-inset ring-brand-500/30",
+                      isCursor && bodyFocused && !isHighlighted && !isSelected && "bg-brand-500/[0.06]",
                     )}
                   >
                     {selectable && (
@@ -424,7 +427,7 @@ export function DataTable<T>({
                       <td
                         key={col.id}
                         className={cn(
-                          "text-[13px] text-foreground",
+                          "text-[13px] text-foreground bg-inherit",
                           cellPad,
                           col.width,
                           col.numeric && "numeric text-right",

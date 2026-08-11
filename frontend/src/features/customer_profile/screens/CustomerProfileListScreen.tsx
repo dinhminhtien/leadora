@@ -33,6 +33,7 @@ import { userService } from "@/services/user_service";
 import type { Customer, CustomerType, CustomerListParams } from "@/services/customer_profile_service";
 import { toast } from "@/stores/toast_store";
 import { getApiErrorMessage } from "@/lib/api_error";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 /** Rows per page — mirrors the server page size requested below. */
 const PAGE_SIZE = 10;
@@ -282,6 +283,7 @@ function CreateCustomerDrawer({
 
 export function CustomerProfileListScreen() {
   const router = useRouter();
+  const { highlightedId, setRowRef } = useHighlightRow("highlight", "customer");
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<CustomerType | "">("");
   const [statusFilter, setStatusFilter] = useState<"ACTIVE" | "INACTIVE" | "">("");
@@ -439,6 +441,8 @@ export function CustomerProfileListScreen() {
         sortBy={controls.sortBy}
         sortDir={controls.sortDir}
         onSortChange={controls.onSortChange}
+        highlightId={highlightedId}
+        rowRef={setRowRef}
         selectedIds={controls.selectedIds}
         onSelectionChange={controls.setSelectedIds}
         bulkActions={

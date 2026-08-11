@@ -28,11 +28,15 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
  * `onUsableChange` lets the parent adjust its wording, not block its action.
  */
 
+import type { RoomLineDetail } from "@/services/quotation_service";
+
 type QuotationLike = {
   id: string;
   roomType?: string | null;
   checkInDate?: string | null;
   checkOutDate?: string | null;
+  numberOfRooms?: number | null;
+  roomLines?: RoomLineDetail[] | null;
 };
 
 export interface RoomConfirmationPanelProps {
@@ -67,11 +71,15 @@ function describe(
     };
   }
 
+  const roomBreakdown = quote.roomLines && quote.roomLines.length > 0
+    ? quote.roomLines.map(r => `${r.roomType ?? "Room"} × ${r.numberOfRooms ?? 1}`).join(", ")
+    : `${request.quantity} × ${request.roomTypeRequested ?? quote.roomType ?? "room"}`;
+
   if (request.status === "PENDING") {
     return {
       tone: "warning",
       title: "Waiting on Reservation",
-      detail: `Asked for ${request.quantity} x ${request.roomTypeRequested ?? "room"}. They are checking the hotel system now.`,
+      detail: `Asked for ${roomBreakdown}. They are checking the hotel system now.`,
     };
   }
 
@@ -106,8 +114,8 @@ function describe(
     tone: "success",
     title: "Rooms confirmed",
     detail: request.heldUntil
-      ? `${request.quantity} x ${request.roomTypeRequested} held until ${heldUntilLabel(request.heldUntil)}.`
-      : `${request.quantity} x ${request.roomTypeRequested} confirmed by Reservation.`,
+      ? `${roomBreakdown} held until ${heldUntilLabel(request.heldUntil)}.`
+      : `${roomBreakdown} confirmed by Reservation.`,
   };
 }
 
@@ -135,8 +143,19 @@ export function RoomConfirmationPanel({
   const cancelRequest = useCancelRoomRequest();
   const { confirm, confirmElement } = useConfirm();
 
-  const [quantity, setQuantity] = useState(String(defaultQuantity));
+  const calculatedQuantity = React.useMemo(() => {
+    if (quote.roomLines && quote.roomLines.length > 0) {
+      return quote.roomLines.reduce((acc, r) => acc + (r.numberOfRooms ?? 1), 0);
+    }
+    return quote.numberOfRooms ?? defaultQuantity;
+  }, [quote, defaultQuantity]);
+
+  const [quantity, setQuantity] = useState(String(calculatedQuantity));
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    setQuantity(String(calculatedQuantity));
+  }, [calculatedQuantity]);
 
   const request = currentRoomRequest(requests);
   const usable = isRoomConfirmationUsable(request, quote);
@@ -224,27 +243,47 @@ export function RoomConfirmationPanel({
           </div>
 
           {canAsk && (
-            <div className="mt-3 flex items-end gap-2">
-              <div className="w-24">
-                <label className="mb-1 block text-[10px] font-semibold text-slate-500">Rooms</label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="h-8 text-xs"
-                />
+            <div className="mt-3 space-y-2">
+              {quote.roomLines && quote.roomLines.length > 0 && (
+                <div className="rounded border border-slate-200 bg-white p-2.5 text-xs shadow-xs">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Quotation Room Breakdown ({calculatedQuantity} total rooms)
+                  </p>
+                  <div className="space-y-1 font-medium text-slate-700">
+                    {quote.roomLines.map((line, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-[11px]">
+                        <span className="text-slate-800 font-medium">{line.roomType}</span>
+                        <span className="font-bold text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded text-[10px]">
+                          × {line.numberOfRooms ?? 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex items-end gap-2">
+                <div className="w-28">
+                  <label className="mb-1 block text-[10px] font-semibold text-slate-500">Total Rooms</label>
+                  <Input
+                    type="number"
+                    value={quantity}
+                    readOnly
+                    disabled
+                    title="Room request quantity is hard-coded based on quotation details."
+                    className="h-8 text-xs font-bold bg-slate-100/80 text-slate-700 cursor-not-allowed border-slate-200"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleAsk}
+                  disabled={createRequest.isPending}
+                  leftIcon={<Send className="size-3" />}
+                >
+                  {createRequest.isPending ? "Sending…" : "Ask Reservation"}
+                </Button>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                onClick={handleAsk}
-                disabled={createRequest.isPending}
-                leftIcon={<Send className="size-3" />}
-              >
-                {createRequest.isPending ? "Sending…" : "Ask Reservation"}
-              </Button>
             </div>
           )}
 

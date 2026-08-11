@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { CalendarDays, CheckCircle2, Clock, Send, XCircle } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock, Send, XCircle, Eye, Loader2 } from "lucide-react";
 
 
 import { StatusPill } from "@/components/ui/status-pill";
@@ -14,10 +14,13 @@ import { ExportMenu, useTableControls } from "@/components/ui/table-controls";
 import { OwnerCell } from "@/components/ui/row-actions";
 import { apiErrorMessage } from "@/services/api_error";
 import type { RoomRequest, RoomRequestStatus } from "@/services/room_request_service";
+import { quotationService, type Quotation } from "@/services/quotation_service";
+import { QuotationDetailDrawer } from "@/features/quotation/components/QuotationDetailDrawer";
 import {
   useRespondRoomRequest,
   useRoomRequestInbox,
 } from "@/features/room_request/hooks/use_room_requests";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 /**
  * The Reservation team's queue: rooms Sales is waiting on.
@@ -67,6 +70,7 @@ function defaultHoldUntil(): string {
 }
 
 export function RoomRequestInboxScreen() {
+  const { highlightedId, setRowRef } = useHighlightRow("highlight", "request");
   const [status, setStatus] = useState<string>("PENDING");
   const [page, setPage] = useState(0);
   const { data, isLoading } = useRoomRequestInbox({ status, page, size: 10 });
@@ -77,11 +81,28 @@ export function RoomRequestInboxScreen() {
   const [note, setNote] = useState("");
   const [heldUntil, setHeldUntil] = useState(defaultHoldUntil());
   const [error, setError] = useState("");
+  const [detailTarget, setDetailTarget] = useState<Quotation | null>(null);
+  const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
 
   const rows = data?.content ?? [];
   const totalPages = (typeof data?.page === "object" ? data.page.totalPages : data?.totalPages) ?? 1;
   const totalElements =
     (typeof data?.page === "object" ? data.page.totalElements : data?.totalElements) ?? rows.length;
+
+  const handleViewRoomDetails = async (r: RoomRequest) => {
+    if (!r.quotationId) return;
+    setLoadingDetailId(r.requestId);
+    try {
+      const res = await quotationService.getById(r.quotationId);
+      if (res.data) {
+        setDetailTarget(res.data);
+      }
+    } catch (err) {
+      console.error("Failed to load quotation room details", err);
+    } finally {
+      setLoadingDetailId(null);
+    }
+  };
 
   /**
    * Column set — Blueprint §10.8.
@@ -96,15 +117,42 @@ export function RoomRequestInboxScreen() {
       header: "Quotation",
       sticky: "left",
       className: "whitespace-nowrap text-xs font-semibold",
-      cell: (r) => r.quoteNo,
+      cell: (r) => (
+        <span className="flex items-center gap-1.5 font-bold text-brand-600 dark:text-brand-400">
+          {r.quoteNo}
+        </span>
+      ),
     },
     { id: "customer", header: "Customer", className: "text-xs", cell: (r) => r.customerName ?? "—" },
     {
       id: "room",
-      header: "Room",
-      minWidth: "md",
+      header: "Room Breakdown",
+      minWidth: "lg",
       className: "text-xs",
-      cell: (r) => r.roomTypeRequested ?? "—",
+      cell: (r) => (
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-slate-800 dark:text-zinc-200">{r.roomTypeRequested ?? "—"}</span>
+          {r.quotationId && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleViewRoomDetails(r);
+              }}
+              disabled={loadingDetailId === r.requestId}
+              className="inline-flex items-center gap-1 text-[10px] font-bold text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-400 px-2 py-0.5 rounded-md transition border border-brand-200/60"
+              title="View detailed room lines, rates and quantities"
+            >
+              {loadingDetailId === r.requestId ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Eye className="size-3" />
+              )}
+              <span>Room Details</span>
+            </button>
+          )}
+        </div>
+      ),
     },
     {
       id: "dates",
@@ -156,7 +204,7 @@ export function RoomRequestInboxScreen() {
       sticky: "right",
       cell: (r) =>
         r.status === "PENDING" ? (
-          <div className="flex justify-end gap-1">
+          <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
             <Button size="xs" variant="primary" onClick={() => openAnswer(r, "CONFIRMED")} leftIcon={<CheckCircle2 className="size-3" />}>
               Confirm
             </Button>
@@ -171,7 +219,7 @@ export function RoomRequestInboxScreen() {
         ),
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  ], [loadingDetailId]);
 
   const controls = useTableControls<RoomRequest>("room-requests", roomRequestColumns);
 
@@ -241,6 +289,8 @@ export function RoomRequestInboxScreen() {
         sortBy={controls.sortBy}
         sortDir={controls.sortDir}
         onSortChange={controls.onSortChange}
+        highlightId={highlightedId}
+        rowRef={setRowRef}
         selectedIds={controls.selectedIds}
         onSelectionChange={controls.setSelectedIds}
         bulkActions={
@@ -268,13 +318,30 @@ export function RoomRequestInboxScreen() {
       {answering && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl dark:bg-zinc-900">
-            <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100">
-              {decision === "CONFIRMED" ? "Confirm rooms" : "Reject request"}
-            </h2>
-            <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-              {answering.quantity} x {answering.roomTypeRequested ?? "room"} ·{" "}
-              {formatDate(answering.checkInDate)} → {formatDate(answering.checkOutDate)}
-            </p>
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100">
+                  {decision === "CONFIRMED" ? "Confirm rooms" : "Reject request"}
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+                  {answering.quoteNo} · {answering.quantity} x {answering.roomTypeRequested ?? "room"} ·{" "}
+                  {formatDate(answering.checkInDate)} → {formatDate(answering.checkOutDate)}
+                </p>
+              </div>
+              {answering.quotationId && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="xs"
+                  onClick={() => handleViewRoomDetails(answering)}
+                  disabled={loadingDetailId === answering.requestId}
+                  leftIcon={loadingDetailId === answering.requestId ? <Loader2 className="size-3 animate-spin" /> : <Eye className="size-3" />}
+                  className="shrink-0 text-[10px] font-bold"
+                >
+                  Room Details
+                </Button>
+              )}
+            </div>
 
             <div className="mt-4 flex gap-2">
               <Button
@@ -351,6 +418,12 @@ export function RoomRequestInboxScreen() {
           </div>
         </div>
       )}
+
+      {/* Slide-over Drawer for displaying detailed Quotation Room Lines */}
+      <QuotationDetailDrawer
+        quote={detailTarget}
+        onClose={() => setDetailTarget(null)}
+      />
     </div>
   );
 }

@@ -103,16 +103,16 @@ function getRelatedRoute(n: Notification): string | null {
   if (!n.relatedEntity || !n.relatedId) return null;
   const entity = n.relatedEntity.toUpperCase();
   const highlight = `highlight=${encodeURIComponent(n.relatedId)}`;
-  if (entity === "LEAD") return ROUTE_PATHS.leadDetail(n.relatedId);
-  // No standalone quotation detail page exists (only /quotations,
-  // /quotations/[id]/revise) — route to the list (with highlight), not
-  // ROUTE_PATHS.quotationDetail, which 404s since that page was never built.
+  if (entity === "LEAD") return `${ROUTE_PATHS.leads}?lead=${encodeURIComponent(n.relatedId)}&${highlight}`;
   if (entity === "QUOTATION") return `${ROUTE_PATHS.quotations}?${highlight}`;
   if (entity === "BOOKING") return `${ROUTE_PATHS.bookingConfirmation}?${highlight}`;
   if (entity === "REMINDER") return `${ROUTE_PATHS.reminders}?${highlight}`;
   if (entity === "TASK") return `${ROUTE_PATHS.followUpTasks}?${highlight}`;
   if (entity === "SLA") return `${ROUTE_PATHS.sla}?${highlight}`;
   if (entity === "HANDOVER") return `${ROUTE_PATHS.frontOfficeHandover}?${highlight}`;
+  if (entity === "CUSTOMER") return `${ROUTE_PATHS.customerProfiles}?${highlight}`;
+  if (entity === "DEAL") return `${ROUTE_PATHS.deals}?${highlight}`;
+  if (entity === "ROOM_REQUEST") return `${ROUTE_PATHS.roomRequests}?${highlight}`;
   return null;
 }
 

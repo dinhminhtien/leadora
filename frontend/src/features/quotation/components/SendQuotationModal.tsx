@@ -86,13 +86,32 @@ function generateQuotationHTML(quote: Quotation, recipientName: string, message:
   const safeDealName = escapeHtml(quote.dealName ?? "");
   const safeEmail = escapeHtml(quote.email ?? "—");
   const safePhone = escapeHtml(quote.phone ?? "—");
-  const safeRoomType = escapeHtml(quote.roomType ?? "—");
-  const safeNumberOfRooms = escapeHtml(String(quote.numberOfRooms ?? "—"));
   const safeCheckInDate = escapeHtml(quote.checkInDate ?? "—");
   const safeCheckOutDate = escapeHtml(quote.checkOutDate ?? "—");
   const rawPaymentPolicy = quote.paymentPolicy ? (PAYMENT_LABELS[quote.paymentPolicy] ?? quote.paymentPolicy) : "—";
   const safePaymentPolicy = escapeHtml(rawPaymentPolicy);
   const safeExpiryDate = escapeHtml(quote.expiryDate ?? "");
+
+  const roomLines = quote.roomLines && quote.roomLines.length > 0
+    ? quote.roomLines
+    : [
+        {
+          roomType: quote.roomType ?? "Standard Room",
+          numberOfRooms: quote.numberOfRooms ?? 1,
+          pricePerNight: quote.pricePerNight ?? quote.amount,
+        },
+      ];
+
+  const roomTableRows = roomLines
+    .map(
+      (r) =>
+        `<tr>
+          <td style="padding:8px 4px;font-weight:600;">${escapeHtml(r.roomType ?? "Room")}</td>
+          <td style="padding:8px 4px;text-align:center;">${r.numberOfRooms ?? 1}</td>
+          <td style="padding:8px 4px;text-align:right;">${(r.pricePerNight ?? 0).toLocaleString("vi-VN")} ₫</td>
+        </tr>`
+    )
+    .join("");
 
   return `<!DOCTYPE html>
 <html>
@@ -108,7 +127,8 @@ function generateQuotationHTML(quote: Quotation, recipientName: string, message:
     .grid { display: grid; grid-template-columns: 140px 1fr; gap: 6px 0; font-size: 12px; }
     .lbl { color: #94a3b8; }
     .val { font-weight: 600; }
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    th { font-size: 11px; text-transform: uppercase; color: #64748b; border-bottom: 2px solid #e2e8f0; padding: 6px 4px; text-align: left; }
     td { padding: 7px 4px; font-size: 12px; border-bottom: 1px solid #f1f5f9; }
     .total td { font-size: 16px; font-weight: 700; color: #1d4ed8; border-top: 2px solid #2563eb; border-bottom: none; }
     .msg { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; font-size:12px; line-height:1.7; white-space:pre-wrap; margin-bottom:16px; }
@@ -135,19 +155,30 @@ function generateQuotationHTML(quote: Quotation, recipientName: string, message:
 
   <h2>Room Booking</h2>
   <div class="grid">
-    <span class="lbl">Room Type</span><span class="val">${safeRoomType}</span>
-    <span class="lbl">Rooms</span><span class="val">${safeNumberOfRooms}</span>
     <span class="lbl">Check-in</span><span class="val">${safeCheckInDate}</span>
     <span class="lbl">Check-out</span><span class="val">${safeCheckOutDate}</span>
-    <span class="lbl">Rate / Night</span><span class="val">${(quote.pricePerNight ?? 0).toLocaleString('vi-VN')} ₫</span>
     <span class="lbl">Payment Policy</span><span class="val">${safePaymentPolicy}</span>
   </div>
 
+  <h2>Itemized Room Breakdown</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Room Type</th>
+        <th style="text-align:center;">Quantity</th>
+        <th style="text-align:right;">Rate / Night</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${roomTableRows}
+    </tbody>
+  </table>
+
   <h2>Pricing</h2>
   <table>
-    <tr><td>Subtotal</td><td align="right">${(quote.subtotal ?? 0).toLocaleString('vi-VN')} ₫</td></tr>
+    <tr><td>Subtotal</td><td align="right">${(quote.subtotal ?? quote.amount).toLocaleString('vi-VN')} ₫</td></tr>
     <tr><td>Discount (${quote.discountPercent ?? 0}%)</td><td align="right">-${(quote.discountAmount ?? 0).toLocaleString('vi-VN')} ₫</td></tr>
-    <tr class="total"><td><strong>Total Amount</strong></td><td align="right"><strong>{quote.amount.toLocaleString('vi-VN')} ₫</strong></td></tr>
+    <tr class="total"><td><strong>Total Amount</strong></td><td align="right"><strong>${quote.amount.toLocaleString('vi-VN')} ₫</strong></td></tr>
   </table>
   <p style="font-size:11px;color:#94a3b8;margin-top:8px">This quotation is valid until <strong>${safeExpiryDate}</strong>. Please confirm your booking before the expiry date.</p>
 
@@ -308,10 +339,10 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
     <Portal>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl">
+      <div className="relative z-10 w-full max-w-2xl max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden bg-white rounded-xl shadow-2xl">
 
         {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white rounded-t-xl">
+        <div className="shrink-0 z-10 flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white rounded-t-xl">
           <div>
             <h2 className="text-sm font-bold text-slate-800">Send Quotation to Customer</h2>
             <p className="text-xs text-blue-600 font-semibold mt-0.5">
@@ -326,21 +357,60 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-5">
           {/* Quotation Summary */}
-          <section className="rounded-lg border border-blue-100 bg-blue-50/30 p-4">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Quotation Summary</p>
+          <section className="rounded-lg border border-blue-100 bg-blue-50/30 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quotation Details &amp; Room Breakdown</p>
+              <div className="flex items-center gap-2">
+                <Badge variant="success" size="sm" className="text-[9px] font-bold uppercase">Approved</Badge>
+                <span className="text-[10px] text-slate-400">Version {version}</span>
+              </div>
+            </div>
+
             <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs">
               <span><span className="text-slate-400">Customer:</span> <strong className="text-slate-700">{quote.contactName}</strong></span>
-              <span><span className="text-slate-400">Room:</span> <strong className="text-slate-700">{quote.roomType ?? "—"}</strong></span>
               <span><span className="text-slate-400">Dates:</span> <strong className="text-slate-700">{quote.checkInDate ?? "—"} → {quote.checkOutDate ?? "—"}</strong></span>
               <span><span className="text-slate-400">Total:</span> <strong className="text-blue-700">{quote.amount.toLocaleString('vi-VN')} ₫</strong></span>
               <span><span className="text-slate-400">Discount:</span> <strong className="text-amber-600">{quote.discountPercent ?? 0}%</strong></span>
               <span><span className="text-slate-400">Valid until:</span> <strong className="text-slate-700">{quote.expiryDate}</strong></span>
             </div>
-            <div className="mt-2.5 flex items-center gap-2">
-              <Badge variant="success" size="sm" className="text-[9px] font-bold uppercase">Approved</Badge>
-              <span className="text-[10px] text-slate-400">Version {version} will be logged</span>
+
+            {/* Itemized Room Details Table */}
+            <div className="rounded-md border border-slate-200 bg-white overflow-hidden text-xs">
+              <div className="bg-slate-50 px-3 py-1.5 border-b border-slate-200 text-[10px] font-bold text-slate-500 flex justify-between uppercase">
+                <span>Room Type &amp; Rate</span>
+                <span>Qty × Duration</span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {quote.roomLines && quote.roomLines.length > 0 ? (
+                  quote.roomLines.map((line, idx) => (
+                    <div key={idx} className="px-3 py-2 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-semibold text-slate-800">{line.roomType}</span>
+                        {line.pricePerNight && (
+                          <span className="text-[10px] text-slate-400 block">
+                            {line.pricePerNight.toLocaleString('vi-VN')} ₫ / night
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold text-slate-700">{line.numberOfRooms ?? 1} room(s) × {line.nights ?? 1} night(s)</span>
+                        {line.lineTotal && (
+                          <span className="text-[11px] font-bold text-blue-600 block">
+                            {line.lineTotal.toLocaleString('vi-VN')} ₫
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-800">{quote.roomType ?? "Standard Room"}</span>
+                    <span className="font-bold text-slate-700">{quote.numberOfRooms ?? 1} room(s)</span>
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
@@ -498,30 +568,31 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
             Dev tip: Use an email containing &quot;.fail&quot; to trigger the E4 delivery failure scenario.
           </p>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2 pt-1">
-            <Button
-              variant="ghost"
-              onClick={onClose}
-              className="text-xs text-slate-500 hover:text-slate-700 px-4"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleSend}
-              isLoading={isSending}
-              title={
-                roomConfirmed
-                  ? undefined
-                  : "The Reservation team has not confirmed these rooms yet — you can still send."
-              }
-              leftIcon={!isSending ? <Send className="size-3.5" /> : undefined}
-              className="flex-1 text-xs font-bold"
-            >
-              {isSending ? "Sending…" : `Send via ${METHOD_CONFIG[method].label}`}
-            </Button>
-          </div>
+        </div>
+
+        {/* Action Footer */}
+        <div className="shrink-0 mt-auto border-t border-slate-100 bg-white px-5 py-4 z-10 flex items-center justify-end gap-2">
+          <Button
+            variant="ghost"
+            onClick={onClose}
+            className="text-xs text-slate-500 hover:text-slate-700 px-4"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleSend}
+            isLoading={isSending}
+            title={
+              roomConfirmed
+                ? undefined
+                : "The Reservation team has not confirmed these rooms yet — you can still send."
+            }
+            leftIcon={!isSending ? <Send className="size-3.5" /> : undefined}
+            className="flex-1 text-xs font-bold"
+          >
+            {isSending ? "Sending…" : `Send via ${METHOD_CONFIG[method].label}`}
+          </Button>
         </div>
       </div>
     </div>

@@ -61,8 +61,10 @@ function dealExportRow(deal: Deal): (string | number | null | undefined)[] {
   ];
 }
 import { useMyProfile } from "@/features/profile/hooks/use_profile";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 export function DealListScreen() {
+  const { highlightedId, setRowRef } = useHighlightRow("highlight", "deal");
   const { data: profile } = useMyProfile();
   const isManager = useMemo(() => {
     const role = (profile?.roleName || "").toUpperCase();
@@ -746,6 +748,8 @@ export function DealListScreen() {
         sortBy={controls.sortBy}
         sortDir={controls.sortDir}
         onSortChange={controls.onSortChange}
+        highlightId={highlightedId}
+        rowRef={setRowRef}
         selectedIds={controls.selectedIds}
         onSelectionChange={controls.setSelectedIds}
         bulkActions={

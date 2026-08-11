@@ -32,6 +32,7 @@ function quotationExportRow(q: Quotation): (string | number | null | undefined)[
 }
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { SendQuotationModal } from "@/features/quotation/components/SendQuotationModal";
+import { QuotationDetailDrawer } from "@/features/quotation/components/QuotationDetailDrawer";
 import { RecordResponseModal } from "@/features/quotation/components/RecordResponseModal";
 import { ConvertToBookingModal } from "@/features/quotation/components/ConvertToBookingModal";
 import { ExpireCloseModal } from "@/features/quotation/components/ExpireCloseModal";
@@ -85,6 +86,7 @@ export function QuotationListScreen() {
   const [closureLogs, setClosureLogs] = useState<ClosureLog[]>([]);
   const [search, setSearch] = useState("");
   const [sendTarget, setSendTarget] = useState<Quotation | null>(null);
+  const [detailTarget, setDetailTarget] = useState<Quotation | null>(null);
   const [responseTarget, setResponseTarget] = useState<Quotation | null>(null);
   const [convertTarget, setConvertTarget] = useState<Quotation | null>(null);
   const [closeTarget, setCloseTarget] = useState<Quotation | null>(null);
@@ -193,9 +195,48 @@ export function QuotationListScreen() {
     {
       id: "deal",
       header: "Linked Deal",
-      minWidth: "md",
+      minWidth: "lg",
       className: "text-xs text-muted-foreground",
-      cell: (q) => q.dealName,
+      cell: (q) => (
+        <span className="max-w-[180px] truncate block text-xs text-muted-foreground" title={q.dealName}>
+          {q.dealName}
+        </span>
+      ),
+    },
+    {
+      id: "rooms",
+      header: "Rooms",
+      minWidth: "md",
+      cell: (q) => {
+        if (q.roomLines && q.roomLines.length > 0) {
+          const mainLine = q.roomLines[0];
+          const extraCount = q.roomLines.length - 1;
+          const allBreakdown = q.roomLines.map((l) => `${l.roomType} × ${l.numberOfRooms}`).join(", ");
+          return (
+            <div
+              className="flex items-center gap-1.5 text-xs max-w-[220px] overflow-hidden whitespace-nowrap"
+              title={allBreakdown}
+            >
+              <span className="font-medium text-foreground truncate min-w-0">
+                {mainLine.roomType} × {mainLine.numberOfRooms}
+              </span>
+              {extraCount > 0 && (
+                <span className="shrink-0 rounded-md bg-brand-500/10 px-1.5 py-0.5 text-[10px] font-bold text-brand-600 dark:bg-brand-500/20 dark:text-brand-400 cursor-help">
+                  +{extraCount} more
+                </span>
+              )}
+            </div>
+          );
+        }
+        return (
+          <span
+            className="text-xs text-muted-foreground truncate max-w-[200px] block"
+            title={q.roomType ? `${q.roomType} (${q.numberOfRooms ?? 1})` : "—"}
+          >
+            {q.roomType ? `${q.roomType} (${q.numberOfRooms ?? 1})` : "—"}
+          </span>
+        );
+      },
     },
     {
       id: "total",
@@ -237,13 +278,21 @@ export function QuotationListScreen() {
       cell: (q) => {
         const primary = getPrimaryAction(q);
         return (
-          <div className="flex items-center justify-end gap-1.5">
+          <div
+            className="flex items-center justify-end gap-1.5"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             {primary && (
               <Button
                 variant={primary.tone === "danger" ? "danger" : "primary"}
                 size="xs"
                 isLoading={primary.key === "submit" && submittingId === q.id}
-                onClick={primary.onClick}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  primary.onClick();
+                }}
                 leftIcon={<primary.Icon className="size-3" />}
                 className="whitespace-nowrap"
               >
@@ -570,6 +619,7 @@ export function QuotationListScreen() {
         }}
         highlightId={highlightedId}
         rowRef={setRowRef}
+        onRowClick={(q) => setDetailTarget(q)}
         selectedIds={controls.selectedIds}
         onSelectionChange={controls.setSelectedIds}
         bulkActions={
@@ -592,6 +642,15 @@ export function QuotationListScreen() {
             onPageChange={(p) => setCurrentPage(p + 1)}
           />
         }
+      />
+
+      {/* Itemized Multi-Room Detailed View Drawer */}
+      <QuotationDetailDrawer
+        quote={detailTarget}
+        onClose={() => setDetailTarget(null)}
+        onSend={(q) => setSendTarget(q)}
+        onConvertToBooking={(q) => setConvertTarget(q)}
+        onRevise={(q) => router.push(ROUTE_PATHS.quotationRevise(q.id))}
       />
 
       {/* UC-14.4: Send Quotation Modal */}
