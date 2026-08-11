@@ -212,8 +212,8 @@ export const PAGE_META = {
 
   sentimentAnalytics: meta(
     ROUTE_PATHS.sentimentAnalytics,
-    "Sentiment AI",
-    "Aspect-based sentiment analysis and customer satisfaction trends.",
+    "GX Insights",
+    "Aspect-based guest experience sentiments and satisfaction trends.",
   ),
 
   notifications: meta(

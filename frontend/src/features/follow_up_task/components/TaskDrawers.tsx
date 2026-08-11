@@ -1103,7 +1103,7 @@ export function TaskDetailDrawer({
               {task.description && (
                 <div className="space-y-1.5">
                   <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Description</p>
-                  <p className="text-sm text-slate-700 leading-relaxed">{task.description}</p>
+                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{task.description}</p>
                 </div>
               )}
               {/* Result Notes */}

@@ -17,6 +17,7 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class FeedbackResponse {
     private UUID feedbackId;
+    private UUID customerId;
     private String customerName;
     private String bookingCode;
     private String salesStaffName;

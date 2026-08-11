@@ -50,6 +50,7 @@ export type NavItem = {
   shortcut?: string;
   /** Which unread/pending counter (if any) badges this item. */
   badge?: "notifications";
+  badgeText?: string;
 };
 
 export type NavGroup = {
@@ -212,9 +213,10 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         href: ROUTE_PATHS.sentimentAnalytics,
-        label: "Sentiment AI",
+        label: "GX Insights",
         icon: ChartNoAxesCombined,
-        hint: "ABSA customer reviews analytics",
+        hint: "ABSA guest experience analytics",
+        badgeText: "AI",
       },
       {
         href: ROUTE_PATHS.notifications,
