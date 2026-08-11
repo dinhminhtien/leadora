@@ -84,6 +84,12 @@ class Routes {
   /// Handovers Sales submitted to the Front Office — read-only on mobile.
   static const String handovers = '/handovers';
 
+  /// Guest feedback (UC-25) — reached from the More hub. `detail/` segment so a
+  /// future literal sub-route can never be swallowed as an id.
+  static const String feedbacks = '/feedbacks';
+  static const String feedbackDetailSub = 'detail/:id';
+  static String feedbackDetailPath(String id) => '/feedbacks/detail/$id';
+
   // Full-screen browse entry points, reached from the Dashboard quick actions
   // and from the header notification bell.
   static const String notifications = '/notifications';
@@ -202,4 +208,7 @@ class RouteNames {
   static const String logInteraction = 'logInteraction';
   static const String interactionDetail = 'interactionDetail';
   static const String editInteraction = 'editInteraction';
+  static const String feedbacks = 'feedbacks';
+  static const String feedbackDetail = 'feedbackDetail';
+  static const String roomRequests = 'roomRequests';
 }

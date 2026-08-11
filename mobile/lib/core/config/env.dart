@@ -24,7 +24,7 @@ class Env {
 
   static Flavor get flavor => switch (_flavorRaw) {
     'prod' => Flavor.prod,
-    'staging' => Flavor.staging,
+    'staging' => Flavor.staging,  
     _ => Flavor.dev,
   };
 
@@ -33,10 +33,10 @@ class Env {
     defaultValue: 'Leadora (Dev)',
   );
 
-  static const String apiBaseUrl = String.fromEnvironment(
+  static const String apiBaseUrl = String.fromEnvironment(  
     'API_BASE_URL',
     defaultValue:
-        'http://10.0.2.2:8085/api/v1',
+        'https://leadora-backend-732291906105.asia-southeast1.run.app/api/v1',
   );
 
   static const int connectTimeoutMs = int.fromEnvironment(

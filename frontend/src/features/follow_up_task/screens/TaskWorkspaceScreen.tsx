@@ -51,6 +51,7 @@ import { isTaskOverdue } from "@/shared/design/status-tokens";
 import { useAuthStore } from "@/stores/auth_store";
 import { hasFullAccess } from "@/shared/auth/access";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { PAGE_META } from "@/app/routes/page_meta";
 import {
   useResolveTask,
   useTasks,
@@ -306,9 +307,7 @@ export function TaskWorkspaceScreen() {
   return (
     <div className="flex min-h-[calc(100vh-8rem)] flex-col">
       <PageHeader
-        crumbs={[{ label: "Activities" }, { label: "Follow-up tasks" }]}
-        title="Follow-up tasks"
-        subtitle="Plan, execute, hand over and close the work behind every lead, customer and deal."
+        {...PAGE_META.followUpTasks}
         actions={
           <>
             <Button

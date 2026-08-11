@@ -8,6 +8,8 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, AlertCircle, CheckCircle2, Calculator, User, Mail, Phone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
@@ -179,12 +181,10 @@ export function CreateQuotationScreen() {
         </Button>
       </div>
 
-      <div>
-        <h1 className="text-xl font-bold text-slate-800">Create Room Quotation</h1>
-        <p className="text-xs text-slate-400">
-          Fill in the form to generate a new room price proposal. Discounts above 10% require Manager approval.
-        </p>
-      </div>
+      <PageHeader
+        {...PAGE_META.quotationCreate}
+        subtitle="Fill in the form to generate a new room price proposal. Discounts above 10% require Manager approval."
+      />
 
       {createQuotation.isError && (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-600">

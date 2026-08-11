@@ -8,7 +8,6 @@ import {
   MapPin,
   Building2,
   User,
-  ArrowLeft,
   Edit2,
   X,
   Loader2,
@@ -20,13 +19,14 @@ import {
   UserCog,
   Tag,
   ChevronRight,
-  Briefcase,
-  BookOpen,
   FileText,
-  Banknote,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
+import { Timeline, groupByMonth, type TimelineItemSpec } from "@/components/ui/timeline";
+import type { TimelineEventKind } from "@/shared/design/timeline-events";
 import { Input } from "@/components/ui/Input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import {
@@ -313,7 +313,23 @@ function TaskCard({ task }: { task: Task }) {
 
 // ── Main Detail Screen ────────────────────────────────────────────────────────
 
-export function CustomerProfileDetailScreen({ customerId }: { customerId: string }) {
+/**
+ * Full customer detail — Overview · Tasks · History · Info.
+ *
+ * `embedded` renders the same screen inside the list's detail drawer (§9.3: a
+ * popup must expose exactly the tabs and actions its full page does). Rendering
+ * *this* component in the drawer rather than a trimmed-down copy is what makes
+ * that guarantee structural — the two cannot drift apart, because there is only
+ * one implementation. Embedded mode only drops the chrome the drawer already
+ * provides: the page header and the profile summary card.
+ */
+export function CustomerProfileDetailScreen({
+  customerId,
+  embedded = false,
+}: {
+  customerId: string;
+  embedded?: boolean;
+}) {
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const [tab, setTab] = useState("overview");
@@ -367,28 +383,65 @@ export function CustomerProfileDetailScreen({ customerId }: { customerId: string
   const isCorporate = customer.customerType === "CORPORATE";
 
   return (
-    <div className="space-y-5 pb-10">
-      {/* Back + Actions */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => router.push("/customer-profiles")}
-          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition"
-        >
-          <ArrowLeft className="size-4" />
-          <span>Customer Profiles</span>
-        </button>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setEditOpen(true)}
-          leftIcon={<Edit2 className="size-3.5" />}
-        >
-          Edit Profile
-        </Button>
-      </div>
+    <div className={embedded ? "space-y-5" : "space-y-5 pb-10"}>
+      {/* §4.3 detail header — the trail back to the list lives in the breadcrumb,
+          so the old bespoke "back" link is no longer needed.
+          Suppressed when embedded: the drawer supplies its own header, and two
+          titles for the same record read as a rendering bug. */}
+      {!embedded && (
+        <PageHeader
+          crumbs={[
+            ...PAGE_META.customerProfiles.crumbs.slice(0, -1),
+            { label: "Customers", href: ROUTE_PATHS.customerProfiles },
+            { label: customer.fullName },
+          ]}
+          title={customer.fullName}
+          meta={
+            <>
+              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${TYPE_BADGE[customer.customerType]}`}>
+                {TYPE_LABEL[customer.customerType]}
+              </span>
+              <Badge
+                variant={customer.status === "ACTIVE" ? "success" : "default"}
+                size="sm"
+                className="text-[10px] font-bold"
+              >
+                {customer.status}
+              </Badge>
+            </>
+          }
+          actions={
+            <Button
+              variant="secondary"
+              onClick={() => setEditOpen(true)}
+              leftIcon={<Edit2 className="size-4" />}
+            >
+              Edit Profile
+            </Button>
+          }
+        />
+      )}
 
-      {/* Profile Header Card */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      {/* Embedded mode hides the page header, which is where Edit normally lives —
+          so the action is re-offered here. Without this the drawer would be
+          read-only, which is exactly the "popup does less than the page" gap
+          §9.3 forbids. */}
+      {embedded && (
+        <div className="flex justify-end">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setEditOpen(true)}
+            leftIcon={<Edit2 className="size-3.5" />}
+          >
+            Edit Profile
+          </Button>
+        </div>
+      )}
+
+      {/* Profile Header Card — the drawer renders its own identity block, so this
+          would be a second copy of the same avatar, name and contact row. */}
+      <div className={`bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden ${embedded ? "hidden" : ""}`}>
         {/* Top gradient strip */}
         <div className={`h-2 ${isCorporate ? "bg-linear-to-r from-purple-400 to-purple-600" : "bg-linear-to-r from-blue-400 to-blue-600"}`} />
         <div className="px-6 py-5">
@@ -399,24 +452,11 @@ export function CustomerProfileDetailScreen({ customerId }: { customerId: string
               {initials(customer.fullName)}
             </div>
 
-            {/* Info */}
+            {/* Info — name, type and status now live in the page header above, so
+                this block carries only what the header does not. */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-xl font-bold text-slate-900">{customer.fullName}</h1>
-                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${TYPE_BADGE[customer.customerType]}`}>
-                  {TYPE_LABEL[customer.customerType]}
-                </span>
-                <Badge
-                  variant={customer.status === "ACTIVE" ? "success" : "default"}
-                  size="sm"
-                  className="text-[10px] font-bold"
-                >
-                  {customer.status}
-                </Badge>
-              </div>
-
               {isCorporate && customer.companyName && (
-                <div className="flex items-center gap-1.5 mt-1">
+                <div className="flex items-center gap-1.5">
                   <Building2 className="size-3.5 text-slate-400" />
                   <span className="text-sm text-slate-600 font-medium">{customer.companyName}</span>
                 </div>
@@ -625,29 +665,20 @@ export function CustomerProfileDetailScreen({ customerId }: { customerId: string
 
 // ── History Timeline ──────────────────────────────────────────────────────────
 
-const HISTORY_CONFIG: Record<CustomerHistoryItem["type"], {
-  label: string;
-  iconBg: string;
-  badgeCls: string;
-  icon: React.ReactNode;
-}> = {
-  DEAL: { label: "Deal", iconBg: "bg-indigo-100", badgeCls: "bg-indigo-100 text-indigo-700", icon: <Briefcase className="size-3.5 text-indigo-600" /> },
-  BOOKING: { label: "Booking", iconBg: "bg-teal-100", badgeCls: "bg-teal-100 text-teal-700", icon: <BookOpen className="size-3.5 text-teal-600" /> },
-  QUOTATION: { label: "Quotation", iconBg: "bg-amber-100", badgeCls: "bg-amber-100 text-amber-700", icon: <FileText className="size-3.5 text-amber-600" /> },
-};
-
-const TASK_STATUS_CFG: Record<string, string> = {
-  COMPLETED: "bg-green-100 text-green-700",
-  CANCELLED: "bg-slate-100 text-slate-500",
-  OPEN: "bg-yellow-100 text-yellow-700",
-  OVERDUE: "bg-red-100 text-red-700",
-};
-
+/** `IN_PROGRESS` → `IN PROGRESS`. Backend statuses are screaming snake case. */
 function statusLabel(raw: string | null) {
   if (!raw) return "—";
   return raw.replace(/_/g, " ");
 }
 
+/**
+ * Unified service history — tasks plus deals/bookings/quotations.
+ *
+ * Rendered through the shared `Timeline` (§9.8). The previous local version drew
+ * every task with the same `CheckCircle2` regardless of what had happened to it,
+ * so an opened, completed and cancelled task were visually identical; event kind
+ * now comes from the canonical registry, which gives each its own glyph and tone.
+ */
 function HistoryTimeline({
   tasks,
   history,
@@ -655,153 +686,76 @@ function HistoryTimeline({
   tasks: Task[];
   history: CustomerHistoryItem[];
 }) {
-  // Merge tasks + history items into one sorted list (newest first)
   type Entry =
-    | { kind: "task"; ts: number; item: Task }
-    | { kind: "history"; ts: number; item: CustomerHistoryItem };
+    | { kind: "task"; ts: number; task: Task }
+    | { kind: "history"; ts: number; record: CustomerHistoryItem };
 
   const entries: Entry[] = [
-    ...tasks.map(t => ({
-      kind: "task" as const,
-      ts: new Date(t.updatedAt).getTime(),
-      item: t,
-    })),
-    ...history.map(h => ({
+    ...tasks.map((t) => ({ kind: "task" as const, ts: new Date(t.updatedAt).getTime(), task: t })),
+    ...history.map((h) => ({
       kind: "history" as const,
       ts: h.createdAt ? new Date(h.createdAt).getTime() : 0,
-      item: h,
+      record: h,
     })),
-  ].sort((a, b) => b.ts - a.ts);
+  ];
 
-  if (entries.length === 0) {
-    return <p className="text-sm text-slate-400 text-center py-8">No service history available.</p>;
-  }
+  const groups = groupByMonth(
+    entries,
+    (e) => e.ts,
+    (e): TimelineItemSpec => {
+      if (e.kind === "task") {
+        const t = e.task;
+        const overdue = isOverdue(t);
+        // A task's event kind is what happened to it, not the fact it is a task.
+        const eventKind: TimelineEventKind =
+          t.status === "COMPLETED" ? "completion"
+            : t.status === "CANCELLED" ? "cancellation"
+              : overdue ? "escalation"
+                : "task";
 
-  // Group entries by month
-  const groups: { label: string; entries: Entry[] }[] = [];
-  for (const entry of entries) {
-    const d = new Date(entry.ts);
-    const label = d.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-    const last = groups[groups.length - 1];
-    if (!last || last.label !== label) {
-      groups.push({ label, entries: [entry] });
-    } else {
-      last.entries.push(entry);
-    }
-  }
+        return {
+          id: `task-${t.taskId}`,
+          kind: eventKind,
+          label: overdue ? "Overdue task" : undefined,
+          title: t.title,
+          description: t.resultNote ? `"${t.resultNote}"` : t.description,
+          timestamp: fmtDateTime(t.updatedAt),
+          actor: [
+            t.assignedUserName,
+            t.startAt && t.endAt ? `${fmtDate(t.startAt)} -> ${fmtDate(t.endAt)}` : null,
+          ].filter(Boolean).join(" | ") || undefined,
+        };
+      }
 
-  return (
-    <div className="space-y-6">
-      {groups.map(group => (
-        <div key={group.label}>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">
-            {group.label}
-          </p>
-          <div className="relative">
-            <div className="absolute left-4 top-0 bottom-0 w-px bg-slate-100" />
-            <div className="space-y-2">
-              {group.entries.map((entry, i) => {
-                if (entry.kind === "task") {
-                  const t = entry.item;
-                  const overdue = isOverdue(t);
-                  const statusCls = overdue
-                    ? TASK_STATUS_CFG.OVERDUE
-                    : TASK_STATUS_CFG[t.status] ?? TASK_STATUS_CFG.OPEN;
-                  return (
-                    <div key={`task-${t.taskId}`} className="flex gap-3 pb-2 last:pb-0">
-                      <div className="relative z-10 w-8 shrink-0 flex justify-center pt-1">
-                        <div className="bg-blue-100 rounded-full p-1">
-                          <CheckCircle2 className="size-3.5 text-blue-600" />
-                        </div>
-                      </div>
-                      <div className="flex-1 bg-white rounded-xl border border-slate-100 px-3.5 py-3 shadow-sm">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 mb-0.5">
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">Task</span>
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${statusCls}`}>
-                                {overdue ? "Overdue" : t.status}
-                              </span>
-                            </div>
-                            <p className="text-sm font-semibold text-slate-800 truncate">{t.title}</p>
-                            {t.description && <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{t.description}</p>}
-                            {t.resultNote && (
-                              <p className="text-xs text-slate-600 mt-1 italic border-l-2 border-slate-200 pl-2 line-clamp-1">
-                                "{t.resultNote}"
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-400">
-                          <span>{fmtDateTime(t.updatedAt)}</span>
-                          {t.assignedUserName && <span>· {t.assignedUserName}</span>}
-                          {t.startAt && t.endAt && <span>· {fmtDate(t.startAt)} → {fmtDate(t.endAt)}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-
-                const h = entry.item;
-                const cfg = HISTORY_CONFIG[h.type];
-                return (
-                  <div key={`${h.type}-${h.id}-${i}`} className="flex gap-3 pb-2 last:pb-0">
-                    <div className="relative z-10 w-8 shrink-0 flex justify-center pt-1">
-                      <div className={`${cfg.iconBg} rounded-full p-1`}>{cfg.icon}</div>
-                    </div>
-                    <div className="flex-1 bg-white rounded-xl border border-slate-100 px-3.5 py-3 shadow-sm">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cfg.badgeCls}`}>
-                              {cfg.label}
-                            </span>
-                            {h.status && (
-                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                                {statusLabel(h.status)}
-                              </span>
-                            )}
-                            {h.stage && (
-                              <span className="text-[10px] text-slate-400">{statusLabel(h.stage)}</span>
-                            )}
-                          </div>
-                          <p className="text-sm font-semibold text-slate-800 truncate">{h.title}</p>
-                          {(h.checkIn || h.expectedClose) && (
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <Calendar className="size-3 text-slate-400" />
-                              <span className="text-xs text-slate-500">
-                                {h.checkIn && h.checkOut
-                                  ? `${h.checkIn} → ${h.checkOut}`
-                                  : h.checkIn ?? h.expectedClose}
-                              </span>
-                            </div>
-                          )}
-                          {h.notes && (
-                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-1 italic">{h.notes}</p>
-                          )}
-                        </div>
-                        {h.amount != null && (
-                          <div className="flex items-center gap-1 shrink-0">
-                            <Banknote className="size-3 text-slate-400 mr-0.5" />
-                            <span className="text-sm font-bold text-slate-700">
-                              {h.amount.toLocaleString("vi-VN")} ₫
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      {h.createdAt && (
-                        <p className="text-[11px] text-slate-400 mt-1.5">{fmtDateTime(h.createdAt)}</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
+      const h = e.record;
+      return {
+        id: `${h.type}-${h.id}`,
+        rawType: h.type,
+        title: h.title,
+        description: h.notes ?? undefined,
+        timestamp: h.createdAt ? fmtDateTime(h.createdAt) : undefined,
+        actor:
+          h.checkIn && h.checkOut ? `${h.checkIn} -> ${h.checkOut}`
+            : h.checkIn ?? h.expectedClose ?? undefined,
+        badges: (
+          <>
+            {h.status && (
+              <span className="rounded-pill bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                {statusLabel(h.status)}
+              </span>
+            )}
+            {h.amount != null && (
+              <span className="numeric rounded-pill bg-success/12 px-1.5 py-0.5 text-[10px] font-bold text-success">
+                {h.amount.toLocaleString("vi-VN")} VND
+              </span>
+            )}
+          </>
+        ),
+      };
+    },
   );
+
+  return <Timeline groups={groups} emptyMessage="No service history available." />;
 }
 
 // ── Shared field components ───────────────────────────────────────────────────

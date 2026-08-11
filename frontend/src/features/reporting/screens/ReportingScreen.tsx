@@ -5,6 +5,8 @@ import { FileText, Download, Printer, AlertCircle, CheckCircle2, ClipboardList, 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -373,14 +375,7 @@ export function ReportingScreen() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Advanced Reporting & Analytics</h1>
-          <p className="text-xs text-slate-400">
-            Deep-dive insights into hotel sales pipeline performance and discount approvals
-          </p>
-        </div>
-      </div>
+      <PageHeader {...PAGE_META.reporting} />
 
       {/* Tab switcher */}
       <div className="flex border-b border-slate-200 gap-1">

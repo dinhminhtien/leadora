@@ -2,9 +2,12 @@
 
 import React, { useState, useEffect } from "react";
 import { Workflow, ClipboardList, Search, Plus, Edit, X, RefreshCw, AlertTriangle, Calendar } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { ExportMenu, useTableControls } from "@/components/ui/table-controls";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Badge } from "@/components/ui/Badge";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
@@ -16,6 +19,20 @@ import { getApiErrorMessage } from "@/lib/api_error";
 import { operationalHandoverService, type OperationalHandoverPayload } from "@/services/operational_handover_service";
 import { bookingConfirmationService, type Booking } from "@/services/booking_confirmation_service";
 import { type ArrivalHandover } from "@/services/arrival_handover_service";
+
+const HANDOVER_EXPORT_HEADERS = [
+  "Booking code", "Customer", "Check-in", "Check-out", "Rooms", "Handover status", "FO readiness",
+];
+
+function handoverExportRow(h: ArrivalHandover): (string | number | null | undefined)[] {
+  return [
+    h.bookingCode, h.customerName, h.checkInDate, h.checkOutDate,
+    h.roomSummary ?? "", h.status ?? "", h.readinessStatus ?? "",
+  ];
+}
+
+/** Rows per page — mirrors the `size: 10` requested from the logs endpoint. */
+const LOGS_PAGE_SIZE = 10;
 import { HandoverDetailDrawer } from "@/features/front_office_handover/components/HandoverDetailDrawer";
 import { userService } from "@/services/user_service";
 import { useAuthStore } from "@/stores/auth_store";
@@ -72,6 +89,7 @@ export function OperationalHandoverScreen() {
   const [statusFilter, setStatusFilter] = useState("");
   const [logsPage, setLogsPage] = useState(0);
   const [logsTotalPages, setLogsTotalPages] = useState(0);
+  const [logsTotalElements, setLogsTotalElements] = useState(0);
   const [loadingLogs, setLoadingLogs] = useState(false);
 
   // Confirmed Bookings tab states
@@ -79,6 +97,7 @@ export function OperationalHandoverScreen() {
   const [bookingsSearch, setBookingsSearch] = useState("");
   const [bookingsPage, setBookingsPage] = useState(0);
   const [bookingsTotalPages, setBookingsTotalPages] = useState(0);
+  const [bookingsTotalElements, setBookingsTotalElements] = useState(0);
   const [loadingBookings, setLoadingBookings] = useState(false);
 
   // Users / FO list
@@ -142,6 +161,9 @@ export function OperationalHandoverScreen() {
         const pageMeta =
           res.data.page && typeof res.data.page === "object" ? res.data.page : null;
         setLogsTotalPages(pageMeta ? pageMeta.totalPages : (res.data.totalPages ?? 0));
+        setLogsTotalElements(
+          pageMeta ? pageMeta.totalElements : (res.data.totalElements ?? 0),
+        );
       }
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Failed to load operational handovers"));
@@ -180,6 +202,9 @@ export function OperationalHandoverScreen() {
         const pageMeta =
           res.data.page && typeof res.data.page === "object" ? res.data.page : null;
         setBookingsTotalPages(pageMeta ? pageMeta.totalPages : (res.data.totalPages ?? 0));
+        setBookingsTotalElements(
+          pageMeta ? pageMeta.totalElements : (res.data.totalElements ?? filtered.length),
+        );
       }
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Failed to load bookings"));
@@ -274,15 +299,109 @@ export function OperationalHandoverScreen() {
   const getReadinessBadge = (readiness?: string) =>
     readiness ? <StatusPill size="sm" domain="readiness" value={readiness} /> : null;
 
+  /** Column set — Blueprint §10.12 outgoing handover log. */
+  const handoverLogColumns: ColumnDef<ArrivalHandover>[] = React.useMemo(() => [
+    {
+      id: "bookingCode",
+      header: "Booking Code",
+      sticky: "left",
+      className: "whitespace-nowrap text-xs font-bold",
+      cell: (h) => h.bookingCode,
+    },
+    {
+      id: "customer",
+      header: "Customer / Guest",
+      className: "max-w-[180px] truncate text-xs font-bold",
+      cell: (h) => <span title={h.customerName}>{h.customerName}</span>,
+    },
+    {
+      id: "stay",
+      header: "Check-In / Out",
+      minWidth: "md",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (h) => `${h.checkInDate} / ${h.checkOutDate}`,
+    },
+    {
+      id: "rooms",
+      header: "Room Allocations",
+      minWidth: "lg",
+      className: "max-w-[220px] truncate text-xs text-muted-foreground",
+      cell: (h) => <span title={h.roomSummary || ""}>{h.roomSummary || "—"}</span>,
+    },
+    {
+      id: "status",
+      header: "Handover Status",
+      cell: (h) => getStatusBadge(h.status),
+    },
+    {
+      id: "readiness",
+      header: "FO Readiness",
+      sticky: "right",
+      cell: (h) => (
+        <div className="flex flex-col items-start gap-1">
+          {getReadinessBadge(h.readinessStatus)}
+          {h.readinessStatus === "NEED_CLARIFICATION" && h.clarificationNote && (
+            <span
+              className="max-w-[120px] truncate rounded border border-danger/30 bg-danger/10 px-1.5 py-0.5 text-[10px] italic text-danger"
+              title={h.clarificationNote}
+            >
+              {h.clarificationNote}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const logControls = useTableControls<ArrivalHandover>("handover-logs", handoverLogColumns);
+
+  /**
+   * Confirmed bookings that have no handover yet. The query already filters to
+   * CONFIRMED, so the status column is a constant — kept because a Front Office
+   * reader scanning the tab still expects to see it stated.
+   */
+  const pendingBookingColumns: ColumnDef<Booking>[] = React.useMemo(() => [
+    {
+      id: "code",
+      header: "Booking Code",
+      sticky: "left",
+      className: "whitespace-nowrap text-xs font-bold",
+      cell: (b) => b.bookingCode,
+    },
+    {
+      id: "customer",
+      header: "Customer / Guest",
+      className: "max-w-[200px] truncate text-xs font-bold",
+      cell: (b) => <span title={b.customerName}>{b.customerName}</span>,
+    },
+    {
+      id: "stay",
+      header: "Check-In / Out",
+      minWidth: "md",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (b) => `${b.checkInDate} / ${b.checkOutDate}`,
+    },
+    {
+      id: "total",
+      header: "Total Amount",
+      numeric: true,
+      className: "font-bold",
+      cell: (b) => `${b.totalAmount?.toLocaleString("vi-VN") ?? 0} ₫`,
+    },
+    {
+      id: "status",
+      header: "Status",
+      sticky: "right",
+      cell: (b) => <StatusPill size="sm" domain="booking" value={b.status} />,
+    },
+  ], []);
+
+  const pendingControls = useTableControls<Booking>("handover-pending", pendingBookingColumns);
+
   return (
     <div className="space-y-6 min-h-[101vh]" style={{ scrollbarGutter: "stable" }}>
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Operational Handovers</h1>
-          <p className="text-xs text-slate-400 dark:text-zinc-400">Transfer deal details, room lists, VIP requirements, and instructions to hotel operations</p>
-        </div>
-      </div>
+      <PageHeader {...PAGE_META.operationalHandover} />
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "logs" | "pending")}>
@@ -341,100 +460,38 @@ export function OperationalHandoverScreen() {
             </CardContent>
           </Card>
 
-          {loadingLogs ? (
-            <div className="text-center py-12 text-slate-400 text-xs flex items-center justify-center gap-2 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-sm">
-              <RefreshCw className="size-4 animate-spin text-blue-500" /> Loading handover logs...
-            </div>
-          ) : (
-            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden">
-              <div className="w-full overflow-x-auto">
-                <Table className="w-full table-fixed min-w-[1100px]">
-                  <TableHeader className="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-100 dark:border-zinc-850">
-                    <TableRow hoverable={false}>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[12%] text-left! whitespace-nowrap">Booking Code</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[20%] text-left! whitespace-nowrap">Customer / Guest</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[20%] text-center! whitespace-nowrap">Check-In / Out Date</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[24%] text-left! whitespace-nowrap">Room Allocations</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[12%] text-center! whitespace-nowrap">Handover Status</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[12%] text-center! whitespace-nowrap">FO Readiness</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {handovers.length > 0 ? (
-                      handovers.map(h => (
-                        <TableRow
-                          key={h.handoverId}
-                          onClick={() => setSelectedHandover(h)}
-                          className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 border-b border-slate-100 dark:border-zinc-800 transition cursor-pointer select-none"
-                        >
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
-                            {h.bookingCode}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-[180px]" title={h.customerName}>
-                            {h.customerName}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">
-                            {h.checkInDate} / {h.checkOutDate}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! text-slate-650! dark:text-zinc-400! text-left! whitespace-nowrap truncate max-w-[220px]" title={h.roomSummary || ""}>
-                            {h.roomSummary || "—"}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
-                            <div className="flex justify-center">
-                              {getStatusBadge(h.status)}
-                            </div>
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
-                            <div className="flex flex-col items-center justify-center gap-1">
-                              {getReadinessBadge(h.readinessStatus)}
-                              {h.readinessStatus === "NEED_CLARIFICATION" && h.clarificationNote && (
-                                <span className="text-[10px] text-rose-600 dark:text-rose-450 max-w-[120px] truncate italic bg-rose-50 dark:bg-rose-950/20 px-1.5 py-0.5 rounded border border-rose-100 dark:border-rose-900" title={h.clarificationNote}>
-                                  {h.clarificationNote}
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow hoverable={false}>
-                        <TableCell colSpan={6} className="py-12 text-center text-slate-400 dark:text-zinc-500 text-xs">
-                          No outgoing handovers found.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Logs Pagination */}
-              {logsTotalPages > 1 && (
-                <div className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-zinc-800/40 border-t border-slate-100 dark:border-zinc-800 text-xs text-slate-500 dark:text-zinc-400">
-                  <div>
-                    Page {logsPage + 1} of {logsTotalPages}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      disabled={logsPage === 0}
-                      onClick={() => setLogsPage(prev => Math.max(0, prev - 1))}
-                      className="px-3 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 bg-white dark:bg-zinc-800"
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={logsPage >= logsTotalPages - 1}
-                      onClick={() => setLogsPage(prev => Math.min(logsTotalPages - 1, prev + 1))}
-                      className="px-3 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 bg-white dark:bg-zinc-800"
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <DataTable
+            label="Handover logs"
+            rows={handovers}
+            columns={logControls.visibleColumns}
+            rowId={(h) => h.handoverId}
+            isLoading={loadingLogs}
+            density={logControls.density}
+            sortBy={logControls.sortBy}
+            sortDir={logControls.sortDir}
+            onSortChange={logControls.onSortChange}
+            onRowClick={(h) => setSelectedHandover(h)}
+            selectedIds={logControls.selectedIds}
+            onSelectionChange={logControls.setSelectedIds}
+            bulkActions={
+              <ExportMenu
+                filename={`handovers-selected-${new Date().toISOString().slice(0, 10)}`}
+                headers={HANDOVER_EXPORT_HEADERS}
+                rows={handovers.filter((h) => logControls.selectedIds.has(h.handoverId)).map(handoverExportRow)}
+              />
+            }
+            emptyTitle="No outgoing handovers"
+            emptyMessage="Once a booking is confirmed, its handover to Front Office is recorded here."
+            footer={
+              <TablePagination
+                page={logsPage}
+                pageSize={LOGS_PAGE_SIZE}
+                totalElements={logsTotalElements}
+                totalPages={logsTotalPages}
+                onPageChange={setLogsPage}
+              />
+            }
+          />
         </TabsContent>
 
         {/* ==================== TAB CONTENT: Pending Bookings ==================== */}
@@ -466,89 +523,29 @@ export function OperationalHandoverScreen() {
             </CardContent>
           </Card>
 
-          {loadingBookings ? (
-            <div className="text-center py-12 text-slate-400 text-xs flex items-center justify-center gap-2 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-sm">
-              <RefreshCw className="size-4 animate-spin text-blue-500" /> Loading pending bookings...
-            </div>
-          ) : (
-            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden">
-              <div className="w-full overflow-x-auto">
-                <Table className="w-full table-fixed min-w-[1000px]">
-                  <TableHeader className="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-100 dark:border-zinc-850">
-                    <TableRow hoverable={false}>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-left! whitespace-nowrap">Booking Code</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[30%] text-left! whitespace-nowrap">Customer / Guest</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[25%] text-center! whitespace-nowrap">Check-In / Out Date</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[13%] text-right! whitespace-nowrap">Total Amount</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[17%] text-center! whitespace-nowrap">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {bookings.length > 0 ? (
-                      bookings.map(b => (
-                        <TableRow
-                          key={b.bookingId}
-                          onClick={() => setSelectedBooking(b)}
-                          className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 border-b border-slate-100 dark:border-zinc-800 transition cursor-pointer select-none"
-                        >
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
-                            {b.bookingCode}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-[200px]" title={b.customerName}>
-                            {b.customerName}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">
-                            {b.checkInDate} / {b.checkOutDate}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-right! whitespace-nowrap">
-                            {b.totalAmount?.toLocaleString("vi-VN")} ₫
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
-                            <div className="flex justify-center">
-                              <Badge variant="success" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900 font-bold py-1">CONFIRMED</Badge>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow hoverable={false}>
-                        <TableCell colSpan={5} className="py-12 text-center text-slate-400 dark:text-zinc-500 text-xs">
-                          No confirmed bookings waiting for handover.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Bookings Pagination */}
-              {bookingsTotalPages > 1 && (
-                <div className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-zinc-800/40 border-t border-slate-100 dark:border-zinc-800 text-xs text-slate-500 dark:text-zinc-400">
-                  <div>
-                    Page {bookingsPage + 1} of {bookingsTotalPages}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      disabled={bookingsPage === 0}
-                      onClick={() => setBookingsPage(prev => Math.max(0, prev - 1))}
-                      className="px-3 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 bg-white dark:bg-zinc-800"
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={bookingsPage >= bookingsTotalPages - 1}
-                      onClick={() => setBookingsPage(prev => Math.min(bookingsTotalPages - 1, prev + 1))}
-                      className="px-3 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 bg-white dark:bg-zinc-800"
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <DataTable
+            label="Confirmed bookings awaiting handover"
+            rows={bookings}
+            columns={pendingControls.visibleColumns}
+            rowId={(b) => b.bookingId}
+            isLoading={loadingBookings}
+            density={pendingControls.density}
+            sortBy={pendingControls.sortBy}
+            sortDir={pendingControls.sortDir}
+            onSortChange={pendingControls.onSortChange}
+            onRowClick={(b) => setSelectedBooking(b)}
+            emptyTitle="Nothing waiting for handover"
+            emptyMessage="Confirmed bookings without an operational handover appear here."
+            footer={
+              <TablePagination
+                page={bookingsPage}
+                pageSize={LOGS_PAGE_SIZE}
+                totalElements={bookingsTotalElements}
+                totalPages={bookingsTotalPages}
+                onPageChange={setBookingsPage}
+              />
+            }
+          />
         </TabsContent>
         )}
       </Tabs>
