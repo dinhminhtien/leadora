@@ -3,8 +3,10 @@ import com.novax.leadora.application.usecase.handover.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.novax.leadora.api.dto.request.CreateInteractionTimelineRequest;
 import com.novax.leadora.api.dto.request.UpdateReadinessStatusRequest;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.application.usecase.timeline.CreateInteractionTimelineUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
@@ -59,6 +61,9 @@ class UpdateHandoverReadinessUseCaseTest {
     @Mock
     private ActivityLogPublisher activityLogPublisher;
 
+    @Mock
+    private CreateInteractionTimelineUseCase createInteractionTimelineUseCase;
+
     private UpdateHandoverReadinessUseCase useCase;
 
     private UUID handoverId;
@@ -67,7 +72,8 @@ class UpdateHandoverReadinessUseCaseTest {
     @BeforeEach
     void setUp() {
         useCase = new UpdateHandoverReadinessUseCase(
-                opHandoverRepository, notificationRepository, activityLogPublisher, new ObjectMapper());
+                opHandoverRepository, notificationRepository, activityLogPublisher, new ObjectMapper(),
+                createInteractionTimelineUseCase);
         handoverId = UUID.randomUUID();
         actor = UserEntity.builder().userId(UUID.randomUUID()).fullName("FO Desk").build();
     }
@@ -173,7 +179,7 @@ class UpdateHandoverReadinessUseCaseTest {
         assertThatThrownBy(() ->
                 useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("no longer active");
+                .hasMessageContaining("can no longer be updated");
 
         verify(opHandoverRepository, never()).save(any());
     }
@@ -209,7 +215,7 @@ class UpdateHandoverReadinessUseCaseTest {
         assertThatThrownBy(() ->
                 useCase.execute(handoverId, request("NEED_CLARIFICATION", "   "), actor))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("clarification");
+                .hasMessageContaining("Clarification note is required");
 
         verify(opHandoverRepository, never()).save(any());
     }
@@ -316,6 +322,66 @@ class UpdateHandoverReadinessUseCaseTest {
         var response = useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
 
         assertThat(response.getReadinessStatus()).isEqualTo("READY_FOR_ARRIVAL");
+    }
+
+    // ------------------------------------------------------------------ POST-6 timeline
+
+    @Test
+    @DisplayName("POST-6 — the readiness change lands on the interaction timeline, like the Sales half")
+    void recordsTheReadinessChangeOnTheTimeline() {
+        handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+
+        useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
+
+        ArgumentCaptor<CreateInteractionTimelineRequest> entry =
+                ArgumentCaptor.forClass(CreateInteractionTimelineRequest.class);
+        verify(createInteractionTimelineUseCase).execute(entry.capture());
+        assertThat(entry.getValue().getType()).isEqualTo("HANDOVER_READINESS");
+        assertThat(entry.getValue().getDescription())
+                .contains("BK-001")
+                .contains("REVIEWED -> READY_FOR_ARRIVAL");
+    }
+
+    @Test
+    @DisplayName("A throwing timeline write is swallowed on the no-transaction path")
+    void timelineFailureIsSwallowed() {
+        // Scope note: with no transaction synchronization active these mocks exercise the direct
+        // fallback branch only. The guarantee that a timeline failure cannot roll the readiness
+        // update back comes from running the write in afterCommit, which no unit test with a
+        // mocked collaborator can observe — it needs a @SpringBootTest with a real transaction.
+        handoverAt(ReadinessStatus.REVIEWED, BookingStatus.CONFIRMED);
+        org.mockito.Mockito.doThrow(new RuntimeException("timeline down"))
+                .when(createInteractionTimelineUseCase).execute(any());
+
+        var response = useCase.execute(handoverId, request("READY_FOR_ARRIVAL", null), actor);
+
+        assertThat(response.getReadinessStatus()).isEqualTo("READY_FOR_ARRIVAL");
+    }
+
+    @ParameterizedTest(name = "a {0} -> {0} retry writes no timeline entry")
+    @CsvSource({"REVIEWED", "READY_FOR_ARRIVAL", "NEED_CLARIFICATION"})
+    @DisplayName("A self-transition is a retry or a note edit, not a readiness change")
+    void doesNotRecordSelfTransitionsOnTheTimeline(ReadinessStatus state) {
+        handoverAt(state, BookingStatus.CONFIRMED);
+
+        useCase.execute(handoverId, request(state.name(), "still unclear"), actor);
+
+        verify(createInteractionTimelineUseCase, never()).execute(any());
+    }
+
+    @Test
+    @DisplayName("A legacy null readiness reads as PENDING_REVIEW on the timeline, not \"null\"")
+    void normalisesNullPreviousReadinessOnTheTimeline() {
+        handoverAt(null, BookingStatus.CONFIRMED);
+
+        useCase.execute(handoverId, request("REVIEWED", null), actor);
+
+        ArgumentCaptor<CreateInteractionTimelineRequest> entry =
+                ArgumentCaptor.forClass(CreateInteractionTimelineRequest.class);
+        verify(createInteractionTimelineUseCase).execute(entry.capture());
+        assertThat(entry.getValue().getDescription())
+                .contains("PENDING_REVIEW -> REVIEWED")
+                .doesNotContain("null");
     }
 
     @Test
