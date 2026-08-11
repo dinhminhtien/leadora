@@ -48,6 +48,11 @@ public class GetArrivalHandoverDetailUseCase {
         //
         // 404 rather than 422, matching the DRAFT branch above: a handover that is not the front
         // desk's business does not get to confirm it exists.
+        //
+        // The cost, accepted deliberately: the front desk loses the explanation it would have got
+        // from a 200 carrying bookingStatus ("this booking is cancelled"), and reads a plain
+        // "not found" instead. The reason still reaches them through the 422 on the write, and the
+        // drawer keeps its cached copy — see the note on isBookingActive in FrontOfficeHandoverScreen.
         BookingEntity booking = handover.getBooking();
         if (booking != null && !BookingStatus.LIVE_FOR_ARRIVAL.contains(booking.getStatus())) {
             throw new ResourceNotFoundException("Arrival handover", handoverId);
