@@ -2,16 +2,32 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Star, ThumbsUp, Search, User, Filter, ChevronLeft, ChevronRight, X, CheckCircle, AlertTriangle } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { DensityMenu } from "@/components/ui/list-toolbar";
+import { ColumnPicker, ExportMenu, RefreshButton, useTableControls } from "@/components/ui/table-controls";
+import { OwnerCell } from "@/components/ui/row-actions";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Select } from "@/components/ui/Select";
 import { customerFeedbackService, type CustomerFeedback } from "@/services/customer_feedback_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
 import { toast } from "@/stores/toast_store";
+
+/** Rows per page — mirrors the server page size requested below. */
+const PAGE_SIZE = 10;
+
+const FEEDBACK_EXPORT_HEADERS = [
+  "Customer", "Booking code", "Sales staff", "Rating", "Comment", "Review status",
+];
+
+function feedbackExportRow(f: CustomerFeedback): (string | number | null | undefined)[] {
+  return [f.customerName, f.bookingCode, f.salesStaffName, f.rating ?? "", f.comment ?? "", f.reviewStatus];
+}
 
 export function CustomerFeedbackListScreen() {
   const { user } = useAuthStore();
@@ -19,6 +35,56 @@ export function CustomerFeedbackListScreen() {
   const isManagerOrAdmin = userRole === "MANAGER" || userRole === "ADMIN";
 
   const [feedbacks, setFeedbacks] = useState<CustomerFeedback[]>([]);
+  const feedbackColumns: ColumnDef<CustomerFeedback>[] = useMemo(() => [
+    {
+      id: "customer",
+      header: "Customer / Booking Code",
+      sticky: "left",
+      cell: (f) => (
+        <>
+          <div className="text-xs font-bold text-foreground">{f.customerName}</div>
+          <div className="mt-0.5 text-[10px] font-semibold text-muted-foreground">{f.bookingCode}</div>
+        </>
+      ),
+    },
+    {
+      id: "staff",
+      header: "Assigned Sales Staff",
+      minWidth: "md",
+      cell: (f) => <OwnerCell name={f.salesStaffName} />,
+    },
+    {
+      id: "rating",
+      header: "Rating",
+      numeric: true,
+      cell: (f) =>
+        f.rating ? (
+          <span className="inline-flex items-center gap-0.5 rounded-md bg-warning/12 px-2 py-0.5 text-xs font-bold text-warning">
+            <Star className="size-3 fill-current" />
+            {f.rating}.0
+          </span>
+        ) : (
+          <span className="text-[10px] italic text-muted-foreground">Not rated</span>
+        ),
+    },
+    {
+      id: "comment",
+      header: "Feedback Comment",
+      minWidth: "lg",
+      className: "max-w-xs truncate text-xs",
+      cell: (f) =>
+        f.comment ? `"${f.comment}"` : <span className="italic text-muted-foreground">No comment</span>,
+    },
+    {
+      id: "status",
+      header: "Review Status",
+      // Canonical review-status binding (Blueprint §2.7).
+      cell: (f) => <StatusPill size="sm" domain="review" value={f.reviewStatus} />,
+    },
+  ], []);
+
+  const controls = useTableControls<CustomerFeedback>("feedback", feedbackColumns);
+
   const [loading, setLoading] = useState(true);
 
   // Filtering & Pagination state
@@ -136,16 +202,14 @@ export function CustomerFeedbackListScreen() {
 
   return (
     <div className="space-y-6">
-      {/* Title */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Customer Reviews & Feedback</h1>
-          <p className="text-xs text-slate-400">Monitor Sales Staff service quality and track customer satisfaction levels</p>
-        </div>
-        <Badge variant="success" className="text-xs px-2.5 font-bold uppercase bg-emerald-100 text-emerald-800 border-none">
-          NPS Target 95%
-        </Badge>
-      </div>
+      <PageHeader
+        {...PAGE_META.customerFeedback}
+        actions={
+          <Badge variant="success" className="text-xs px-2.5 font-bold uppercase bg-emerald-100 text-emerald-800 border-none">
+            NPS Target 95%
+          </Badge>
+        }
+      />
 
       {/* Statistics Ribbon */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
@@ -223,113 +287,60 @@ export function CustomerFeedbackListScreen() {
               </Select>
             </div>
           </div>
+
+          {/* §2.6 control cluster */}
+          <div className="flex items-center gap-2">
+            <RefreshButton onRefresh={fetchFeedbacks} isRefreshing={loading} />
+            <ColumnPicker
+              columns={feedbackColumns}
+              hiddenIds={controls.hiddenColumnIds}
+              onChange={controls.setHiddenColumnIds}
+              requiredIds={["customer"]}
+            />
+            <ExportMenu
+              filename={`feedback-${new Date().toISOString().slice(0, 10)}`}
+              headers={FEEDBACK_EXPORT_HEADERS}
+              rows={feedbacks.map(feedbackExportRow)}
+            />
+            <DensityMenu value={controls.density} onChange={controls.setDensity} />
+          </div>
         </CardContent>
       </Card>
 
-      {/* Feedbacks Table */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="py-16 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
-            <div className="size-8 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
-            Loading feedback data...
-          </div>
-        ) : (
-          <>
-            <Table>
-              <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
-                <TableRow hoverable={false}>
-                  <TableHead className="font-bold text-xs text-slate-500">Customer / Booking Code</TableHead>
-                  <TableHead className="font-bold text-xs text-slate-500">Assigned Sales Staff</TableHead>
-                  <TableHead className="font-bold text-xs text-slate-500 text-center">Rating</TableHead>
-                  <TableHead className="font-bold text-xs text-slate-500">Feedback Comment</TableHead>
-                  <TableHead className="font-bold text-xs text-slate-500">Review Status</TableHead>
-                  <TableHead className="font-bold text-xs text-slate-500 text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {feedbacks.length > 0 ? (
-                  feedbacks.map(f => (
-                    <TableRow key={f.feedbackId} className="hover:bg-slate-50/70 border-b border-slate-100 transition">
-                      <TableCell className="py-3 px-4 text-xs font-bold text-slate-800">
-                        <div>{f.customerName}</div>
-                        <div className="text-[10px] text-slate-400 font-semibold mt-0.5">{f.bookingCode}</div>
-                      </TableCell>
-                      <TableCell className="py-3 px-4 text-xs text-slate-700 font-semibold">
-                        <span className="inline-flex items-center gap-1">
-                          <User className="size-3 text-slate-400" />
-                          {f.salesStaffName}
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-3 px-4 text-center">
-                        {f.rating ? (
-                          <div className="inline-flex items-center gap-0.5 text-xs font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md">
-                            <Star className="size-3 text-amber-500 fill-amber-500" />
-                            {f.rating}.0
-                          </div>
-                        ) : (
-                          <span className="text-[10px] text-slate-400 italic">Not rated</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-3 px-4 text-xs text-slate-600 font-medium max-w-xs truncate">
-                        {f.comment ? `"${f.comment}"` : <span className="text-slate-300 italic">No comment</span>}
-                      </TableCell>
-                      <TableCell className="py-3 px-4">
-                        {/* Canonical review-status binding (Blueprint §2.7). */}
-                        <StatusPill size="sm" domain="review" value={f.reviewStatus} />
-                      </TableCell>
-                      <TableCell className="py-3 px-4 text-right">
-                        <Button
-                          variant="ghost"
-                          onClick={() => setSelectedFeedback(f)}
-                          className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 py-1 px-2.5 rounded-lg"
-                        >
-                          Details
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow hoverable={false}>
-                    <TableCell colSpan={6} className="py-12 text-center text-slate-400 text-xs">
-                      No matching feedback comments found.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <span className="text-xs text-slate-500">
-                  Showing <span className="font-semibold">{feedbacks.length}</span> of <span className="font-semibold">{totalElements}</span> reviews
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="ghost"
-                    disabled={page === 0}
-                    onClick={() => setPage(p => p - 1)}
-                    className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-600 disabled:opacity-50"
-                  >
-                    <ChevronLeft className="size-4" />
-                  </Button>
-                  <span className="text-xs font-semibold self-center px-2">
-                    Page {page + 1} of {totalPages}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    disabled={page >= totalPages - 1}
-                    onClick={() => setPage(p => p + 1)}
-                    className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-600 disabled:opacity-50"
-                  >
-                    <ChevronRight className="size-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      <DataTable
+        label="Customer feedback"
+        rows={feedbacks}
+        columns={controls.visibleColumns}
+        rowId={(f) => f.feedbackId}
+        isLoading={loading}
+        density={controls.density}
+        sortBy={controls.sortBy}
+        sortDir={controls.sortDir}
+        onSortChange={controls.onSortChange}
+        selectedIds={controls.selectedIds}
+        onSelectionChange={controls.setSelectedIds}
+        bulkActions={
+          <ExportMenu
+            filename={`feedback-selected-${new Date().toISOString().slice(0, 10)}`}
+            headers={FEEDBACK_EXPORT_HEADERS}
+            rows={feedbacks.filter((f) => controls.selectedIds.has(f.feedbackId)).map(feedbackExportRow)}
+          />
+        }
+        onRowClick={(f) => setSelectedFeedback(f)}
+        isFiltered={statusFilter !== "all" || !!search}
+        onClearFilters={() => { setStatusFilter("all"); setSearch(""); setPage(0); }}
+        emptyTitle="No feedback yet"
+        emptyMessage="Feedback appears here once guests respond to a post-stay link."
+        footer={
+          <TablePagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            totalElements={totalElements}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        }
+      />
 
       {/* Detail Modal */}
       {selectedFeedback && (

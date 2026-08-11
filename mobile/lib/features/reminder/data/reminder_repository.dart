@@ -63,6 +63,21 @@ class ReminderRepository {
     );
   }
 
+  /// UC-16.4 — escalate an overdue reminder to the manager.
+  ///
+  /// The server refuses anything but an OVERDUE reminder (`NOT_OVERDUE`, 409),
+  /// refuses an already-completed one (`REMINDER_ALREADY_DONE`, 409), and only
+  /// accepts the call from the **assignee or a MANAGER** (`UNAUTHORIZED_ESCALATE`,
+  /// 403). `ReminderPermissions.canEscalate` mirrors those rules so the button is
+  /// hidden rather than offered and rejected — but the server is still the
+  /// authority, so callers must surface the error either way.
+  Future<void> escalate(String reminderId) {
+    return _client.post<void>(
+      ApiPaths.reminderEscalate(reminderId),
+      decode: (_) {},
+    );
+  }
+
   /// UC-16.1 — mark a reminder done (quick action; see [updateReminder] for
   /// the full edit form).
   Future<void> dismiss(String reminderId) {

@@ -37,7 +37,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/quotations")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_VIEW')")
+@PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN','RESERVATION') and @access.can('QUOTATION_VIEW')")
 public class QuotationController {
 
     private final CreateQuotationUseCase createQuotationUseCase;

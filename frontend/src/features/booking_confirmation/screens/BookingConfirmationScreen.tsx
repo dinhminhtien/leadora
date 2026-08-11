@@ -3,6 +3,19 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Download, Search, Receipt, Plus, Check, X, RefreshCw, AlertTriangle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { DataTable, type ColumnDef } from "@/components/ui/data-table";
+import { ExportMenu, useTableControls } from "@/components/ui/table-controls";
+
+const BOOKING_EXPORT_HEADERS = [
+  "Booking code", "Guest", "Room type", "Check-in", "Check-out", "Total (VND)", "Status",
+];
+
+function bookingExportRow(b: Booking): (string | number | null | undefined)[] {
+  return [
+    b.bookingCode, b.customerName, b.details?.[0]?.productName ?? "",
+    b.checkInDate, b.checkOutDate, b.totalAmount, b.status,
+  ];
+}
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -15,6 +28,9 @@ import { quotationService, type Quotation } from "@/services/quotation_service";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 import { toast } from "@/stores/toast_store";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
+import { BlockedHint } from "@/components/ui/guarded-action";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
 
@@ -42,6 +58,66 @@ export function BookingConfirmationScreen() {
   const [loadingBookings, setLoadingBookings] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  /** Column set — Blueprint §10.9. */
+  const bookingColumns: ColumnDef<Booking>[] = useMemo(() => [
+    {
+      id: "code",
+      header: "Booking Number",
+      sticky: "left",
+      cell: (b) => (
+        <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-bold text-primary">
+          <Receipt className="size-3.5 text-muted-foreground/60" />
+          {b.bookingCode}
+        </span>
+      ),
+    },
+    {
+      id: "guest",
+      header: "Guest Name",
+      className: "max-w-37.5 truncate text-xs font-bold",
+      cell: (b) => <span title={b.customerName}>{b.customerName}</span>,
+    },
+    {
+      id: "roomType",
+      header: "Room Type",
+      minWidth: "md",
+      className: "max-w-40 truncate text-xs text-muted-foreground",
+      cell: (b) => {
+        const product = b.details?.[0]?.productName ?? "N/A";
+        return <span title={product}>{product}</span>;
+      },
+    },
+    {
+      id: "checkIn",
+      header: "Check In",
+      minWidth: "lg",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (b) => b.checkInDate,
+    },
+    {
+      id: "checkOut",
+      header: "Check Out",
+      minWidth: "lg",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (b) => b.checkOutDate,
+    },
+    {
+      id: "amount",
+      header: "Total Amount",
+      numeric: true,
+      className: "font-bold",
+      cell: (b) => `${b.totalAmount.toLocaleString("vi-VN")} ₫`,
+    },
+    {
+      id: "status",
+      header: "Status",
+      sticky: "right",
+      cell: (b) => <StatusPill size="sm" domain="booking" value={b.status} />,
+    },
+  ], []);
+
+  const bookingControls = useTableControls<Booking>("bookings", bookingColumns);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -381,13 +457,10 @@ export function BookingConfirmationScreen() {
 
   return (
     <div className="space-y-6 min-h-[101vh]" style={{ scrollbarGutter: "stable" }}>
-      {/* Header section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Booking Confirmations</h1>
-          <p className="text-xs text-slate-400 dark:text-zinc-400">Manage reservation confirmation states, check active room inventory capacity, and process requests.</p>
-        </div>
-        <div className="flex items-center gap-2 border border-border rounded-xl p-1 bg-muted/30">
+      <PageHeader
+        {...PAGE_META.bookingConfirmation}
+        actions={
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 p-1">
           <Button
             variant={activeTab === "queue" ? "primary" : "ghost"}
             size="sm"
@@ -409,8 +482,9 @@ export function BookingConfirmationScreen() {
               Availability Checker
             </Button>
           )}
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Tab 1: Booking Queue List */}
       {activeTab === "queue" && (
@@ -473,71 +547,32 @@ export function BookingConfirmationScreen() {
             </div>
           )}
 
-          <div className="bg-background rounded-xl border border-border shadow-sm overflow-hidden">
-            <div className="w-full overflow-x-auto">
-              <Table className="w-full table-fixed min-w-275">
-                <TableHeader>
-                  <TableRow hoverable={false}>
-                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[12%] text-left! whitespace-nowrap">Booking Number</TableHead>
-                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[20%] text-left! whitespace-nowrap">Guest Name</TableHead>
-                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[15%] text-left! whitespace-nowrap">Room Type</TableHead>
-                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[10%] text-center! whitespace-nowrap">Check In</TableHead>
-                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[10%] text-center! whitespace-nowrap">Check Out</TableHead>
-                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[15%] text-right! whitespace-nowrap">Total Amount</TableHead>
-                    <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[10%] text-center! whitespace-nowrap">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loadingBookings ? (
-                    <TableRow hoverable={false}>
-                      <TableCell colSpan={8} className="py-12 text-center text-muted-foreground text-xs">
-                        <RefreshCw className="size-6 animate-spin mx-auto mb-2 text-primary" />
-                        Loading bookings from live server...
-                      </TableCell>
-                    </TableRow>
-                  ) : bookings.length > 0 ? (
-                    bookings.map(b => (
-                      <TableRow
-                        key={b.bookingId}
-                        ref={setRowRef(b.bookingId)}
-                        onClick={() => handleViewDetails(b.bookingId)}
-                        className={`hover:bg-muted/30 border-b border-border transition cursor-pointer select-none ${
-                          highlightedId === b.bookingId ? "bg-amber-50 ring-2 ring-inset ring-amber-400 dark:bg-amber-500/10" : ""
-                        }`}
-                      >
-                        <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
-                          <span className="flex items-center justify-start gap-1.5 text-primary">
-                            <Receipt className="size-3.5 text-muted-foreground/60" />
-                            {b.bookingCode}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-37.5" title={b.customerName}>{b.customerName}</TableCell>
-                        <TableCell className="py-3.5! px-4! text-xs! text-slate-600! dark:text-zinc-400! text-left! whitespace-nowrap truncate max-w-40" title={b.details && b.details.length > 0 ? b.details[0].productName : "N/A"}>
-                          {b.details && b.details.length > 0 ? b.details[0].productName : "N/A"}
-                        </TableCell>
-                        <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkInDate}</TableCell>
-                        <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkOutDate}</TableCell>
-                        <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-right! whitespace-nowrap">
-                          {b.totalAmount.toLocaleString('vi-VN')} ₫
-                        </TableCell>
-                        <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
-                          <div className="flex justify-center">
-                            <StatusPill size="sm" domain="booking" value={b.status} />
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow hoverable={false}>
-                      <TableCell colSpan={8} className="py-12 text-center text-muted-foreground text-xs">
-                        No booking confirmation requests match the filter criteria.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
+          <DataTable
+            label="Booking queue"
+            rows={bookings}
+            columns={bookingControls.visibleColumns}
+            rowId={(b) => b.bookingId}
+            isLoading={loadingBookings}
+            density={bookingControls.density}
+            sortBy={bookingControls.sortBy}
+            sortDir={bookingControls.sortDir}
+            onSortChange={bookingControls.onSortChange}
+            highlightId={highlightedId}
+            rowRef={setRowRef}
+            onRowClick={(b) => handleViewDetails(b.bookingId)}
+            selectedIds={bookingControls.selectedIds}
+            onSelectionChange={bookingControls.setSelectedIds}
+            bulkActions={
+              <ExportMenu
+                filename={`bookings-selected-${new Date().toISOString().slice(0, 10)}`}
+                headers={BOOKING_EXPORT_HEADERS}
+                rows={bookings.filter((b) => bookingControls.selectedIds.has(b.bookingId)).map(bookingExportRow)}
+              />
+            }
+            isFiltered={!!search || statusFilter !== "all"}
+            emptyTitle="No booking requests"
+            emptyMessage="Requests raised from an accepted quotation land here for confirmation."
+          />
         </div>
       )}
 
@@ -673,6 +708,12 @@ export function BookingConfirmationScreen() {
                       <option key={q.id} value={q.id}>{String(q.quoteNo || q.id).substring(0, 8)}... (Status: {q.status})</option>
                     ))}
                   </Select>
+                  {/* BR-23 — stay details are taken from the approved quotation,
+                      not retyped. Without this note the dates and room fields
+                      simply grey out on selection and the form looks broken. */}
+                  {!!formQuotationId && (
+                    <BlockedHint reason="Stay dates, room type and quantity are taken from this quotation (BR-23). Clear the quotation to enter them manually." />
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1.5 w-full">

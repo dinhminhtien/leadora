@@ -99,7 +99,8 @@ public final class RolePermissionScope {
             "RESERVATION_VIEW", "RESERVATION_WRITE",
             "HANDOVER_VIEW", "HANDOVER_WRITE",
             "PAYMENT_VIEW", "PAYMENT_WRITE",
-            "NOTIFICATION_VIEW"
+            "NOTIFICATION_VIEW",
+            "QUOTATION_VIEW"
     );
 
     /**

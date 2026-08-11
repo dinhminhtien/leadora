@@ -21,6 +21,8 @@ import {
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { dealService, type PipelineDealCardResponse, type Deal } from "@/services/deal_service";
@@ -456,19 +458,10 @@ export function SalesPipelineScreen() {
         </div>
       )}
 
-      {/* Header and Controls */}
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <div className="flex items-center gap-2.5">
-          <span className="p-2 rounded-lg bg-[#E6F1FB] border border-[#85B7EB]/30">
-            <Briefcase className="size-5 text-[#185FA5]" />
-          </span>
-          <div>
-            <h1 className="text-lg font-bold text-slate-800">Sales Pipeline Board</h1>
-            <p className="text-[11px] text-slate-400">Drag or shift contract deals across hotel booking sales stages</p>
-          </div>
-        </div>
+      <PageHeader {...PAGE_META.salesPipeline} />
 
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+      {/* Board controls */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 w-full">
           {/* Search bar - UC-11.2 Search and Filter Pipeline Deals */}
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
@@ -497,7 +490,6 @@ export function SalesPipelineScreen() {
               ))}
             </select>
           </div>
-        </div>
       </div>
 
       {/* Summary KPI Ribbon */}
@@ -543,13 +535,13 @@ export function SalesPipelineScreen() {
                   handleMoveToStage(dealId, stage);
                 }
               }}
-              className={`flex-1 min-w-50 lg:min-w-0 lg:max-w-none rounded-xl p-2.5 lg:p-2 flex flex-col gap-2.5 lg:gap-2 border transition-all duration-200 ${draggedOverStage === stage
+              className={`flex-1 min-w-56 lg:min-w-0 lg:max-w-none rounded-xl p-2.5 lg:p-2 flex flex-col border transition-all duration-200 h-[580px] max-h-[calc(100vh-14rem)] ${draggedOverStage === stage
                   ? "bg-[#E6F1FB]/30 border-[#185FA5]/50 border-dashed"
                   : "bg-slate-100/60 border-slate-200/50"
                 } ${styles.border}`}
             >
-              {/* Stage Header */}
-              <div className="px-1 py-0.5">
+              {/* Stage Header (Pinned Fixed) */}
+              <div className="shrink-0 px-1 py-1 mb-2 border-b border-slate-200/60">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className={`size-2 rounded-full shrink-0 ${styles.dot}`} />
@@ -564,32 +556,34 @@ export function SalesPipelineScreen() {
                 </div>
               </div>
 
-              {/* Deal Cards Container */}
-              <div className="flex-1 space-y-3 overflow-y-auto max-h-110 pr-1 custom-scrollbar">
+              {/* Deal Cards Container (Independent Vertical Scroll - 3 to 4 cards visible) */}
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pr-1 custom-scrollbar">
                 {stageDeals.length > 0 ? (
                   stageDeals.map(card => {
                     const deal = card.deal;
                     return (
                       <Card
                         key={deal.id}
-                      draggable={deal.status === "active"}
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData("text/plain", deal.id);
-                        e.dataTransfer.effectAllowed = "move";
-                      }}
-                      className={`border-slate-200 bg-white hover:border-[#185FA5]/50 shadow-xs hover:shadow-md transition group duration-200 ${deal.status === "active" ? "cursor-grab active:cursor-grabbing" : "opacity-80"
-                        }`}
-                    >
-                      <CardContent className="p-2.5 lg:p-2 space-y-2">
-                        {/* Title and Value */}
-                        <div
-                          className="cursor-pointer group-hover:text-[#185FA5] transition"
-                          onClick={() => handleOpenEditDrawer(deal)}
-                        >
+                        draggable={deal.status === "active"}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", deal.id);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onClick={() => handleOpenEditDrawer(deal)}
+                        className={`group cursor-pointer rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition hover:-translate-y-0.5 hover:shadow-md hover:border-brand-500/50 ${deal.status === "active" ? "cursor-grab active:cursor-grabbing" : "opacity-85"
+                          }`}
+                      >
+                        <CardContent className="p-0 space-y-2.5">
+                          {/* Reference ID & Status Badge */}
                           <div className="flex items-start justify-between gap-2">
-                            <h4 className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug group-hover:text-[#185FA5] transition">
-                              {deal.title}
-                            </h4>
+                            <div>
+                              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                {deal.id.startsWith("D-") ? deal.id : `D-${deal.id.slice(0, 6)}`}
+                              </div>
+                              <h4 className="mt-0.5 line-clamp-2 text-[13px] font-bold text-slate-800 leading-snug group-hover:text-brand-600 transition">
+                                {deal.title}
+                              </h4>
+                            </div>
                             {deal.status !== "active" && (
                               <Badge
                                 variant={deal.status === "won" ? "success" : "danger"}
@@ -599,122 +593,117 @@ export function SalesPipelineScreen() {
                               </Badge>
                             )}
                           </div>
-                          <div className="text-xs font-black text-slate-800 mt-1">
-                            {deal.value.toLocaleString('vi-VN')} ₫
+
+                          {/* Contact Person */}
+                          <div className="flex items-center gap-1.5 text-[11.5px] text-slate-500 font-medium">
+                            <User className="size-3 text-slate-400 shrink-0" />
+                            <span className="truncate">{deal.contactName}</span>
                           </div>
-                        </div>
 
-                        {/* Contact Person / Company */}
-                        <div
-                          className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium cursor-pointer"
-                          onClick={() => handleOpenEditDrawer(deal)}
-                        >
-                          <User className="size-3 text-slate-400" />
-                          <span className="truncate">{deal.contactName}</span>
-                        </div>
+                          {/* Value & Expected Close Date */}
+                          <div className="flex items-center justify-between border-t border-slate-100 pt-2">
+                            <div>
+                              <div className="text-[9.5px] uppercase tracking-wide text-slate-400 font-semibold">Value</div>
+                              <div className="text-[12.5px] font-bold tabular-nums text-slate-800">
+                                {deal.value.toLocaleString("vi-VN")} ₫
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-[9.5px] uppercase tracking-wide text-slate-400 font-semibold">Close</div>
+                              <div className="text-[11px] font-medium text-slate-700">
+                                {deal.expectedClose ? new Date(deal.expectedClose).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "TBD"}
+                              </div>
+                            </div>
+                          </div>
 
-                        {/* Mini Workflow Progress Stepper */}
-                        <div className="flex items-center gap-1 mt-1 border-t border-slate-100/60 pt-2 pb-1">
-                          <div className="flex items-center gap-1 w-full justify-between">
-                            {/* Q: Quotation */}
-                            <span 
+                          {/* Mini Workflow Progress Stepper (Q, B, P) */}
+                          <div className="flex items-center justify-between gap-1 bg-slate-50 p-1.5 rounded-md border border-slate-100">
+                            <span
                               className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
-                                card.hasActiveQuotation 
-                                  ? "bg-blue-50 text-blue-700 border border-blue-200" 
-                                  : "bg-slate-50 text-slate-400 border border-slate-100"
+                                card.hasActiveQuotation
+                                  ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                  : "bg-white text-slate-400 border border-slate-100"
                               }`}
                               title={card.hasActiveQuotation ? `Quotation: ${card.activeQuotationStatus}` : "No Active Quotation"}
                             >
                               Q: {card.hasActiveQuotation ? card.activeQuotationStatus : "None"}
                             </span>
-                            
-                            <ChevronRight className="size-2 text-slate-300" />
-                            
-                            {/* B: Booking */}
-                            <span 
+                            <ChevronRight className="size-2 text-slate-300 shrink-0" />
+                            <span
                               className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
-                                card.hasActiveBooking 
-                                  ? "bg-indigo-50 text-indigo-700 border border-indigo-200" 
-                                  : "bg-slate-50 text-slate-400 border border-slate-100"
+                                card.hasActiveBooking
+                                  ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                  : "bg-white text-slate-400 border border-slate-100"
                               }`}
                               title={card.hasActiveBooking ? `Booking: ${card.activeBookingStatus}` : "No Active Booking"}
                             >
                               B: {card.hasActiveBooking ? card.activeBookingStatus : "None"}
                             </span>
-                            
-                            <ChevronRight className="size-2 text-slate-300" />
-                            
-                            {/* P: Payment */}
-                            <span 
+                            <ChevronRight className="size-2 text-slate-300 shrink-0" />
+                            <span
                               className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
-                                card.paymentStatus === "PAID" 
+                                card.paymentStatus === "PAID"
                                   ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                   : card.paymentStatus === "PENDING"
                                   ? "bg-amber-50 text-amber-700 border border-amber-200"
-                                  : "bg-slate-50 text-slate-400 border border-slate-100"
+                                  : "bg-white text-slate-400 border border-slate-100"
                               }`}
                               title={card.paymentStatus ? `Payment Status: ${card.paymentStatus}` : "No Payment"}
                             >
                               P: {card.paymentStatus || "None"}
                             </span>
                           </div>
-                        </div>
 
-                        {/* Stage Slider Controller */}
-                        <div className="flex items-center justify-between border-t border-slate-100 pt-2.5 mt-1">
-                          {/* Left Arrow */}
-                          <button
-                            disabled={deal.stage === stages[0] || deal.status !== "active"}
-                            onClick={() => handleShiftStage(deal.id, "left")}
-                            className="p-1 rounded bg-slate-50 border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-slate-50 transition"
-                            title={deal.status !== "active" ? "Closed deal cannot be moved" : "Move Stage Left"}
-                          >
-                            <ChevronLeft className="size-3" />
-                          </button>
+                          {/* Win Probability Bar & Owner Initials Avatar */}
+                          <div className="flex items-center justify-between border-t border-slate-100 pt-2">
+                            <div className="flex items-center gap-1.5">
+                              <div className="h-1 w-16 overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className="h-full rounded-full bg-brand-500"
+                                  style={{ width: `${Math.min(Math.max(deal.probability || 0, 5), 100)}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-500">{deal.probability}%</span>
+                            </div>
 
-                          {/* Probability Indicator Badge */}
-                          <span className="text-[9px] font-bold text-slate-400 px-1 bg-slate-50 rounded">
-                            {deal.probability}% Win
-                          </span>
+                            <div className="flex items-center gap-1">
+                              {/* Stage Shift Arrows */}
+                              <button
+                                type="button"
+                                disabled={deal.stage === stages[0] || deal.status !== "active"}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleShiftStage(deal.id, "left");
+                                }}
+                                className="p-0.5 rounded bg-slate-50 border border-slate-200 text-slate-400 hover:text-slate-700 disabled:opacity-20 transition"
+                                title="Move Stage Left"
+                              >
+                                <ChevronLeft className="size-3" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={deal.stage === stages[stages.length - 1] || deal.status !== "active"}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleShiftStage(deal.id, "right");
+                                }}
+                                className="p-0.5 rounded bg-slate-50 border border-slate-200 text-slate-400 hover:text-slate-700 disabled:opacity-20 transition"
+                                title="Move Stage Right"
+                              >
+                                <ChevronRight className="size-3" />
+                              </button>
 
-                          {/* Right Arrow */}
-                          <button
-                            disabled={deal.stage === stages[stages.length - 1] || deal.status !== "active"}
-                            onClick={() => handleShiftStage(deal.id, "right")}
-                            className="p-1 rounded bg-slate-50 border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-slate-50 transition"
-                            title={deal.status !== "active" ? "Closed deal cannot be moved" : "Move Stage Right"}
-                          >
-                            <ChevronRight className="size-3" />
-                          </button>
-                        </div>
-
-                        {/* Quick Status Update / Close Deal (UC-12.8) */}
-                        {deal.status === "active" && (
-                          <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-slate-100">
-                            <button
-                              onClick={() => handleUpdateStatus(deal.id, "won")}
-                              className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[9px] font-bold hover:bg-emerald-100 transition"
-                            >
-                              Won
-                            </button>
-                            <button
-                              onClick={() => handleUpdateStatus(deal.id, "lost")}
-                              className="px-1.5 py-0.5 bg-red-50 text-red-700 rounded text-[9px] font-bold hover:bg-red-100 transition"
-                            >
-                              Lost
-                            </button>
+                              {/* Owner Initials Avatar Badge */}
+                              <span
+                                className="ml-1 size-5 rounded-full bg-brand-500/15 text-brand-600 border border-brand-500/20 text-[9px] font-bold flex items-center justify-center shrink-0"
+                                title={`Owner: ${deal.owner}`}
+                              >
+                                {deal.owner.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+                              </span>
+                            </div>
                           </div>
-                        )}
-
-                        {/* Owner / Assignee */}
-                        <div className="flex items-center justify-between text-[9px] text-slate-400 pt-1">
-                          <span>Owner: {deal.owner.split(" ")[0]}</span>
-                          <span className="size-4.5 rounded-full bg-[#E6F1FB] text-[#0C447C] border border-[#85B7EB]/20 text-[8px] font-bold flex items-center justify-center">
-                            {deal.owner.slice(0, 2).toUpperCase()}
-                          </span>
-                        </div>
-                      </CardContent>
-                    </Card>
+                        </CardContent>
+                      </Card>
                   );
                 })
                 ) : (

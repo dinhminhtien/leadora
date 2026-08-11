@@ -77,6 +77,24 @@ export type DetailActionSpec = {
   title?: string;
 };
 
+/**
+ * One tab of a drawer that mirrors a full detail page.
+ *
+ * §9.3 requires the popup and the full page to expose the *same* tabs — a drawer
+ * that quietly drops "Tasks" or "History" trains users not to trust it and sends
+ * them to the full page every time, which defeats the point of a peek surface.
+ */
+export type DetailTabSpec = {
+  id: string;
+  label: string;
+  /** Optional count shown beside the label, e.g. Tasks (4). */
+  count?: number;
+  icon?: LucideIcon;
+  /** Sections for this tab. Use `content` for anything that is not label/value. */
+  sections?: DetailSectionSpec[];
+  content?: React.ReactNode;
+};
+
 export type RecordDrawerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -97,7 +115,19 @@ export type RecordDrawerProps = {
   /** Explains a constraint above the sections, e.g. why an action is missing. */
   notice?: { tone: "info" | "warning" | "danger"; text: React.ReactNode };
 
-  sections: DetailSectionSpec[];
+  /**
+   * Flat sections, for records whose full page has no tabs.
+   * Mutually exclusive with `tabs` — pass whichever the full page uses.
+   */
+  sections?: DetailSectionSpec[];
+
+  /**
+   * Tabbed body, mirroring the record's full detail page (§9.3). When supplied,
+   * `sections` is ignored.
+   */
+  tabs?: DetailTabSpec[];
+  /** Tab shown first. Defaults to the first tab. */
+  defaultTabId?: string;
 
   /** Mono id shown bottom-left. */
   recordId?: string;
@@ -190,6 +220,8 @@ export function RecordDetailDrawer({
   actions = [],
   notice,
   sections,
+  tabs,
+  defaultTabId,
   recordId,
   fullPageHref,
   fullPageLabel = "Open in full page",
@@ -197,6 +229,24 @@ export function RecordDetailDrawer({
   children,
 }: RecordDrawerProps) {
   const SubtitleIcon = subtitle?.icon;
+
+  const [activeTabId, setActiveTabId] = React.useState(
+    defaultTabId ?? tabs?.[0]?.id,
+  );
+
+  // Reopening the drawer on a different record should start at the record's
+  // default tab, not wherever the previous record was left.
+  React.useEffect(() => {
+    if (open) setActiveTabId(defaultTabId ?? tabs?.[0]?.id);
+    // Tab identity is stable per record; `tabs` is rebuilt each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, recordId, defaultTabId]);
+
+  const activeTab =
+    tabs?.find((t) => t.id === activeTabId) ?? tabs?.[0];
+
+  // Whichever body the caller configured. Tabs win when both are present.
+  const bodySections = activeTab ? activeTab.sections : sections;
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -267,7 +317,48 @@ export function RecordDetailDrawer({
             </p>
           )}
 
-          {sections.map((section) => (
+          {tabs && tabs.length > 0 && (
+            <div
+              role="tablist"
+              aria-label="Record sections"
+              // Sticky so a long Tasks or History tab can be scrolled without
+              // losing the way back to the other tabs.
+              className="sticky top-0 z-10 -mx-1 flex gap-1 overflow-x-auto border-b border-border bg-surface px-1"
+            >
+              {tabs.map((tab) => {
+                const TabIcon = tab.icon;
+                const selected = tab.id === activeTab?.id;
+                return (
+                  <button
+                    key={tab.id}
+                    role="tab"
+                    type="button"
+                    aria-selected={selected}
+                    onClick={() => setActiveTabId(tab.id)}
+                    className={cn(
+                      "-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-[12.5px] font-semibold transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
+                      selected
+                        ? "border-brand-500 text-foreground"
+                        : "border-transparent text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {TabIcon && <TabIcon className="size-3.5" />}
+                    {tab.label}
+                    {tab.count != null && (
+                      <span className="numeric rounded-full bg-muted px-1.5 text-[10px] font-bold text-muted-foreground">
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {activeTab?.content}
+
+          {bodySections?.map((section) => (
             <DetailSection key={section.title} title={section.title}>
               {section.content ??
                 section.rows?.map((row) => <DetailRow key={row.label} {...row} />)}

@@ -40,6 +40,20 @@ class ReminderPermissions {
   /// `UpdateReminderUseCase`: the assignee or a Manager/Admin.
   bool canEdit(Reminder reminder) =>
       isManager || (userId != null && reminder.assignedUserId == userId);
+
+  /// `EscalateReminderUseCase` (UC-16.4). Three server conditions, all mirrored
+  /// so the action is hidden rather than offered and then rejected:
+  ///  - the reminder must be OVERDUE (`NOT_OVERDUE`),
+  ///  - it must not already be done (`REMINDER_ALREADY_DONE`),
+  ///  - the caller must be the assignee or a MANAGER (`UNAUTHORIZED_ESCALATE`).
+  ///
+  /// Note this is *not* the same audience as [canEdit]: the server checks the
+  /// MANAGER role specifically, so an Admin who is not the assignee is refused.
+  bool canEscalate(Reminder reminder) {
+    if (reminder.status != ReminderStatus.overdue) return false;
+    final isAssignee = userId != null && reminder.assignedUserId == userId;
+    return isAssignee || isManager;
+  }
 }
 
 /// The current user's reminder permissions. Rebuilds when the session changes.
@@ -139,6 +153,19 @@ class ReminderListController extends AutoDisposeAsyncNotifier<ReminderListState>
     } catch (_) {
       state = AsyncData(current); // revert on failure
     }
+  }
+
+  /// UC-16.4 — escalate an overdue reminder to the manager.
+  ///
+  /// Deliberately **not** optimistic, unlike [dismiss]: escalation does not
+  /// change the reminder's status, so there is no visible state to move
+  /// forward, and pretending it succeeded would hide a `NOT_OVERDUE` or
+  /// `UNAUTHORIZED_ESCALATE` refusal. The list is refreshed afterwards so any
+  /// server-side change (escalation timestamp, notification) is picked up, and
+  /// the error is rethrown for the caller to surface.
+  Future<void> escalate(Reminder reminder) async {
+    await _repo.escalate(reminder.reminderId);
+    await refresh();
   }
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Search,
   Plus,
@@ -13,7 +13,11 @@ import {
   X,
   Calendar,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Pencil,
+  ChevronRight,
+  Trophy,
+  XCircle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -21,7 +25,6 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { dealService, type Deal } from "@/services/deal_service";
 import { userService as taskUserService, type UserSummary } from "@/services/follow_up_task_service";
 import { customerProfileService, type CustomerSearchItem } from "@/services/customer_profile_service";
@@ -33,9 +36,35 @@ const STAGES_ORDER: Deal["stage"][] = ["Inquiry", "Qualification", "Proposal", "
 
 
 import { UserSelect } from "@/components/ui/UserSelect";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
+import { DataTable, type ColumnDef } from "@/components/ui/data-table";
+import { DensityMenu } from "@/components/ui/list-toolbar";
+import {
+  ColumnPicker,
+  ExportMenu,
+  RefreshButton,
+  useTableControls,
+} from "@/components/ui/table-controls";
+import { RowActions, OwnerCell } from "@/components/ui/row-actions";
+import { BlockedHint } from "@/components/ui/guarded-action";
+
+const DEAL_EXPORT_HEADERS = [
+  "Title", "Guest", "Email", "Stage", "Probability %", "Value (VND)",
+  "Expected close", "Owner", "Status",
+];
+
+function dealExportRow(deal: Deal): (string | number | null | undefined)[] {
+  return [
+    deal.title, deal.contactName, deal.email, deal.stage, deal.probability,
+    deal.value, deal.expectedClose, deal.owner, deal.status,
+  ];
+}
 import { useMyProfile } from "@/features/profile/hooks/use_profile";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 export function DealListScreen() {
+  const { highlightedId, setRowRef } = useHighlightRow("highlight", "deal");
   const { data: profile } = useMyProfile();
   const isManager = useMemo(() => {
     const role = (profile?.roleName || "").toUpperCase();
@@ -131,19 +160,28 @@ export function DealListScreen() {
     }
   }, [profile, isManager, newDeal.owner]);
 
+  // Hoisted out of the mount effect so the toolbar's Refresh button can call the
+  // same loader the screen boots with — one code path, one error message.
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const fetchDeals = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const response = await dealService.getList();
+      if (response && response.success && response.data) {
+        setDeals(response.data as Deal[]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch deals from API", err);
+      showError("Could not load deals. Please check your connection and try again.");
+    } finally {
+      setIsRefreshing(false);
+    }
+    // `showError` is a stable toast helper.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Load deals and users on component mount
   useEffect(() => {
-    const fetchDeals = async () => {
-      try {
-        const response = await dealService.getList();
-        if (response && response.success && response.data) {
-          setDeals(response.data as Deal[]);
-        }
-      } catch (err) {
-        console.error("Failed to fetch deals from API", err);
-        showError("Could not load deals. Please check your connection and try again.");
-      }
-    };
     const fetchUsers = async () => {
       try {
         const response = await taskUserService.getAll();
@@ -156,7 +194,7 @@ export function DealListScreen() {
     };
     fetchDeals();
     fetchUsers();
-  }, []);
+  }, [fetchDeals]);
 
   const getNextStage = (currentStage: Deal["stage"]): Deal["stage"] | null => {
     const idx = STAGES_ORDER.indexOf(currentStage);
@@ -258,6 +296,158 @@ export function DealListScreen() {
     const startIndex = (currentPage - 1) * pageSize;
     return filteredDeals.slice(startIndex, startIndex + pageSize);
   }, [filteredDeals, currentPage, pageSize]);
+
+  /**
+   * Column set — Blueprint §10.6.
+   *
+   * Row actions keep their existing behaviour exactly; the only change is that a
+   * closed deal now says *why* its actions are gone (BR-44: Closed Won / Closed
+   * Lost records are locked) instead of collapsing to the word "Closed".
+   */
+  const dealColumns: ColumnDef<Deal>[] = useMemo(() => [
+    {
+      id: "title",
+      header: "Deal Title",
+      sticky: "left",
+      cell: (deal) => (
+        <button
+          onClick={() => handleOpenEditDrawer(deal)}
+          className="text-left text-xs font-bold text-primary transition hover:underline"
+        >
+          {deal.title}
+        </button>
+      ),
+    },
+    {
+      id: "guest",
+      header: "Primary Guest",
+      minWidth: "md",
+      cell: (deal) => (
+        <>
+          <div className="text-xs font-semibold text-foreground">{deal.contactName}</div>
+          <div className="mt-0.5 text-[10px] text-muted-foreground">{deal.email}</div>
+        </>
+      ),
+    },
+    {
+      id: "stage",
+      header: "Sales Stage",
+      // Canonical pipeline-stage binding (Blueprint §2.7).
+      cell: (deal) => <StatusPill size="sm" domain="dealStage" value={deal.stage} />,
+    },
+    {
+      id: "probability",
+      header: "Probability",
+      numeric: true,
+      minWidth: "lg",
+      cell: (deal) => `${deal.probability}%`,
+    },
+    {
+      id: "value",
+      header: "Deal Value",
+      numeric: true,
+      className: "font-bold",
+      cell: (deal) => `${deal.value.toLocaleString("vi-VN")} ₫`,
+    },
+    {
+      id: "close",
+      header: "Close Date",
+      minWidth: "lg",
+      cell: (deal) => (
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Calendar className="size-3" />
+          {deal.expectedClose}
+        </div>
+      ),
+    },
+    {
+      id: "owner",
+      header: "Owner",
+      minWidth: "xl",
+      cell: (deal) => <OwnerCell name={deal.owner} />,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (deal) => (
+        <Badge
+          variant={deal.status === "won" ? "success" : deal.status === "active" ? "primary" : "danger"}
+          size="sm"
+          className="font-bold text-[10px] uppercase"
+        >
+          {deal.status}
+        </Badge>
+      ),
+    },
+    {
+      id: "actions",
+      header: "",
+      width: "w-12",
+      sticky: "right",
+      // Four inline buttons per row spent most of the row's width on controls and
+      // pushed the actual deal data into truncation. The blueprint's overflow menu
+      // keeps every action reachable while the row stays scannable.
+      cell: (deal) => {
+        // BR-44 — a won/lost deal is locked. The actions stay listed and say why
+        // they are unavailable rather than silently disappearing.
+        const lockedReason =
+          deal.status !== "active"
+            ? `This deal is ${deal.status === "won" ? "Closed Won" : "Closed Lost"}. Closed deals are locked (BR-44) and can only be changed through an authorised correction.`
+            : null;
+
+        // BR-12 — the pipeline advances one stage at a time and stops at Confirmed.
+        const advanceReason =
+          lockedReason ??
+          (deal.stage === "Confirmed"
+            ? "This deal is already at the final pipeline stage."
+            : null);
+
+        return (
+          <div className="flex justify-end">
+            <RowActions
+              label="Deal actions"
+              actions={[
+                {
+                  key: "edit",
+                  label: "Edit deal",
+                  icon: Pencil,
+                  onSelect: () => handleOpenEditDrawer(deal),
+                },
+                {
+                  key: "advance",
+                  label: advanceReason ? "Next stage" : `Advance to ${getNextStage(deal.stage)}`,
+                  icon: ChevronRight,
+                  reason: advanceReason,
+                  onSelect: () => handleAdvanceStageQuick(deal),
+                },
+                {
+                  key: "won",
+                  label: "Mark as Won",
+                  icon: Trophy,
+                  tone: "success",
+                  reason: lockedReason,
+                  separatorBefore: true,
+                  onSelect: () => handleUpdateStatus(deal.id, "won"),
+                },
+                {
+                  key: "lost",
+                  label: "Mark as Lost",
+                  icon: XCircle,
+                  tone: "danger",
+                  reason: lockedReason,
+                  onSelect: () => handleUpdateStatus(deal.id, "lost"),
+                },
+              ]}
+            />
+          </div>
+        );
+      },
+    },
+    // Handlers are stable for the life of the screen; deals data drives re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const controls = useTableControls<Deal>("deals", dealColumns);
 
   // Statistics
   const stats = useMemo(() => {
@@ -452,28 +642,18 @@ export function DealListScreen() {
           </button>
         </div>
       )}
-      {/* Header and Quick stats */}
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <div className="flex items-center gap-2.5">
-          <span className="p-2 rounded-lg bg-[#E6F1FB] border border-[#85B7EB]/30">
-            <Briefcase className="size-5 text-[#185FA5]" />
-          </span>
-          <div>
-            <h1 className="text-lg font-bold text-slate-800">Deals Register</h1>
-            <p className="text-[11px] text-slate-400">Manage contract sizes, closing forecast probabilities, and bookings.</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader
+        {...PAGE_META.deals}
+        actions={
           <Button
             variant="primary"
-            size="sm"
             onClick={() => setIsNewDealDrawerOpen(true)}
             leftIcon={<Plus className="size-4" />}
           >
             New Deal
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Stats Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
@@ -536,131 +716,54 @@ export function DealListScreen() {
               </Select>
             </div>
 
-            {/* Active Count indicator */}
-            <div className="md:ml-auto text-xs text-slate-400">
-              Filtered <strong className="text-slate-700">{filteredDeals.length}</strong> of {deals.length} entries
+            {/* §2.6 control cluster + count indicator */}
+            <div className="flex items-center gap-2 md:ml-auto">
+              <RefreshButton onRefresh={fetchDeals} isRefreshing={isRefreshing} />
+              <ColumnPicker
+                columns={dealColumns}
+                hiddenIds={controls.hiddenColumnIds}
+                onChange={controls.setHiddenColumnIds}
+                requiredIds={["title"]}
+              />
+              <ExportMenu
+                filename={`deals-${new Date().toISOString().slice(0, 10)}`}
+                headers={DEAL_EXPORT_HEADERS}
+                rows={filteredDeals.map(dealExportRow)}
+              />
+              <DensityMenu value={controls.density} onChange={controls.setDensity} />
+              <span className="hidden text-xs text-slate-400 xl:block">
+                Filtered <strong className="text-slate-700">{filteredDeals.length}</strong> of {deals.length}
+              </span>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Deals list table */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        <Table>
-          <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
-            <TableRow hoverable={false}>
-              <TableHead className="font-semibold text-xs text-slate-500">Deal Title</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Primary Guest</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Sales Stage</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500 text-center">Probability</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Deal Value</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Close Date</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Owner</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Status</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500 text-center">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedDeals.length > 0 ? (
-              paginatedDeals.map(deal => (
-                <TableRow key={deal.id} className="hover:bg-slate-50/70 border-b border-slate-100 transition">
-                  <TableCell className="py-3 px-4 font-bold text-slate-800 text-xs">
-                    <button
-                      onClick={() => handleOpenEditDrawer(deal)}
-                      className="hover:underline text-[#185FA5] hover:text-[#0C447C] font-bold text-left transition"
-                    >
-                      {deal.title}
-                    </button>
-                  </TableCell>
-                  <TableCell className="py-3 px-4">
-                    <div className="text-xs text-slate-700 font-semibold">{deal.contactName}</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">{deal.email}</div>
-                  </TableCell>
-                  <TableCell className="py-3 px-4">
-                    {/* Canonical pipeline-stage binding (Blueprint §2.7). */}
-                    <StatusPill size="sm" domain="dealStage" value={deal.stage} />
-                  </TableCell>
-                  <TableCell className="py-3 px-4 text-center">
-                    <div className="inline-flex items-center justify-center gap-1 text-xs text-slate-700 font-bold w-full">
-                      {deal.probability}%
-                    </div>
-                  </TableCell>
-                  <TableCell className="py-3 px-4 text-xs font-bold text-slate-800">
-                    {deal.value.toLocaleString('vi-VN')} ₫
-                  </TableCell>
-                  <TableCell className="py-3 px-4 text-xs text-slate-500 font-medium">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="size-3 text-slate-400" />
-                      {deal.expectedClose}
-                    </div>
-                  </TableCell>
-                  <TableCell className="py-3 px-4">
-                    <div className="text-xs text-slate-700 font-medium">{deal.owner}</div>
-                  </TableCell>
-                  <TableCell className="py-3 px-4">
-                    <Badge
-                      variant={
-                        deal.status === "won"
-                          ? "success"
-                          : deal.status === "active"
-                            ? "primary"
-                            : "danger"
-                      }
-                      size="sm"
-                      className="font-bold text-[10px] uppercase"
-                    >
-                      {deal.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="py-3 px-4 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => handleOpenEditDrawer(deal)}
-                        className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-[10px] font-bold hover:bg-slate-200 transition"
-                      >
-                        Edit
-                      </button>
-                      {deal.status === "active" ? (
-                        <>
-                          {deal.stage !== "Confirmed" && (
-                            <button
-                              onClick={() => handleAdvanceStageQuick(deal)}
-                              className="px-2 py-1 bg-[#E6F1FB] text-[#0C447C] rounded text-[10px] font-bold hover:bg-[#D4E8F9] border border-[#85B7EB]/30 transition"
-                              title={`Advance to ${getNextStage(deal.stage)}`}
-                            >
-                              Next Stage
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleUpdateStatus(deal.id, "won")}
-                            className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-[10px] font-bold hover:bg-emerald-100 transition"
-                          >
-                            Won
-                          </button>
-                          <button
-                            onClick={() => handleUpdateStatus(deal.id, "lost")}
-                            className="px-2 py-1 bg-red-50 text-red-700 rounded text-[10px] font-bold hover:bg-red-100 transition"
-                          >
-                            Lost
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 italic font-semibold">Closed</span>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow hoverable={false}>
-                <TableCell colSpan={9} className="py-8 text-center text-slate-400 text-xs">
-                  No deals match your current search and filter settings.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        label="Deals"
+        rows={paginatedDeals}
+        columns={controls.visibleColumns}
+        rowId={(deal) => deal.id}
+        density={controls.density}
+        sortBy={controls.sortBy}
+        sortDir={controls.sortDir}
+        onSortChange={controls.onSortChange}
+        highlightId={highlightedId}
+        rowRef={setRowRef}
+        selectedIds={controls.selectedIds}
+        onSelectionChange={controls.setSelectedIds}
+        bulkActions={
+          <ExportMenu
+            filename={`deals-selected-${new Date().toISOString().slice(0, 10)}`}
+            headers={DEAL_EXPORT_HEADERS}
+            rows={paginatedDeals.filter((d) => controls.selectedIds.has(d.id)).map(dealExportRow)}
+          />
+        }
+        isFiltered={filteredDeals.length !== deals.length}
+        emptyTitle="No deals yet"
+        emptyMessage="Qualify a lead and the deal will appear here."
+        emptyAction={{ label: "New Deal", onClick: () => setIsNewDealDrawerOpen(true) }}
+      />
 
       {/* Pagination Controls */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white px-6 py-4 rounded-xl border border-slate-100 shadow-sm text-xs">
@@ -923,6 +1026,11 @@ export function DealListScreen() {
                   disabled={!isManager}
                   onChange={(email) => setNewDeal({ ...newDeal, owner: email })}
                 />
+                {/* BR-18 — ownership is a manager decision. Saying so beats a
+                    greyed-out picker that looks broken to a Sales user. */}
+                {!isManager && (
+                  <BlockedHint reason="Only a Sales Manager can assign deal ownership (BR-18). This deal will be created under your name." />
+                )}
               </div>
 
               <div className="space-y-1">

@@ -158,10 +158,38 @@
     0 4px 8px -2px color-mix(in oklab, var(--foreground) 6%, transparent);
   --shadow-elev-4: 0 24px 64px -16px color-mix(in oklab, var(--foreground) 18%, transparent);
 
-  /* ---- Blueprint §2.3 — motion ---- */
+  /* ---- Blueprint §2.3 — motion ----------------------------------------
+   *
+   * ONE easing system. The app previously mixed three bespoke curves with
+   * Tailwind's default `cubic-bezier(0.4, 0, 0.2, 1)` and a stray
+   * `ease-out` on every form control, so a dropdown, a drawer and a button
+   * hover each decelerated differently — the kind of inconsistency that
+   * reads as "unfinished" without anyone being able to name why.
+   *
+   * `--ease-standard` is now the single curve. `--ease-emphasized` and
+   * `--ease-decel` are kept as aliases so the ~40 existing references keep
+   * compiling, but they resolve to the same motion. Delete them once no
+   * call site names them.
+   */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
-  --ease-decel: cubic-bezier(0, 0, 0.2, 1);
+  --ease-emphasized: var(--ease-standard);
+  --ease-decel: var(--ease-standard);
+
+  /* Durations live in the 180–240ms band. `--motion-1` is retained for
+   * micro-feedback (hover tints) where 180ms already feels sluggish, but
+   * nothing structural — expand, collapse, drawer, dialog — may use it. */
+  --motion-1: 120ms;
+  --motion-2: 180ms;
+  --motion-3: 200ms;
+  --motion-4: 240ms;
+
+  /* Tailwind v4 reads these for bare `transition` / `duration-*` utilities.
+   * Setting them here means every utility-driven animation in the app —
+   * including ones inside shadcn primitives we did not write — lands on the
+   * system without touching a single call site. */
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: var(--ease-standard);
+  --animate-duration: 200ms;
 }
 
 /* ---------- Light (default) ---------- */
@@ -590,11 +618,6 @@
   --space-11: 64px;
   --space-12: 96px;
 
-  --motion-1: 120ms;
-  --motion-2: 180ms;
-  --motion-3: 240ms;
-  --motion-4: 360ms;
-
   --gutter: 24px;
 }
 
@@ -737,12 +760,49 @@
   background-image: radial-gradient(rgba(244, 244, 245, 0.02) 1.2px, transparent 1.2px);
 }
 
-/* Smooth transitions for interactive elements */
+/* Interactive controls — on the system, and only the properties that actually
+ * change. `transition: all` was animating layout properties too, so a button
+ * that reflowed (icon swap, label change) visibly slid into place. */
 input,
 button,
 select,
 textarea {
-  transition: all 0.15s ease-out;
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-duration: var(--motion-2);
+  transition-timing-function: var(--ease-standard);
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion normalisation — Blueprint §2.3
+ *
+ * Third-party and legacy markup carries its own durations (`duration-300`,
+ * `duration-1000`, `animate-in ... duration-255`). Rather than hunt every call
+ * site, anything outside the 180–240ms band is pulled back into it here.
+ * Deliberate exceptions keep their own timing by opting out with
+ * `[--motion-exempt:1]`, currently: the shimmer/pulse loops and the Lia mascot.
+ * ------------------------------------------------------------------------- */
+@media not all and (prefers-reduced-motion: reduce) {
+  [class*="duration-"]:not([style*="--motion-exempt"]):not(.animate-spin):not(.animate-ping):not(.animate-pulse) {
+    transition-duration: var(--motion-3);
+    animation-duration: var(--motion-3);
+  }
+
+  /* One easing for every transition and keyframe animation in the app. */
+  *,
+  ::before,
+  ::after {
+    transition-timing-function: var(--ease-standard);
+  }
+
+  /* Indeterminate loops must stay linear — an eased spinner visibly stutters
+     once per revolution. */
+  .animate-spin,
+  .animate-ping,
+  .animate-pulse,
+  .shimmer {
+    transition-timing-function: linear;
+    animation-timing-function: linear;
+  }
 }
 
 /* Refined scrollbars */

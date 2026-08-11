@@ -3,9 +3,17 @@
 /**
  * Customer detail drawer — built on the shared `RecordDetailDrawer` (§2.11).
  *
- * Supplies data only; the header, sections, empty-value handling and footer all
- * come from the shared component, so this drawer is identical in behaviour to
- * the booking, payment, reminder and handover ones.
+ * **Popup parity (§9.3).** The body is the *actual* `CustomerProfileDetailScreen`
+ * in embedded mode, not a reduced summary of it. The drawer previously showed
+ * three flat sections while the full page had Overview · Tasks · History · Info,
+ * so a rep who peeked at a customer saw none of their tasks or service history
+ * and had to navigate away to do anything useful. Mounting the real screen makes
+ * the two impossible to drift apart: every tab, count and action the page gains
+ * appears here the same day, because it is the same component.
+ *
+ * The drawer still owns the identity chrome — avatar, title, status pill, record
+ * id and the "open in full page" link — and the embedded screen suppresses its
+ * own header and profile card to avoid rendering that twice.
  *
  * **BR-09 is surfaced, not enforced here.** A corporate customer must name its
  * company; the server rejects a save without one. The drawer flags the gap so a
@@ -13,22 +21,11 @@
  */
 
 import * as React from "react";
-import {
-  Building2,
-  CalendarDays,
-  Hash,
-  Mail,
-  MapPin,
-  Pencil,
-  Phone,
-  User,
-} from "lucide-react";
+import { Building2, Pencil, User } from "lucide-react";
 
-import {
-  RecordDetailDrawer,
-  formatDetailDate,
-} from "@/components/ui/record-drawer";
+import { RecordDetailDrawer } from "@/components/ui/record-drawer";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { CustomerProfileDetailScreen } from "@/features/customer_profile/screens/CustomerProfileDetailScreen";
 import type { Customer } from "@/services/customer_profile_service";
 
 export function CustomerDetailDrawer({
@@ -41,7 +38,7 @@ export function CustomerDetailDrawer({
   onEdit?: (customer: Customer) => void;
 }) {
   if (!customer) {
-    return <RecordDetailDrawer open={false} onOpenChange={onOpenChange} title="" sections={[]} />;
+    return <RecordDetailDrawer open={false} onOpenChange={onOpenChange} title="" />;
   }
 
   const isCorporate = customer.customerType === "CORPORATE";
@@ -79,66 +76,9 @@ export function CustomerDetailDrawer({
             }
           : undefined
       }
-      sections={[
-        {
-          title: "Contact",
-          rows: [
-            {
-              label: "Email",
-              icon: Mail,
-              value: customer.email ? (
-                <a
-                  href={`mailto:${customer.email}`}
-                  className="truncate text-brand-600 hover:underline dark:text-brand-500"
-                >
-                  {customer.email}
-                </a>
-              ) : null,
-            },
-            {
-              label: "Phone",
-              icon: Phone,
-              value: customer.phone ? (
-                <a
-                  href={`tel:${customer.phone}`}
-                  className="text-brand-600 hover:underline dark:text-brand-500"
-                >
-                  {customer.phone}
-                </a>
-              ) : null,
-            },
-            { label: "Address", icon: MapPin, value: customer.address },
-          ],
-        },
-        {
-          title: isCorporate ? "Organization" : "Profile",
-          rows: [
-            {
-              label: "Type",
-              value: isCorporate ? "Corporate" : "Individual",
-            },
-            ...(isCorporate
-              ? [
-                  { label: "Company", icon: Building2, value: customer.companyName },
-                  { label: "Tax code", icon: Hash, value: customer.taxCode },
-                ]
-              : []),
-          ],
-        },
-        {
-          title: "Ownership",
-          rows: [
-            { label: "Assigned to", icon: User, value: customer.assignedUserName },
-            { label: "Created by", value: customer.createdByName },
-            {
-              label: "Customer since",
-              icon: CalendarDays,
-              value: formatDetailDate(customer.createdAt),
-            },
-            { label: "Last updated", value: formatDetailDate(customer.updatedAt) },
-          ],
-        },
-      ]}
-    />
+    >
+      {/* The real detail screen — same tabs, same counts, same actions. */}
+      <CustomerProfileDetailScreen customerId={customer.customerId} embedded />
+    </RecordDetailDrawer>
   );
 }

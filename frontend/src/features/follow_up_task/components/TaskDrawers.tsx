@@ -9,7 +9,9 @@
  * endpoint changed in the move.
  */
 import React, { useState } from "react";
+import Link from "next/link";
 import {
+  ArrowUpRight,
   CalendarCheck,
   Search,
   Clock,
@@ -694,6 +696,18 @@ export function TaskDetailDrawer({
               >
                 Edit
               </button>
+            )}
+            {/* §9.3 — the drawer peeks, the workspace is where the work happens.
+                A real <Link> so ctrl/middle-click opens it in a new tab. */}
+            {!editing && (
+              <Link
+                href={`${ROUTE_PATHS.manageFollowUpTasks}/${task.taskId}`}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                title="Open the full task workspace"
+              >
+                Open workspace
+                <ArrowUpRight className="size-3.5" />
+              </Link>
             )}
             <button
               onClick={onClose}

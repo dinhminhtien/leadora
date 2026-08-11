@@ -17,7 +17,9 @@ import {
   FileText,
   Printer
 } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { ExportMenu, useTableControls } from "@/components/ui/table-controls";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -26,13 +28,29 @@ import { Select } from "@/components/ui/Select";
 import { PaymentDetailDrawer } from "@/features/deposit_payment/components/PaymentDetailDrawer";
 import { toast } from "@/stores/toast_store";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+
+/** Rows per page — mirrors the `size: 10` requested from the payments endpoint. */
+const PAYMENTS_PAGE_SIZE = 10;
+
+const PAYMENT_EXPORT_HEADERS = [
+  "Booking code", "Guest", "Payment type", "Due date", "Status", "Amount (VND)",
+];
+
+function paymentExportRow(p: Payment): (string | number | null | undefined)[] {
+  return [
+    p.bookingCode ?? "", p.customerName ?? "", p.paymentType,
+    p.dueDate ?? "", p.status, p.amount,
+  ];
+}
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
 import {
   depositPaymentService,
   type Payment,
   type PaymentStatus,
-  type PaymentType
+  type PaymentType,
 } from "@/services/deposit_payment_service";
 import {
   bookingConfirmationService,
@@ -77,6 +95,7 @@ export function DepositPaymentScreen() {
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [paymentsPage, setPaymentsPage] = useState(0);
   const [paymentsTotalPages, setPaymentsTotalPages] = useState(0);
+  const [paymentsTotalElements, setPaymentsTotalElements] = useState(0);
 
   // Tab 2: Confirmed Bookings states
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -84,6 +103,7 @@ export function DepositPaymentScreen() {
   const [bookingsSearch, setBookingsSearch] = useState("");
   const [bookingsPage, setBookingsPage] = useState(0);
   const [bookingsTotalPages, setBookingsTotalPages] = useState(0);
+  const [bookingsTotalElements, setBookingsTotalElements] = useState(0);
 
   // Modals and detail states
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
@@ -146,6 +166,7 @@ export function DepositPaymentScreen() {
       if (res.success && res.data) {
         setPayments(res.data.content || []);
         setPaymentsTotalPages(res.data.totalPages || 0);
+        setPaymentsTotalElements(res.data.totalElements ?? (res.data.content?.length ?? 0));
       }
     } catch (err) {
       console.error(err);
@@ -183,6 +204,7 @@ export function DepositPaymentScreen() {
         );
         setBookings(filteredBookings);
         setBookingsTotalPages(res.data.totalPages || 0);
+        setBookingsTotalElements(res.data.totalElements ?? (res.data.content?.length ?? 0));
       }
     } catch (err) {
       console.error(err);
@@ -381,15 +403,112 @@ export function DepositPaymentScreen() {
     }
   };
 
+  /** Column set — Blueprint §10.11 transaction register. */
+  const paymentColumns: ColumnDef<Payment>[] = useMemo(() => [
+    {
+      id: "booking",
+      header: "Booking Reference",
+      sticky: "left",
+      cell: (p) => (
+        <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-bold text-primary">
+          <CreditCard className="size-3.5 shrink-0 text-muted-foreground" />
+          {p.bookingCode || "N/A"}
+        </span>
+      ),
+    },
+    {
+      id: "guest",
+      header: "Guest Name",
+      className: "max-w-37.5 truncate text-xs font-bold",
+      cell: (p) => <span title={p.customerName || "N/A"}>{p.customerName || "N/A"}</span>,
+    },
+    {
+      id: "type",
+      header: "Payment Type",
+      minWidth: "md",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (p) => (p.paymentType === "DEPOSIT" ? "Deposit Hold" : "Full Bill Settlement"),
+    },
+    {
+      id: "dueDate",
+      header: "Due Date",
+      minWidth: "lg",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (p) => p.dueDate || "N/A",
+    },
+    {
+      id: "status",
+      header: "Gateway Status",
+      cell: (p) => getStatusBadge(p.status),
+    },
+    {
+      id: "amount",
+      header: "Amount Paid",
+      numeric: true,
+      sticky: "right",
+      className: "font-bold",
+      cell: (p) => `${p.amount?.toLocaleString("vi-VN") ?? 0} ₫`,
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const paymentControls = useTableControls<Payment>("payments", paymentColumns);
+
+  /**
+   * Confirmed bookings that have no payment request yet (UC-21.1). Status is
+   * always CONFIRMED here — the query filters on it — so the pill is a constant
+   * label rather than a variable one.
+   */
+  const awaitingColumns: ColumnDef<Booking>[] = useMemo(() => [
+    {
+      id: "code",
+      header: "Booking Reference",
+      sticky: "left",
+      className: "whitespace-nowrap text-xs font-bold",
+      cell: (b) => b.bookingCode,
+    },
+    {
+      id: "customer",
+      header: "Customer Name",
+      className: "max-w-37.5 truncate text-xs font-bold",
+      cell: (b) => <span title={b.customerName}>{b.customerName}</span>,
+    },
+    {
+      id: "checkIn",
+      header: "Check In",
+      minWidth: "md",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (b) => b.checkInDate,
+    },
+    {
+      id: "checkOut",
+      header: "Check Out",
+      minWidth: "md",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (b) => b.checkOutDate,
+    },
+    {
+      id: "status",
+      header: "Booking Status",
+      cell: (b) => <StatusPill size="sm" domain="booking" value={b.status} />,
+    },
+    {
+      id: "total",
+      header: "Total Invoice",
+      numeric: true,
+      sticky: "right",
+      className: "font-bold",
+      cell: (b) => `${b.totalAmount?.toLocaleString("vi-VN") ?? 0} ₫`,
+    },
+  ], []);
+
+  const awaitingControls = useTableControls<Booking>("payments-awaiting", awaitingColumns);
+
   return (
     <div className="space-y-6 min-h-[101vh]" style={{ scrollbarGutter: "stable" }}>
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Deposit & Payment Management</h1>
-          <p className="text-xs text-slate-400 dark:text-zinc-400 mt-0.5">Generate payment requests, monitor transaction registers, and verify invoice clearances.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        {...PAGE_META.depositPayment}
+        actions={
           <Badge className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900 px-3 py-1 font-bold text-xs uppercase flex items-center gap-1.5 shadow-sm">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -397,8 +516,8 @@ export function DepositPaymentScreen() {
             </span>
             Direct Bank Integration (SePay) Active
           </Badge>
-        </div>
-      </div>
+        }
+      />
 
       {/* Tabs Menu */}
       <div className="flex border-b border-slate-200 dark:border-zinc-800 w-full mb-4">
@@ -483,93 +602,38 @@ export function DepositPaymentScreen() {
 
           {/* Table list */}
           <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden">
-            {loadingPayments ? (
-              <div className="py-12 text-center text-slate-400 dark:text-zinc-500 text-xs flex flex-col items-center justify-center gap-2">
-                <RefreshCw className="size-4 animate-spin text-blue-500" />
-                <span>Loading transaction logs from gateway...</span>
-              </div>
-            ) : (
-              <>
-                <Table className="w-full table-fixed min-w-275">
-                  <TableHeader className="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-100 dark:border-zinc-850">
-                    <TableRow hoverable={false}>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-left! whitespace-nowrap">Booking Reference</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[25%] text-left! whitespace-nowrap">Guest Name</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[20%] text-left! whitespace-nowrap">Payment Type</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[13%] text-center! whitespace-nowrap">Due Date</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[12%] text-center! whitespace-nowrap">Gateway Status</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-right! whitespace-nowrap">Amount Paid</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {payments.length > 0 ? (
-                      payments.map(p => (
-                        <TableRow
-                          key={p.paymentId}
-                          onClick={() => handleViewDetails(p.paymentId)}
-                          className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 border-b border-slate-100 dark:border-zinc-800 transition cursor-pointer select-none"
-                        >
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
-                            <span className="flex items-center gap-1.5 text-primary">
-                              <CreditCard className="size-3.5 text-slate-400 dark:text-zinc-550 shrink-0" />
-                              {p.bookingCode || "N/A"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-37.5" title={p.customerName || "N/A"}>
-                            {p.customerName || "N/A"}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! text-slate-600! dark:text-zinc-400! text-left! whitespace-nowrap truncate">
-                            {p.paymentType === "DEPOSIT" ? "Deposit Hold" : "Full Bill Settlement"}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">
-                            {p.dueDate || "N/A"}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
-                            <div className="flex justify-center">
-                              {getStatusBadge(p.status)}
-                            </div>
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-right! whitespace-nowrap">
-                            <div>{p.amount?.toLocaleString('vi-VN')} ₫</div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow hoverable={false}>
-                        <TableCell colSpan={6} className="py-12 text-center text-slate-450 dark:text-zinc-500 text-xs">
-                          No payment transaction records match filters.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-
-                {/* Pagination */}
-                {paymentsTotalPages > 1 && (
-                  <div className="flex justify-between items-center bg-slate-50 dark:bg-zinc-800/40 px-4 py-3 border-t border-slate-100 dark:border-zinc-800">
-                    <span className="text-xs text-slate-550 dark:text-zinc-400 font-medium">Page {paymentsPage + 1} of {paymentsTotalPages}</span>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        disabled={paymentsPage === 0}
-                        onClick={() => setPaymentsPage(prev => Math.max(0, prev - 1))}
-                        className="px-3 border border-slate-200 dark:border-zinc-700 text-slate-650 dark:text-zinc-300 bg-white dark:bg-zinc-800"
-                      >
-                        Previous
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={paymentsPage + 1 >= paymentsTotalPages}
-                        onClick={() => setPaymentsPage(prev => prev + 1)}
-                        className="px-3 border border-slate-200 dark:border-zinc-700 text-slate-650 dark:text-zinc-300 bg-white dark:bg-zinc-800"
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
+            <DataTable
+              label="Payment transactions"
+              rows={payments}
+              columns={paymentControls.visibleColumns}
+              rowId={(p) => p.paymentId}
+              isLoading={loadingPayments}
+              density={paymentControls.density}
+              sortBy={paymentControls.sortBy}
+              sortDir={paymentControls.sortDir}
+              onSortChange={paymentControls.onSortChange}
+              onRowClick={(p) => handleViewDetails(p.paymentId)}
+              selectedIds={paymentControls.selectedIds}
+              onSelectionChange={paymentControls.setSelectedIds}
+              bulkActions={
+                <ExportMenu
+                  filename={`payments-selected-${new Date().toISOString().slice(0, 10)}`}
+                  headers={PAYMENT_EXPORT_HEADERS}
+                  rows={payments.filter((p) => paymentControls.selectedIds.has(p.paymentId)).map(paymentExportRow)}
+                />
+              }
+              emptyTitle="No payment records"
+              emptyMessage="Deposit and settlement requests appear here once raised against a booking."
+              footer={
+                <TablePagination
+                  page={paymentsPage}
+                  pageSize={PAYMENTS_PAGE_SIZE}
+                  totalElements={paymentsTotalElements}
+                  totalPages={paymentsTotalPages}
+                  onPageChange={setPaymentsPage}
+                />
+              }
+            />
           </div>
         </div>
       )}
@@ -603,90 +667,29 @@ export function DepositPaymentScreen() {
           </Card>
 
           {/* Bookings Table */}
-          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden">
-            {loadingBookings ? (
-              <div className="py-12 text-center text-slate-400 dark:text-zinc-500 text-xs flex flex-col items-center justify-center gap-2">
-                <RefreshCw className="size-4 animate-spin text-blue-500" />
-                <span>Loading confirmed bookings registry...</span>
-              </div>
-            ) : (
-              <>
-                <Table className="w-full table-fixed min-w-275">
-                  <TableHeader className="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-100 dark:border-zinc-850">
-                    <TableRow hoverable={false}>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-left! whitespace-nowrap">Booking Reference</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[30%] text-left! whitespace-nowrap">Customer Name</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-center! whitespace-nowrap">Check In</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-center! whitespace-nowrap">Check Out</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[10%] text-center! whitespace-nowrap">Booking Status</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-right! whitespace-nowrap">Total Invoice</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {bookings.length > 0 ? (
-                      bookings.map(b => (
-                        <TableRow
-                          key={b.bookingId}
-                          onClick={() => setSelectedBookingForDetails(b)}
-                          className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 border-b border-slate-100 dark:border-zinc-800 transition cursor-pointer select-none"
-                        >
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
-                            {b.bookingCode}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-37.5" title={b.customerName}>
-                            {b.customerName}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkInDate}</TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkOutDate}</TableCell>
-                          <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
-                            <div className="flex justify-center">
-                              <Badge variant="success" className="bg-emerald-55 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-450 dark:border-emerald-900 font-bold uppercase text-[9px] py-1 min-w-22.5 justify-center text-center">
-                                {b.status}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-right! whitespace-nowrap">
-                            {b.totalAmount?.toLocaleString('vi-VN')} ₫
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow hoverable={false}>
-                        <TableCell colSpan={6} className="py-12 text-center text-slate-450 dark:text-zinc-550 text-xs">
-                          No confirmed bookings waiting for payment link.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-
-                {/* Pagination */}
-                {bookingsTotalPages > 1 && (
-                  <div className="flex justify-between items-center bg-slate-50 dark:bg-zinc-800/40 px-4 py-3 border-t border-slate-100 dark:border-zinc-800">
-                    <span className="text-xs text-slate-550 dark:text-zinc-400 font-medium">Page {bookingsPage + 1} of {bookingsTotalPages}</span>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        disabled={bookingsPage === 0}
-                        onClick={() => setBookingsPage(prev => Math.max(0, prev - 1))}
-                        className="px-3 border border-slate-200 dark:border-zinc-700 text-slate-650 dark:text-zinc-300 bg-white dark:bg-zinc-800"
-                      >
-                        Previous
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={bookingsPage + 1 >= bookingsTotalPages}
-                        onClick={() => setBookingsPage(prev => prev + 1)}
-                        className="px-3 border border-slate-200 dark:border-zinc-700 text-slate-655 dark:text-zinc-300 bg-white dark:bg-zinc-800"
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+          <DataTable
+            label="Confirmed bookings awaiting a payment request"
+            rows={bookings}
+            columns={awaitingControls.visibleColumns}
+            rowId={(b) => b.bookingId}
+            isLoading={loadingBookings}
+            density={awaitingControls.density}
+            sortBy={awaitingControls.sortBy}
+            sortDir={awaitingControls.sortDir}
+            onSortChange={awaitingControls.onSortChange}
+            onRowClick={(b) => setSelectedBookingForDetails(b)}
+            emptyTitle="Nothing awaiting a payment link"
+            emptyMessage="Confirmed bookings without a payment request appear here."
+            footer={
+              <TablePagination
+                page={bookingsPage}
+                pageSize={PAYMENTS_PAGE_SIZE}
+                totalElements={bookingsTotalElements}
+                totalPages={bookingsTotalPages}
+                onPageChange={setBookingsPage}
+              />
+            }
+          />
         </div>
       )}
 
