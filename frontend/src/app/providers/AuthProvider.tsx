@@ -14,6 +14,7 @@ const PUBLIC_ROUTES = [
   "/reset-password",
   "/feedback",
   "/auth/callback",
+  "/portal",
 ];
 
 /**

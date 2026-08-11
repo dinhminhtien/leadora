@@ -44,4 +44,7 @@ export const ROUTE_PATHS = {
   aiAssistant: "/ai-assistant",
   profile: "/profile",
   activityLogs: "/activity-logs",
+  contracts: "/dashboard/contracts",
+  contractDetail: (id: string) => `/dashboard/contracts/${id}`,
+  publicContractPortal: (id: string, token: string) => `/portal/contracts/${id}?token=${token}`,
 } as const;

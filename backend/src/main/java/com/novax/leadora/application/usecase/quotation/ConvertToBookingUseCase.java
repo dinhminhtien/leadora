@@ -16,7 +16,7 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingRepository
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.common.exception.BusinessException;
-
+import com.novax.leadora.infrastructure.persistence.entity.ContractEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -39,6 +39,8 @@ public class ConvertToBookingUseCase {
         private final QuotationAccessPolicy quotationAccessPolicy;
         private final QuotationAvailabilityChecker availabilityChecker;
         private final StartSlaTrackingUseCase startSlaTrackingUseCase;
+        private final com.novax.leadora.infrastructure.persistence.repository.ContractRepository contractRepository;
+        private final com.novax.leadora.application.usecase.contract.ActivateContractUseCase activateContractUseCase;
 
         @Transactional
         public BookingResponse execute(UUID quotationId, ConvertToBookingRequest request) {
@@ -53,6 +55,35 @@ public class ConvertToBookingUseCase {
                                         "Only ACCEPTED quotations can be converted to a booking. Current status: "
                                                         + quotation.getStatus().name(),
                                         HttpStatus.CONFLICT);
+                }
+
+                // Check contract status
+                List<ContractEntity> contracts = 
+                        contractRepository.findByQuotation_QuotationId(quotationId);
+                
+                if (contracts.isEmpty()) {
+                        throw new BusinessException("CONTRACT_REQUIRED",
+                                        "A contract must be generated and signed before converting to a booking.",
+                                        HttpStatus.BAD_REQUEST);
+                }
+                
+                // Get the latest version contract
+                com.novax.leadora.infrastructure.persistence.entity.ContractEntity contract = contracts.stream()
+                        .max(java.util.Comparator.comparingInt(c->c.getVersion()))
+                        .get();
+
+                if (contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.DRAFT ||
+                    contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.SENT) {
+                        throw new BusinessException("CONTRACT_NOT_ACKNOWLEDGED",
+                                        "The contract has not been acknowledged by the customer. Please verify OTP first.",
+                                        HttpStatus.BAD_REQUEST);
+                }
+
+                if (contract.getStatus() != com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACKNOWLEDGED &&
+                    contract.getStatus() != com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACTIVE) {
+                        throw new BusinessException("CONTRACT_INVALID_STATE",
+                                        "The contract is in an invalid state for booking: " + contract.getStatus(),
+                                        HttpStatus.BAD_REQUEST);
                 }
 
                 // BR-23: Resolve dates — request values take precedence, fall back to quotation
@@ -137,6 +168,11 @@ public class ConvertToBookingUseCase {
                 // POST-1: Update quotation status to CONVERTED
                 quotation.setStatus(QuotationStatus.CONVERTED);
                 quotationRepository.save(quotation);
+
+                // Activate the contract if it is ACKNOWLEDGED
+                if (contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACKNOWLEDGED) {
+                        activateContractUseCase.execute(contract.getId());
+                }
 
                 // UC-17.2: start SLA tracking — non-fatal if no BOOKING_CONFIRM rule configured
                 try {

@@ -108,6 +108,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ShieldCheck,
         hint: "Discounts awaiting your decision",
       },
+      {
+        href: ROUTE_PATHS.contracts,
+        label: "Contracts",
+        icon: FileText,
+        hint: "Legal commercial agreements",
+      },
     ],
   },
   {
