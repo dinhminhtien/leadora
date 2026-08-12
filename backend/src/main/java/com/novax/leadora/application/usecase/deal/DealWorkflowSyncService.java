@@ -60,6 +60,10 @@ public class DealWorkflowSyncService {
         }
 
         // Determine target stage
+        // NOTE: deal.expectedRevenue is intentionally NOT synced here.
+        // deal_value is a Sales estimate (SSOT for forecast) and must remain independent
+        // of quotation pricing. The only authoritative sync point is CustomerAcceptQuotationUseCase
+        // when the customer confirms — at that moment the estimate becomes an actuals figure.
         DealPipelineStage currentStage = deal.getPipelineStage();
         DealPipelineStage targetStage = currentStage;
 

@@ -16,6 +16,8 @@ public abstract class BaseAccessPolicy<T> {
 
     protected static final Set<String> FULL_ACCESS_ROLES = Set.of("MANAGER", "ADMIN");
     protected static final Set<String> SCOPED_ROLES = Set.of("SALES", "SALES_STAFF");
+    /** Roles that can view any entity but cannot mutate it (e.g., Reservation viewing quotation details). */
+    protected static final Set<String> READ_ONLY_ROLES = Set.of("RESERVATION");
 
     protected final CurrentUserProvider currentUserProvider;
 
@@ -53,6 +55,9 @@ public abstract class BaseAccessPolicy<T> {
         String role = roleName(user);
         if (FULL_ACCESS_ROLES.contains(role)) {
             return;
+        }
+        if (READ_ONLY_ROLES.contains(role)) {
+            return; // Read-only: can view any entity
         }
         if (SCOPED_ROLES.contains(role) && owns(user, entity)) {
             return;

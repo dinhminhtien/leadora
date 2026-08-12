@@ -51,15 +51,21 @@ public class ConvertToBookingUseCase {
 
                 quotationAccessPolicy.assertCanView(quotationAccessPolicy.currentUser(), quotation);
 
-                // PRE-1: Only ACCEPTED or ACCEPTED_BY_CUSTOMER quotations can be converted
-                if (quotation.getStatus() != QuotationStatus.ACCEPTED && quotation.getStatus() != QuotationStatus.ACCEPTED_BY_CUSTOMER) {
+                // PRE-1: Only ACCEPTED, ACCEPTED_BY_CUSTOMER, or RESERVATION_PENDING quotations can be converted
+                // Note: For portal/OTP acceptance, the status is RESERVATION_PENDING.
+                // This use case should only be invoked for RESERVATION_PENDING by ApproveReservationUseCase
+                // after the Reservation staff has confirmed availability.
+                if (quotation.getStatus() != QuotationStatus.ACCEPTED 
+                        && quotation.getStatus() != QuotationStatus.ACCEPTED_BY_CUSTOMER
+                        && quotation.getStatus() != QuotationStatus.RESERVATION_PENDING) {
                         throw new BusinessException("QUOTATION_INVALID_STATUS",
-                                        "Only ACCEPTED or ACCEPTED_BY_CUSTOMER quotations can be converted to a booking. Current status: "
+                                        "Only ACCEPTED, ACCEPTED_BY_CUSTOMER, or RESERVATION_PENDING quotations can be converted to a booking. Current status: "
                                                          + quotation.getStatus().name(),
                                         HttpStatus.CONFLICT);
                 }
 
-                boolean isAcceptedByCustomer = quotation.getStatus() == QuotationStatus.ACCEPTED_BY_CUSTOMER;
+                boolean isAcceptedByCustomer = quotation.getStatus() == QuotationStatus.ACCEPTED_BY_CUSTOMER 
+                        || quotation.getStatus() == QuotationStatus.RESERVATION_PENDING;
                 
                 // Check contract status
                 List<ContractEntity> contracts = 
@@ -76,18 +82,29 @@ public class ConvertToBookingUseCase {
                         .max(java.util.Comparator.comparingInt(c->c.getVersion()))
                         .get();
 
-                if (contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.DRAFT ||
-                    contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.SENT) {
-                        throw new BusinessException("CONTRACT_NOT_ACKNOWLEDGED",
-                                        "The contract has not been acknowledged by the customer. Please verify OTP first.",
-                                        HttpStatus.BAD_REQUEST);
-                }
+                if (isAcceptedByCustomer) {
+                        if (contract.getStatus() != com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.DRAFT &&
+                            contract.getStatus() != com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.SENT &&
+                            contract.getStatus() != com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACKNOWLEDGED &&
+                            contract.getStatus() != com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACTIVE) {
+                                throw new BusinessException("CONTRACT_INVALID_STATE",
+                                                "The contract is in an invalid state for booking: " + contract.getStatus(),
+                                                HttpStatus.BAD_REQUEST);
+                        }
+                } else {
+                        if (contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.DRAFT ||
+                            contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.SENT) {
+                                throw new BusinessException("CONTRACT_NOT_ACKNOWLEDGED",
+                                                "The contract has not been acknowledged by the customer. Please verify OTP first.",
+                                                HttpStatus.BAD_REQUEST);
+                        }
 
-                if (contract.getStatus() != com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACKNOWLEDGED &&
-                    contract.getStatus() != com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACTIVE) {
-                        throw new BusinessException("CONTRACT_INVALID_STATE",
-                                        "The contract is in an invalid state for booking: " + contract.getStatus(),
-                                        HttpStatus.BAD_REQUEST);
+                        if (contract.getStatus() != com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACKNOWLEDGED &&
+                            contract.getStatus() != com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACTIVE) {
+                                throw new BusinessException("CONTRACT_INVALID_STATE",
+                                                "The contract is in an invalid state for booking: " + contract.getStatus(),
+                                                HttpStatus.BAD_REQUEST);
+                        }
                 }
 
                 // BR-23: Resolve dates — request values take precedence, fall back to quotation

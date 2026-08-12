@@ -66,6 +66,16 @@ export const contractService = {
     return response.data;
   },
 
+  async resend(id: string): Promise<ApiResponse<Contract>> {
+    const response = await apiClient.post<ApiResponse<Contract>>(`/contracts/${id}/resend`);
+    return response.data;
+  },
+
+  async regenerate(id: string): Promise<ApiResponse<Contract>> {
+    const response = await apiClient.post<ApiResponse<Contract>>(`/contracts/${id}/regenerate`);
+    return response.data;
+  },
+
   // Public Endpoints (Customer Portal)
   async publicGetById(id: string, token: string): Promise<ApiResponse<Contract>> {
     const response = await apiClient.get<ApiResponse<Contract>>(`/public/contracts/${id}?token=${token}`);

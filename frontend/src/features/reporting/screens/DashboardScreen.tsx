@@ -274,66 +274,66 @@ export function DashboardScreen() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Sales Funnel Distribution Card */}
         <Card className="lg:col-span-2">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-bold text-foreground">Sales Funnel Distribution</CardTitle>
-          <CardDescription className="text-xs text-muted-foreground">
-            Value and count of deals distributed across the hotel sales stages
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* SVG Visual Stage Chart */}
-          <div className="space-y-3.5 pt-2 relative">
-            {funnelData.map((stage, idx) => {
-              const pct = totalDealsValue > 0 ? ((stage.value / totalDealsValue) * 100).toFixed(1) : "0";
-              const avgValue = stage.count > 0 ? Math.round(stage.value / stage.count) : 0;
-              const isHovered = hoveredStage?.stage === stage.stage;
-              return (
-                <div
-                  key={idx}
-                  className="space-y-1 relative group cursor-pointer p-1.5 rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/50"
-                  onMouseEnter={() => setHoveredStage(stage)}
-                  onMouseLeave={() => setHoveredStage(null)}
-                >
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-foreground/80 flex items-center gap-1.5">
-                      <span className={`size-2 rounded-full ${stage.color}`} />
-                      {stage.stage}
-                    </span>
-                    <span className="text-muted-foreground text-[10px]">
-                      {stage.count} {stage.count === 1 ? "deal" : "deals"} ({pct}%) • <strong className="text-foreground/90">{stage.value.toLocaleString("vi-VN")} ₫</strong>
-                    </span>
-                  </div>
-                  <div className="w-full bg-muted rounded-lg h-3 overflow-hidden flex">
-                    <div
-                      className={`${stage.color} h-full rounded-lg transition-all duration-300 ${isHovered ? "brightness-110 shadow-sm" : ""}`}
-                      style={{ width: `${maxStageValue > 0 ? (stage.value / maxStageValue) * 100 : 0}%` }}
-                    />
-                  </div>
-
-                  {/* Hover Floating Tooltip */}
-                  {isHovered && (
-                    <div className="absolute left-1/2 -top-12 z-40 pointer-events-none -translate-x-1/2 bg-slate-900/95 backdrop-blur-xs text-white text-[11px] px-3 py-2 rounded-lg shadow-xl border border-slate-700 animate-in fade-in duration-150 whitespace-nowrap">
-                      <div className="font-bold text-slate-200">{stage.stage} Stage</div>
-                      <div className="text-emerald-400 font-bold text-xs mt-0.5">
-                        Total Value: {stage.value.toLocaleString("vi-VN")} ₫
-                      </div>
-                      <div className="text-[10px] text-slate-300 mt-0.5 flex items-center gap-2">
-                        <span>{stage.count} active deal{stage.count !== 1 ? "s" : ""}</span>
-                        <span>•</span>
-                        <span className="text-sky-400 font-semibold">{pct}% of pipeline</span>
-                        {avgValue > 0 && (
-                          <>
-                            <span>•</span>
-                            <span className="text-amber-300">Avg: {avgValue.toLocaleString("vi-VN")} ₫</span>
-                          </>
-                        )}
-                      </div>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold text-foreground">Sales Funnel Distribution</CardTitle>
+            <CardDescription className="text-xs text-muted-foreground">
+              Value and count of deals distributed across the hotel sales stages
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* SVG Visual Stage Chart */}
+            <div className="space-y-3.5 pt-2 relative">
+              {funnelData.map((stage, idx) => {
+                const pct = totalDealsValue > 0 ? ((stage.value / totalDealsValue) * 100).toFixed(1) : "0";
+                const avgValue = stage.count > 0 ? Math.round(stage.value / stage.count) : 0;
+                const isHovered = hoveredStage?.stage === stage.stage;
+                return (
+                  <div
+                    key={idx}
+                    className="space-y-1 relative group cursor-pointer p-1.5 rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/50"
+                    onMouseEnter={() => setHoveredStage(stage)}
+                    onMouseLeave={() => setHoveredStage(null)}
+                  >
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-semibold text-foreground/80 flex items-center gap-1.5">
+                        <span className={`size-2 rounded-full ${stage.color}`} />
+                        {stage.stage}
+                      </span>
+                      <span className="text-muted-foreground text-[10px]">
+                        {stage.count} {stage.count === 1 ? "deal" : "deals"} ({pct}%) • <strong className="text-foreground/90">{stage.value.toLocaleString("vi-VN")} ₫</strong>
+                      </span>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    <div className="w-full bg-muted rounded-lg h-3 overflow-hidden flex">
+                      <div
+                        className={`${stage.color} h-full rounded-lg transition-all duration-300 ${isHovered ? "brightness-110 shadow-sm" : ""}`}
+                        style={{ width: `${maxStageValue > 0 ? (stage.value / maxStageValue) * 100 : 0}%` }}
+                      />
+                    </div>
+
+                    {/* Hover Floating Tooltip */}
+                    {isHovered && (
+                      <div className="absolute left-1/2 -top-12 z-40 pointer-events-none -translate-x-1/2 bg-slate-900/95 backdrop-blur-xs text-white text-[11px] px-3 py-2 rounded-lg shadow-xl border border-slate-700 animate-in fade-in duration-150 whitespace-nowrap">
+                        <div className="font-bold text-slate-200">{stage.stage} Stage</div>
+                        <div className="text-emerald-400 font-bold text-xs mt-0.5">
+                          Total Value: {stage.value.toLocaleString("vi-VN")} ₫
+                        </div>
+                        <div className="text-[10px] text-slate-300 mt-0.5 flex items-center gap-2">
+                          <span>{stage.count} active deal{stage.count !== 1 ? "s" : ""}</span>
+                          <span>•</span>
+                          <span className="text-sky-400 font-semibold">{pct}% of pipeline</span>
+                          {avgValue > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="text-amber-300">Avg: {avgValue.toLocaleString("vi-VN")} ₫</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
 
             {/* Custom SVG Curved Revenue Forecast Line Chart */}
             <div className="mt-8 border-t border-border pt-6">

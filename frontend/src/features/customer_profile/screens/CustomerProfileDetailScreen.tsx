@@ -155,8 +155,8 @@ function EditCustomerDrawer({
                   type="button"
                   onClick={() => set("customerType", type)}
                   className={`py-2 rounded-xl text-xs font-semibold border transition ${form.customerType === type
-                      ? "border-blue-500 bg-blue-50 text-blue-700"
-                      : "border-slate-200 text-slate-600 hover:border-slate-300"
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-slate-200 text-slate-600 hover:border-slate-300"
                     }`}
                 >
                   {type === "INDIVIDUAL" ? "Individual" : "Corporate / Org"}

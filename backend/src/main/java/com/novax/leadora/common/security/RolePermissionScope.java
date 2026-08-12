@@ -139,7 +139,7 @@ public final class RolePermissionScope {
     private static final Set<String> RESERVATION_DEFAULT = Set.of(
             "ROOM_REQUEST_VIEW", "ROOM_REQUEST_APPROVE", "BOOKING_VIEW", "BOOKING_WRITE",
             "RESERVATION_VIEW", "RESERVATION_WRITE", "HANDOVER_VIEW", "HANDOVER_WRITE",
-            "PAYMENT_VIEW", "PAYMENT_WRITE", "NOTIFICATION_VIEW"
+            "PAYMENT_VIEW", "PAYMENT_WRITE", "NOTIFICATION_VIEW", "QUOTATION_VIEW"
     );
 
     private RolePermissionScope() {

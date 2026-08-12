@@ -159,3 +159,24 @@ SELECT need.code AS fo_still_missing
     WHERE upper(trim(r.role_name)) IN ('FO','FRONT_OFFICE')
       AND p.permission_code = need.code
  );
+
+-- ============================================================================
+-- PORTAL SECURITY & RBAC DOCUMENTATION
+-- ============================================================================
+--
+-- 1. Portal Security Architecture:
+--    The customer portal operates anonymously without authenticated user sessions.
+--    Security is enforced via secure, hashed tokens (SHA-256) embedded in the links.
+--    The backend bypasses Row-Level Security (RLS) since it uses service-role capabilities
+--    via standard JDBC connection pool. Instead, authorization is tokenized:
+--    - GetQuotationByTokenUseCase validates the token's presence, expiration, and used_at status.
+--    - Single-use constraint: both accept (confirm-otp) and reject endpoints mark the token
+--      as used (used_at is set to current timestamp) immediately upon successful execution.
+--
+-- 2. RESERVATION Role & QUOTATION_VIEW:
+--    To satisfy BR-15 (Reservation Decision), reservation staff must be able to view
+--    quotations that are in the RESERVATION_PENDING status.
+--    The RESERVATION role is granted 'QUOTATION_VIEW' and 'RESERVATION_VIEW' permissions.
+--    This allows them to inspect room selections, check-in/out dates, and guest details
+--    to determine room availability before executing approving or rejecting actions.
+-- ============================================================================
