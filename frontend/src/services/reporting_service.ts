@@ -397,10 +397,17 @@ export type PipelineStageRow = {
   value: number;
   /** Deal lifetime: created → now for open stages, created → closed for terminal ones. */
   avgAgeDays: number;
-  /** Measured average days a deal spends in this stage, from recorded stage changes. */
-  avgDaysInStage: number;
-  /** How many stage visits avgDaysInStage averages over; 0 means no history for this stage. */
-  dwellSamples?: number;
+  /**
+   * Average days to get *out* of this stage, over visits that have ended. Null when no deal has
+   * completed the stage — unknown, not instant. Terminal stages never carry one.
+   */
+  avgDaysToMoveOn?: number | null;
+  /** How many ended visits avgDaysToMoveOn averages over. */
+  completedLegs?: number;
+  /** Deals sitting in this stage right now — a queue, not a crossing time. */
+  dealsWaitingNow?: number;
+  /** How long that queue has been waiting on average. Null when there is none. */
+  avgDaysWaiting?: number | null;
   closed: boolean;
 };
 
@@ -411,13 +418,24 @@ export type PipelineProgressionReport = {
   openDeals: number;
   closedWon: number;
   closedLost: number;
-  winRate: number;
+  /**
+   * Won / settled *within the opening cohort*. Deliberately not `winRate`: SalesPerformanceReport
+   * publishes a figure of that name over deals closed in the period, whenever they were opened, and
+   * the two routinely differ. Null when nothing in the cohort has settled.
+   */
+  cohortWinRate?: number | null;
+  /** The denominator behind cohortWinRate. */
+  cohortDecided?: number;
+  /** Deals closed in the period but opened before it — outside this cohort by construction. */
+  closedHereOpenedEarlier?: number;
   pipelineValue: number;
   bottleneckStage?: string;
   /** How the bottleneck was chosen — rendered so the claim is qualified where it is made. */
   bottleneckBasis?: string;
   /** True when timings come from recorded stage changes rather than the idle-time fallback. */
   historyMeasured?: boolean;
+  /** What this period could not establish, in words. Rendered verbatim. */
+  dataGaps?: string[];
   stages: PipelineStageRow[];
 };
 

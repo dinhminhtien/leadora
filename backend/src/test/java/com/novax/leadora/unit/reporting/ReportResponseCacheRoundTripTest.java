@@ -118,14 +118,17 @@ class ReportResponseCacheRoundTripTest {
     @DisplayName("UC-23.4 survives the cache round trip")
     void pipelineProgressionRoundTrips() {
         PipelineProgressionReportResponse original = PipelineProgressionReportResponse.builder()
-                .totalDeals(4).openDeals(2).closedWon(1).closedLost(1).winRate(50.0)
+                .totalDeals(4).openDeals(2).closedWon(1).closedLost(1)
+                .cohortWinRate(50.0).cohortDecided(2).closedHereOpenedEarlier(3)
                 .pipelineValue(BigDecimal.valueOf(300))
                 .bottleneckStage("Qualification")
-                .bottleneckBasis("Ranked by average days since last updated.")
+                .bottleneckBasis("Ranked by measured time to leave the stage.")
+                .dataGaps(List.of("3 deal(s) closed during this period were opened before it."))
                 .stages(List.of(PipelineProgressionReportResponse.StageRow.builder()
                         .stage("QUALIFICATION").label("Qualification").count(2)
                         .value(BigDecimal.valueOf(300))
-                        .avgAgeDays(30.0).avgDaysInStage(25.0).closed(false).build()))
+                        .avgAgeDays(30.0).avgDaysToMoveOn(25.0).completedLegs(4)
+                        .dealsWaitingNow(2).avgDaysWaiting(31.5).closed(false).build()))
                 .build();
 
         PipelineProgressionReportResponse restored =
@@ -133,9 +136,16 @@ class ReportResponseCacheRoundTripTest {
 
         assertThat(restored.getBottleneckStage()).isEqualTo("Qualification");
         assertThat(restored.getPipelineValue()).isEqualByComparingTo(BigDecimal.valueOf(300));
+        assertThat(restored.getCohortWinRate()).isEqualTo(50.0);
+        assertThat(restored.getCohortDecided()).isEqualTo(2);
+        assertThat(restored.getClosedHereOpenedEarlier()).isEqualTo(3);
+        assertThat(restored.getDataGaps()).hasSize(1);
         assertThat(restored.getStages()).singleElement()
                 .satisfies(row -> {
-                    assertThat(row.getAvgDaysInStage()).isEqualTo(25.0);
+                    assertThat(row.getAvgDaysToMoveOn()).isEqualTo(25.0);
+                    assertThat(row.getCompletedLegs()).isEqualTo(4);
+                    assertThat(row.getDealsWaitingNow()).isEqualTo(2);
+                    assertThat(row.getAvgDaysWaiting()).isEqualTo(31.5);
                     assertThat(row.isClosed()).isFalse();
                 });
     }

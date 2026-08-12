@@ -280,6 +280,26 @@ public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpec
             @Param("start") OffsetDateTime start,
             @Param("end") OffsetDateTime end);
 
+    /**
+     * Deals settled inside the window but opened before it — exactly the deals UC-23.4's opening
+     * cohort cannot see, and the reason its win rate can differ from the one UC-23.1 publishes over
+     * the deals closed in the period.
+     *
+     * <p>Counted rather than inferred: the size of the blind spot swings with how long deals take,
+     * so a report that stays silent about it is trusted for the wrong reason on the windows where
+     * it happens to be small.
+     */
+    @Query("""
+            SELECT count(d)
+            FROM DealEntity d
+            WHERE d.closedAt >= :start
+              AND d.closedAt < :end
+              AND d.createdAt < :start
+            """)
+    long countClosedInRangeOpenedBefore(
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end);
+
     // ── Chat-assistant snapshot ───────────────────────────────────────────────
     // A null :userId means "every deal" (Manager/Admin scope); a non-null value restricts to that
     // user's records — the BR-36 filter lives in SQL for both scopes.
