@@ -33,9 +33,13 @@ import { useQuotationById, useReviseQuotation, useQuotations } from "@/features/
 import { useAuthStore } from "@/stores/auth_store";
 import { useQuery } from "@tanstack/react-query";
 import { productService } from "@/services/product_service";
+import { AllotmentHint } from "@/features/room_availability/components/AllotmentHint";
 
 const roomLineSchema = z.object({
-  roomType: z.string().min(1, "Select a room type"),
+  // Allotment is keyed on the product, so a line carrying only a name cannot be checked
+  // against the quota — the id is the identity, the name is decoration.
+  productId: z.string().min(1, "Select a room type"),
+  roomType: z.string().optional(),
   numberOfRooms: z.coerce.number().min(1, "At least 1 room"),
   pricePerNight: z.coerce.number().min(0.01, "Must be greater than 0"),
 });
@@ -64,7 +68,7 @@ const schema = z
   )
   .refine(
     (data) => {
-      const types = data.roomLines.map((l) => l.roomType).filter(Boolean);
+      const types = data.roomLines.map((l) => l.productId).filter(Boolean);
       return new Set(types).size === types.length;
     },
     { message: "Each room type can only be selected once — adjust the quantity instead", path: ["roomLines"] }
@@ -72,23 +76,16 @@ const schema = z
 
 type FormValues = z.infer<typeof schema>;
 
-const ROOM_TYPES = [
-  "Deluxe Suite",
-  "Superior Room",
-  "Standard Queen",
-  "Executive Suite",
-  "Ocean View Room",
-  "Banquet Hall",
-  "Grand Ballroom Suite",
-];
-
+// Room types come from the product catalogue (roomProducts), not a list in this file. The
+// hard-coded list that used to sit here could offer rooms with no matching product, and those
+// are precisely the lines the server cannot price or check against allotment.
 const PAYMENT_POLICIES: { value: string; label: string }[] = [
   { value: "full_upfront", label: "Full Payment Upfront" },
   { value: "50_deposit", label: "50% Deposit on Booking" },
   { value: "pay_on_arrival", label: "Pay on Arrival" },
 ];
 
-const EMPTY_ROOM_LINE = { roomType: "", numberOfRooms: 1, pricePerNight: 0 };
+const EMPTY_ROOM_LINE = { productId: "", roomType: "", numberOfRooms: 1, pricePerNight: 0 };
 
 function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
@@ -148,15 +145,24 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
   // Pre-populate form when quotation loads
   useEffect(() => {
     if (!quotation) return;
+    // Quotations written before product_id existed carry only a name; match it back against
+    // the catalogue, and leave the select empty when nothing matches rather than seeding a
+    // room type the server would reject on save.
+    const productIdForName = (name?: string) =>
+      roomProducts.find((p) => p.name.trim().toLowerCase() === (name ?? "").trim().toLowerCase())
+        ?.productId ?? "";
+
     const seededRoomLines =
       quotation.roomLines && quotation.roomLines.length > 0
         ? quotation.roomLines.map((l) => ({
+          productId: l.productId ?? productIdForName(l.roomType),
           roomType: l.roomType,
           numberOfRooms: l.numberOfRooms,
           pricePerNight: l.pricePerNight,
         }))
         : [
           {
+            productId: productIdForName(quotation.roomType),
             roomType: quotation.roomType ?? "",
             numberOfRooms: quotation.numberOfRooms ?? 1,
             pricePerNight: quotation.pricePerNight ?? 0,
@@ -469,23 +475,31 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
                     <div>
                       <FieldLabel required>Room Type</FieldLabel>
                       <Select
-                        {...register(`roomLines.${index}.roomType` as const, {
+                        {...register(`roomLines.${index}.productId` as const, {
                           onChange: (e) => {
-                            const selectedType = e.target.value;
-                            const matched = roomProducts.find((p) => p.name === selectedType);
+                            const matched = roomProducts.find((p) => p.productId === e.target.value);
+                            setValue(`roomLines.${index}.roomType`, matched ? matched.name : "", {
+                              shouldDirty: true,
+                            });
                             setValue(`roomLines.${index}.pricePerNight`, matched ? matched.unitPrice : 0, {
                               shouldValidate: true,
                               shouldDirty: true,
                             });
                           },
                         })}
-                        error={errors.roomLines?.[index]?.roomType?.message}
+                        error={errors.roomLines?.[index]?.productId?.message}
                       >
                         <option value="">-- Select room type --</option>
-                        {ROOM_TYPES.map((rt) => (
-                          <option key={rt} value={rt}>{rt}</option>
+                        {roomProducts.map((product) => (
+                          <option key={product.productId} value={product.productId}>{product.name}</option>
                         ))}
                       </Select>
+                      <AllotmentHint
+                        productId={roomLines?.[index]?.productId}
+                        checkIn={checkInDate}
+                        checkOut={checkOutDate}
+                        quantity={Number(roomLines?.[index]?.numberOfRooms) || 1}
+                      />
                     </div>
                     <div className="w-full sm:w-28">
                       <FieldLabel required>Quantity</FieldLabel>
