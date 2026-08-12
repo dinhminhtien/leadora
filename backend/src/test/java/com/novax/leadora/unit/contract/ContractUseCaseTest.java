@@ -53,6 +53,7 @@ class ContractUseCaseTest {
     @Mock private GetContractByTokenUseCase getContractByTokenUseCase;
     @Mock private StringRedisTemplate redisTemplate;
     @Mock private ValueOperations<String, String> valueOperations;
+    @Mock private ActivateContractUseCase mockActivateContractUseCase;
     
     private ObjectMapper objectMapper;
 
@@ -100,7 +101,8 @@ class ContractUseCaseTest {
                 getContractByTokenUseCase,
                 redisTemplate,
                 activityLogPublisher,
-                eventPublisher
+                eventPublisher,
+                mockActivateContractUseCase
         );
 
         activateContractUseCase = new ActivateContractUseCase(
@@ -361,6 +363,7 @@ class ContractUseCaseTest {
         assertNotNull(result.getAcknowledgedAt());
         verify(redisTemplate, times(1)).delete("contract_otp:" + contract.getId());
         verify(eventPublisher, times(1)).publishEvent(any(ContractAcknowledgedEvent.class));
+        verify(mockActivateContractUseCase, times(1)).execute(contract.getId());
     }
 
     // ==========================================

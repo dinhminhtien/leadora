@@ -47,6 +47,17 @@ export function useSendQuotation() {
   });
 }
 
+// Resend quotation email (only if previous email hasn't been opened)
+export function useResendQuotationEmail() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => quotationService.resend(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    },
+  });
+}
+
 // Manually close a quotation (UC-14.8)
 export function useCloseQuotation() {
   const queryClient = useQueryClient();
@@ -155,5 +166,33 @@ export function usePublicConfirmQuotationOtp() {
   return useMutation({
     mutationFn: ({ id, token, otpCode }: { id: string; token: string; otpCode: string }) =>
       quotationService.publicConfirmOtp(id, token, otpCode),
+  });
+}
+
+export function usePublicRejectQuotation() {
+  return useMutation({
+    mutationFn: ({ id, token, reason }: { id: string; token: string; reason: string }) =>
+      quotationService.publicReject(id, token, reason),
+  });
+}
+
+export function useReservationApprove() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => quotationService.reservationApprove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    },
+  });
+}
+
+export function useReservationReject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: { reason: string; note: string } }) =>
+      quotationService.reservationReject(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    },
   });
 }

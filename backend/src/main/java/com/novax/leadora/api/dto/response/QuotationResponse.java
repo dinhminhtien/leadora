@@ -44,6 +44,7 @@ public class QuotationResponse {
     private java.util.UUID parentQuotationId;
     private String changeReason;
     private OffsetDateTime createdAt;
+    private String reservationDecision;
 
     /** One room type + quantity + rate line within the quotation (UC-14.1/14.5). */
     @Getter
@@ -94,6 +95,7 @@ public class QuotationResponse {
                 .parentQuotationId(entity.getParentQuotationId())
                 .changeReason(entity.getChangeReason())
                 .createdAt(entity.getCreatedAt())
+                .reservationDecision(determineReservationDecision(entity.getStatus()))
                 .build();
     }
 
@@ -152,6 +154,22 @@ public class QuotationResponse {
                 .parentQuotationId(entity.getParentQuotationId())
                 .changeReason(entity.getChangeReason())
                 .createdAt(entity.getCreatedAt())
+                .reservationDecision(determineReservationDecision(entity.getStatus()))
                 .build();
+    }
+
+    private static String determineReservationDecision(com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus status) {
+        if (status == null) return null;
+        switch (status) {
+            case RESERVATION_PENDING:
+                return "PENDING";
+            case BOOKING_REQUEST:
+            case CONVERTED:
+                return "APPROVED";
+            case RESERVATION_REJECTED:
+                return "REJECTED";
+            default:
+                return null;
+        }
     }
 }

@@ -11,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -19,7 +18,6 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class ContractController {
 
     private final GetContractListUseCase getContractListUseCase;
@@ -28,6 +26,9 @@ public class ContractController {
     private final CancelContractUseCase cancelContractUseCase;
     private final UpdateContractBillingMethodUseCase updateContractBillingMethodUseCase;
     
+    private final ResendContractUseCase resendContractUseCase;
+    private final RegenerateContractUseCase regenerateContractUseCase;
+
     // Public UseCases
     private final GetContractByTokenUseCase getContractByTokenUseCase;
     private final RequestContractOtpUseCase requestContractOtpUseCase;
@@ -38,6 +39,7 @@ public class ContractController {
     /** Get all contracts visible to the current user */
     @GetMapping("/api/v1/contracts")
     @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN','RESERVATION') and @access.can('QUOTATION_VIEW')")
+    @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<List<ContractResponse>>> getContracts() {
         List<ContractEntity> contracts = getContractListUseCase.execute();
         List<ContractResponse> response = contracts.stream()
@@ -49,6 +51,7 @@ public class ContractController {
     /** Get contract by ID */
     @GetMapping("/api/v1/contracts/{id}")
     @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN','RESERVATION') and @access.can('QUOTATION_VIEW')")
+    @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<ContractResponse>> getContractById(@PathVariable("id") UUID id) {
         ContractEntity contract = getContractByIdUseCase.execute(id);
         return ResponseEntity.ok(ApiResponse.success(ContractResponse.fromEntity(contract)));
@@ -57,6 +60,7 @@ public class ContractController {
     /** Update contract billing method before sending */
     @PutMapping("/api/v1/contracts/{id}/billing-method")
     @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
+    @Transactional
     public ResponseEntity<ApiResponse<ContractResponse>> updateBillingMethod(
             @PathVariable("id") UUID id,
             @Valid @RequestBody UpdateBillingMethodRequest request) {
@@ -67,6 +71,7 @@ public class ContractController {
     /** Generate PDF and send contract secure link to customer */
     @PostMapping("/api/v1/contracts/{id}/send")
     @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
+    @Transactional
     public ResponseEntity<ApiResponse<ContractResponse>> sendContract(@PathVariable("id") UUID id) {
         ContractEntity contract = sendContractUseCase.execute(id);
         return ResponseEntity.ok(ApiResponse.success(ContractResponse.fromEntity(contract)));
@@ -75,8 +80,27 @@ public class ContractController {
     /** Cancel contract */
     @PostMapping("/api/v1/contracts/{id}/cancel")
     @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
+    @Transactional
     public ResponseEntity<ApiResponse<ContractResponse>> cancelContract(@PathVariable("id") UUID id) {
         ContractEntity contract = cancelContractUseCase.execute(id);
+        return ResponseEntity.ok(ApiResponse.success(ContractResponse.fromEntity(contract)));
+    }
+
+    /** Resend contract email with a fresh secure token */
+    @PostMapping("/api/v1/contracts/{id}/resend")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
+    @Transactional
+    public ResponseEntity<ApiResponse<ContractResponse>> resendContract(@PathVariable("id") UUID id) {
+        ContractEntity contract = resendContractUseCase.execute(id);
+        return ResponseEntity.ok(ApiResponse.success(ContractResponse.fromEntity(contract)));
+    }
+
+    /** Regenerate a new DRAFT contract from a cancelled/expired one */
+    @PostMapping("/api/v1/contracts/{id}/regenerate")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
+    @Transactional
+    public ResponseEntity<ApiResponse<ContractResponse>> regenerateContract(@PathVariable("id") UUID id) {
+        ContractEntity contract = regenerateContractUseCase.execute(id);
         return ResponseEntity.ok(ApiResponse.success(ContractResponse.fromEntity(contract)));
     }
 
@@ -84,6 +108,7 @@ public class ContractController {
 
     /** Public portal access: view contract details by secure token */
     @GetMapping("/api/v1/public/contracts/{id}")
+    @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<ContractResponse>> getPublicContract(
             @PathVariable("id") UUID id,
             @RequestParam("token") String token) {
@@ -93,6 +118,7 @@ public class ContractController {
 
     /** Request OTP email to verification contact */
     @PostMapping("/api/v1/public/contracts/{id}/request-otp")
+    @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<Void>> requestOtp(
             @PathVariable("id") UUID id,
             @RequestParam("token") String token) {
@@ -102,6 +128,7 @@ public class ContractController {
 
     /** Submit OTP verification to reach ACKNOWLEDGED state */
     @PostMapping("/api/v1/public/contracts/{id}/confirm-otp")
+    @Transactional
     public ResponseEntity<ApiResponse<ContractResponse>> confirmOtp(
             @PathVariable("id") UUID id,
             @RequestParam("token") String token,

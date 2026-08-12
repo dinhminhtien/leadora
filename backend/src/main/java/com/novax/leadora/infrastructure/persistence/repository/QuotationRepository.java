@@ -20,6 +20,10 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
     @Query("SELECT q FROM QuotationEntity q WHERE q.quotationId = :id")
     java.util.Optional<QuotationEntity> findByIdForUpdate(@Param("id") UUID id);
 
+    @Override
+    @EntityGraph(attributePaths = {"customer", "deal"})
+    java.util.Optional<QuotationEntity> findById(UUID id);
+
     List<QuotationEntity> findByDeal_DealId(UUID dealId);
     List<QuotationEntity> findByDeal_DealIdIn(List<UUID> dealIds);
     List<QuotationEntity> findByCustomer_CustomerId(UUID customerId);

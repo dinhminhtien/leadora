@@ -14,7 +14,9 @@ export type QuotationStatus =
   | "pending_revision"
   | "pending_customer_response"
   | "accepted_by_customer"
-  | "booking_request";
+  | "booking_request"
+  | "reservation_pending"
+  | "reservation_rejected";
 
 export type RoomLine = {
   roomType: string;
@@ -59,6 +61,7 @@ export type Quotation = {
   validUntil?: string;
   parentQuotationId?: string;
   changeReason?: string;
+  reservationDecision?: "APPROVED" | "REJECTED" | null;
 };
 
 export type CloseQuotationPayload = {
@@ -185,6 +188,11 @@ export const quotationService = {
     return response.data;
   },
 
+  async resend(id: string): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(`${ENDPOINT}/${id}/resend`);
+    return response.data;
+  },
+
   async revise(id: string, payload: ReviseQuotationPayload): Promise<ApiResponse<Quotation>> {
     const response = await apiClient.post<ApiResponse<Quotation>>(`${ENDPOINT}/${id}/revise`, payload);
     return response.data;
@@ -223,6 +231,21 @@ export const quotationService = {
 
   async publicConfirmOtp(id: string, token: string, otpCode: string): Promise<ApiResponse<Quotation>> {
     const response = await apiClient.post<ApiResponse<Quotation>>(`/public/quotations/${id}/confirm-otp?token=${token}`, { otpCode });
+    return response.data;
+  },
+
+  async publicReject(id: string, token: string, reason: string): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(`/public/quotations/${id}/reject?token=${token}`, { reason });
+    return response.data;
+  },
+
+  async reservationApprove(id: string): Promise<ApiResponse<BookingResult>> {
+    const response = await apiClient.post<ApiResponse<BookingResult>>(`${ENDPOINT}/${id}/reservation-approve`);
+    return response.data;
+  },
+
+  async reservationReject(id: string, payload: { reason: string; note: string }): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(`${ENDPOINT}/${id}/reservation-reject`, payload);
     return response.data;
   },
 };

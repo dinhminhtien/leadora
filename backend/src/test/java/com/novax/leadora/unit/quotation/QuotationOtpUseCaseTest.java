@@ -1,8 +1,6 @@
 package com.novax.leadora.unit.quotation;
 
 import com.novax.leadora.application.event.QuotationOtpRequestedEvent;
-import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
-import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.application.usecase.quotation.*;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.config.QuotationProperties;
@@ -45,9 +43,7 @@ class QuotationOtpUseCaseTest {
     @Mock private QuotationProperties quotationProperties;
     @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private QuotationOtpAuditRepository auditRepository;
-    @Mock private ConvertToBookingUseCase convertToBookingUseCase;
-    @Mock private ActivityLogPublisher activityLogPublisher;
-    @Mock private SystemAuditLogService systemAuditLogService;
+    @Mock private CustomerAcceptQuotationUseCase customerAcceptQuotationUseCase;
     @Mock private GenerateContractUseCase generateContractUseCase;
     @Mock private ContractRepository contractRepository;
 
@@ -69,9 +65,7 @@ class QuotationOtpUseCaseTest {
                 getQuotationByTokenUseCase,
                 redisTemplate,
                 auditRepository,
-                convertToBookingUseCase,
-                activityLogPublisher,
-                systemAuditLogService,
+                customerAcceptQuotationUseCase,
                 generateContractUseCase,
                 contractRepository
         );
@@ -127,7 +121,7 @@ class QuotationOtpUseCaseTest {
         when(valueOperations.get("quotation_otp:" + quotationId)).thenReturn(null);
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                confirmQuotationOtpUseCase.execute(quotationId, token, "123456", "127.0.0.1")
+                confirmQuotationOtpUseCase.execute(quotationId, token, "123456", "127.0.0.1", "Mozilla/5.0")
         );
 
         assertEquals("OTP_EXPIRED", ex.getErrorCode());
@@ -158,7 +152,7 @@ class QuotationOtpUseCaseTest {
         when(valueOperations.increment("quotation_otp_fail:" + quotationId)).thenReturn(5L);
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                confirmQuotationOtpUseCase.execute(quotationId, token, "incorrect_otp", "127.0.0.1")
+                confirmQuotationOtpUseCase.execute(quotationId, token, "incorrect_otp", "127.0.0.1", "Mozilla/5.0")
         );
 
         assertEquals("OTP_LOCKED", ex.getErrorCode());
@@ -169,7 +163,7 @@ class QuotationOtpUseCaseTest {
     }
 
     @Test
-    @DisplayName("UT-Q-OTP-CONF-03: Successfully confirm OTP, transition status, and trigger conversion")
+    @DisplayName("UT-Q-OTP-CONF-03: Successfully confirm OTP, transition status to RESERVATION_PENDING")
     void testConfirmOtpSuccess() {
         UUID quotationId = UUID.randomUUID();
         CustomerEntity customer = CustomerEntity.builder()
@@ -188,18 +182,25 @@ class QuotationOtpUseCaseTest {
         when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("quotation_otp:" + quotationId)).thenReturn("123456");
-        when(quotationRepository.save(any(QuotationEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        QuotationEntity acceptedQuotation = QuotationEntity.builder()
+                .quotationId(quotationId)
+                .customer(customer)
+                .status(QuotationStatus.RESERVATION_PENDING)
+                .build();
+        when(customerAcceptQuotationUseCase.execute(eq(quotationId), eq("127.0.0.1"), eq("Mozilla/5.0")))
+                .thenReturn(acceptedQuotation);
+
         when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(new java.util.ArrayList<>());
         when(generateContractUseCase.execute(any(QuotationEntity.class), any())).thenReturn(dummyContract);
-        when(contractRepository.save(any(ContractEntity.class))).thenReturn(dummyContract);
 
-        QuotationEntity result = confirmQuotationOtpUseCase.execute(quotationId, token, "123456", "127.0.0.1");
+        QuotationEntity result = confirmQuotationOtpUseCase.execute(quotationId, token, "123456", "127.0.0.1", "Mozilla/5.0");
 
         assertNotNull(result);
-        assertEquals(QuotationStatus.ACCEPTED_BY_CUSTOMER, result.getStatus());
+        assertEquals(QuotationStatus.RESERVATION_PENDING, result.getStatus());
         verify(redisTemplate, times(1)).delete("quotation_otp:" + quotationId);
         verify(redisTemplate, times(1)).delete("quotation_otp_fail:" + quotationId);
-        verify(convertToBookingUseCase, times(1)).execute(eq(quotationId), any());
+        verify(customerAcceptQuotationUseCase, times(1)).execute(eq(quotationId), eq("127.0.0.1"), eq("Mozilla/5.0"));
         verify(auditRepository, times(1)).save(any(QuotationOtpAuditEntity.class));
         verify(getQuotationByTokenUseCase, times(1)).validateToken(quotationId, token);
     }

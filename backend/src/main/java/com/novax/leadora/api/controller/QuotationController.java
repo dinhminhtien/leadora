@@ -10,6 +10,7 @@ import com.novax.leadora.api.dto.request.ReviseQuotationRequest;
 import com.novax.leadora.api.dto.request.SendQuotationRequest;
 import com.novax.leadora.api.dto.request.SubmitQuotationRequest;
 import com.novax.leadora.api.dto.request.TrackCustomerResponseRequest;
+import com.novax.leadora.api.dto.request.ReservationRejectRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.application.usecase.quotation.CreateQuotationUseCase;
 import com.novax.leadora.application.usecase.quotation.GetPendingApprovalsUseCase;
@@ -23,6 +24,9 @@ import com.novax.leadora.application.usecase.quotation.CloseQuotationUseCase;
 import com.novax.leadora.application.usecase.quotation.ConvertToBookingUseCase;
 import com.novax.leadora.application.usecase.quotation.ExpireOverdueQuotationsUseCase;
 import com.novax.leadora.application.usecase.quotation.TrackCustomerResponseUseCase;
+import com.novax.leadora.application.usecase.quotation.ApproveReservationUseCase;
+import com.novax.leadora.application.usecase.quotation.RejectReservationUseCase;
+import com.novax.leadora.application.usecase.quotation.ResendQuotationEmailUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,12 +37,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
-import com.novax.leadora.api.dto.request.ConfirmOtpRequest;
-import com.novax.leadora.application.usecase.quotation.GetQuotationByTokenUseCase;
-import com.novax.leadora.application.usecase.quotation.RequestQuotationOtpUseCase;
-import com.novax.leadora.application.usecase.quotation.ConfirmQuotationOtpUseCase;
-import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
-import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequiredArgsConstructor
@@ -56,9 +54,9 @@ public class QuotationController {
     private final ConvertToBookingUseCase convertToBookingUseCase;
     private final CloseQuotationUseCase closeQuotationUseCase;
     private final ExpireOverdueQuotationsUseCase expireOverdueUseCase;
-    private final GetQuotationByTokenUseCase getQuotationByTokenUseCase;
-    private final RequestQuotationOtpUseCase requestQuotationOtpUseCase;
-    private final ConfirmQuotationOtpUseCase confirmQuotationOtpUseCase;
+    private final ApproveReservationUseCase approveReservationUseCase;
+    private final RejectReservationUseCase rejectReservationUseCase;
+    private final ResendQuotationEmailUseCase resendQuotationEmailUseCase;
 
     /** UC-14.1 — Create Room Quotation */
     @PostMapping("/api/v1/quotations")
@@ -136,7 +134,16 @@ public class QuotationController {
         return ResponseEntity.ok(ApiResponse.success(response, "Quotation sent successfully"));
     }
 
-    /** UC-14.7 — Convert accepted quotation to confirmed booking */
+    /** Resend quotation email to customer (if previous email hasn't been opened) */
+    @PostMapping("/api/v1/quotations/{id}/resend")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
+    public ResponseEntity<ApiResponse<QuotationResponse>> resendQuotation(
+            @PathVariable UUID id) {
+        QuotationResponse response = resendQuotationEmailUseCase.execute(id);
+        return ResponseEntity.ok(ApiResponse.success(response, "Quotation email resent successfully"));
+    }
+
+    /** UC-14.7 — Convert manually accepted quotation to confirmed booking (Sales Flow) */
     @PostMapping("/api/v1/quotations/{id}/convert")
     @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<BookingResponse>> convertToBooking(
@@ -177,43 +184,30 @@ public class QuotationController {
         return ResponseEntity.ok(ApiResponse.success(response, "Customer response recorded successfully"));
     }
 
-    /** Public endpoint: Retrieve quotation details by secure link token */
-    @GetMapping("/api/v1/public/quotations/{id}")
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
-    public ResponseEntity<ApiResponse<QuotationResponse>> getPublicQuotation(
-            @PathVariable UUID id,
-            @RequestParam String token) {
-        QuotationEntity quotation = getQuotationByTokenUseCase.execute(id, token);
-        return ResponseEntity.ok(ApiResponse.success(QuotationResponse.from(quotation)));
+    /**
+     * BR-15 — Approve Reservation Request.
+     * Invoked by Reservation staff to confirm availability and create the booking.
+     */
+    @PostMapping("/api/v1/quotations/{id}/reservation-approve")
+    @PreAuthorize("hasAnyRole('RESERVATION', 'MANAGER', 'ADMIN') and @access.can('RESERVATION_WRITE')")
+    public ResponseEntity<ApiResponse<BookingResponse>> approveReservation(
+            @PathVariable UUID id) {
+        BookingResponse response = approveReservationUseCase.execute(id);
+        return ResponseEntity.ok(ApiResponse.success(response, "Reservation request approved and booking created successfully."));
     }
 
-    /** Public endpoint: Request OTP for quotation acceptance */
-    @PostMapping("/api/v1/public/quotations/{id}/request-otp")
-    public ResponseEntity<ApiResponse<Void>> requestQuotationOtp(
+    /**
+     * BR-15 — Reject Reservation Request.
+     * Invoked by Reservation staff to reject a portal-accepted quotation due to unavailability or other reasons.
+     */
+    @PostMapping("/api/v1/quotations/{id}/reservation-reject")
+    @PreAuthorize("hasAnyRole('RESERVATION', 'MANAGER', 'ADMIN') and @access.can('RESERVATION_WRITE')")
+    public ResponseEntity<ApiResponse<QuotationResponse>> rejectReservation(
             @PathVariable UUID id,
-            @RequestParam String token) {
-        requestQuotationOtpUseCase.execute(id, token);
-        return ResponseEntity.ok(ApiResponse.success(null, "Verification code sent to registered email."));
-    }
-
-    /** Public endpoint: Confirm OTP to accept quotation and trigger booking request */
-    @PostMapping("/api/v1/public/quotations/{id}/confirm-otp")
-    @org.springframework.transaction.annotation.Transactional
-    public ResponseEntity<ApiResponse<QuotationResponse>> confirmQuotationOtp(
-            @PathVariable UUID id,
-            @RequestParam String token,
-            @Valid @RequestBody ConfirmOtpRequest requestBody,
-            HttpServletRequest request) {
-        String ipAddress = getClientIp(request);
-        QuotationEntity quotation = confirmQuotationOtpUseCase.execute(id, token, requestBody.getOtpCode(), ipAddress);
-        return ResponseEntity.ok(ApiResponse.success(QuotationResponse.from(quotation), "Quotation accepted successfully."));
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String xfHeader = request.getHeader("X-Forwarded-For");
-        if (xfHeader == null || xfHeader.isBlank()) {
-            return request.getRemoteAddr();
-        }
-        return xfHeader.split(",")[0].trim();
+            @Valid @RequestBody ReservationRejectRequest requestBody) {
+        QuotationResponse response = QuotationResponse.from(
+                rejectReservationUseCase.execute(id, requestBody.getReason(), requestBody.getNote())
+        );
+        return ResponseEntity.ok(ApiResponse.success(response, "Reservation request rejected successfully."));
     }
 }

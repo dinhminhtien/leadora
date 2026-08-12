@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useForm, useFieldArray, type Resolver } from "react-hook-form";
+import { useForm, useFieldArray, type Resolver, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
@@ -31,6 +31,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { useQuotationById, useReviseQuotation, useQuotations } from "@/features/quotation/hooks/use_quotations";
 import { useAuthStore } from "@/stores/auth_store";
+import { useQuery } from "@tanstack/react-query";
+import { productService } from "@/services/product_service";
 
 const roomLineSchema = z.object({
   roomType: z.string().min(1, "Select a room type"),
@@ -109,6 +111,14 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
   const reviseQuotation = useReviseQuotation();
   const { data: allQuotes = [] } = useQuotations();
 
+  /** Room products from the product catalogue — used to auto-populate price when a room type is changed. */
+  const { data: roomProducts = [] } = useQuery({
+    queryKey: ["product-services", "ROOM"],
+    queryFn: () => productService.getList("ROOM"),
+    select: (res) => res.data ?? [],
+    staleTime: 5 * 60 * 1000,
+  });
+
   const [showHistory, setShowHistory] = useState(false);
   const [simulateNoManager, setSimulateNoManager] = useState(false);
   const [e3Error, setE3Error] = useState<string | null>(null);
@@ -122,6 +132,7 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
     handleSubmit,
     watch,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema) as unknown as Resolver<FormValues>,
@@ -139,17 +150,17 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
     const seededRoomLines =
       quotation.roomLines && quotation.roomLines.length > 0
         ? quotation.roomLines.map((l) => ({
-            roomType: l.roomType,
-            numberOfRooms: l.numberOfRooms,
-            pricePerNight: l.pricePerNight,
-          }))
+          roomType: l.roomType,
+          numberOfRooms: l.numberOfRooms,
+          pricePerNight: l.pricePerNight,
+        }))
         : [
-            {
-              roomType: quotation.roomType ?? "",
-              numberOfRooms: quotation.numberOfRooms ?? 1,
-              pricePerNight: quotation.pricePerNight ?? 0,
-            },
-          ];
+          {
+            roomType: quotation.roomType ?? "",
+            numberOfRooms: quotation.numberOfRooms ?? 1,
+            pricePerNight: quotation.pricePerNight ?? 0,
+          },
+        ];
     reset({
       contactName: quotation.contactName ?? "",
       email: quotation.email ?? "",
@@ -166,12 +177,16 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
     });
   }, [quotation, reset]);
 
-  const [checkInDate, checkOutDate, roomLines, discountPercent] = watch([
+  const [checkInDate, checkOutDate, discountPercent] = watch([
     "checkInDate",
     "checkOutDate",
-    "roomLines",
     "discountPercent",
   ]);
+
+  const roomLines = useWatch({
+    control,
+    name: "roomLines",
+  });
 
   const pricing = useMemo(() => {
     const inDate = checkInDate ? new Date(checkInDate) : null;
@@ -184,7 +199,7 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
     const lines = (roomLines || []).map((line) => {
       const rooms = Number(line?.numberOfRooms) || 0;
       const price = Number(line?.pricePerNight) || 0;
-      const lineSubtotal = price * nights * rooms;
+      const lineSubtotal = price * (nights || 1) * rooms;
       return { ...line, rooms, price, lineSubtotal };
     });
     const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0);
@@ -453,7 +468,16 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
                     <div>
                       <FieldLabel required>Room Type</FieldLabel>
                       <Select
-                        {...register(`roomLines.${index}.roomType` as const)}
+                        {...register(`roomLines.${index}.roomType` as const, {
+                          onChange: (e) => {
+                            const selectedType = e.target.value;
+                            const matched = roomProducts.find((p) => p.name === selectedType);
+                            setValue(`roomLines.${index}.pricePerNight`, matched ? matched.unitPrice : 0, {
+                              shouldValidate: true,
+                              shouldDirty: true,
+                            });
+                          },
+                        })}
                         error={errors.roomLines?.[index]?.roomType?.message}
                       >
                         <option value="">-- Select room type --</option>
@@ -479,6 +503,8 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
                         type="text"
                         inputMode="numeric"
                         numericOnly
+                        readOnly
+                        className="bg-slate-100/80 cursor-not-allowed font-medium text-slate-500"
                         placeholder="0"
                         error={errors.roomLines?.[index]?.pricePerNight?.message}
                       />

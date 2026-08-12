@@ -42,6 +42,9 @@ public class QuotationConfirmationTokenEntity {
     @Column(name = "used_at")
     private OffsetDateTime usedAt;
 
+    @Column(name = "opened_at")
+    private OffsetDateTime openedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();

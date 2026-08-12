@@ -24,6 +24,8 @@ import { dealService } from "@/services/deal_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
 import type { Lead, CustomerType } from "@/services/lead_service";
+import { useQuery } from "@tanstack/react-query";
+import { productService } from "@/services/product_service";
 
 // ── Quick Create Deal Form & Success Action Panel ─────────────────────────────
 
@@ -37,6 +39,24 @@ interface QuickCreateDealFormProps {
 function QuickCreateDealForm({ customerId, lead, onCancel, onSuccess }: QuickCreateDealFormProps) {
   const [title, setTitle] = useState(`${lead.fullName} - Deal`);
   const [value, setValue] = useState("");
+
+  const { data: products = [] } = useQuery({
+    queryKey: ["product-services"],
+    queryFn: () => productService.getList(),
+    select: (res) => res.data ?? [],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  React.useEffect(() => {
+    if (lead.interestedService && products.length > 0) {
+      const match = products.find(
+        (p) => p.name.toLowerCase() === lead.interestedService?.toLowerCase()
+      );
+      if (match) {
+        setValue(String(match.unitPrice));
+      }
+    }
+  }, [lead.interestedService, products]);
   const [stage, setStage] = useState<"Inquiry" | "Qualification" | "Proposal" | "Negotiation" | "Contract" | "Confirmed">("Inquiry");
   const [expectedClose, setExpectedClose] = useState(() => {
     const d = new Date();

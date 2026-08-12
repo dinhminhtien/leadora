@@ -25,6 +25,7 @@ import {
   usePublicQuotation,
   usePublicRequestQuotationOtp,
   usePublicConfirmQuotationOtp,
+  usePublicRejectQuotation,
 } from "@/features/quotation/hooks/use_quotations";
 
 export default function PublicQuotationPortalPage() {
@@ -37,20 +38,27 @@ export default function PublicQuotationPortalPage() {
   const { data: quotation, isLoading, error, refetch } = usePublicQuotation(id, token);
   const requestOtpMutation = usePublicRequestQuotationOtp();
   const confirmOtpMutation = usePublicConfirmQuotationOtp();
+  const rejectMutation = usePublicRejectQuotation();
 
   const [agreed, setAgreed] = useState(false);
-  const [step, setStep] = useState<"inspect" | "otp" | "success">("inspect");
+  const [step, setStep] = useState<"inspect" | "otp" | "success" | "reject" | "rejected">("inspect");
   const [otpCode, setOtpCode] = useState("");
   const [otpError, setOtpError] = useState("");
   const [otpSuccessMsg, setOtpSuccessMsg] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectError, setRejectError] = useState("");
 
   useEffect(() => {
     if (
       quotation?.status === "accepted_by_customer" ||
       quotation?.status === "booking_request" ||
-      quotation?.status === "converted"
+      quotation?.status === "converted" ||
+      quotation?.status === "reservation_pending" ||
+      quotation?.status === "reservation_rejected"
     ) {
       setStep("success");
+    } else if (quotation?.status === "rejected") {
+      setStep("rejected");
     }
   }, [quotation]);
 
@@ -100,6 +108,21 @@ export default function PublicQuotationPortalPage() {
       setStep("success");
     } catch (err: any) {
       setOtpError(err?.response?.data?.message || "Invalid or expired OTP code.");
+    }
+  };
+
+  const handleRejectQuotation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rejectReason || rejectReason.trim().length === 0) {
+      setRejectError("Please enter a reason for rejecting the quotation.");
+      return;
+    }
+    setRejectError("");
+    try {
+      await rejectMutation.mutateAsync({ id, token, reason: rejectReason });
+      setStep("rejected");
+    } catch (err: any) {
+      setRejectError(err?.response?.data?.message || "Could not submit rejection. Please try again.");
     }
   };
 
@@ -289,16 +312,29 @@ export default function PublicQuotationPortalPage() {
                     I confirm that I have reviewed the check-in dates, rates, and values, and I agree to proceed with booking this quotation.
                   </label>
                 </div>
-                <Button
-                  variant="primary"
-                  className="w-full mt-4"
-                  onClick={handleRequestOtp}
-                  disabled={!agreed}
-                  isLoading={requestOtpMutation.isPending}
-                  rightIcon={<ArrowRight className="size-4" />}
-                >
-                  Accept Quotation
-                </Button>
+                <div className="flex flex-col gap-2 mt-4">
+                  <Button
+                    variant="primary"
+                    className="w-full"
+                    onClick={handleRequestOtp}
+                    disabled={!agreed}
+                    isLoading={requestOtpMutation.isPending}
+                    rightIcon={<ArrowRight className="size-4" />}
+                  >
+                    Accept Quotation
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 mt-1"
+                    onClick={() => {
+                      setStep("reject");
+                      setRejectError("");
+                      setRejectReason("");
+                    }}
+                  >
+                    Reject Offer
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -365,6 +401,80 @@ export default function PublicQuotationPortalPage() {
                 <div className="pt-4 border-t border-slate-100">
                   <div className="text-[10px] text-slate-400">
                     Verification Code Authenticated. Status: <span className="font-bold text-emerald-600 uppercase">{quotation.status}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {step === "reject" && (
+              <form onSubmit={handleRejectQuotation} className="space-y-5">
+                <div className="flex items-start gap-2.5 p-3.5 bg-red-50/60 border border-red-100 rounded-xl text-[11px] text-red-700 leading-normal">
+                  <AlertCircle className="size-4.5 text-red-600 shrink-0 mt-0.5" />
+                  <div>
+                    Please tell us why you are rejecting this offer. Your feedback helps us improve our service and offer you a better deal.
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Reason for Rejection</label>
+                  <textarea
+                    rows={4}
+                    placeholder="E.g., Price is too high, dates have changed, or selected another option..."
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition bg-slate-50/50 resize-none"
+                    required
+                  />
+                </div>
+
+                {rejectError && (
+                  <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg border border-red-100">
+                    <AlertCircle className="size-4 shrink-0" />
+                    <span>{rejectError}</span>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    className="flex-1"
+                    type="button"
+                    onClick={() => setStep("inspect")}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="flex-1 bg-red-600 hover:bg-red-700 text-white border-none"
+                    type="submit"
+                    isLoading={rejectMutation.isPending}
+                  >
+                    Submit Rejection
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            {step === "rejected" && (
+              <div className="text-center py-6 space-y-4">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-red-600 shadow-inner">
+                  <AlertCircle className="size-8" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-slate-900">Quotation Rejected</h4>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed px-4">
+                    You have rejected this quotation offer. We appreciate your feedback and our sales representative will review it to see if we can provide a revised proposal.
+                  </p>
+                </div>
+                {quotation.notes && (
+                  <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-left text-[11px] text-slate-600">
+                    <span className="font-bold block text-slate-800 mb-1">Your comments:</span>
+                    {quotation.notes}
+                  </div>
+                )}
+                <div className="pt-4 border-t border-slate-100">
+                  <div className="text-[10px] text-slate-400">
+                    Quotation status: <span className="font-bold text-red-600 uppercase">{quotation.status}</span>
                   </div>
                 </div>
               </div>

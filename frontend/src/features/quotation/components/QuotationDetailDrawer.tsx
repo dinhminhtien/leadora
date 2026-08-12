@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   X,
   FileSpreadsheet,
@@ -12,12 +12,15 @@ import {
   Send,
   GitBranch,
   CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import { Portal } from "@/components/ui/Portal";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { StatusPill } from "@/components/ui/status-pill";
 import type { Quotation, RoomLineDetail } from "@/services/quotation_service";
+import { useAuthStore } from "@/stores/auth_store";
+import { useReservationApprove, useReservationReject, useResendQuotationEmail } from "@/features/quotation/hooks/use_quotations";
 
 const PAYMENT_LABELS: Record<string, string> = {
   full_upfront: "Full Payment Upfront",
@@ -31,6 +34,7 @@ export interface QuotationDetailDrawerProps {
   onSend?: (quote: Quotation) => void;
   onRevise?: (quote: Quotation) => void;
   onConvertToBooking?: (quote: Quotation) => void;
+  showResendButton?: boolean;
 }
 
 export function QuotationDetailDrawer({
@@ -39,8 +43,25 @@ export function QuotationDetailDrawer({
   onSend,
   onRevise,
   onConvertToBooking,
+  showResendButton = false,
 }: QuotationDetailDrawerProps) {
   if (!quote) return null;
+
+  const { user } = useAuthStore();
+  const approveMutation = useReservationApprove();
+  const rejectMutation = useReservationReject();
+  const resendMutation = useResendQuotationEmail();
+
+  const [isRejecting, setIsRejecting] = useState(false);
+  const [rejectReasonCode, setRejectReasonCode] = useState("NO_ROOM_AVAILABLE");
+  const [rejectNote, setRejectNote] = useState("");
+  const [rejectErr, setRejectErr] = useState("");
+
+  const isReservationStaff =
+    user?.roles?.includes("RESERVATION") ||
+    user?.roles?.includes("ADMIN") ||
+    user?.roles?.includes("MANAGER") ||
+    user?.permissions?.includes("RESERVATION_WRITE");
 
   const calculateNights = (): number => {
     if (!quote.checkInDate || !quote.checkOutDate) return 1;
@@ -106,6 +127,31 @@ export function QuotationDetailDrawer({
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Reservation Decision Alerts */}
+          {quote.status === "reservation_pending" && (
+            <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 flex items-start gap-3">
+              <Clock className="size-5 text-blue-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-bold text-blue-900">Awaiting Reservation Confirmation</h4>
+                <p className="text-[11px] text-blue-700 mt-1 leading-normal">
+                  The customer has accepted this quote. It is awaiting room availability approval from the Reservation staff.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {quote.status === "reservation_rejected" && (
+            <div className="rounded-xl border border-red-100 bg-red-50/60 p-4 flex items-start gap-3">
+              <X className="size-5 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-bold text-red-900">Reservation Request Rejected</h4>
+                <p className="text-[11px] text-red-700 mt-1 leading-normal">
+                  The Reservation team has rejected this request. Reason: <span className="font-semibold">{quote.changeReason || "No rooms available"}</span>. Please revise the quotation.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Customer & Event Details */}
           <section className="rounded-xl border border-slate-100 bg-slate-50/40 p-4 space-y-3">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -237,55 +283,185 @@ export function QuotationDetailDrawer({
         </div>
 
         {/* Action Footer */}
-        <div className="border-t border-slate-200 bg-slate-50/80 px-6 py-4 flex items-center justify-between gap-3 mt-auto z-10">
-          <Button variant="ghost" size="sm" onClick={onClose} className="text-slate-500">
-            Close
-          </Button>
-
-          <div className="flex items-center gap-2">
-            {onRevise && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  onClose();
-                  onRevise(quote);
-                }}
-                leftIcon={<GitBranch className="size-3.5 text-slate-500" />}
-              >
-                Revise
+        <div className="border-t border-slate-200 bg-slate-50/80 px-6 py-4 flex flex-col gap-3 mt-auto z-10">
+          {isRejecting ? (
+            <div className="w-full space-y-3">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                Provide Rejection Reason
+              </span>
+              <div className="grid grid-cols-1 gap-2">
+                <select
+                  value={rejectReasonCode}
+                  onChange={(e) => setRejectReasonCode(e.target.value)}
+                  className="w-full text-xs p-2 rounded-lg border border-slate-200 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 bg-white"
+                >
+                  <option value="NO_ROOM_AVAILABLE">No Room Available</option>
+                  <option value="ROOM_UNDER_MAINTENANCE">Room Under Maintenance</option>
+                  <option value="OVERBOOKED">Overbooked</option>
+                  <option value="INVALID_QUOTATION">Invalid Quotation</option>
+                  <option value="CUSTOMER_REQUEST_NO_LONGER_AVAILABLE">Customer Request No Longer Available</option>
+                  <option value="INVALID_ROOM_CONFIGURATION">Invalid Room Configuration</option>
+                  <option value="OTHER">Other Reason</option>
+                </select>
+                <textarea
+                  rows={2}
+                  placeholder="Notes explaining why..."
+                  value={rejectNote}
+                  onChange={(e) => setRejectNote(e.target.value)}
+                  className="w-full text-xs p-2 rounded-lg border border-slate-200 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 bg-white resize-none"
+                />
+              </div>
+              {rejectErr && (
+                <div className="flex items-center gap-1.5 text-[11px] text-red-600">
+                  <AlertCircle className="size-3.5" />
+                  <span>{rejectErr}</span>
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsRejecting(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="bg-red-600 hover:bg-red-700 text-white border-none"
+                  isLoading={rejectMutation.isPending}
+                  onClick={async () => {
+                    setRejectErr("");
+                    if (!rejectNote.trim()) {
+                      setRejectErr("Notes/details are mandatory for reject reasons.");
+                      return;
+                    }
+                    try {
+                      await rejectMutation.mutateAsync({
+                        id: quote.id,
+                        payload: {
+                          reason: rejectReasonCode,
+                          note: rejectNote.trim(),
+                        },
+                      });
+                      setIsRejecting(false);
+                      onClose();
+                    } catch (err: any) {
+                      setRejectErr(err?.response?.data?.message || "Could not submit reservation rejection.");
+                    }
+                  }}
+                >
+                  Confirm Reject
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3 w-full">
+              <Button variant="ghost" size="sm" onClick={onClose} className="text-slate-500">
+                Close
               </Button>
-            )}
 
-            {onSend && quote.status === "approved" && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => {
-                  onClose();
-                  onSend(quote);
-                }}
-                leftIcon={<Send className="size-3.5" />}
-              >
-                Send Quotation
-              </Button>
-            )}
+              <div className="flex items-center gap-2">
+                {/* Reservation Staff Decision Actions */}
+                {quote.status === "reservation_pending" && isReservationStaff && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                      onClick={() => {
+                        setIsRejecting(true);
+                        setRejectReasonCode("NO_ROOM_AVAILABLE");
+                        setRejectNote("");
+                        setRejectErr("");
+                      }}
+                    >
+                      Reject Reservation
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      isLoading={approveMutation.isPending}
+                      onClick={async () => {
+                        try {
+                          await approveMutation.mutateAsync(quote.id);
+                          onClose();
+                        } catch (err: any) {
+                          alert(err?.response?.data?.message || "Could not approve reservation.");
+                        }
+                      }}
+                    >
+                      Approve Reservation
+                    </Button>
+                  </>
+                )}
 
-            {onConvertToBooking && (quote.status === "accepted" || quote.status === "approved" || quote.status === "sent") && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => {
-                  onClose();
-                  onConvertToBooking(quote);
-                }}
-                leftIcon={<CheckCircle2 className="size-3.5" />}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                Convert to Booking
-              </Button>
-            )}
-          </div>
+                {onRevise && (quote.status === "reservation_rejected" || quote.status === "rejected" || quote.status === "draft" || quote.status === "sent") && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      onClose();
+                      onRevise(quote);
+                    }}
+                    leftIcon={<GitBranch className="size-3.5 text-slate-500" />}
+                  >
+                    Revise
+                  </Button>
+                )}
+
+                {onSend && quote.status === "approved" && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      onClose();
+                      onSend(quote);
+                    }}
+                    leftIcon={<Send className="size-3.5" />}
+                  >
+                    Send Quotation
+                  </Button>
+                )}
+
+                {showResendButton && quote.status === "pending_customer_response" && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await resendMutation.mutateAsync(quote.id);
+                        alert("Quotation email has been resent successfully!");
+                        onClose();
+                      } catch (err: any) {
+                        alert(err?.response?.data?.message || "Could not resend quotation email.");
+                      }
+                    }}
+                    isLoading={resendMutation.isPending}
+                    leftIcon={<Send className="size-3.5" />}
+                  >
+                    Resend Email
+                  </Button>
+                )}
+
+                {onConvertToBooking && (quote.status === "accepted" || quote.status === "approved" || quote.status === "sent") && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      onClose();
+                      onConvertToBooking(quote);
+                    }}
+                    leftIcon={<CheckCircle2 className="size-3.5" />}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    Convert to Booking
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Portal>

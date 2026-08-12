@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useFieldArray, type Resolver } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";  
+import { useForm, useFieldArray, type Resolver, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, AlertCircle, CheckCircle2, Calculator, User, Mail, Phone, Plus, Trash2, BedDouble } from "lucide-react";
@@ -17,6 +17,8 @@ import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { DealSearchPicker } from "@/features/quotation/components/DealSearchPicker";
 import type { Deal } from "@/services/deal_service";
 import { useCreateQuotation, useQuotations } from "@/features/quotation/hooks/use_quotations";
+import { useQuery } from "@tanstack/react-query";
+import { productService } from "@/services/product_service";
 
 const roomLineSchema = z.object({
   roomType: z.string().min(1, "Select a room type"),
@@ -84,6 +86,15 @@ export function CreateQuotationScreen() {
   const createQuotation = useCreateQuotation();
   const { data: allQuotes = [] } = useQuotations();
 
+  /** Room products from the product catalogue — used to auto-populate price when a Deal is selected
+   *  for the first time (no prior quotation exists to template from). */
+  const { data: roomProducts = [] } = useQuery({
+    queryKey: ["product-services", "ROOM"],
+    queryFn: () => productService.getList("ROOM"),
+    select: (res) => res.data ?? [],
+    staleTime: 5 * 60 * 1000,
+  });
+
   /**
    * The picked deal, held alongside the form so the customer strip can render its
    * contact details. `dealId` remains the single source of truth for validation and
@@ -109,13 +120,17 @@ export function CreateQuotationScreen() {
 
   const { fields, append, remove } = useFieldArray({ control, name: "roomLines" });
 
-  const [dealId, checkInDate, checkOutDate, roomLines, discountPercent] = watch([
+  const [dealId, checkInDate, checkOutDate, discountPercent] = watch([
     "dealId",
     "checkInDate",
     "checkOutDate",
-    "roomLines",
     "discountPercent",
   ]);
+
+  const roomLines = useWatch({
+    control,
+    name: "roomLines",
+  });
 
   /**
    * A deal that already has an earlier quotation (any status) gets its stay/pricing
@@ -130,28 +145,76 @@ export function CreateQuotationScreen() {
     const history = allQuotes
       .filter((q) => q.dealId === dealId)
       .sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
-    if (history.length === 0) return;
-    templatedDealRef.current = dealId;
-    const latest = history[0];
-    const seededRoomLines =
-      latest.roomLines && latest.roomLines.length > 0
-        ? latest.roomLines.map((l) => ({
+    if (history.length > 0) {
+      templatedDealRef.current = dealId;
+      const latest = history[0];
+      const seededRoomLines =
+        latest.roomLines && latest.roomLines.length > 0
+          ? latest.roomLines.map((l) => ({
             roomType: l.roomType,
             numberOfRooms: l.numberOfRooms,
             pricePerNight: l.pricePerNight,
           }))
-        : [{ roomType: latest.roomType ?? "", numberOfRooms: latest.numberOfRooms ?? 1, pricePerNight: latest.pricePerNight ?? 0 }];
-    reset({
-      dealId,
-      roomLines: seededRoomLines,
-      checkInDate: latest.checkInDate ?? "",
-      checkOutDate: latest.checkOutDate ?? "",
-      discountPercent: Number(latest.discountPercent ?? 0),
-      paymentPolicy: latest.paymentPolicy ?? "",
-      validUntil: latest.validUntil ?? "",
-      notes: latest.notes ?? "",
-    });
-  }, [dealId, allQuotes, reset]);
+          : [{ roomType: latest.roomType ?? "", numberOfRooms: latest.numberOfRooms ?? 1, pricePerNight: latest.pricePerNight ?? 0 }];
+      reset({
+        dealId,
+        roomLines: seededRoomLines,
+        checkInDate: latest.checkInDate ?? "",
+        checkOutDate: latest.checkOutDate ?? "",
+        discountPercent: Number(latest.discountPercent ?? 0),
+        paymentPolicy: latest.paymentPolicy ?? "",
+        validUntil: latest.validUntil ?? "",
+        notes: latest.notes ?? "",
+      });
+    } else if (selectedDeal && roomProducts.length > 0) {
+      templatedDealRef.current = dealId;
+      // Try to find a matching product by price or title/notes
+      let matchedProduct = roomProducts.find(
+        (p) => p.unitPrice === selectedDeal.value
+      );
+      if (!matchedProduct && selectedDeal.title) {
+        matchedProduct = roomProducts.find(
+          (p) => selectedDeal.title.toLowerCase().includes(p.name.toLowerCase())
+        );
+      }
+      if (!matchedProduct && selectedDeal.notes) {
+        matchedProduct = roomProducts.find(
+          (p) => (selectedDeal.notes ?? "").toLowerCase().includes(p.name.toLowerCase())
+        );
+      }
+
+      if (matchedProduct) {
+        reset({
+          dealId,
+          roomLines: [
+            {
+              roomType: matchedProduct.name,
+              numberOfRooms: 1,
+              pricePerNight: matchedProduct.unitPrice,
+            },
+          ],
+          checkInDate: "",
+          checkOutDate: "",
+          discountPercent: 0,
+          paymentPolicy: "",
+          validUntil: "",
+          notes: selectedDeal.notes || "",
+        });
+      } else {
+        // Fallback to empty default line
+        reset({
+          dealId,
+          roomLines: [{ roomType: "", numberOfRooms: 1, pricePerNight: 0 }],
+          checkInDate: "",
+          checkOutDate: "",
+          discountPercent: 0,
+          paymentPolicy: "",
+          validUntil: "",
+          notes: selectedDeal.notes || "",
+        });
+      }
+    }
+  }, [dealId, allQuotes, reset, selectedDeal, roomProducts]);
 
   const pricing = useMemo(() => {
     const inDate = checkInDate ? new Date(checkInDate) : null;
@@ -164,7 +227,7 @@ export function CreateQuotationScreen() {
     const lines = (roomLines || []).map((line) => {
       const rooms = Number(line?.numberOfRooms) || 0;
       const price = Number(line?.pricePerNight) || 0;
-      const lineSubtotal = price * nights * rooms;
+      const lineSubtotal = price * (nights || 1) * rooms;
       return { ...line, rooms, price, lineSubtotal };
     });
     const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0);
@@ -338,7 +401,16 @@ export function CreateQuotationScreen() {
                     <div>
                       <FieldLabel required>Room Type</FieldLabel>
                       <Select
-                        {...register(`roomLines.${index}.roomType` as const)}
+                        {...register(`roomLines.${index}.roomType` as const, {
+                          onChange: (e) => {
+                            const selectedType = e.target.value;
+                            const matched = roomProducts.find((p) => p.name === selectedType);
+                            setValue(`roomLines.${index}.pricePerNight`, matched ? matched.unitPrice : 0, {
+                              shouldValidate: true,
+                              shouldDirty: true,
+                            });
+                          },
+                        })}
                         error={errors.roomLines?.[index]?.roomType?.message}
                       >
                         <option value="">-- Select room type --</option>
@@ -366,6 +438,8 @@ export function CreateQuotationScreen() {
                         type="text"
                         inputMode="numeric"
                         numericOnly
+                        readOnly
+                        className="bg-slate-100/80 cursor-not-allowed font-medium text-slate-500"
                         placeholder="0"
                         error={errors.roomLines?.[index]?.pricePerNight?.message}
                       />

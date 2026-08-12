@@ -29,6 +29,7 @@ public class ConfirmContractOtpUseCase {
     private final StringRedisTemplate redisTemplate;
     private final ActivityLogPublisher activityLogPublisher;
     private final ApplicationEventPublisher eventPublisher;
+    private final ActivateContractUseCase activateContractUseCase;
 
     private static final String OTP_REDIS_PREFIX = "contract_otp:";
     private static final String FAIL_REDIS_PREFIX = "contract_otp_fail:";
@@ -80,6 +81,9 @@ public class ConfirmContractOtpUseCase {
         contract.setStatus(ContractStatus.ACKNOWLEDGED);
         contract.setAcknowledgedAt(OffsetDateTime.now());
         contract = contractRepository.save(contract);
+
+        // Activate the contract immediately
+        activateContractUseCase.execute(contract.getId());
 
         // Clean up Redis
         redisTemplate.delete(otpKey);

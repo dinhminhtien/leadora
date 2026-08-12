@@ -24,19 +24,28 @@ public class GetQuotationByTokenUseCase {
     private final QuotationRepository quotationRepository;
     private final QuotationConfirmationTokenRepository tokenRepository;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public QuotationEntity execute(UUID quotationId, String token) {
         log.info("Public quotation access request for quotation id: {}", quotationId);
 
         QuotationEntity quotation = quotationRepository.findById(quotationId)
                 .orElseThrow(() -> new BusinessException("QUOTATION_NOT_FOUND", "Quotation not found", HttpStatus.NOT_FOUND));
 
-        validateToken(quotationId, token);
+        QuotationConfirmationTokenEntity tokenEntity = validateTokenAndGet(quotationId, token);
+
+        if (tokenEntity.getOpenedAt() == null) {
+            tokenEntity.setOpenedAt(OffsetDateTime.now());
+            tokenRepository.save(tokenEntity);
+        }
 
         return quotation;
     }
 
     public void validateToken(UUID quotationId, String token) {
+        validateTokenAndGet(quotationId, token);
+    }
+
+    public QuotationConfirmationTokenEntity validateTokenAndGet(UUID quotationId, String token) {
         if (token == null || token.isBlank()) {
             throw new BusinessException("INVALID_TOKEN", "Secure token is missing.", HttpStatus.BAD_REQUEST);
         }
@@ -48,10 +57,16 @@ public class GetQuotationByTokenUseCase {
             throw new BusinessException("TOKEN_EXPIRED", "The secure link has expired. Please contact your sales representative.", HttpStatus.BAD_REQUEST);
         }
 
+        if (tokenEntity.getUsedAt() != null) {
+            throw new BusinessException("TOKEN_ALREADY_USED", "The secure link token has already been used. Please request a new link.", HttpStatus.BAD_REQUEST);
+        }
+
         String inputHash = hashSha256(token);
         if (!inputHash.equals(tokenEntity.getTokenHash())) {
             throw new BusinessException("INVALID_TOKEN", "The secure link token is invalid.", HttpStatus.BAD_REQUEST);
         }
+
+        return tokenEntity;
     }
 
     private String hashSha256(String data) {

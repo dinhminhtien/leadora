@@ -52,6 +52,7 @@ import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 const ACTIVE_STATUSES: Quotation["status"][] = [
   "draft", "pending_approval", "approved", "sent", "accepted", "interested",
   "pending_revision", "rejected", "pending_customer_response",
+  "reservation_pending", "reservation_rejected"
 ];
 const DONE_STATUSES: Quotation["status"][] = ["converted", "closed", "expired", "accepted_by_customer", "booking_request"];
 
@@ -411,11 +412,11 @@ export function QuotationListScreen() {
   };
 
   const statusBadgeVariant = (status: Quotation["status"]) => {
-    if (status === "accepted" || status === "approved" || status === "converted") return "success";
+    if (status === "accepted" || status === "approved" || status === "converted" || status === "booking_request") return "success";
     if (status === "sent") return "primary";
-    if (status === "expired" || status === "rejected" || status === "closed") return "danger";
+    if (status === "expired" || status === "rejected" || status === "closed" || status === "reservation_rejected") return "danger";
     if (status === "pending_approval") return "warning";
-    if (status === "pending_revision" || status === "interested") return "info";
+    if (status === "pending_revision" || status === "interested" || status === "reservation_pending") return "info";
     return "default";
   };
 
@@ -425,6 +426,9 @@ export function QuotationListScreen() {
     if (status === "interested") return "Interested";
     if (status === "converted") return "Converted";
     if (status === "closed") return "Closed";
+    if (status === "reservation_pending") return "Awaiting Reservation";
+    if (status === "reservation_rejected") return "Reservation Rejected";
+    if (status === "booking_request") return "Booking Requested";
     return status;
   };
 
@@ -440,6 +444,7 @@ export function QuotationListScreen() {
       case "accepted":
         return { key: "convert", label: "Convert to Booking", Icon: Building2, onClick: () => setConvertTarget(q), tone: "primary" };
       case "rejected":
+      case "reservation_rejected":
       case "pending_revision":
         return { key: "revise", label: "Revise", Icon: GitBranch, onClick: () => router.push(ROUTE_PATHS.quotationRevise(q.id)), tone: "primary" };
       case "draft":
@@ -651,6 +656,7 @@ export function QuotationListScreen() {
         onSend={(q) => setSendTarget(q)}
         onConvertToBooking={(q) => setConvertTarget(q)}
         onRevise={(q) => router.push(ROUTE_PATHS.quotationRevise(q.id))}
+        showResendButton={true}
       />
 
       {/* UC-14.4: Send Quotation Modal */}

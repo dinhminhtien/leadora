@@ -32,7 +32,8 @@ public class BackfillSlaTrackingUseCase {
             QuotationStatus.SENT, QuotationStatus.ACCEPTED, QuotationStatus.INTERESTED,
             QuotationStatus.CONVERTED, QuotationStatus.CLOSED, QuotationStatus.EXPIRED,
             QuotationStatus.REJECTED, QuotationStatus.PENDING_CUSTOMER_RESPONSE,
-            QuotationStatus.ACCEPTED_BY_CUSTOMER, QuotationStatus.BOOKING_REQUEST
+            QuotationStatus.ACCEPTED_BY_CUSTOMER, QuotationStatus.BOOKING_REQUEST,
+            QuotationStatus.RESERVATION_PENDING, QuotationStatus.RESERVATION_REJECTED
     );
 
     /**
