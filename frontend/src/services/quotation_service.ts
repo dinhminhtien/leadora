@@ -1,4 +1,4 @@
-import { apiClient, type ApiResponse } from "@/services/api_client";
+import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_client";
 
 export type QuotationStatus =
   | "draft"
@@ -150,11 +150,21 @@ export type SendQuotationPayload = {
   personalMessage?: string;
 };
 
+export type QuotationListParams = {
+  status?: string;
+  statuses?: string[];
+  search?: string;
+  page?: number;
+  size?: number;
+  sortBy?: string;
+  sortDir?: string;
+};
+
 const ENDPOINT = "/quotations";
 
 export const quotationService = {
-  async getList(): Promise<ApiResponse<Quotation[]>> {
-    const response = await apiClient.get<ApiResponse<Quotation[]>>(ENDPOINT);
+  async getList(params?: QuotationListParams): Promise<ApiResponse<PageResponse<Quotation>>> {
+    const response = await apiClient.get<ApiResponse<PageResponse<Quotation>>>(ENDPOINT, { params });
     return response.data;
   },
 

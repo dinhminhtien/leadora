@@ -1,9 +1,11 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
+import com.novax.leadora.api.dto.response.QuotationSummaryDto;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -16,6 +18,50 @@ import java.util.UUID;
 
 @Repository
 public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID> {
+    @Query("""
+            SELECT new com.novax.leadora.api.dto.response.QuotationSummaryDto(
+                q.quotationId,
+                d.dealId,
+                d.dealName,
+                c.customerId,
+                c.fullName,
+                c.email,
+                c.phone,
+                q.roomType,
+                q.checkInDate,
+                q.checkOutDate,
+                q.paymentPolicy,
+                q.subtotal,
+                q.discountPercent,
+                q.discountAmount,
+                q.totalAmount,
+                q.validUntil,
+                q.status,
+                q.notes,
+                q.version,
+                q.parentQuotationId,
+                q.changeReason,
+                q.createdAt
+            )
+            FROM QuotationEntity q
+            LEFT JOIN q.deal d
+            LEFT JOIN q.customer c
+            WHERE (:ownerId IS NULL OR q.createdBy.userId = :ownerId)
+              AND (:status IS NULL OR q.status = :status)
+              AND (coalesce(:statuses, null) IS NULL OR q.status IN :statuses)
+              AND (:search IS NULL OR 
+                   LOWER(c.fullName) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                   LOWER(d.dealName) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                   LOWER(CAST(q.quotationId AS string)) LIKE LOWER(CONCAT('%', :search, '%'))
+                  )
+            """)
+    Page<QuotationSummaryDto> findAllSummaries(
+            @Param("ownerId") UUID ownerId,
+            @Param("status") QuotationStatus status,
+            @Param("statuses") List<QuotationStatus> statuses,
+            @Param("search") String search,
+            Pageable pageable);
+
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT q FROM QuotationEntity q WHERE q.quotationId = :id")
     java.util.Optional<QuotationEntity> findByIdForUpdate(@Param("id") UUID id);

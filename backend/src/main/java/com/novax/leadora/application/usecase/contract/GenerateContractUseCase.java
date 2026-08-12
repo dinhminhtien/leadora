@@ -29,6 +29,7 @@ public class GenerateContractUseCase {
     private final ContractRepository contractRepository;
     private final ContactRepository contactRepository;
     private final QuotationDetailRepository quotationDetailRepository;
+    private final com.novax.leadora.infrastructure.persistence.repository.UserRepository userRepository;
     private final ContractCodeGenerator contractCodeGenerator;
     private final ActivityLogPublisher activityLogPublisher;
     private final ApplicationEventPublisher eventPublisher;
@@ -41,6 +42,10 @@ public class GenerateContractUseCase {
     @Transactional
     public ContractEntity execute(QuotationEntity quotation, UserEntity actor) {
         log.info("Generating contract for quotation: {}", quotation.getQuotationId());
+
+        if (actor != null && actor.getUserId() != null) {
+            actor = userRepository.findById(actor.getUserId()).orElse(actor);
+        }
 
         // Check if there is already a contract for this quotation
         List<ContractEntity> existing = contractRepository.findByQuotation_QuotationId(quotation.getQuotationId());

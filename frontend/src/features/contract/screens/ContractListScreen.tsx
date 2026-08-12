@@ -47,6 +47,7 @@ import { type Contract, type BillingMethod } from "@/services/contract_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { toast } from "@/stores/toast_store";
 
 export function ContractListScreen() {
   const { data: serverContracts = [], isLoading, isFetching, refetch } = useContracts();
@@ -190,7 +191,7 @@ export function ContractListScreen() {
     const token = "CLIENT_SECURED_OTP_TOKEN"; // Fallback representation
     const link = `${window.location.origin}/portal/contracts/${contract.id}?token=${token}`;
     navigator.clipboard.writeText(link);
-    alert("Copied public portal link to clipboard!");
+    toast.success("Public portal link copied to clipboard!");
   };
 
   const statusBadgeVariant = (status: Contract["status"]): "success" | "warning" | "danger" | "info" | "primary" | "default" => {

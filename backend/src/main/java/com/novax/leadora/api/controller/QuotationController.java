@@ -28,8 +28,13 @@ import com.novax.leadora.application.usecase.quotation.ApproveReservationUseCase
 import com.novax.leadora.application.usecase.quotation.RejectReservationUseCase;
 import com.novax.leadora.application.usecase.quotation.ResendQuotationEmailUseCase;
 import com.novax.leadora.common.response.ApiResponse;
+import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -68,11 +73,21 @@ public class QuotationController {
                 .body(ApiResponse.success(response, "Quotation created successfully"));
     }
 
-    /** Get all quotations */
+    /** Get all quotations with server-side pagination, filters, and sorting */
     @GetMapping("/api/v1/quotations")
     @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN','RESERVATION') and @access.can('QUOTATION_VIEW')")
-    public ResponseEntity<ApiResponse<List<QuotationResponse>>> getQuotations() {
-        List<QuotationResponse> quotations = getQuotationListUseCase.execute();
+    public ResponseEntity<ApiResponse<Page<QuotationResponse>>> getQuotations(
+            @RequestParam(required = false) QuotationStatus status,
+            @RequestParam(required = false) List<QuotationStatus> statuses,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "validUntil") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir) {
+        
+        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
+        Pageable pageable = PageRequest.of(page, size, sort);
+        Page<QuotationResponse> quotations = getQuotationListUseCase.execute(status, statuses, search, pageable);
         return ResponseEntity.ok(ApiResponse.success(quotations));
     }
 

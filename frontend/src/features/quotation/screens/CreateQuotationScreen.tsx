@@ -84,7 +84,8 @@ function FieldLabel({ children, required }: { children: React.ReactNode; require
 export function CreateQuotationScreen() {
   const router = useRouter();
   const createQuotation = useCreateQuotation();
-  const { data: allQuotes = [] } = useQuotations();
+  const { data: quotesResult } = useQuotations({ size: 100 });
+  const allQuotes = quotesResult?.content ?? [];
 
   /** Room products from the product catalogue — used to auto-populate price when a Deal is selected
    *  for the first time (no prior quotation exists to template from). */

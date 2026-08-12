@@ -1,14 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { quotationService, type CreateQuotationPayload, type SubmitQuotationPayload, type SendQuotationPayload, type ReviseQuotationPayload, type TrackCustomerResponsePayload, type ConvertToBookingPayload, type CloseQuotationPayload, type ExpireOverduePayload } from "@/services/quotation_service";
+import { quotationService, type CreateQuotationPayload, type SubmitQuotationPayload, type SendQuotationPayload, type ReviseQuotationPayload, type TrackCustomerResponsePayload, type ConvertToBookingPayload, type CloseQuotationPayload, type ExpireOverduePayload, type QuotationListParams } from "@/services/quotation_service";
 
 // Quotation list
-export function useQuotations() {
+export function useQuotations(params?: QuotationListParams) {
   return useQuery({
-    queryKey: ["quotations"],
-    queryFn: () => quotationService.getList(),
-    select: (res) => res.data ?? [],
+    queryKey: ["quotations", params],
+    queryFn: () => quotationService.getList(params),
+    select: (res) => res.data,
   });
 }
 

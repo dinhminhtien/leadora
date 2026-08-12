@@ -13,6 +13,7 @@ import com.novax.leadora.infrastructure.persistence.repository.ContactRepository
 import com.novax.leadora.infrastructure.persistence.repository.ContractConfirmationTokenRepository;
 import com.novax.leadora.infrastructure.persistence.repository.ContractRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
+import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,7 @@ class ContractUseCaseTest {
     @Mock private ContractRepository contractRepository;
     @Mock private ContactRepository contactRepository;
     @Mock private QuotationDetailRepository quotationDetailRepository;
+    @Mock private UserRepository userRepository;
     @Mock private ContractCodeGenerator contractCodeGenerator;
     @Mock private ActivityLogPublisher activityLogPublisher;
     @Mock private ApplicationEventPublisher eventPublisher;
@@ -72,6 +74,7 @@ class ContractUseCaseTest {
                 contractRepository,
                 contactRepository,
                 quotationDetailRepository,
+                userRepository,
                 contractCodeGenerator,
                 activityLogPublisher,
                 eventPublisher,

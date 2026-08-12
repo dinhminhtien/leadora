@@ -21,6 +21,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import type { Quotation, RoomLineDetail } from "@/services/quotation_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { useReservationApprove, useReservationReject, useResendQuotationEmail } from "@/features/quotation/hooks/use_quotations";
+import { toast } from "@/stores/toast_store";
 
 const PAYMENT_LABELS: Record<string, string> = {
   full_upfront: "Full Payment Upfront",
@@ -388,7 +389,7 @@ export function QuotationDetailDrawer({
                           await approveMutation.mutateAsync(quote.id);
                           onClose();
                         } catch (err: any) {
-                          alert(err?.response?.data?.message || "Could not approve reservation.");
+                          toast.error(err?.response?.data?.message || "Could not approve reservation.");
                         }
                       }}
                     >
@@ -432,10 +433,10 @@ export function QuotationDetailDrawer({
                     onClick={async () => {
                       try {
                         await resendMutation.mutateAsync(quote.id);
-                        alert("Quotation email has been resent successfully!");
+                        toast.success("Quotation email has been resent successfully!");
                         onClose();
                       } catch (err: any) {
-                        alert(err?.response?.data?.message || "Could not resend quotation email.");
+                        toast.error(err?.response?.data?.message || "Could not resend quotation email.");
                       }
                     }}
                     isLoading={resendMutation.isPending}

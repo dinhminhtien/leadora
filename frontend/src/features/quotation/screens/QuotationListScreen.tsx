@@ -45,6 +45,7 @@ export type { Quotation } from "@/services/quotation_service";
 import { useQuotations, useExpireOverdue, useSubmitQuotation } from "@/features/quotation/hooks/use_quotations";
 import { useAuthStore } from "@/stores/auth_store";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
+import { pageMeta } from "@/services/api_client";
 
 // "rejected" stays active, not done — Revise is still the primary action on it
 // (see getPrimaryAction below), so filing it under "Done" alongside truly terminal
@@ -69,7 +70,49 @@ type ClosureLog = {
 };
 
 export function QuotationListScreen() {
-  const { data: serverQuotes = [], isLoading, isFetching, refetch } = useQuotations();
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  const [sortField, setSortField] = useState<"total" | "validUntil" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState<"active" | "done">("active");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+
+  const params = useMemo(() => {
+    const backendStatuses = (activeTab === "active" ? ACTIVE_STATUSES : DONE_STATUSES).map(s => s.toUpperCase());
+    const backendStatus = statusFilter ? statusFilter.toUpperCase() : undefined;
+    return {
+      page: currentPage - 1,
+      size: pageSize,
+      search: search || undefined,
+      status: backendStatus,
+      statuses: backendStatuses,
+      sortBy: sortField === "total" ? "totalAmount" : (sortField || "validUntil"),
+      sortDir: sortDir,
+    };
+  }, [activeTab, statusFilter, search, currentPage, sortField, sortDir]);
+
+  const { data: pageResult, isLoading, isFetching, refetch } = useQuotations(params);
+
+  // Keep parallel counts queries with size: 1 to fetch counts efficiently
+  const { data: activePageResult } = useQuotations({
+    statuses: ACTIVE_STATUSES.map(s => s.toUpperCase()),
+    page: 0,
+    size: 1
+  });
+  const { data: donePageResult } = useQuotations({
+    statuses: DONE_STATUSES.map(s => s.toUpperCase()),
+    page: 0,
+    size: 1
+  });
+
+  const activeCount = useMemo(() => pageMeta(activePageResult).totalElements, [activePageResult]);
+  const doneCount = useMemo(() => pageMeta(donePageResult).totalElements, [donePageResult]);
+
+  const serverQuotes = useMemo(() => pageResult?.content ?? [], [pageResult]);
+  const meta = useMemo(() => pageMeta(pageResult), [pageResult]);
+
   const { user } = useAuthStore();
   const router = useRouter();
   const { highlightedId, setRowRef } = useHighlightRow();
@@ -77,6 +120,7 @@ export function QuotationListScreen() {
   const submitQuotation = useSubmitQuotation();
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [localStatusMap, setLocalStatusMap] = useState<Record<string, Quotation["status"]>>({});
+  
   const quotes = useMemo(
     () => serverQuotes.map(q => ({
       ...q,
@@ -84,8 +128,8 @@ export function QuotationListScreen() {
     })),
     [serverQuotes, localStatusMap]
   );
+
   const [closureLogs, setClosureLogs] = useState<ClosureLog[]>([]);
-  const [search, setSearch] = useState("");
   const [sendTarget, setSendTarget] = useState<Quotation | null>(null);
   const [detailTarget, setDetailTarget] = useState<Quotation | null>(null);
   const [responseTarget, setResponseTarget] = useState<Quotation | null>(null);
@@ -94,26 +138,9 @@ export function QuotationListScreen() {
   const [autoExpireResult, setAutoExpireResult] = useState<number | null>(null);
   const [showClosureLog, setShowClosureLog] = useState(false);
   const [reminderTarget, setReminderTarget] = useState<Quotation | null>(null);
-  // Asking Reservation about rooms is available from any live status, not just when the
-  // Send modal can open — a rep should be able to check before promising anything.
   const [roomTarget, setRoomTarget] = useState<Quotation | null>(null);
-  const [activeTab, setActiveTab] = useState<"active" | "done">("active");
-  const [statusFilter, setStatusFilter] = useState<string>("");
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
 
-  // Pagination — each tab (In Progress / Completed) paginates independently.
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
-
-  // Column sort — Total / Valid Until only, toggled by clicking the header.
-  const [sortField, setSortField] = useState<"total" | "validUntil" | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-
-  /**
-   * DataTable owns the direction toggle and hands us the resolved direction.
-   * Resetting to page 1 matters: re-sorting while on page 3 otherwise leaves the
-   * user looking at the middle of a list they just reordered.
-   */
   const handleSort = (field: SortField, dir: "asc" | "desc") => {
     setSortField(field);
     setSortDir(dir);
@@ -126,47 +153,10 @@ export function QuotationListScreen() {
     setCurrentPage(1);
   };
 
-  const activeCount = useMemo(() => quotes.filter((q) => ACTIVE_STATUSES.includes(q.status)).length, [quotes]);
-  const doneCount = useMemo(() => quotes.filter((q) => DONE_STATUSES.includes(q.status)).length, [quotes]);
-
-  const filteredQuotes = useMemo(() => {
-    const tabStatuses = activeTab === "active" ? ACTIVE_STATUSES : DONE_STATUSES;
-    return quotes.filter((q) => {
-      const matchesTab = tabStatuses.includes(q.status);
-      const matchesStatus = !statusFilter || q.status === statusFilter;
-      const matchesSearch =
-        q.quoteNo.toLowerCase().includes(search.toLowerCase()) ||
-        q.contactName.toLowerCase().includes(search.toLowerCase()) ||
-        q.dealName.toLowerCase().includes(search.toLowerCase());
-      return matchesTab && matchesStatus && matchesSearch;
-    });
-  }, [quotes, search, activeTab, statusFilter]);
-
-  // Reset to page 1 whenever the filtered set changes shape (search/status typed)
+  // Reset to page 1 whenever the filtered set changes shape
   useEffect(() => {
     setCurrentPage(1);
   }, [search, statusFilter]);
-
-  const sortedQuotes = useMemo(() => {
-    if (!sortField) return filteredQuotes;
-    const dirMul = sortDir === "asc" ? 1 : -1;
-    return [...filteredQuotes].sort((a, b) => {
-      if (sortField === "total") {
-        return (a.amount - b.amount) * dirMul;
-      }
-      // Valid Until: empty dates sort last regardless of direction
-      const aTime = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity;
-      const bTime = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity;
-      return (aTime - bTime) * dirMul;
-    });
-  }, [filteredQuotes, sortField, sortDir]);
-
-  const totalPages = Math.max(1, Math.ceil(sortedQuotes.length / pageSize));
-
-  const paginatedQuotes = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return sortedQuotes.slice(startIndex, startIndex + pageSize);
-  }, [sortedQuotes, currentPage]);
 
   /**
    * Column set — Blueprint §10.7.
@@ -598,7 +588,7 @@ export function QuotationListScreen() {
               <ExportMenu
                 filename={`quotations-${new Date().toISOString().slice(0, 10)}`}
                 headers={QUOTATION_EXPORT_HEADERS}
-                rows={filteredQuotes.map(quotationExportRow)}
+                rows={quotes.map(quotationExportRow)}
               />
               <DensityMenu value={controls.density} onChange={controls.setDensity} />
             </div>
@@ -608,7 +598,7 @@ export function QuotationListScreen() {
 
       <DataTable
         label="Quotations"
-        rows={paginatedQuotes}
+        rows={quotes}
         columns={controls.visibleColumns}
         rowId={(q) => q.id}
         isLoading={isLoading}
@@ -631,7 +621,7 @@ export function QuotationListScreen() {
           <ExportMenu
             filename={`quotations-selected-${new Date().toISOString().slice(0, 10)}`}
             headers={QUOTATION_EXPORT_HEADERS}
-            rows={paginatedQuotes.filter((q) => controls.selectedIds.has(q.id)).map(quotationExportRow)}
+            rows={quotes.filter((q) => controls.selectedIds.has(q.id)).map(quotationExportRow)}
           />
         }
         isFiltered={!!search || !!statusFilter}
@@ -642,8 +632,8 @@ export function QuotationListScreen() {
           <TablePagination
             page={currentPage - 1}
             pageSize={pageSize}
-            totalElements={filteredQuotes.length}
-            totalPages={totalPages}
+            totalElements={meta.totalElements}
+            totalPages={meta.totalPages}
             onPageChange={(p) => setCurrentPage(p + 1)}
           />
         }

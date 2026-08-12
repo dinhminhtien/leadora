@@ -109,7 +109,8 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
 
   const { data: quotation, isLoading } = useQuotationById(quotationId);
   const reviseQuotation = useReviseQuotation();
-  const { data: allQuotes = [] } = useQuotations();
+  const { data: quotesResult } = useQuotations({ size: 100 });
+  const allQuotes = quotesResult?.content ?? [];
 
   /** Room products from the product catalogue — used to auto-populate price when a room type is changed. */
   const { data: roomProducts = [] } = useQuery({
