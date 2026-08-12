@@ -74,7 +74,7 @@ export function SalesPerformanceTab() {
             ["Open pipeline value (VND)", data.pipelineValue],
             ["Quotations created", data.quotationsCreated],
             ["Quotations accepted", data.quotationsAccepted],
-            ["Quotation acceptance rate (%)", data.quotationAcceptanceRate],
+            ["Quotation yield, accepted of all written (%)", data.quotationAcceptanceRate],
             ["Quotation to booking rate (%)", data.quotationToBookingRate],
           ],
         },
@@ -86,7 +86,7 @@ export function SalesPerformanceTab() {
             ["Bookings confirmed", data.bookingsConfirmed],
             ["Deals won", data.dealsWon],
             ["Deals lost", data.dealsLost],
-            ["Win rate (%)", data.winRate],
+            ["Deal win rate (%)", data.winRate],
             ["Won value (VND)", data.wonValue],
           ],
         },
@@ -156,7 +156,7 @@ export function SalesPerformanceTab() {
             <StatTile
               label="Deals won (closed in period)"
               value={String(data.dealsWon)}
-              sub={`Win rate ${pct(data.winRate)} · lost ${data.dealsLost}`}
+              sub={`Deal win rate ${pct(data.winRate)} · lost ${data.dealsLost}`}
               icon={<BriefcaseBusiness className="size-3.5" />}
               accent={VIZ.good}
             />
@@ -176,7 +176,7 @@ export function SalesPerformanceTab() {
             <StatTile
               label="Quotations"
               value={compact(data.quotationsCreated)}
-              sub={`Accepted ${data.quotationsAccepted} · ${pct(data.quotationAcceptanceRate)}`}
+              sub={`Accepted ${data.quotationsAccepted} of ${data.quotationsCreated} · ${pct(data.quotationAcceptanceRate)}`}
               icon={<ReceiptText className="size-3.5" />}
             />
             <StatTile
@@ -228,19 +228,34 @@ export function SalesPerformanceTab() {
 
             <Card className="border-slate-100 bg-white shadow-sm">
               <CardContent className="space-y-4 p-4">
+                {/* "Win rate" alone appeared on three screens meaning two different things.
+                    Each one now names the object it counts and shows its own denominator. */}
                 <div>
                   <div className="mb-1.5 flex items-baseline justify-between">
-                    <h3 className="text-sm font-bold text-slate-700">Win rate</h3>
+                    <h3 className="text-sm font-bold text-slate-700">Deal win rate</h3>
                     <span className="text-sm font-extrabold" style={{ color: VIZ.good }}>{pct(data.winRate)}</span>
                   </div>
                   <Meter value={data.winRate} fill={VIZ.good} track={VIZ.trackGreen} />
+                  <Note>
+                    {data.dealsWon} of {data.dealsWon + data.dealsLost} closed deal
+                    {data.dealsWon + data.dealsLost === 1 ? "" : "s"} was won. Deals, not quotations —
+                    one deal can carry several quotations, so this rate and the quotation one on the
+                    Quotation Outcome tab count different things and are not meant to match.
+                  </Note>
                 </div>
                 <div>
                   <div className="mb-1.5 flex items-baseline justify-between">
-                    <h3 className="text-sm font-bold text-slate-700">Quotation acceptance</h3>
+                    <h3 className="text-sm font-bold text-slate-700">Quotation yield</h3>
                     <span className="text-sm font-extrabold" style={{ color: VIZ.open }}>{pct(data.quotationAcceptanceRate)}</span>
                   </div>
                   <Meter value={data.quotationAcceptanceRate} fill={VIZ.open} track={VIZ.trackBlue} />
+                  <Note>
+                    {data.quotationsAccepted} of {data.quotationsCreated} quotation
+                    {data.quotationsCreated === 1 ? "" : "s"} written in the period ended accepted.
+                    The denominator is everything written, including quotations nobody has answered
+                    yet — so this reads lower than the Quotation Outcome win rate, which divides only
+                    by the ones a customer decided.
+                  </Note>
                 </div>
                 <div>
                   <div className="mb-1.5 flex items-baseline justify-between">

@@ -48,6 +48,12 @@ export function RepScorecardTab() {
   const reps = data?.reps ?? [];
   const selected = reps.find((r) => r.userId === selectedId) ?? reps[0];
 
+  // The team baseline carries rates but not the counts behind them. A rate with no visible
+  // denominator is what let this figure be read as the quotation win rate on another tab, so the
+  // counts are summed back out of the rep rows — the same pooling the server does.
+  const teamDealsWon = reps.reduce((a, r) => a + r.metrics.dealsWon, 0);
+  const teamDealsClosed = reps.reduce((a, r) => a + r.metrics.dealsClosed, 0);
+
   const handleExport = () => {
     if (!data) return;
     downloadReportCsv({
@@ -72,7 +78,7 @@ export function RepScorecardTab() {
         },
         {
           title: "Raw metrics",
-          headers: ["Rep", "Revenue (VND)", "Deals won", "Deals closed", "Win rate (%)", "Leads", "Converted (cohort)",
+          headers: ["Rep", "Revenue (VND)", "Deals won", "Deals closed", "Deal win rate (%)", "Leads", "Converted (cohort)",
             "Quotations", "Accepted", "First response (h)", "Deal cycle (d)", "SLA on time", "SLA decided",
             "Tasks total", "Tasks completed", "Tasks overdue", "Avg discount (%)", "CSAT", "CSAT samples", "Active days"],
           rows: reps.map((r) => {
@@ -138,7 +144,13 @@ export function RepScorecardTab() {
               icon={<Gauge className="size-3.5" />}
               accent={VIZ.open}
             />
-            <StatTile label="Team win rate" value={pct(data.team.winRate)} sub="pooled, not averaged" />
+            {/* Deals, not quotations. The Quotation Outcome tab has its own win rate over a
+                different object, so the object is now part of the label on both. */}
+            <StatTile
+              label="Team deal win rate"
+              value={pct(data.team.winRate)}
+              sub={`${teamDealsWon} of ${teamDealsClosed} closed · pooled, not averaged`}
+            />
             <StatTile
               label="Team CSAT"
               value={num(data.team.csat, 2)}
@@ -464,11 +476,14 @@ function RepDetail({ rep, teamMedian }: { rep: RepScorecardRow; teamMedian?: num
           <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
             <MetricRow label="Revenue collected" value={vndCompact(m.revenue)} />
             <MetricRow label="Won value" value={vndCompact(m.wonValue)} />
-            <MetricRow label="Deals won / closed" value={`${m.dealsWon} / ${m.dealsClosed}`} sub={pct(m.winRate)} />
+            <MetricRow label="Deal win rate" value={`${m.dealsWon} / ${m.dealsClosed}`} sub={pct(m.winRate)} />
             <MetricRow label="Bookings confirmed" value={String(m.bookingsConfirmed)} />
             <MetricRow label="Leads raised" value={String(m.leadsCreated)} sub={`${m.cohortConverted} converted`} />
             <MetricRow label="Lead conversion" value={pct(m.leadConversionRate)} />
-            <MetricRow label="Quotations" value={`${m.quotationsAccepted} / ${m.quotationsCreated}`} sub={pct(m.quotationAcceptanceRate)} />
+            <MetricRow label="Quotation yield" value={`${m.quotationsAccepted} / ${m.quotationsCreated}`} sub={pct(m.quotationAcceptanceRate)} />
+            {/* The denominator includes work that never reached a customer, which is most of why
+                this reads lower than the quotation win rate on the Quotation Outcome tab. */}
+            <MetricRow label="Never sent out" value={String(m.quotationsAbandoned ?? 0)} />
             <MetricRow label="Revisions per quote" value={num(m.revisionsPerQuotation, 2)} />
             <MetricRow label="First response" value={hours(m.firstResponseHours)} sub={`${m.firstResponseSamples} of ${m.leadsCreated} leads`} />
             <MetricRow label="Quotation turnaround" value={hours(m.quotationTurnaroundHours)} />
