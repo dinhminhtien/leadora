@@ -36,6 +36,7 @@ export const ROUTE_PATHS = {
   sla: "/sla",
   bookingConfirmation: "/booking-confirmation",
   roomRequests: "/room-requests",
+  roomAvailability: "/room-availability",
   reservationStatus: "/reservation-status",
   operationalHandover: "/operational-handover",
   depositPayment: "/deposit-payment",

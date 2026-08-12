@@ -159,6 +159,12 @@ export const NAV_GROUPS: NavGroup[] = [
         hint: "Guest and company profiles",
       },
       {
+        href: ROUTE_PATHS.roomAvailability,
+        label: "Room Availability",
+        icon: CalendarCheck,
+        hint: "Rooms allocated to us to sell",
+      },
+      {
         href: ROUTE_PATHS.roomRequests,
         label: "Room Requests",
         icon: BedDouble,

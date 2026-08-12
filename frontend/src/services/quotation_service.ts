@@ -19,12 +19,22 @@ export type QuotationStatus =
   | "reservation_rejected";
 
 export type RoomLine = {
-  roomType: string;
+  /** The room's identity. Required on create/revise — allotment is keyed on the product. */
+  productId: string;
+  /** Display label only; the server rewrites it from the product it points at. */
+  roomType?: string;
   numberOfRooms: number;
   pricePerNight: number;
 };
 
-export type RoomLineDetail = RoomLine & {
+/**
+ * A room line as it comes back from the server. {@link RoomLine} is the request shape, where the
+ * product is required and the label is decorative; here it is the other way round — the label is
+ * always present, and productId may be missing on quotations created before the link existed.
+ */
+export type RoomLineDetail = Omit<RoomLine, "productId" | "roomType"> & {
+  productId?: string;
+  roomType: string;
   nights?: number;
   lineTotal?: number;
 };

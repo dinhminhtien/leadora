@@ -17,4 +17,21 @@ public record ResendProperties(
     String baseUrl,
     @NotNull(message = "Resend timeout is required")
     Duration timeout
-) {}
+) {
+    public ResendProperties {
+        apiKey = unquote(apiKey);
+        defaultFrom = unquote(defaultFrom);
+        baseUrl = unquote(baseUrl);
+    }
+
+    private static String unquote(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.length() > 1 && trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+            return trimmed.substring(1, trimmed.length() - 1);
+        }
+        return trimmed;
+    }
+}

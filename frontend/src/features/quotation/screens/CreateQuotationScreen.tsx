@@ -19,9 +19,14 @@ import type { Deal } from "@/services/deal_service";
 import { useCreateQuotation, useQuotations } from "@/features/quotation/hooks/use_quotations";
 import { useQuery } from "@tanstack/react-query";
 import { productService } from "@/services/product_service";
+import { AllotmentHint } from "@/features/room_availability/components/AllotmentHint";
 
 const roomLineSchema = z.object({
-  roomType: z.string().min(1, "Select a room type"),
+  // The room's identity. The label alone is not enough: room allotment is keyed on the
+  // product, so a line that only carries a name cannot be checked against the quota.
+  productId: z.string().min(1, "Select a room type"),
+  // Display label, sent for readability only — the server overwrites it from the product.
+  roomType: z.string().optional(),
   numberOfRooms: z.coerce.number().min(1, "At least 1 room"),
   pricePerNight: z.coerce.number().min(0.01, "Must be greater than 0"),
 });
@@ -46,7 +51,7 @@ const schema = z
   )
   .refine(
     (data) => {
-      const types = data.roomLines.map((l) => l.roomType).filter(Boolean);
+      const types = data.roomLines.map((l) => l.productId).filter(Boolean);
       return new Set(types).size === types.length;
     },
     { message: "Each room type can only be selected once — adjust the quantity instead", path: ["roomLines"] }
@@ -54,15 +59,10 @@ const schema = z
 
 type FormValues = z.infer<typeof schema>;
 
-const ROOM_TYPES = [
-  "Deluxe Suite",
-  "Superior Room",
-  "Standard Queen",
-  "Executive Suite",
-  "Ocean View Room",
-  "Banquet Hall",
-  "Grand Ballroom Suite",
-];
+// Room types come from the product catalogue (see roomProducts below), not from a list in
+// this file. A hard-coded list used to sit here, which meant the dropdown could offer rooms
+// that do not exist as products — and those are exactly the lines the server cannot price,
+// check against allotment, or convert to a booking.
 
 const PAYMENT_POLICIES: { value: string; label: string }[] = [
   { value: "full_upfront", label: "Full Payment Upfront" },
@@ -70,7 +70,7 @@ const PAYMENT_POLICIES: { value: string; label: string }[] = [
   { value: "pay_on_arrival", label: "Pay on Arrival" },
 ];
 
-const EMPTY_ROOM_LINE = { roomType: "", numberOfRooms: 1, pricePerNight: 0 };
+const EMPTY_ROOM_LINE = { productId: "", roomType: "", numberOfRooms: 1, pricePerNight: 0 };
 
 function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
@@ -149,14 +149,27 @@ export function CreateQuotationScreen() {
     if (history.length > 0) {
       templatedDealRef.current = dealId;
       const latest = history[0];
+      // Older quotations were stored without a product id, so fall back to matching the name
+      // against the catalogue. An unmatched line seeds blank rather than carrying a room type
+      // the server cannot resolve — better an obvious empty select than a silent failure on save.
+      const productIdForName = (name?: string) =>
+        roomProducts.find((p) => p.name.trim().toLowerCase() === (name ?? "").trim().toLowerCase())
+          ?.productId ?? "";
+
       const seededRoomLines =
         latest.roomLines && latest.roomLines.length > 0
           ? latest.roomLines.map((l) => ({
+            productId: l.productId ?? productIdForName(l.roomType),
             roomType: l.roomType,
             numberOfRooms: l.numberOfRooms,
             pricePerNight: l.pricePerNight,
           }))
-          : [{ roomType: latest.roomType ?? "", numberOfRooms: latest.numberOfRooms ?? 1, pricePerNight: latest.pricePerNight ?? 0 }];
+          : [{
+            productId: productIdForName(latest.roomType),
+            roomType: latest.roomType ?? "",
+            numberOfRooms: latest.numberOfRooms ?? 1,
+            pricePerNight: latest.pricePerNight ?? 0,
+          }];
       reset({
         dealId,
         roomLines: seededRoomLines,
@@ -189,6 +202,7 @@ export function CreateQuotationScreen() {
           dealId,
           roomLines: [
             {
+              productId: matchedProduct.productId,
               roomType: matchedProduct.name,
               numberOfRooms: 1,
               pricePerNight: matchedProduct.unitPrice,
@@ -402,25 +416,35 @@ export function CreateQuotationScreen() {
                     <div>
                       <FieldLabel required>Room Type</FieldLabel>
                       <Select
-                        {...register(`roomLines.${index}.roomType` as const, {
+                        {...register(`roomLines.${index}.productId` as const, {
                           onChange: (e) => {
-                            const selectedType = e.target.value;
-                            const matched = roomProducts.find((p) => p.name === selectedType);
+                            const matched = roomProducts.find((p) => p.productId === e.target.value);
+                            // Keep the label in step with the product so the two can never
+                            // describe different rooms.
+                            setValue(`roomLines.${index}.roomType`, matched ? matched.name : "", {
+                              shouldDirty: true,
+                            });
                             setValue(`roomLines.${index}.pricePerNight`, matched ? matched.unitPrice : 0, {
                               shouldValidate: true,
                               shouldDirty: true,
                             });
                           },
                         })}
-                        error={errors.roomLines?.[index]?.roomType?.message}
+                        error={errors.roomLines?.[index]?.productId?.message}
                       >
                         <option value="">-- Select room type --</option>
-                        {ROOM_TYPES.map((rt) => (
-                          <option key={rt} value={rt}>
-                            {rt}
+                        {roomProducts.map((product) => (
+                          <option key={product.productId} value={product.productId}>
+                            {product.name}
                           </option>
                         ))}
                       </Select>
+                      <AllotmentHint
+                        productId={roomLines?.[index]?.productId}
+                        checkIn={checkInDate}
+                        checkOut={checkOutDate}
+                        quantity={Number(roomLines?.[index]?.numberOfRooms) || 1}
+                      />
                     </div>
                     <div className="w-full sm:w-28">
                       <FieldLabel required>Quantity</FieldLabel>
