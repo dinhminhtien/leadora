@@ -8,6 +8,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Structural guard for the one statement that is native SQL rather than JPQL.
@@ -24,6 +25,12 @@ class ChatAggregateRepositoryTest {
     @ParameterizedTest(name = "{0} has a branch in the batched count")
     @EnumSource(CrmArea.class)
     void everyAreaIsCounted(CrmArea area) {
+        // Areas that declare themselves not counted per user are exempt by design: they hold no
+        // per-assignee rows, so a scoped branch would have nothing to count. The exemption lives
+        // on the enum rather than in a name list here, so a new area cannot slip past this check
+        // by accident — it has to say which kind it is.
+        assumeTrue(area.countedPerUser(), area + " is not a per-user record area");
+
         assertThat(ChatAggregateRepository.countAllSql())
                 .as("adding an area means adding a UNION branch, or it always reports zero")
                 .contains("'" + area.name() + "'");

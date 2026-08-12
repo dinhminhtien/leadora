@@ -75,6 +75,7 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
     List<QuotationEntity> findByDeal_DealIdIn(List<UUID> dealIds);
     List<QuotationEntity> findByCustomer_CustomerId(UUID customerId);
     List<QuotationEntity> findByStatus(QuotationStatus status);
+    List<QuotationEntity> findByStatus(QuotationStatus status, Pageable pageable);
     List<QuotationEntity> findByStatusInAndValidUntilBefore(List<QuotationStatus> statuses, LocalDate date);
 
     // ── UC-23.1 / UC-23.5 report aggregates ───────────────────────────────────

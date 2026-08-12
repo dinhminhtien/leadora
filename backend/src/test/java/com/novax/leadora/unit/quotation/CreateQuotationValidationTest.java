@@ -30,6 +30,7 @@ class CreateQuotationValidationTest {
 
     private RoomLineRequest buildValidRoomLine() {
         RoomLineRequest line = new RoomLineRequest();
+        line.setProductId(UUID.randomUUID());
         line.setRoomType("Deluxe Double");
         line.setNumberOfRooms(2);
         line.setPricePerNight(BigDecimal.valueOf(1500000));
@@ -59,6 +60,7 @@ class CreateQuotationValidationTest {
     void testMultipleRoomLinesValid() {
         CreateQuotationRequest req = buildValidRequest();
         RoomLineRequest second = new RoomLineRequest();
+        second.setProductId(UUID.randomUUID());
         second.setRoomType("Superior Room");
         second.setNumberOfRooms(1);
         second.setPricePerNight(BigDecimal.valueOf(900000));
@@ -126,15 +128,18 @@ class CreateQuotationValidationTest {
     }
 
     @Test
-    @DisplayName("UT-QUOT-VAL-07: Blank room type on a line → @NotBlank violation")
-    void testBlankRoomTypeTriggersViolation() {
+    @DisplayName("UT-QUOT-VAL-07: Missing room type on a line → @NotNull violation on productId")
+    void testMissingRoomTypeTriggersViolation() {
         CreateQuotationRequest req = buildValidRequest();
-        req.getRoomLines().get(0).setRoomType("");
+        // The room is identified by productId now, not by the typed-in name: allotment is keyed
+        // on the product, and a name could never be matched reliably. Blanking the label is
+        // therefore no longer an error - omitting the product is.
+        req.getRoomLines().get(0).setProductId(null);
 
         Set<ConstraintViolation<CreateQuotationRequest>> violations = validator.validate(req);
         assertFalse(violations.isEmpty());
         assertTrue(violations.stream()
-                .anyMatch(v -> v.getPropertyPath().toString().equals("roomLines[0].roomType")));
+                .anyMatch(v -> v.getPropertyPath().toString().equals("roomLines[0].productId")));
     }
 
     @Test

@@ -47,6 +47,9 @@ public final class RolePermissionScope {
             // Sales raises a room request from inside a quotation; the queue screen itself is the
             // Reservation desk's, so this is VIEW only.
             "ROOM_REQUEST_VIEW",
+            // Reading the hotel's allocation is what removes the ask-Reservation round trip;
+            // publishing it stays with the desk that holds the real PMS figures.
+            "INVENTORY_VIEW",
             "HANDOVER_VIEW", "HANDOVER_WRITE",
             "PAYMENT_VIEW", "PAYMENT_WRITE",
             "NOTIFICATION_VIEW",
@@ -71,6 +74,7 @@ public final class RolePermissionScope {
             "BOOKING_VIEW", "BOOKING_WRITE",
             "RESERVATION_VIEW", "RESERVATION_WRITE",
             "ROOM_REQUEST_VIEW",
+            "INVENTORY_VIEW",
             "HANDOVER_VIEW", "HANDOVER_WRITE",
             "PAYMENT_VIEW", "PAYMENT_WRITE",
             "NOTIFICATION_VIEW",
@@ -95,6 +99,8 @@ public final class RolePermissionScope {
     // current, and settle the deposit. No lead/deal/quotation surface exists for this desk.
     private static final Set<String> RESERVATION = Set.of(
             "ROOM_REQUEST_VIEW", "ROOM_REQUEST_APPROVE",
+            // The desk that holds the hotel's allocation is the only one that may publish it.
+            "INVENTORY_VIEW", "INVENTORY_WRITE",
             "BOOKING_VIEW", "BOOKING_WRITE",
             "RESERVATION_VIEW", "RESERVATION_WRITE",
             "HANDOVER_VIEW", "HANDOVER_WRITE",
@@ -119,7 +125,7 @@ public final class RolePermissionScope {
             "INTERACTION_VIEW", "INTERACTION_WRITE", "BOOKING_VIEW", "BOOKING_WRITE",
             "RESERVATION_VIEW", "RESERVATION_WRITE", "HANDOVER_VIEW", "HANDOVER_WRITE",
             "ROOM_REQUEST_VIEW", "PAYMENT_VIEW", "PAYMENT_WRITE", "NOTIFICATION_VIEW",
-            "REMINDER_VIEW", "REMINDER_WRITE", "CHAT_VIEW", "REPORTING_VIEW"
+            "REMINDER_VIEW", "REMINDER_WRITE", "CHAT_VIEW", "REPORTING_VIEW", "INVENTORY_VIEW"
     );
 
     private static final Set<String> MANAGER_DEFAULT = Set.of(
@@ -129,7 +135,7 @@ public final class RolePermissionScope {
             "BOOKING_WRITE", "RESERVATION_VIEW", "RESERVATION_WRITE", "HANDOVER_VIEW",
             "HANDOVER_WRITE", "PAYMENT_VIEW", "PAYMENT_WRITE", "NOTIFICATION_VIEW", "REMINDER_VIEW",
             "REMINDER_WRITE", "CHAT_VIEW", "ROOM_REQUEST_VIEW", "REPORTING_VIEW", "SLA_VIEW",
-            "SLA_WRITE", "FEEDBACK_VIEW", "FEEDBACK_WRITE"
+            "SLA_WRITE", "FEEDBACK_VIEW", "FEEDBACK_WRITE", "INVENTORY_VIEW"
     );
 
     private static final Set<String> FRONT_OFFICE_DEFAULT = Set.of(
@@ -139,7 +145,8 @@ public final class RolePermissionScope {
     private static final Set<String> RESERVATION_DEFAULT = Set.of(
             "ROOM_REQUEST_VIEW", "ROOM_REQUEST_APPROVE", "BOOKING_VIEW", "BOOKING_WRITE",
             "RESERVATION_VIEW", "RESERVATION_WRITE", "HANDOVER_VIEW", "HANDOVER_WRITE",
-            "PAYMENT_VIEW", "PAYMENT_WRITE", "NOTIFICATION_VIEW", "QUOTATION_VIEW"
+            "PAYMENT_VIEW", "PAYMENT_WRITE", "NOTIFICATION_VIEW", "QUOTATION_VIEW",
+            "INVENTORY_VIEW", "INVENTORY_WRITE"
     );
 
     private RolePermissionScope() {

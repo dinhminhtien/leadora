@@ -31,14 +31,40 @@ public enum CrmArea {
     CUSTOMERS("Customer Profiles", "/customer-profiles"),
     // Appended rather than slotted next to DEALS (which it hangs off) so the order of the
     // existing sections in the reference block does not shift.
-    SLA("SLA Control", "/sla");
+    SLA("SLA Control", "/sla"),
+    // Not a record area like the others: it carries no per-user rows and nothing in
+    // ChatCounts, so its section builds its own figures. Listed here anyway because the
+    // question-to-area matching is what decides whether it is worth including at all.
+    ROOM_AVAILABILITY("Room Availability", "/room-availability", false);
 
     private final String screenLabel;
     private final String screenPath;
+    private final boolean countedPerUser;
 
     CrmArea(String screenLabel, String screenPath) {
+        this(screenLabel, screenPath, true);
+    }
+
+    CrmArea(String screenLabel, String screenPath, boolean countedPerUser) {
         this.screenLabel = screenLabel;
         this.screenPath = screenPath;
+        this.countedPerUser = countedPerUser;
+    }
+
+    /**
+     * Whether this area has per-user rows counted by the batched aggregate.
+     *
+     * <p>Almost everything here is a record with an assignee, so its counts are scoped and
+     * batched into one statement. Room allotment is not: it is reference data owned by the
+     * hotel, identical for every user, and its section builds its own figures from a bounded
+     * forward window.
+     *
+     * <p>Declared here rather than special-cased in the test that guards the aggregate, so the
+     * next area added has to state which kind it is instead of quietly slipping past a check
+     * that would otherwise have caught it reporting zero forever.
+     */
+    public boolean countedPerUser() {
+        return countedPerUser;
     }
 
     /** Sidebar label of the screen that shows this area in full. */

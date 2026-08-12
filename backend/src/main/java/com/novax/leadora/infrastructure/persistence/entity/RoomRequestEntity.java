@@ -58,6 +58,17 @@ public class RoomRequestEntity extends BaseEntity {
     @Column(name = "status", nullable = false, length = 20)
     private RoomRequestStatus status;
 
+    /**
+     * Context supplied with the question, so the Reservation team can see what the CRM already
+     * believes before opening the PMS — "quota shows 10, 12 needed, 2 short, published 08:00".
+     *
+     * <p>Filled in automatically when a quotation cannot be covered from allotment. Without it
+     * the request reads as a bare "is this available?", and the answer comes back as a bare
+     * yes/no, which costs another round trip to establish what was actually short.
+     */
+    @Column(name = "requester_note", columnDefinition = "TEXT")
+    private String requesterNote;
+
     /** The Reservation team's answer in their own words ("5 Deluxe left" / "Full, try Suite"). */
     @Column(name = "reservation_note", columnDefinition = "TEXT")
     private String reservationNote;

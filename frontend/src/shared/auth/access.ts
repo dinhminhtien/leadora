@@ -74,6 +74,7 @@ const FO_ROUTES: string[] = [
 // rows under RS, which is why the fix is to restore the screens rather than revoke the permissions.
 const RESERVATION_ROUTES: string[] = [
   ROUTE_PATHS.roomRequests,
+  ROUTE_PATHS.roomAvailability,
   ROUTE_PATHS.bookingConfirmation,
   ROUTE_PATHS.reservationStatus,
   ROUTE_PATHS.operationalHandover,
@@ -113,6 +114,7 @@ const ROUTE_PERMISSION: Record<string, string> = {
   [ROUTE_PATHS.interactionTimeline]: "INTERACTION_VIEW",
   [ROUTE_PATHS.bookingConfirmation]: "BOOKING_VIEW",
   [ROUTE_PATHS.roomRequests]: "ROOM_REQUEST_VIEW",
+  [ROUTE_PATHS.roomAvailability]: "INVENTORY_VIEW",
   [ROUTE_PATHS.reservationStatus]: "RESERVATION_VIEW",
   [ROUTE_PATHS.operationalHandover]: "HANDOVER_VIEW",
   [ROUTE_PATHS.frontOfficeHandover]: "HANDOVER_VIEW",
