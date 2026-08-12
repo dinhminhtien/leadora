@@ -151,6 +151,14 @@ public class RepScorecardResponse {
         private long quotationsCreated;
         private long quotationsAccepted;
         private Double quotationAcceptanceRate;
+        /**
+         * Written but never dispatched — rejected at approval, or expired as a draft.
+         *
+         * <p>Outside {@code quotationsAccepted} and inside {@code quotationsCreated}, so it is part
+         * of why this rate reads lower than the quotation win rate on UC-23.5. Published so the gap
+         * between the two screens can be read off the numbers instead of guessed at.
+         */
+        private long quotationsAbandoned;
 
         // ── Velocity ──
         /** Hours from lead creation to the rep moving it off NEW. */

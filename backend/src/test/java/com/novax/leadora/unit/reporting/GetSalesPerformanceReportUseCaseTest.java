@@ -2,7 +2,9 @@ package com.novax.leadora.unit.reporting;
 import com.novax.leadora.application.usecase.reporting.*;
 
 import com.novax.leadora.api.dto.response.SalesPerformanceReportResponse;
+import com.novax.leadora.application.usecase.quotation.QuotationOutcomeClassifier;
 import com.novax.leadora.common.util.ReportRangeFactory;
+import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -56,6 +58,16 @@ class GetSalesPerformanceReportUseCaseTest {
 
     private void agg(String kind, String bucket, UUID id, String name, long count, long amount) {
         rows.add(new Object[] { kind, bucket, id, name, count, BigDecimal.valueOf(amount) });
+    }
+
+    /**
+     * A group of quotations sharing the three facts the query emits. Built through the classifier's
+     * own encoder so a change to the bucket format breaks here rather than silently reclassifying
+     * every quotation figure in the report.
+     */
+    private void quotations(QuotationStatus status, boolean sent, boolean replaced, long count) {
+        agg(SalesAggregateKinds.QUOTATION,
+                QuotationOutcomeClassifier.bucket(status, sent, replaced), count, 0);
     }
 
     private SalesPerformanceReportResponse run() {
@@ -174,9 +186,9 @@ class GetSalesPerformanceReportUseCaseTest {
     @Test
     @DisplayName("superseded revisions leave the quotation denominator, matching UC-23.5")
     void quotationDenominatorExcludesSupersededRevisions() {
-        agg("QUOTATION", "SUPERSEDED", 4, 0);
-        agg("QUOTATION", "ACCEPTED", 1, 0);
-        agg("QUOTATION", "CONVERTED", 1, 0);
+        quotations(QuotationStatus.SUPERSEDED, true, false, 4);
+        quotations(QuotationStatus.ACCEPTED, true, false, 1);
+        quotations(QuotationStatus.CONVERTED, true, false, 1);
 
         SalesPerformanceReportResponse report = run();
 
@@ -188,10 +200,28 @@ class GetSalesPerformanceReportUseCaseTest {
     }
 
     @Test
+    @DisplayName("a revision that replaced an earlier row leaves the denominator whatever its status")
+    void quotationDenominatorExcludesReplacedRowsByStructure() {
+        // The defect this covers: BR-22 is meant to mark a replaced row SUPERSEDED and often does
+        // not, so filtering on the status alone let two of every negotiation into the denominator
+        // and published an acceptance rate the quotation report contradicted.
+        quotations(QuotationStatus.EXPIRED, true, true, 2);
+        quotations(QuotationStatus.CLOSED, false, true, 1);
+        quotations(QuotationStatus.CONVERTED, true, false, 3);
+
+        SalesPerformanceReportResponse report = run();
+
+        assertThat(report.getQuotationsCreated())
+                .as("three replaced rows are not three more opportunities")
+                .isEqualTo(3);
+        assertThat(report.getQuotationAcceptanceRate()).isEqualTo(100.0);
+    }
+
+    @Test
     @DisplayName("quotation-to-booking is a rate within one population, so it cannot exceed 100%")
     void conversionRateStaysWithinItsOwnPopulation() {
-        agg("QUOTATION", "SENT", 8, 0);
-        agg("QUOTATION", "CONVERTED", 2, 0);
+        quotations(QuotationStatus.SENT, true, false, 8);
+        quotations(QuotationStatus.CONVERTED, true, false, 2);
         // Far more bookings than quotations — walk-ins, or bookings raised without a quote.
         agg("BOOKING_CONFIRMED", "CONFIRMED", 40, 0);
 

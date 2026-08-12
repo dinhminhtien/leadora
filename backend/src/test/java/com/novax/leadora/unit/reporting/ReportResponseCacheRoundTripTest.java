@@ -144,21 +144,46 @@ class ReportResponseCacheRoundTripTest {
     @DisplayName("UC-23.5 survives the cache round trip")
     void quotationOutcomeRoundTrips() {
         QuotationOutcomeReportResponse original = QuotationOutcomeReportResponse.builder()
-                .total(8).superseded(3).approved(8).rejectedByApprover(2)
-                .accepted(1).converted(3)
-                .approvalRate(80.0).acceptanceRate(50.0).conversionRate(37.5)
+                .total(8).revisedAway(3)
+                .won(4).lost(1).stillOpen(3)
+                .wonValue(BigDecimal.valueOf(20_000)).lostValue(BigDecimal.valueOf(500))
+                .winRate(80.0).cohortConverted(3).conversionRate(37.5)
+                .avgHoursToSend(4.0).avgHoursToApprove(12.5).avgHoursToReply(6.0)
+                .decisions(5).decisionsApproved(3).decisionsRevisionRequested(1)
+                .firstPassApprovalRate(60.0)
+                .convertedValue(BigDecimal.valueOf(90_000))
                 .byStatus(List.of(QuotationOutcomeReportResponse.StatusRow.builder()
                         .status("CONVERTED").label("Converted").count(3).build()))
+                .discountBands(List.of(QuotationOutcomeReportResponse.CountRow.builder()
+                        .key("D1_10").label("1–10%").count(2)
+                        .value(BigDecimal.valueOf(1_500)).build()))
+                .staff(List.of(QuotationOutcomeReportResponse.StaffRow.builder()
+                        .name("Anna").prepared(4).won(3).lost(1).winRate(75.0)
+                        .wonValue(BigDecimal.valueOf(20_000))
+                        .sent(4).avgHoursToSend(3.5).unattributed(false).build()))
+                .dataGaps(List.of("A loss reason was recorded for 1 of 9 lost quotations."))
                 .build();
 
         QuotationOutcomeReportResponse restored =
                 roundTrip(original, QuotationOutcomeReportResponse.class);
 
         assertThat(restored.getTotal()).isEqualTo(8);
-        assertThat(restored.getSuperseded()).isEqualTo(3);
-        assertThat(restored.getApprovalRate()).isEqualTo(80.0);
+        assertThat(restored.getRevisedAway()).isEqualTo(3);
+        assertThat(restored.getWinRate()).isEqualTo(80.0);
+        assertThat(restored.getFirstPassApprovalRate()).isEqualTo(60.0);
+        assertThat(restored.getAvgHoursToReply()).isEqualTo(6.0);
+        assertThat(restored.getWonValue()).isEqualByComparingTo(BigDecimal.valueOf(20_000));
+        assertThat(restored.getDataGaps()).hasSize(1);
         assertThat(restored.getByStatus()).singleElement()
                 .satisfies(row -> assertThat(row.getCount()).isEqualTo(3));
+        assertThat(restored.getDiscountBands()).singleElement()
+                .satisfies(row -> assertThat(row.getValue())
+                        .isEqualByComparingTo(BigDecimal.valueOf(1_500)));
+        assertThat(restored.getStaff()).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getWinRate()).isEqualTo(75.0);
+                    assertThat(row.getAvgHoursToSend()).isEqualTo(3.5);
+                });
     }
 
     @Test

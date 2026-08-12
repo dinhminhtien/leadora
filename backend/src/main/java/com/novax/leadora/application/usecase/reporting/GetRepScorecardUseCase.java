@@ -6,6 +6,8 @@ import com.novax.leadora.api.dto.response.RepScorecardResponse.RepMetrics;
 import com.novax.leadora.api.dto.response.RepScorecardResponse.RepScorecard;
 import com.novax.leadora.api.dto.response.RepScorecardResponse.RepScore;
 import com.novax.leadora.api.dto.response.RepScorecardResponse.TeamBaseline;
+import com.novax.leadora.application.usecase.quotation.QuotationOutcome;
+import com.novax.leadora.application.usecase.quotation.QuotationOutcomeClassifier;
 import com.novax.leadora.application.usecase.reporting.scoring.ScoringEngine;
 import com.novax.leadora.application.usecase.reporting.scoring.ScoringProperties;
 import com.novax.leadora.application.usecase.sla.SlaOutcome;
@@ -14,7 +16,6 @@ import com.novax.leadora.common.util.ReportRange;
 import com.novax.leadora.common.util.ReportRangeFactory;
 import com.novax.leadora.common.util.ReportingUtils;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
-import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.SlaStatus;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.RepScorecardRepository;
@@ -68,9 +69,6 @@ public class GetRepScorecardUseCase {
     private static final int DEFAULT_PERIOD_DAYS = 30;
     private static final int TOP_LOST_REASONS = 3;
     private static final double DAYS_PER_MONTH = 30.0;
-
-    private static final Set<String> ACCEPTED_QUOTATIONS = Set.of(
-            QuotationStatus.ACCEPTED.name(), QuotationStatus.CONVERTED.name());
 
     private final DealRepository dealRepository;
     private final RepScorecardRepository scorecardRepository;
@@ -216,12 +214,19 @@ public class GetRepScorecardUseCase {
                     }
                 }
                 case SalesAggregateKinds.QUOTATION -> {
-                    // Superseded revisions leave the denominator, matching UC-23.1 and UC-23.5.
-                    if (!QuotationStatus.SUPERSEDED.name().equals(bucket)) {
+                    // The rule is QuotationOutcomeClassifier's. Deciding it here from the status
+                    // alone is how this report scored people on a rate the quotation report
+                    // contradicted: it counted replaced revisions, quotations nobody had answered
+                    // yet, and quotations never sent, all as failures to win business.
+                    QuotationOutcome outcome = QuotationOutcomeClassifier.classifyBucket(bucket);
+                    if (outcome.isLive()) {
                         acc.quotationsCreated += count;
-                    }
-                    if (ACCEPTED_QUOTATIONS.contains(bucket)) {
-                        acc.quotationsAccepted += count;
+                        if (outcome == QuotationOutcome.WON) {
+                            acc.quotationsAccepted += count;
+                        }
+                        if (outcome == QuotationOutcome.ABANDONED) {
+                            acc.quotationsAbandoned += count;
+                        }
                     }
                 }
                 case SalesAggregateKinds.BOOKING_CONFIRMED -> acc.bookingsConfirmed += count;
@@ -515,6 +520,7 @@ public class GetRepScorecardUseCase {
         long cohortConverted;
         long quotationsCreated;
         long quotationsAccepted;
+        long quotationsAbandoned;
 
         Double firstResponseHours;
         long firstResponseSamples;
@@ -579,6 +585,7 @@ public class GetRepScorecardUseCase {
                     .winRate(rate(dealsWon, dealsClosed))
                     .quotationsCreated(quotationsCreated)
                     .quotationsAccepted(quotationsAccepted)
+                    .quotationsAbandoned(quotationsAbandoned)
                     .quotationAcceptanceRate(rate(quotationsAccepted, quotationsCreated))
                     .firstResponseHours(firstResponseHours)
                     .firstResponseSamples(firstResponseSamples)

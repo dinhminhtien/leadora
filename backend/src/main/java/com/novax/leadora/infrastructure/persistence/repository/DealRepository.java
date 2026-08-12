@@ -186,12 +186,18 @@ public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpec
                AND (CAST(:segmentOff AS boolean) OR d.customer_id IN (SELECT customer_id FROM segment_customers))
              GROUP BY d.status, u.user_id, u.full_name
             UNION ALL
-            SELECT 'QUOTATION', q.status::text, u.user_id, u.full_name, count(*), 0::numeric
+            SELECT 'QUOTATION',
+                   q.status::text
+                     || '|' || CASE WHEN q.sent_at IS NULL THEN 'UNSENT' ELSE 'SENT' END
+                     || '|' || CASE WHEN EXISTS (SELECT 1 FROM quotations r
+                                                  WHERE r.parent_quotation_id = q.quotation_id)
+                                    THEN 'REPLACED' ELSE 'CURRENT' END,
+                   u.user_id, u.full_name, count(*), 0::numeric
               FROM quotations q LEFT JOIN users u ON u.user_id = q.created_by
              WHERE q.created_at >= :start AND q.created_at < :end
                AND (CAST(:ownerId AS uuid) IS NULL OR q.created_by = CAST(:ownerId AS uuid))
                AND (CAST(:segmentOff AS boolean) OR q.customer_id IN (SELECT customer_id FROM segment_customers))
-             GROUP BY q.status, u.user_id, u.full_name
+             GROUP BY 2, u.user_id, u.full_name
             UNION ALL
             SELECT 'BOOKING_CONFIRMED', 'CONFIRMED', u.user_id, u.full_name, count(*), 0::numeric
               FROM booking_confirmed bc LEFT JOIN users u ON u.user_id = bc.assigned_user_id

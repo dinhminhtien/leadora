@@ -140,6 +140,8 @@ export type RepMetrics = {
   winRate?: number;
   quotationsCreated: number;
   quotationsAccepted: number;
+  /** Written but never dispatched — inside the denominator, outside the accepted count. */
+  quotationsAbandoned: number;
   quotationAcceptanceRate?: number;
   firstResponseHours?: number;
   firstResponseSamples: number;
@@ -422,26 +424,101 @@ export type PipelineProgressionReport = {
 // ── UC-23.5 Quotation Outcome ────────────────────────────────────────────────
 export type QuotationStatusRow = { status: string; label: string; count: number };
 
+/** A named bucket with a count and, where the metric carries money, a total. */
+export type QuotationCountRow = { key: string; label: string; count: number; value?: number };
+
+export type QuotationStaffRow = {
+  name: string;
+  prepared: number;
+  won: number;
+  lost: number;
+  abandoned: number;
+  /** null when this preparer has nothing decided yet — not the same as a 0% win rate. */
+  winRate?: number | null;
+  wonValue?: number;
+  sent: number;
+  avgHoursToSend?: number | null;
+  unattributed: boolean;
+};
+
+/**
+ * Two sections that are not meant to reconcile.
+ *
+ * <p>`total…` and the other cohort fields follow the quotations *written* in the period.
+ * The `decisions…`, `replies…`, `sentInPeriod`, `convertedInPeriod` fields count what *happened*
+ * in the period regardless of when the quotation was written — work that a created_at-only
+ * report could not see at all.
+ *
+ * Nullable rates are null when the period holds nothing that could establish them; render them
+ * as "—", never as 0.
+ */
 export type QuotationOutcomeReport = {
   dateFrom?: string;
   dateTo?: string;
-  /** Live quotations — superseded revisions excluded from every rate denominator (BR-22). */
+  timezone?: string;
+
+  // Cohort — quotations created in the period.
+  /** Live quotations; rows a revision replaced are excluded structurally, not by status (BR-22). */
   total: number;
-  superseded: number;
-  sent: number;
-  /** Ever approved, read from approved_at rather than from rows still parked at status APPROVED. */
-  approved: number;
-  /** Raw REJECTED count — mixes approver and customer rejections; see rejectedByApprover. */
-  rejected: number;
-  rejectedByApprover: number;
-  expired: number;
-  accepted: number;
-  converted: number;
-  approvalRate: number;
-  /** (accepted + converted) / total — matches the acceptance figure on UC-23.1. */
-  acceptanceRate: number;
+  /** Rows excluded from `total` because a revision replaced them. */
+  revisedAway: number;
+  won: number;
+  /** Dispatched to the customer and closed without a sale. */
+  lost: number;
+  /** Terminal but never dispatched — rejected at approval, or expired as a draft. */
+  abandoned: number;
+  stillOpen: number;
+  wonValue?: number;
+  lostValue?: number;
+  abandonedValue?: number;
+  openValue?: number;
+  /** won / (won + lost). `stillOpen` and `abandoned` are both outside the denominator. */
+  winRate?: number | null;
+  cohortConverted: number;
   conversionRate: number;
+  cohortApproved: number;
+  cohortNeverApproved: number;
+  cohortSent: number;
+  cohortNeverSent: number;
+  avgHoursToSend?: number | null;
+  /** Expired without the customer ever replying — a follow-up failure, not a lost negotiation. */
+  expiredNoReply: number;
+  expiredAfterReply: number;
+  /** Expired while still a draft or awaiting approval — it never went out. */
+  expiredNeverSent: number;
+  discountBands: QuotationCountRow[];
   byStatus: QuotationStatusRow[];
+
+  // Activity — decisions and replies dated in the period.
+  decisions: number;
+  decisionsApproved: number;
+  decisionsRejected: number;
+  decisionsRevisionRequested: number;
+  /** approved / decisions, revision requests included in the denominator. */
+  firstPassApprovalRate?: number | null;
+  approvalsStamped: number;
+  avgHoursToApprove?: number | null;
+  replies: number;
+  repliesAccepted: number;
+  repliesRejected: number;
+  repliesInterested: number;
+  repliesNeedRevision: number;
+  replyAcceptanceRate?: number | null;
+  avgHoursToReply?: number | null;
+  /** How many replies could be timed — the rest have no dispatch timestamp. */
+  repliesTimed: number;
+  sentInPeriod: number;
+  convertedInPeriod: number;
+  convertedValue?: number;
+  closedInPeriod: number;
+  expiredInPeriod: number;
+  lostReasons: QuotationCountRow[];
+
+  /** What this period could not establish, in words. Render it; that is the point of it. */
+  dataGaps?: string[];
+  staff: QuotationStaffRow[];
+  /** True when the preparer table was capped, so it no longer sums to `total`. */
+  staffTruncated?: boolean;
 };
 
 export type ReportRangeParams = { dateFrom?: string; dateTo?: string };

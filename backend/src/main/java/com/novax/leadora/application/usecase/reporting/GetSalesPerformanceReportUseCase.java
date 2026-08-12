@@ -4,6 +4,8 @@ import com.novax.leadora.api.dto.response.SalesPerformanceReportResponse;
 import com.novax.leadora.api.dto.response.SalesPerformanceReportResponse.RepRow;
 import com.novax.leadora.common.util.ReportRange;
 import com.novax.leadora.common.util.ReportRangeFactory;
+import com.novax.leadora.application.usecase.quotation.QuotationOutcome;
+import com.novax.leadora.application.usecase.quotation.QuotationOutcomeClassifier;
 import com.novax.leadora.common.util.ReportingUtils;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
@@ -42,10 +44,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class GetSalesPerformanceReportUseCase {
-
-    /** A quotation the customer said yes to, whether or not it became a booking yet. */
-    private static final Set<String> ACCEPTED_QUOTATIONS = Set.of(
-            QuotationStatus.ACCEPTED.name(), QuotationStatus.CONVERTED.name());
 
     private static final int MAX_REPS = 50;
     private static final String UNASSIGNED_LABEL = "(Unassigned)";
@@ -90,11 +88,13 @@ public class GetSalesPerformanceReportUseCase {
         long dealsLost = totals.count(KIND_DEAL_CLOSED, DealStatus.LOST.name());
         BigDecimal wonValue = totals.amount(KIND_DEAL_CLOSED, DealStatus.WON.name());
 
-        // Superseded revisions leave the denominator so this matches UC-23.5 (BR-22).
-        long quotationsCreated = totals.count(KIND_QUOTATION)
-                - totals.count(KIND_QUOTATION, QuotationStatus.SUPERSEDED.name());
-        long quotationsAccepted = totals.countIn(KIND_QUOTATION, ACCEPTED_QUOTATIONS);
-        long quotationsConverted = totals.count(KIND_QUOTATION, QuotationStatus.CONVERTED.name());
+        // Replaced revisions leave the denominator so this matches UC-23.5 (BR-22). The rule is
+        // QuotationOutcomeClassifier's, not this file's: reading it off the status here is how this
+        // report came to publish a different acceptance rate than the quotation report did.
+        QuotationTally quotations = tallyQuotations(totals.buckets(KIND_QUOTATION));
+        long quotationsCreated = quotations.live();
+        long quotationsAccepted = quotations.won();
+        long quotationsConverted = quotations.converted();
 
         long bookingsConfirmed = totals.count(KIND_BOOKING_CONFIRMED, BUCKET_CONFIRMED);
         BigDecimal revenue = totals.amount(KIND_REVENUE, BUCKET_PAID);
@@ -276,6 +276,22 @@ public class GetSalesPerformanceReportUseCase {
             return buckets.stream().mapToLong(bucket -> count(kind, bucket)).sum();
         }
 
+        /**
+         * Every bucket of a kind with its count, so the caller can apply a rule the aggregate does
+         * not know. Used for quotations, whose buckets carry facts that
+         * {@code QuotationOutcomeClassifier} turns into an outcome.
+         */
+        Map<String, Long> buckets(String kind) {
+            String prefix = kind + "|";
+            Map<String, Long> found = new LinkedHashMap<>();
+            counts.forEach((k, v) -> {
+                if (k.startsWith(prefix)) {
+                    found.put(k.substring(prefix.length()), v);
+                }
+            });
+            return found;
+        }
+
         BigDecimal amount(String kind, String bucket) {
             return amounts.getOrDefault(key(kind, bucket), BigDecimal.ZERO);
         }
@@ -283,6 +299,44 @@ public class GetSalesPerformanceReportUseCase {
         private static String key(String kind, String bucket) {
             return kind + "|" + bucket;
         }
+    }
+
+    /**
+     * The quotation figures a report publishes, all derived from one classification pass.
+     *
+     * @param live      quotations that are an opportunity of their own — replaced revisions excluded
+     * @param won       accepted or converted
+     * @param converted became a booking; a subset of {@code won}
+     */
+    record QuotationTally(long live, long won, long converted) {
+    }
+
+    /**
+     * Folds {@code STATUS|SENT|REPLACED} buckets into the published figures.
+     *
+     * <p>Package-private so the rep scorecard folds quotations through this exact code rather than
+     * its own copy — the two reports disagreeing about the same eleven quotations is what this
+     * exists to prevent.
+     */
+    static QuotationTally tallyQuotations(Map<String, Long> buckets) {
+        long live = 0;
+        long won = 0;
+        long converted = 0;
+        for (Map.Entry<String, Long> entry : buckets.entrySet()) {
+            QuotationOutcome outcome = QuotationOutcomeClassifier.classifyBucket(entry.getKey());
+            if (!outcome.isLive()) {
+                continue;
+            }
+            long count = entry.getValue();
+            live += count;
+            if (outcome == QuotationOutcome.WON) {
+                won += count;
+            }
+            if (QuotationStatus.CONVERTED == QuotationOutcomeClassifier.statusOf(entry.getKey())) {
+                converted += count;
+            }
+        }
+        return new QuotationTally(live, won, converted);
     }
 
     private static class RepAgg {

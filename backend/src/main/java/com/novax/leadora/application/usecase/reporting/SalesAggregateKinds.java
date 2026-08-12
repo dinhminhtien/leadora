@@ -25,7 +25,14 @@ public final class SalesAggregateKinds {
     public static final String DEAL_OPENED = "DEAL_OPENED";
     /** Deals closed in the period, bucketed by status. */
     public static final String DEAL_CLOSED = "DEAL_CLOSED";
-    /** Quotations raised in the period, bucketed by status. */
+    /**
+     * Quotations raised in the period, bucketed by {@code STATUS|SENT|REPLACED}.
+     *
+     * <p>The bucket carries facts, not a verdict: the status alone cannot say whether a quotation
+     * was replaced by a revision or ever reached a customer, and those two facts decide whether it
+     * belongs in a rate at all. {@code QuotationOutcomeClassifier} turns the bucket into an outcome
+     * so that rule lives in one place instead of once per report.
+     */
     public static final String QUOTATION = "QUOTATION";
     /** Bookings confirmed in the period, dated by the confirmation event. */
     public static final String BOOKING_CONFIRMED = "BOOKING_CONFIRMED";

@@ -2,7 +2,10 @@ package com.novax.leadora.unit.reporting;
 
 import com.novax.leadora.api.dto.response.RepScorecardResponse;
 import com.novax.leadora.api.dto.response.RepScorecardResponse.RepScorecard;
+import com.novax.leadora.application.usecase.quotation.QuotationOutcomeClassifier;
 import com.novax.leadora.application.usecase.reporting.GetRepScorecardUseCase;
+import com.novax.leadora.application.usecase.reporting.SalesAggregateKinds;
+import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.application.usecase.reporting.scoring.ScoringEngine;
 import com.novax.leadora.application.usecase.reporting.scoring.ScoringProperties;
 import com.novax.leadora.common.util.ReportRangeFactory;
@@ -77,6 +80,16 @@ class GetRepScorecardUseCaseTest {
     /** [kind, bucket, ownerId, ownerName, count, amount] */
     private void sales(String kind, String bucket, UUID id, String name, long count, long amount) {
         sales.add(new Object[] { kind, bucket, id, name, count, BigDecimal.valueOf(amount) });
+    }
+
+    /**
+     * A group of quotations sharing the three facts the query emits, encoded the way the query
+     * encodes them so this fixture cannot drift away from what the report actually receives.
+     */
+    private void quotations(QuotationStatus status, boolean sent, boolean replaced,
+                            UUID id, String name, long count) {
+        sales(SalesAggregateKinds.QUOTATION,
+                QuotationOutcomeClassifier.bucket(status, sent, replaced), id, name, count, 0);
     }
 
     /** [metric, ownerId, ownerName, samples, value] */
@@ -154,16 +167,47 @@ class GetRepScorecardUseCaseTest {
     @Test
     @DisplayName("superseded revisions leave the quotation denominator, as in UC-23.1 and UC-23.5")
     void supersededRevisionsAreNotCounted() {
-        sales("QUOTATION", "SUPERSEDED", ANNA, "Anna", 4, 0);
-        sales("QUOTATION", "SENT", ANNA, "Anna", 6, 0);
-        sales("QUOTATION", "ACCEPTED", ANNA, "Anna", 2, 0);
-        sales("QUOTATION", "CONVERTED", ANNA, "Anna", 2, 0);
+        quotations(QuotationStatus.SUPERSEDED, true, false, ANNA, "Anna", 4);
+        quotations(QuotationStatus.SENT, true, false, ANNA, "Anna", 6);
+        quotations(QuotationStatus.ACCEPTED, true, false, ANNA, "Anna", 2);
+        quotations(QuotationStatus.CONVERTED, true, false, ANNA, "Anna", 2);
 
         RepScorecard anna = rep(run(), ANNA);
 
         assertThat(anna.getMetrics().getQuotationsCreated()).isEqualTo(10);
         assertThat(anna.getMetrics().getQuotationsAccepted()).isEqualTo(4);
         assertThat(anna.getMetrics().getQuotationAcceptanceRate()).isEqualTo(40.0);
+    }
+
+    @Test
+    @DisplayName("a replaced revision leaves the scorecard denominator even when its status does not say so")
+    void replacedRevisionsAreNotCounted() {
+        // This is the figure that scores people. Counting replaced rows as failures is how the
+        // scorecard published 52.4% for the same eleven quotations UC-23.5 scored at 91.7%.
+        quotations(QuotationStatus.EXPIRED, true, true, ANNA, "Anna", 3);
+        quotations(QuotationStatus.CONVERTED, true, false, ANNA, "Anna", 2);
+
+        RepScorecard anna = rep(run(), ANNA);
+
+        assertThat(anna.getMetrics().getQuotationsCreated()).isEqualTo(2);
+        assertThat(anna.getMetrics().getQuotationAcceptanceRate()).isEqualTo(100.0);
+    }
+
+    @Test
+    @DisplayName("quotations that were never sent are reported apart from the ones a customer refused")
+    void abandonedQuotationsAreCountedSeparately() {
+        quotations(QuotationStatus.REJECTED, false, false, ANNA, "Anna", 4);
+        quotations(QuotationStatus.REJECTED, true, false, ANNA, "Anna", 1);
+        quotations(QuotationStatus.CONVERTED, true, false, ANNA, "Anna", 5);
+
+        RepScorecard anna = rep(run(), ANNA);
+
+        assertThat(anna.getMetrics().getQuotationsAbandoned())
+                .as("rejected at approval — no customer ever saw them")
+                .isEqualTo(4);
+        assertThat(anna.getMetrics().getQuotationsCreated())
+                .as("they are still work this rep produced, so they stay in the denominator")
+                .isEqualTo(10);
     }
 
     @Test
