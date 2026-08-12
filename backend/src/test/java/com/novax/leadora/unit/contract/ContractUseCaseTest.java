@@ -21,17 +21,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
+import com.novax.leadora.common.security.OtpStore;
 import org.springframework.http.HttpStatus;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -53,8 +52,7 @@ class ContractUseCaseTest {
     @Mock private ContractPdfGenerator pdfGenerator;
     @Mock private SupabaseStorageAdapter storageAdapter;
     @Mock private GetContractByTokenUseCase getContractByTokenUseCase;
-    @Mock private StringRedisTemplate redisTemplate;
-    @Mock private ValueOperations<String, String> valueOperations;
+    @Mock private OtpStore otpStore;
     @Mock private ActivateContractUseCase mockActivateContractUseCase;
     
     private ObjectMapper objectMapper;
@@ -94,7 +92,7 @@ class ContractUseCaseTest {
         requestContractOtpUseCase = new RequestContractOtpUseCase(
                 contractRepository,
                 getContractByTokenUseCase,
-                redisTemplate,
+                otpStore,
                 contractProperties,
                 eventPublisher
         );
@@ -102,7 +100,7 @@ class ContractUseCaseTest {
         confirmContractOtpUseCase = new ConfirmContractOtpUseCase(
                 contractRepository,
                 getContractByTokenUseCase,
-                redisTemplate,
+                otpStore,
                 activityLogPublisher,
                 eventPublisher,
                 mockActivateContractUseCase
@@ -288,13 +286,12 @@ class ContractUseCaseTest {
 
         String token = "secure-token";
         when(contractRepository.findById(contract.getId())).thenReturn(Optional.of(contract));
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(contractProperties.getOtpExpirySeconds()).thenReturn(300);
 
         requestContractOtpUseCase.execute(contract.getId(), token);
 
         verify(getContractByTokenUseCase, times(1)).validateToken(contract.getId(), token);
-        verify(valueOperations, times(1)).set(eq("contract_otp:" + contract.getId()), anyString(), eq(300L), eq(TimeUnit.SECONDS));
+        verify(otpStore, times(1)).put(eq("contract_otp:" + contract.getId()), anyString(), eq(Duration.ofSeconds(300)));
         verify(eventPublisher, times(1)).publishEvent(any(ContractOtpRequestedEvent.class));
     }
 
@@ -312,8 +309,7 @@ class ContractUseCaseTest {
 
         String token = "valid-token";
         when(contractRepository.findById(contract.getId())).thenReturn(Optional.of(contract));
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("contract_otp:" + contract.getId())).thenReturn(null);
+        when(otpStore.get("contract_otp:" + contract.getId())).thenReturn(null);
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 confirmContractOtpUseCase.execute(contract.getId(), token, "123456")
@@ -331,17 +327,16 @@ class ContractUseCaseTest {
 
         String token = "valid-token";
         when(contractRepository.findById(contract.getId())).thenReturn(Optional.of(contract));
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("contract_otp:" + contract.getId())).thenReturn("123456");
-        when(valueOperations.increment("contract_otp_fail:" + contract.getId())).thenReturn(5L);
+        when(otpStore.get("contract_otp:" + contract.getId())).thenReturn("123456");
+        when(otpStore.increment(eq("contract_otp_fail:" + contract.getId()), any(Duration.class))).thenReturn(5L);
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 confirmContractOtpUseCase.execute(contract.getId(), token, "wrong_otp")
         );
 
         assertEquals("OTP_LOCKED", ex.getErrorCode());
-        verify(redisTemplate, times(1)).delete("contract_otp:" + contract.getId());
-        verify(redisTemplate, times(1)).delete("contract_otp_fail:" + contract.getId());
+        verify(otpStore, times(1)).delete("contract_otp:" + contract.getId());
+        verify(otpStore, times(1)).delete("contract_otp_fail:" + contract.getId());
     }
 
     @Test
@@ -355,8 +350,7 @@ class ContractUseCaseTest {
 
         String token = "valid-token";
         when(contractRepository.findById(contract.getId())).thenReturn(Optional.of(contract));
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("contract_otp:" + contract.getId())).thenReturn("123456");
+        when(otpStore.get("contract_otp:" + contract.getId())).thenReturn("123456");
         when(contractRepository.save(any(ContractEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
         ContractEntity result = confirmContractOtpUseCase.execute(contract.getId(), token, "123456");
@@ -364,7 +358,7 @@ class ContractUseCaseTest {
         assertNotNull(result);
         assertEquals(ContractStatus.ACKNOWLEDGED, result.getStatus());
         assertNotNull(result.getAcknowledgedAt());
-        verify(redisTemplate, times(1)).delete("contract_otp:" + contract.getId());
+        verify(otpStore, times(1)).delete("contract_otp:" + contract.getId());
         verify(eventPublisher, times(1)).publishEvent(any(ContractAcknowledgedEvent.class));
         verify(mockActivateContractUseCase, times(1)).execute(contract.getId());
     }

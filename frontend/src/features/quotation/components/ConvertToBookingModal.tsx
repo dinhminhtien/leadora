@@ -156,7 +156,7 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
       setSuccess({ bookingNo: bookingCode });
       setTimeout(() => onConverted(quote.id, bookingCode), 1400);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to convert quotation. Please try again.";
+      const msg = apiErrorMessage(err);
       setApiError(msg);
     }
   };

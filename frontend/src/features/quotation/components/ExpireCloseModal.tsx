@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/Badge";
 import type { Quotation } from "@/services/quotation_service";
 import { useCloseQuotation } from "@/features/quotation/hooks/use_quotations";
 import { Portal } from "@/components/ui/Portal";
+import { apiErrorMessage } from "@/services/api_error";
 
 
 interface ExpireCloseModalProps {
@@ -112,7 +113,7 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
       setSuccess(true);
       setTimeout(() => onClosed(quote.id, finalReason), 1200);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to close quotation. Please try again.";
+      const msg = apiErrorMessage(err);
       setApiError(msg);
     }
   };

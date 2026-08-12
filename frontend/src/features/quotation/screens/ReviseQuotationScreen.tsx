@@ -34,6 +34,7 @@ import { useAuthStore } from "@/stores/auth_store";
 import { useQuery } from "@tanstack/react-query";
 import { productService } from "@/services/product_service";
 import { AllotmentHint } from "@/features/room_availability/components/AllotmentHint";
+import { apiErrorMessage } from "@/services/api_error";
 
 const roomLineSchema = z.object({
   // Allotment is keyed on the product, so a line carrying only a name cannot be checked
@@ -263,7 +264,7 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
       setSubmitSuccess(true);
       setTimeout(() => router.push(ROUTE_PATHS.quotations), 1200);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to revise quotation. Please try again.";
+      const msg = apiErrorMessage(err);
       setSubmitError(msg);
     }
   };
