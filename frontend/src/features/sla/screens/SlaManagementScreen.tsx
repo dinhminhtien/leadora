@@ -889,7 +889,8 @@ function exportCsv(rows: SlaActivityBreakdown[], from: string, to: string) {
   const header = "Activity Type,Activity Label,Total,Resolved,Breached,Warning,Within SLA,Breach Rate %,Avg Processing Hours";
   const lines = rows.map((r) =>
     [r.activityType, r.activityLabel, r.total, r.resolved, r.breached, r.warning, r.withinSla,
-     r.breachRatePct.toFixed(1), r.avgProcessingHours.toFixed(1)].join(",")
+     // Blank, not "0.0": an activity with nothing resolved has no processing time to report.
+     r.breachRatePct?.toFixed(1) ?? "", r.avgProcessingHours?.toFixed(1) ?? ""].join(",")
   );
   const csv = [header, ...lines].join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
@@ -948,7 +949,8 @@ function ReportTab() {
     );
   }
 
-  const fmt1 = (n: number) => n.toFixed(1);
+  // Null means the figure could not be established — an em dash, never a confident 0.0.
+  const fmt1 = (n?: number | null) => (n == null ? "—" : n.toFixed(1));
   const noData = !isLoading && report?.totalTracked === 0;
 
   return (
@@ -1032,20 +1034,22 @@ function ReportTab() {
               label="Compliance Rate"
               value={`${fmt1(report.complianceRatePct)}%`}
               sub={`${report.withinSlaCount + report.resolvedCount} within / resolved`}
-              trend={report.complianceRatePct >= 80 ? "up" : "down"}
+              trend={report.complianceRatePct != null && report.complianceRatePct >= 80 ? "up" : "down"}
               color="bg-emerald-50 border-emerald-100"
             />
             <KpiCard
               label="Breach Rate"
               value={`${fmt1(report.breachRatePct)}%`}
               sub={`${report.breachedCount} breached`}
-              trend={report.breachRatePct > 20 ? "down" : "neutral"}
+              trend={report.breachRatePct != null && report.breachRatePct > 20 ? "down" : "neutral"}
               color="bg-red-50 border-red-100"
             />
             <KpiCard
               label="Avg Processing"
-              value={`${fmt1(report.avgProcessingHours)}h`}
-              sub={`${report.resolvedCount} resolved tasks`}
+              value={report.avgProcessingHours == null ? "—" : `${fmt1(report.avgProcessingHours)}h`}
+              sub={report.openAgeSamples
+                ? `${report.resolvedCount} resolved · ${report.openAgeSamples} still open ${fmt1(report.avgOpenAgeHours)}h`
+                : `${report.resolvedCount} resolved tasks`}
               color="bg-violet-50 border-violet-100"
             />
           </div>
@@ -1095,11 +1099,13 @@ function ReportTab() {
                           <td className="px-3 py-2.5 text-right text-amber-600 font-semibold">{row.warning}</td>
                           <td className="px-3 py-2.5 text-right text-slate-500">{row.withinSla}</td>
                           <td className="px-3 py-2.5 text-right">
-                            <span className={`font-bold ${row.breachRatePct > 20 ? "text-red-600" : row.breachRatePct > 10 ? "text-amber-600" : "text-emerald-600"}`}>
+                            <span className={`font-bold ${(row.breachRatePct ?? 0) > 20 ? "text-red-600" : (row.breachRatePct ?? 0) > 10 ? "text-amber-600" : "text-emerald-600"}`}>
                               {fmt1(row.breachRatePct)}%
                             </span>
                           </td>
-                          <td className="px-3 py-2.5 text-right text-slate-500">{fmt1(row.avgProcessingHours)}h</td>
+                          <td className="px-3 py-2.5 text-right text-slate-500">
+                            {row.avgProcessingHours == null ? "—" : `${fmt1(row.avgProcessingHours)}h`}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

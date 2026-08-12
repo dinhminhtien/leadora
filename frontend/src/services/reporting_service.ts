@@ -353,15 +353,28 @@ export type TaskPerformanceReport = {
 export type SlaActivityBreakdown = {
   activityType: string;
   activityLabel: string;
+  /** Partitioned exactly by resolvedOnTime + resolvedLate + undetermined + openBreached + warning + withinSla. */
   total: number;
   resolved: number;
   resolvedOnTime: number;
+  resolvedLate?: number;
+  openBreached?: number;
+  undetermined?: number;
+  /** resolvedLate + openBreached. */
   breached: number;
   warning: number;
   withinSla: number;
-  breachRatePct: number;
-  complianceRatePct: number;
-  avgProcessingHours: number;
+  /** Denominator shared by both rates below: resolvedOnTime + breached. */
+  decided?: number;
+  /** Null when this activity type has nothing settled — unknown, not a clean sheet. */
+  breachRatePct?: number | null;
+  complianceRatePct?: number | null;
+  /** Null when nothing of this type has been resolved with usable timestamps. */
+  avgProcessingHours?: number | null;
+  processingSamples?: number;
+  /** Null when nothing of this type is still running. */
+  avgOpenAgeHours?: number | null;
+  openAgeSamples?: number;
 };
 
 export type SlaComplianceReport = {
@@ -382,10 +395,20 @@ export type SlaComplianceReport = {
   withinSlaCount: number;
   /** Still running, so they have no outcome yet and are excluded from the compliance rate. */
   inFlightCount: number;
-  breachRatePct: number;
-  complianceRatePct: number;
-  resolutionRatePct: number;
-  avgProcessingHours: number;
+  /** Records whose deadline question is settled — the denominator of BOTH rates below. */
+  decidedCount?: number;
+  /** breached / decided. The exact complement of complianceRatePct. Null when nothing settled. */
+  breachRatePct?: number | null;
+  complianceRatePct?: number | null;
+  resolutionRatePct?: number | null;
+  /** Average hours to resolve, over finished records only. Null when none finished. */
+  avgProcessingHours?: number | null;
+  processingSamples?: number;
+  /** How long the still-running records have been open. Null when none are. */
+  avgOpenAgeHours?: number | null;
+  openAgeSamples?: number;
+  /** What this period could not establish, in words. Rendered verbatim. */
+  dataGaps?: string[];
   byActivityType: SlaActivityBreakdown[];
 };
 

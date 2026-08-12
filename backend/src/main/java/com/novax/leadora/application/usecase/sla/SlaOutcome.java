@@ -39,4 +39,15 @@ public enum SlaOutcome {
     public boolean isBreach() {
         return this == RESOLVED_LATE || this == OPEN_BREACHED;
     }
+
+    /**
+     * Still running: the clock started and has not stopped.
+     *
+     * <p>Deliberately excludes {@link #UNDETERMINED}, which <em>did</em> stop — it simply left no
+     * timestamp saying when. Lumping it in here would age it against {@code now()} forever and
+     * quietly inflate the open-queue figures with work that is actually done.
+     */
+    public boolean isUnresolved() {
+        return this == OPEN_BREACHED || this == WARNING || this == WITHIN_SLA;
+    }
 }

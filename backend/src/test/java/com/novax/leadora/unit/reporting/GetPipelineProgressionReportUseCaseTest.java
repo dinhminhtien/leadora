@@ -192,6 +192,10 @@ class GetPipelineProgressionReportUseCaseTest {
         assertThat(stage(report, DealPipelineStage.INQUIRY).getCompletedLegs()).isEqualTo(4);
         assertThat(report.getBottleneckStage()).isNull();
         assertThat(report.getBottleneckBasis()).isNull();
+        // The banner vanishing is not enough — every other path that withholds the bottleneck says
+        // why, and an unexplained absence is the silence this list exists to remove.
+        assertThat(report.getDataGaps())
+                .anySatisfy(gap -> assertThat(gap).contains("no stage stands out as a bottleneck"));
     }
 
     @Test

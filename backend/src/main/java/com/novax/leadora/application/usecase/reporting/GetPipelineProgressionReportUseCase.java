@@ -189,7 +189,7 @@ public class GetPipelineProgressionReportUseCase {
                 .bottleneckBasis(bottleneckBasis(bottleneck, bottleneckDays, bottleneckLegs))
                 .historyMeasured(dwell.measured)
                 .dataGaps(dataGaps(totalDeals, decided, closedHereOpenedEarlier, unstaged,
-                        dwell, stages))
+                        dwell, stages, bottleneck))
                 .stages(stages)
                 .build();
     }
@@ -217,7 +217,8 @@ public class GetPipelineProgressionReportUseCase {
      * nothing, or stay silent about a population it cannot see.
      */
     private List<String> dataGaps(long totalDeals, long decided, long closedHereOpenedEarlier,
-                                  long unstaged, StageDwell dwell, List<StageRow> stages) {
+                                  long unstaged, StageDwell dwell, List<StageRow> stages,
+                                  String bottleneck) {
         List<String> gaps = new ArrayList<>();
 
         if (totalDeals == 0) {
@@ -246,6 +247,16 @@ public class GetPipelineProgressionReportUseCase {
                     + " deals in this cohort — the rest have no recorded stage changes, so they are "
                     + "counted in the totals but contribute nothing to the timings or the "
                     + "bottleneck.");
+        }
+
+        // Independent of history coverage: crossings exist, but every one of them rounds to nothing,
+        // so the ranking was suppressed rather than won. Every other path that withholds the
+        // bottleneck explains itself, and a banner that simply vanishes is the silence this list
+        // exists to remove.
+        if (bottleneck == null && dwell.measured && dwell.hasAnyCompletedLegIn(OPEN_STAGES)) {
+            gaps.add("Every recorded stage crossing in this cohort completed in under half a day, "
+                    + "so no stage stands out as a bottleneck. Transitions logged in bulk — a "
+                    + "migration or a seeded dataset — look like this.");
         }
         if (unstaged > 0) {
             gaps.add(unstaged + " deal(s) carry no pipeline stage and are listed separately rather "
@@ -431,6 +442,16 @@ public class GetPipelineProgressionReportUseCase {
         private Double average(Map<DealPipelineStage, Leg> book, DealPipelineStage stage) {
             Leg leg = book.get(stage);
             return leg == null || leg.count == 0 ? null : leg.days / leg.count;
+        }
+
+        /** True when at least one of the given stages was crossed and finished. */
+        boolean hasAnyCompletedLegIn(Set<DealPipelineStage> stages) {
+            for (Map.Entry<DealPipelineStage, Leg> entry : completed.entrySet()) {
+                if (stages.contains(entry.getKey()) && entry.getValue().count > 0) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         long completedLegsFor(DealPipelineStage stage) {

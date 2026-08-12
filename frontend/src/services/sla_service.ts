@@ -38,8 +38,12 @@ export type SlaActivityBreakdown = {
   breached: number;
   warning: number;
   withinSla: number;
-  breachRatePct: number;
-  avgProcessingHours: number;
+  breachRatePct?: number | null;
+  /** Null when nothing of this type has been resolved — unknown, not zero hours. */
+  avgProcessingHours?: number | null;
+  /** How long the still-running records of this type have been open. Null when none are. */
+  avgOpenAgeHours?: number | null;
+  openAgeSamples?: number;
 };
 
 export type SlaReport = {
@@ -50,10 +54,15 @@ export type SlaReport = {
   breachedCount: number;
   warningCount: number;
   withinSlaCount: number;
-  breachRatePct: number;
-  complianceRatePct: number;
-  resolutionRatePct: number;
-  avgProcessingHours: number;
+  /** breached / decided — the exact complement of complianceRatePct. Null when nothing settled. */
+  breachRatePct?: number | null;
+  complianceRatePct?: number | null;
+  resolutionRatePct?: number | null;
+  /** Average hours to resolve, over finished records only. Null when none finished. */
+  avgProcessingHours?: number | null;
+  /** How long the still-running records have been open. Null when none are. */
+  avgOpenAgeHours?: number | null;
+  openAgeSamples?: number;
   byActivityType: SlaActivityBreakdown[];
 };
 

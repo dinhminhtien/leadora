@@ -203,19 +203,34 @@ class ReportResponseCacheRoundTripTest {
                 .dateFrom(LocalDate.of(2026, 7, 1))
                 .dateTo(LocalDate.of(2026, 7, 31))
                 .totalTracked(3).resolvedCount(1).resolvedLateCount(1)
-                .breachedCount(1).inFlightCount(2)
-                .breachRatePct(33.33).complianceRatePct(0.0)
+                .breachedCount(1).inFlightCount(2).decidedCount(1)
+                .breachRatePct(100.0).complianceRatePct(0.0)
+                .avgProcessingHours(12.5).processingSamples(1)
+                .avgOpenAgeHours(455.0).openAgeSamples(2)
+                .dataGaps(List.of("2 record(s) are still running and sit outside both rates."))
                 .byActivityType(List.of(SlaReportResponse.ActivityBreakdown.builder()
                         .activityType("LEAD_RESPONSE").activityLabel("Lead Response")
-                        .total(3).breached(1).breachRatePct(33.33).build()))
+                        .total(3).resolvedLate(1).openBreached(0).undetermined(0)
+                        .breached(1).decided(1).breachRatePct(100.0)
+                        .avgProcessingHours(12.5).processingSamples(1)
+                        .avgOpenAgeHours(455.0).openAgeSamples(2).build()))
                 .build();
 
         SlaReportResponse restored = roundTrip(original, SlaReportResponse.class);
 
         assertThat(restored.getDateFrom()).isEqualTo(LocalDate.of(2026, 7, 1));
         assertThat(restored.getBreachedCount()).isEqualTo(1);
+        assertThat(restored.getDecidedCount()).isEqualTo(1);
+        assertThat(restored.getAvgProcessingHours()).isEqualTo(12.5);
+        assertThat(restored.getAvgOpenAgeHours()).isEqualTo(455.0);
+        assertThat(restored.getDataGaps()).hasSize(1);
         assertThat(restored.getByActivityType()).singleElement()
-                .satisfies(row -> assertThat(row.getActivityLabel()).isEqualTo("Lead Response"));
+                .satisfies(row -> {
+                    assertThat(row.getActivityLabel()).isEqualTo("Lead Response");
+                    assertThat(row.getResolvedLate()).isEqualTo(1);
+                    assertThat(row.getDecided()).isEqualTo(1);
+                    assertThat(row.getAvgOpenAgeHours()).isEqualTo(455.0);
+                });
     }
 
     @Test

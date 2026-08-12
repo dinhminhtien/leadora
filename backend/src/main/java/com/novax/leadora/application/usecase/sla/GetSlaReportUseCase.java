@@ -58,6 +58,9 @@ public class GetSlaReportUseCase {
             Map.entry("ROOM_REQUEST_RAISED", "Room Request Raised"),
             Map.entry("ROOM_REQUEST_ANSWERED", "Room Request Answered"));
 
+    /** A still-open queue worth naming in {@code dataGaps}, rather than one stray record. */
+    private static final int OPEN_QUEUE_DISCLOSURE_THRESHOLD = 3;
+
     private final SlaTrackingRepository slaTrackingRepository;
     private final CurrentUserProvider currentUserProvider;
     private final SystemAuditLogService systemAuditLogService;
@@ -96,9 +99,14 @@ public class GetSlaReportUseCase {
 
             SlaOutcome outcome = SlaOutcomeClassifier.classify(status, warningAt, deadlineAt, resolvedAt, now);
             Double processingHours = processingHours(startedAt, resolvedAt);
+            // Only the still-running records age against now(). UNDETERMINED also lacks a
+            // resolvedAt, but it finished — ageing it here would grow the queue for ever with work
+            // that is already done.
+            Double openHours = outcome.isUnresolved() ? hoursBetween(startedAt, now) : null;
 
-            overall.add(outcome, processingHours);
-            byActivity.computeIfAbsent(activity, key -> new Tally()).add(outcome, processingHours);
+            overall.add(outcome, processingHours, openHours);
+            byActivity.computeIfAbsent(activity, key -> new Tally())
+                    .add(outcome, processingHours, openHours);
         }
 
         auditAccess(range, activityType, entityType, rows.size());
@@ -112,12 +120,20 @@ public class GetSlaReportUseCase {
                     .total(tally.total())
                     .resolved(tally.resolved())
                     .resolvedOnTime(tally.resolvedOnTime)
+                    .resolvedLate(tally.resolvedLate)
+                    .openBreached(tally.openBreached)
+                    .undetermined(tally.undetermined)
                     .breached(tally.breached())
                     .warning(tally.warning)
                     .withinSla(tally.withinSla)
-                    .breachRatePct(ReportingUtils.calculateRate(tally.breached(), tally.total()))
+                    .decided(tally.decided())
+                    // Same denominator as the compliance rate beside it, so the two complement.
+                    .breachRatePct(rateOrNull(tally.breached(), tally.decided()))
                     .complianceRatePct(tally.complianceRatePct())
                     .avgProcessingHours(tally.avgProcessingHours())
+                    .processingSamples(tally.processingSamples)
+                    .avgOpenAgeHours(tally.avgOpenAgeHours())
+                    .openAgeSamples(tally.openAgeSamples)
                     .build());
         }
 
@@ -134,20 +150,111 @@ public class GetSlaReportUseCase {
                 .warningCount(overall.warning)
                 .withinSlaCount(overall.withinSla)
                 .inFlightCount(overall.inFlight())
-                .breachRatePct(ReportingUtils.calculateRate(overall.breached(), overall.total()))
+                .decidedCount(overall.decided())
+                .breachRatePct(rateOrNull(overall.breached(), overall.decided()))
                 .complianceRatePct(overall.complianceRatePct())
-                .resolutionRatePct(ReportingUtils.calculateRate(
+                .resolutionRatePct(rateOrNull(
                         overall.resolved(), overall.resolved() + overall.openBreached))
                 .avgProcessingHours(overall.avgProcessingHours())
+                .processingSamples(overall.processingSamples)
+                .avgOpenAgeHours(overall.avgOpenAgeHours())
+                .openAgeSamples(overall.openAgeSamples)
+                .dataGaps(dataGaps(overall, breakdown))
                 .byActivityType(breakdown)
                 .build();
     }
 
+    /**
+     * What this period could not establish, in the words a reader needs to discount a figure by.
+     *
+     * <p>Each entry marks a place the report would otherwise publish a confident number over almost
+     * nothing, or stay quiet about a population its headline cannot see.
+     */
+    private static List<String> dataGaps(Tally overall, List<ActivityBreakdown> breakdown) {
+        List<String> gaps = new ArrayList<>();
+
+        if (overall.total() == 0) {
+            gaps.add("No SLA record started in this period, so the figures are empty rather than "
+                    + "zero.");
+            return gaps;
+        }
+        if (overall.decided() == 0) {
+            gaps.add("None of the " + overall.total() + " SLA records started here has reached an "
+                    + "outcome yet, so neither the compliance rate nor the breach rate can be "
+                    + "established.");
+        }
+        if (overall.undetermined > 0) {
+            gaps.add(overall.undetermined + " record(s) are marked resolved but carry no resolution "
+                    + "time, so whether they met their deadline cannot be established. They are "
+                    + "held out of both rates rather than assumed compliant.");
+        }
+        // Only the in-flight records are outside the rates. An open breach is also still running,
+        // but its deadline has already passed, so it is counted — as a breach, in the numerator and
+        // the denominator both. Lumping the two together here would tell the reader that the very
+        // records driving the breach rate up were excluded from it.
+        if (overall.inFlight() > 0) {
+            gaps.add(overall.inFlight() + " record(s) are still inside their deadline and so sit "
+                    + "outside both rates; one started near the end of the period may yet land in "
+                    + "either column.");
+        }
+        if (overall.openBreached > 0) {
+            gaps.add(overall.openBreached + " record(s) are past their deadline and still unresolved. "
+                    + "They already count as breaches — the deadline was missed whether or not "
+                    + "anyone closes them later.");
+        }
+        // Compared against the records whose outcome IS established, not against every finished
+        // record: the undetermined ones have no resolution time by definition, so measuring against
+        // them would restate the line above as though it were a second, separate problem.
+        int timeable = overall.resolvedOnTime + overall.resolvedLate;
+        if (overall.processingSamples < timeable) {
+            gaps.add("Processing time covers " + overall.processingSamples + " of " + timeable
+                    + " record(s) whose deadline outcome is known — the rest are missing a usable "
+                    + "start or resolution timestamp.");
+        }
+
+        // The queue a resolve-time average cannot show: work that has been open far longer than the
+        // same activity normally takes to finish, and so never enters that average at all.
+        for (ActivityBreakdown row : breakdown) {
+            Double open = row.getAvgOpenAgeHours();
+            Double resolve = row.getAvgProcessingHours();
+            if (open == null || row.getOpenAgeSamples() < OPEN_QUEUE_DISCLOSURE_THRESHOLD) {
+                continue;
+            }
+            if (resolve == null) {
+                gaps.add(row.getOpenAgeSamples() + " " + row.getActivityLabel() + " record(s) are "
+                        + "still open, averaging " + ReportingUtils.round2(open) + "h, and none has "
+                        + "been resolved — there is no processing time to compare them against.");
+            } else if (open > resolve) {
+                gaps.add(row.getOpenAgeSamples() + " " + row.getActivityLabel() + " record(s) have "
+                        + "been open " + ReportingUtils.round2(open) + "h on average, longer than "
+                        + "the " + ReportingUtils.round2(resolve) + "h this activity usually takes "
+                        + "to resolve — a backlog the processing time does not show.");
+            }
+        }
+        return gaps;
+    }
+
+    /**
+     * A rate, or null when the denominator holds nothing that could establish one.
+     *
+     * <p>{@code ReportingUtils.calculateRate} answers 0.0 for an empty denominator, which is the
+     * right default for a count but the wrong one for a compliance figure: it renders as a full
+     * red meter reading "0% compliant" for a period in which nothing has yet been decided.
+     */
+    private static Double rateOrNull(long part, long whole) {
+        return whole <= 0 ? null : ReportingUtils.calculateRate(part, whole);
+    }
+
     private static Double processingHours(OffsetDateTime startedAt, OffsetDateTime resolvedAt) {
-        if (startedAt == null || resolvedAt == null) {
+        return hoursBetween(startedAt, resolvedAt);
+    }
+
+    /** Null when either end is missing or the pair runs backwards — an unusable measurement. */
+    private static Double hoursBetween(OffsetDateTime from, OffsetDateTime to) {
+        if (from == null || to == null) {
             return null;
         }
-        double hours = Duration.between(startedAt, resolvedAt).toMinutes() / 60.0;
+        double hours = Duration.between(from, to).toMinutes() / 60.0;
         return hours >= 0 ? hours : null;
     }
 
@@ -178,10 +285,16 @@ public class GetSlaReportUseCase {
         int warning;
         int withinSla;
         int undetermined;
+
+        // Two separate books. A finished record contributes a duration; a running one contributes
+        // only how long it has waited so far. Adding them together produces a number that tracks
+        // the size of the backlog rather than how long the work takes.
         double processingHours;
         int processingSamples;
+        double openAgeHours;
+        int openAgeSamples;
 
-        void add(SlaOutcome outcome, Double hours) {
+        void add(SlaOutcome outcome, Double hours, Double openHours) {
             switch (outcome) {
                 case RESOLVED_ON_TIME -> resolvedOnTime++;
                 case RESOLVED_LATE -> resolvedLate++;
@@ -193,6 +306,10 @@ public class GetSlaReportUseCase {
             if (hours != null) {
                 processingHours += hours;
                 processingSamples++;
+            }
+            if (openHours != null) {
+                openAgeHours += openHours;
+                openAgeSamples++;
             }
         }
 
@@ -224,12 +341,18 @@ public class GetSlaReportUseCase {
          * compliant credits the team for deadlines that have not arrived yet, which moves the
          * headline number with the size of the open queue rather than with performance.
          */
-        double complianceRatePct() {
-            return ReportingUtils.calculateRate(resolvedOnTime, decided());
+        Double complianceRatePct() {
+            return rateOrNull(resolvedOnTime, decided());
         }
 
-        double avgProcessingHours() {
-            return processingSamples == 0 ? 0 : ReportingUtils.round2(processingHours / processingSamples);
+        /** Null rather than zero: nothing resolved means unknown, not instant. */
+        Double avgProcessingHours() {
+            return processingSamples == 0 ? null : ReportingUtils.round2(processingHours / processingSamples);
+        }
+
+        /** How long the still-running records have been waiting. Null when none are. */
+        Double avgOpenAgeHours() {
+            return openAgeSamples == 0 ? null : ReportingUtils.round2(openAgeHours / openAgeSamples);
         }
     }
 }
