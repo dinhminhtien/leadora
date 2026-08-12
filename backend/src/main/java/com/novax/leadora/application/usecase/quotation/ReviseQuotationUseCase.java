@@ -9,6 +9,7 @@ import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
+import com.novax.leadora.infrastructure.persistence.entity.ContractEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
@@ -51,6 +52,7 @@ public class ReviseQuotationUseCase {
     private final SystemAuditLogService systemAuditLogService;
     private final ActivityLogPublisher activityLogPublisher;
     private final ObjectMapper objectMapper;
+    private final com.novax.leadora.infrastructure.persistence.repository.ContractRepository contractRepository;
 
     @Transactional
     public QuotationResponse execute(UUID parentId, ReviseQuotationRequest request) {
@@ -141,6 +143,25 @@ public class ReviseQuotationUseCase {
         // new version exists, instead of leaving both live simultaneously.
         parent.setStatus(QuotationStatus.SUPERSEDED);
         quotationRepository.save(parent);
+
+        // Cancel previous contracts so they cannot be signed
+        List<ContractEntity> parentContracts = contractRepository.findByQuotation_QuotationId(parentId);
+        for (ContractEntity contract : parentContracts) {
+            if (contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.DRAFT || 
+                contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.SENT || 
+                contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACKNOWLEDGED) {
+                contract.setStatus(com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.CANCELLED);
+                contractRepository.save(contract);
+                
+                activityLogPublisher.publish(
+                        ActivityLogType.CONTRACT_CANCELLED,
+                        EntityType.CONTRACT,
+                        contract.getId(),
+                        "Contract " + contract.getContractCode() + " cancelled because the quotation was revised",
+                        null
+                );
+            }
+        }
 
         // BR-37/BR-22: record the price change in the audit trail — the parent row
         // itself is preserved (SUPERSEDED, not deleted/overwritten), but without this

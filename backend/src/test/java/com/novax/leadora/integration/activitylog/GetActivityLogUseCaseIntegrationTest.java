@@ -21,7 +21,6 @@ class GetActivityLogUseCaseIntegrationTest {
     @Autowired
     private GetActivityLogUseCase getActivityLogUseCase;
 
-
     @Test
     void testEffectiveViewQuery() {
         GetActivityLogUseCase.FilterQuery query = GetActivityLogUseCase.FilterQuery.builder()

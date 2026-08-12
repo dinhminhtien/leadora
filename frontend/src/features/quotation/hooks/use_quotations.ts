@@ -135,3 +135,25 @@ export function useReviseQuotation() {
  *
  * @see {@link file://../components/DealSearchPicker.tsx}
  */
+export function usePublicQuotation(id: string, token: string) {
+  return useQuery({
+    queryKey: ["public-quotation", id, token],
+    queryFn: () => quotationService.publicGetById(id, token),
+    select: (res) => res.data,
+    enabled: !!id && !!token,
+  });
+}
+
+export function usePublicRequestQuotationOtp() {
+  return useMutation({
+    mutationFn: ({ id, token }: { id: string; token: string }) =>
+      quotationService.publicRequestOtp(id, token),
+  });
+}
+
+export function usePublicConfirmQuotationOtp() {
+  return useMutation({
+    mutationFn: ({ id, token, otpCode }: { id: string; token: string; otpCode: string }) =>
+      quotationService.publicConfirmOtp(id, token, otpCode),
+  });
+}

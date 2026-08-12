@@ -6,6 +6,7 @@ export type ReviewStatus = "PENDING" | "REVIEWED" | "DISMISSED";
 
 export interface CustomerFeedback {
   feedbackId: string;
+  customerId?: string;
   customerName: string;
   bookingCode: string;
   salesStaffName: string;

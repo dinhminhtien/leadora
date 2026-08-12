@@ -40,6 +40,7 @@ public class TrackCustomerResponseUseCase {
     private final SystemAuditLogService systemAuditLogService;
     private final ActivityLogPublisher activityLogPublisher;
     private final ObjectMapper objectMapper;
+    private final com.novax.leadora.application.usecase.contract.GenerateContractUseCase generateContractUseCase;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, TrackCustomerResponseRequest request) {
@@ -81,6 +82,11 @@ public class TrackCustomerResponseUseCase {
         QuotationEntity saved = quotationRepository.save(quotation);
 
         UserEntity actor = currentUserProvider.resolve(null);
+
+        if (newStatus == QuotationStatus.ACCEPTED) {
+            generateContractUseCase.execute(saved, actor);
+        }
+
         String actorRole = actor.getRole() != null ? actor.getRole().getRoleName() : null;
 
         // POST-2 + BR-37: Log customer response for audit

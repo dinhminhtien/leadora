@@ -50,6 +50,7 @@ export type NavItem = {
   shortcut?: string;
   /** Which unread/pending counter (if any) badges this item. */
   badge?: "notifications";
+  badgeText?: string;
 };
 
 export type NavGroup = {
@@ -107,6 +108,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Pending Approvals",
         icon: ShieldCheck,
         hint: "Discounts awaiting your decision",
+      },
+      {
+        href: ROUTE_PATHS.contracts,
+        label: "Contracts",
+        icon: FileText,
+        hint: "Legal commercial agreements",
       },
     ],
   },
@@ -209,6 +216,13 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Feedback",
         icon: MessageSquareText,
         hint: "Guest reviews",
+      },
+      {
+        href: ROUTE_PATHS.sentimentAnalytics,
+        label: "GX Insights",
+        icon: ChartNoAxesCombined,
+        hint: "ABSA guest experience analytics",
+        badgeText: "AI",
       },
       {
         href: ROUTE_PATHS.notifications,

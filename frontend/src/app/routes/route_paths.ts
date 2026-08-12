@@ -9,6 +9,7 @@ export const ROUTE_PATHS = {
   dashboardAdmin: "/dashboard/admin",
   identityAccess: "/identity-access",
   customerFeedback: "/customer-feedback",
+  sentimentAnalytics: "/analytics/sentiment",
   leads: "/leads",
   // A lead opens in the drawer over the list — there is no full-page detail any
   // more. `/leads/{id}` still redirects here for links already in the wild, but
@@ -43,4 +44,7 @@ export const ROUTE_PATHS = {
   aiAssistant: "/ai-assistant",
   profile: "/profile",
   activityLogs: "/activity-logs",
+  contracts: "/dashboard/contracts",
+  contractDetail: (id: string) => `/dashboard/contracts/${id}`,
+  publicContractPortal: (id: string, token: string) => `/portal/contracts/${id}?token=${token}`,
 } as const;

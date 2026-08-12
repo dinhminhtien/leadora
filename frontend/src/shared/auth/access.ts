@@ -109,6 +109,7 @@ const ROUTE_PERMISSION: Record<string, string> = {
   [ROUTE_PATHS.deals]: "DEAL_VIEW",
   [ROUTE_PATHS.pendingApprovals]: "QUOTATION_APPROVE",
   [ROUTE_PATHS.quotations]: "QUOTATION_VIEW",
+  [ROUTE_PATHS.contracts]: "QUOTATION_VIEW",
   [ROUTE_PATHS.interactionTimeline]: "INTERACTION_VIEW",
   [ROUTE_PATHS.bookingConfirmation]: "BOOKING_VIEW",
   [ROUTE_PATHS.roomRequests]: "ROOM_REQUEST_VIEW",
@@ -121,6 +122,7 @@ const ROUTE_PERMISSION: Record<string, string> = {
   [ROUTE_PATHS.reporting]: "REPORTING_VIEW",
   [ROUTE_PATHS.sla]: "SLA_VIEW",
   [ROUTE_PATHS.customerFeedback]: "FEEDBACK_VIEW",
+  [ROUTE_PATHS.sentimentAnalytics]: "FEEDBACK_VIEW",
   [ROUTE_PATHS.aiAssistant]: "CHAT_VIEW",
 };
 

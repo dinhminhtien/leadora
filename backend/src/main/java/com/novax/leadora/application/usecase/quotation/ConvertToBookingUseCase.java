@@ -16,7 +16,8 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingRepository
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.common.exception.BusinessException;
-
+import com.novax.leadora.infrastructure.persistence.entity.ContractEntity;
+import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -39,6 +40,9 @@ public class ConvertToBookingUseCase {
         private final QuotationAccessPolicy quotationAccessPolicy;
         private final QuotationAvailabilityChecker availabilityChecker;
         private final StartSlaTrackingUseCase startSlaTrackingUseCase;
+        private final com.novax.leadora.infrastructure.persistence.repository.ContractRepository contractRepository;
+        private final com.novax.leadora.application.usecase.contract.ActivateContractUseCase activateContractUseCase;
+        private final DealWorkflowSyncService dealWorkflowSyncService;
 
         @Transactional
         public BookingResponse execute(UUID quotationId, ConvertToBookingRequest request) {
@@ -47,12 +51,43 @@ public class ConvertToBookingUseCase {
 
                 quotationAccessPolicy.assertCanView(quotationAccessPolicy.currentUser(), quotation);
 
-                // PRE-1: Only ACCEPTED quotations can be converted
-                if (quotation.getStatus() != QuotationStatus.ACCEPTED) {
+                // PRE-1: Only ACCEPTED or ACCEPTED_BY_CUSTOMER quotations can be converted
+                if (quotation.getStatus() != QuotationStatus.ACCEPTED && quotation.getStatus() != QuotationStatus.ACCEPTED_BY_CUSTOMER) {
                         throw new BusinessException("QUOTATION_INVALID_STATUS",
-                                        "Only ACCEPTED quotations can be converted to a booking. Current status: "
-                                                        + quotation.getStatus().name(),
+                                        "Only ACCEPTED or ACCEPTED_BY_CUSTOMER quotations can be converted to a booking. Current status: "
+                                                         + quotation.getStatus().name(),
                                         HttpStatus.CONFLICT);
+                }
+
+                boolean isAcceptedByCustomer = quotation.getStatus() == QuotationStatus.ACCEPTED_BY_CUSTOMER;
+                
+                // Check contract status
+                List<ContractEntity> contracts = 
+                        contractRepository.findByQuotation_QuotationId(quotationId);
+                
+                if (contracts.isEmpty()) {
+                        throw new BusinessException("CONTRACT_REQUIRED",
+                                        "A contract must be generated and signed before converting to a booking.",
+                                        HttpStatus.BAD_REQUEST);
+                }
+                
+                // Get the latest version contract
+                ContractEntity contract = contracts.stream()
+                        .max(java.util.Comparator.comparingInt(c->c.getVersion()))
+                        .get();
+
+                if (contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.DRAFT ||
+                    contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.SENT) {
+                        throw new BusinessException("CONTRACT_NOT_ACKNOWLEDGED",
+                                        "The contract has not been acknowledged by the customer. Please verify OTP first.",
+                                        HttpStatus.BAD_REQUEST);
+                }
+
+                if (contract.getStatus() != com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACKNOWLEDGED &&
+                    contract.getStatus() != com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACTIVE) {
+                        throw new BusinessException("CONTRACT_INVALID_STATE",
+                                        "The contract is in an invalid state for booking: " + contract.getStatus(),
+                                        HttpStatus.BAD_REQUEST);
                 }
 
                 // BR-23: Resolve dates — request values take precedence, fall back to quotation
@@ -134,15 +169,33 @@ public class ConvertToBookingUseCase {
 
                 bookingDetailRepository.saveAll(bookingDetails);
 
-                // POST-1: Update quotation status to CONVERTED
-                quotation.setStatus(QuotationStatus.CONVERTED);
+                // POST-1: Update quotation status to CONVERTED or BOOKING_REQUEST
+                if (isAcceptedByCustomer) {
+                        quotation.setStatus(QuotationStatus.BOOKING_REQUEST);
+                } else {
+                        quotation.setStatus(QuotationStatus.CONVERTED);
+                }
                 quotationRepository.save(quotation);
+
+                // Activate the contract if it is ACKNOWLEDGED
+                if (contract != null && contract.getStatus() == com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus.ACKNOWLEDGED) {
+                        activateContractUseCase.execute(contract.getId());
+                }
 
                 // UC-17.2: start SLA tracking — non-fatal if no BOOKING_CONFIRM rule configured
                 try {
                         startSlaTrackingUseCase.execute("BOOKING_CONFIRM", "BOOKING", saved.getBookingId());
                 } catch (Exception e) {
                         log.warn("SLA tracking failed for booking {}: {}", saved.getBookingId(), e.getMessage());
+                }
+
+                // Sync deal pipeline stage
+                if (quotation.getDeal() != null) {
+                        try {
+                                dealWorkflowSyncService.syncPipelineStage(quotation.getDeal().getDealId());
+                        } catch (Exception e) {
+                                log.warn("Failed to sync deal stage for deal {}: {}", quotation.getDeal().getDealId(), e.getMessage());
+                        }
                 }
 
                 return BookingResponse.from(saved);
