@@ -19,15 +19,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.novax.leadora.common.security.OtpStore;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.http.HttpStatus;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -38,8 +37,7 @@ class QuotationOtpUseCaseTest {
 
     @Mock private QuotationRepository quotationRepository;
     @Mock private GetQuotationByTokenUseCase getQuotationByTokenUseCase;
-    @Mock private StringRedisTemplate redisTemplate;
-    @Mock private ValueOperations<String, String> valueOperations;
+    @Mock private OtpStore otpStore;
     @Mock private QuotationProperties quotationProperties;
     @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private QuotationOtpAuditRepository auditRepository;
@@ -55,7 +53,7 @@ class QuotationOtpUseCaseTest {
         requestQuotationOtpUseCase = new RequestQuotationOtpUseCase(
                 quotationRepository,
                 getQuotationByTokenUseCase,
-                redisTemplate,
+                otpStore,
                 quotationProperties,
                 eventPublisher
         );
@@ -63,7 +61,7 @@ class QuotationOtpUseCaseTest {
         confirmQuotationOtpUseCase = new ConfirmQuotationOtpUseCase(
                 quotationRepository,
                 getQuotationByTokenUseCase,
-                redisTemplate,
+                otpStore,
                 auditRepository,
                 customerAcceptQuotationUseCase,
                 generateContractUseCase,
@@ -90,13 +88,12 @@ class QuotationOtpUseCaseTest {
 
         String token = "secure-token";
         when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(quotationProperties.getOtpExpirySeconds()).thenReturn(900);
 
         requestQuotationOtpUseCase.execute(quotationId, token);
 
         verify(getQuotationByTokenUseCase, times(1)).validateToken(quotationId, token);
-        verify(valueOperations, times(1)).set(eq("quotation_otp:" + quotationId), anyString(), eq(900L), eq(TimeUnit.SECONDS));
+        verify(otpStore, times(1)).put(eq("quotation_otp:" + quotationId), anyString(), eq(Duration.ofSeconds(900)));
         verify(eventPublisher, times(1)).publishEvent(any(QuotationOtpRequestedEvent.class));
     }
 
@@ -117,8 +114,7 @@ class QuotationOtpUseCaseTest {
 
         String token = "secure-token";
         when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("quotation_otp:" + quotationId)).thenReturn(null);
+        when(otpStore.get("quotation_otp:" + quotationId)).thenReturn(null);
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 confirmQuotationOtpUseCase.execute(quotationId, token, "123456", "127.0.0.1", "Mozilla/5.0")
@@ -147,17 +143,16 @@ class QuotationOtpUseCaseTest {
 
         String token = "secure-token";
         when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("quotation_otp:" + quotationId)).thenReturn("123456");
-        when(valueOperations.increment("quotation_otp_fail:" + quotationId)).thenReturn(5L);
+        when(otpStore.get("quotation_otp:" + quotationId)).thenReturn("123456");
+        when(otpStore.increment(eq("quotation_otp_fail:" + quotationId), any(Duration.class))).thenReturn(5L);
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 confirmQuotationOtpUseCase.execute(quotationId, token, "incorrect_otp", "127.0.0.1", "Mozilla/5.0")
         );
 
         assertEquals("OTP_LOCKED", ex.getErrorCode());
-        verify(redisTemplate, times(1)).delete("quotation_otp:" + quotationId);
-        verify(redisTemplate, times(1)).delete("quotation_otp_fail:" + quotationId);
+        verify(otpStore, times(1)).delete("quotation_otp:" + quotationId);
+        verify(otpStore, times(1)).delete("quotation_otp_fail:" + quotationId);
         verify(auditRepository, times(1)).save(any(QuotationOtpAuditEntity.class));
         verify(getQuotationByTokenUseCase, times(1)).validateToken(quotationId, token);
     }
@@ -180,8 +175,7 @@ class QuotationOtpUseCaseTest {
         String token = "secure-token";
         ContractEntity dummyContract = ContractEntity.builder().build();
         when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("quotation_otp:" + quotationId)).thenReturn("123456");
+        when(otpStore.get("quotation_otp:" + quotationId)).thenReturn("123456");
 
         QuotationEntity acceptedQuotation = QuotationEntity.builder()
                 .quotationId(quotationId)
@@ -198,8 +192,8 @@ class QuotationOtpUseCaseTest {
 
         assertNotNull(result);
         assertEquals(QuotationStatus.RESERVATION_PENDING, result.getStatus());
-        verify(redisTemplate, times(1)).delete("quotation_otp:" + quotationId);
-        verify(redisTemplate, times(1)).delete("quotation_otp_fail:" + quotationId);
+        verify(otpStore, times(1)).delete("quotation_otp:" + quotationId);
+        verify(otpStore, times(1)).delete("quotation_otp_fail:" + quotationId);
         verify(customerAcceptQuotationUseCase, times(1)).execute(eq(quotationId), eq("127.0.0.1"), eq("Mozilla/5.0"));
         verify(auditRepository, times(1)).save(any(QuotationOtpAuditEntity.class));
         verify(getQuotationByTokenUseCase, times(1)).validateToken(quotationId, token);

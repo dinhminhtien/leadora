@@ -1,6 +1,7 @@
 package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.common.exception.BusinessException;
+import com.novax.leadora.common.security.OtpStore;
 import com.novax.leadora.config.QuotationProperties;
 import com.novax.leadora.application.event.QuotationOtpRequestedEvent;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
@@ -9,14 +10,13 @@ import com.novax.leadora.infrastructure.persistence.repository.QuotationReposito
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -25,12 +25,12 @@ public class RequestQuotationOtpUseCase {
 
     private final QuotationRepository quotationRepository;
     private final GetQuotationByTokenUseCase getQuotationByTokenUseCase;
-    private final StringRedisTemplate redisTemplate;
+    private final OtpStore otpStore;
     private final QuotationProperties quotationProperties;
     private final ApplicationEventPublisher eventPublisher;
 
     private static final SecureRandom secureRandom = new SecureRandom();
-    private static final String OTP_REDIS_PREFIX = "quotation_otp:";
+    private static final String OTP_KEY_PREFIX = "quotation_otp:";
 
     @Transactional(readOnly = true)
     public void execute(UUID quotationId, String token) {
@@ -58,17 +58,11 @@ public class RequestQuotationOtpUseCase {
         int code = 100000 + secureRandom.nextInt(900000);
         String otpCode = String.valueOf(code);
 
-        // 4. Save to Redis
-        String key = OTP_REDIS_PREFIX + quotationId.toString();
+        // 4. Store the code until it expires (Redis when reachable, this process otherwise)
+        String key = OTP_KEY_PREFIX + quotationId.toString();
         int expirySeconds = quotationProperties.getOtpExpirySeconds();
-        try {
-            redisTemplate.opsForValue().set(key, otpCode, expirySeconds, TimeUnit.SECONDS);
-            log.info("OTP generated and saved in Redis for quotation {}. TTL: {} seconds", quotationId, expirySeconds);
-        } catch (Exception e) {
-            log.error("Failed to connect to Redis for quotation OTP generation: {}", e.getMessage(), e);
-            throw new BusinessException("REDIS_CONNECTION_FAILED",
-                    "Unable to issue OTP. Please try again later.", HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+        otpStore.put(key, otpCode, Duration.ofSeconds(expirySeconds));
+        log.info("OTP issued for quotation {}. TTL: {} seconds", quotationId, expirySeconds);
 
         // 5. Publish event to send OTP email
         eventPublisher.publishEvent(new QuotationOtpRequestedEvent(quotation, otpCode, recipientEmail));

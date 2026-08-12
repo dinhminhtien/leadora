@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/Badge";
 import type { Quotation } from "@/services/quotation_service";
 import { usePendingApprovals, useProcessApproval } from "@/features/quotation/hooks/use_quotation_approval";
 import { useAuthStore } from "@/stores/auth_store";
+import { apiErrorMessage } from "@/services/api_error";
 
 type ApprovalHistory = {
   id: string;
@@ -427,7 +428,7 @@ export function PendingApprovalsScreen() {
         decision === "approved" ? "Approved" : decision === "rejected" ? "Rejected" : "Sent back for revision";
       setSuccessMsg(`${selectedQuote.quoteNo} — ${decisionBadge} successfully. Sales Staff has been notified.`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = apiErrorMessage(err);
       if (msg.includes("PENDING_APPROVAL") || msg.includes("already") || msg.includes("no longer")) {
         // E3: Already processed by another manager
         setE3Error(`Quotation ${selectedQuote.quoteNo} was already processed by another manager.`);

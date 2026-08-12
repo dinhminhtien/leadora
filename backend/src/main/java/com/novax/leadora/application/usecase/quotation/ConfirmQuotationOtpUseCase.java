@@ -10,17 +10,17 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus
 import com.novax.leadora.infrastructure.persistence.repository.ContractRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationOtpAuditRepository;
+import com.novax.leadora.common.security.OtpStore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Confirms OTP for quotation acceptance.
@@ -39,15 +39,16 @@ public class ConfirmQuotationOtpUseCase {
 
     private final QuotationRepository quotationRepository;
     private final GetQuotationByTokenUseCase getQuotationByTokenUseCase;
-    private final StringRedisTemplate redisTemplate;
+    private final OtpStore otpStore;
     private final QuotationOtpAuditRepository otpAuditRepository;
     private final CustomerAcceptQuotationUseCase customerAcceptQuotationUseCase;
     private final GenerateContractUseCase generateContractUseCase;
     private final ContractRepository contractRepository;
 
-    private static final String OTP_REDIS_PREFIX = "quotation_otp:";
-    private static final String FAIL_REDIS_PREFIX = "quotation_otp_fail:";
+    private static final String OTP_KEY_PREFIX = "quotation_otp:";
+    private static final String FAIL_KEY_PREFIX = "quotation_otp_fail:";
     private static final int MAX_ATTEMPTS = 5;
+    private static final Duration FAIL_COUNTER_TTL = Duration.ofMinutes(15);
 
     @Transactional
     public QuotationEntity execute(UUID quotationId, String token, String otpInput, String ipAddress, String userAgent) {
@@ -67,13 +68,13 @@ public class ConfirmQuotationOtpUseCase {
                     "Quotation cannot be confirmed in its current status: " + quotation.getStatus(), HttpStatus.BAD_REQUEST);
         }
 
-        String otpKey = OTP_REDIS_PREFIX + quotationId.toString();
-        String failKey = FAIL_REDIS_PREFIX + quotationId.toString();
+        String otpKey = OTP_KEY_PREFIX + quotationId.toString();
+        String failKey = FAIL_KEY_PREFIX + quotationId.toString();
 
         String registeredEmail = quotation.getCustomer() != null ? quotation.getCustomer().getEmail() : null;
 
-        // 3. Retrieve OTP from Redis
-        String cachedOtp = redisTemplate.opsForValue().get(otpKey);
+        // 3. Retrieve the issued OTP
+        String cachedOtp = otpStore.get(otpKey);
         if (cachedOtp == null) {
             // Record failed attempt
             recordAuditLog(quotationId, registeredEmail, ipAddress, false, previousStatus, previousStatus);
@@ -82,21 +83,20 @@ public class ConfirmQuotationOtpUseCase {
 
         // 4. Validate OTP and handle failure counts
         if (!cachedOtp.equals(otpInput)) {
-            Long currentFailures = redisTemplate.opsForValue().increment(failKey);
-            redisTemplate.expire(failKey, 15, TimeUnit.MINUTES);
+            long currentFailures = otpStore.increment(failKey, FAIL_COUNTER_TTL);
 
             // Record failed attempt
             recordAuditLog(quotationId, registeredEmail, ipAddress, false, previousStatus, previousStatus);
 
-            if (currentFailures != null && currentFailures >= MAX_ATTEMPTS) {
+            if (currentFailures >= MAX_ATTEMPTS) {
                 // Invalidate the OTP
-                redisTemplate.delete(otpKey);
-                redisTemplate.delete(failKey);
+                otpStore.delete(otpKey);
+                otpStore.delete(failKey);
                 log.warn("OTP locked for quotation {} due to {} failed attempts", quotationId, currentFailures);
                 throw new BusinessException("OTP_LOCKED", "Too many incorrect attempts. This code is now invalid. Please request a new verification code.", HttpStatus.BAD_REQUEST);
             }
 
-            int attemptsLeft = MAX_ATTEMPTS - (currentFailures != null ? currentFailures.intValue() : 0);
+            int attemptsLeft = MAX_ATTEMPTS - (int) currentFailures;
             throw new BusinessException("INVALID_OTP", "The verification code is incorrect. Attempts remaining: " + attemptsLeft, HttpStatus.BAD_REQUEST);
         }
 
@@ -112,9 +112,9 @@ public class ConfirmQuotationOtpUseCase {
         // Record successful attempt in OTP audit logs
         recordAuditLog(quotationId, registeredEmail, ipAddress, true, previousStatus, QuotationStatus.RESERVATION_PENDING.name());
 
-        // Clean up Redis
-        redisTemplate.delete(otpKey);
-        redisTemplate.delete(failKey);
+        // The code is single-use: discard it and the attempt counter
+        otpStore.delete(otpKey);
+        otpStore.delete(failKey);
 
         log.info("Quotation {} successfully transitioned to RESERVATION_PENDING by OTP validation.", quotationId);
 
