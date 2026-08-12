@@ -46,8 +46,6 @@ export function QuotationDetailDrawer({
   onConvertToBooking,
   showResendButton = false,
 }: QuotationDetailDrawerProps) {
-  if (!quote) return null;
-
   const { user } = useAuthStore();
   const approveMutation = useReservationApprove();
   const rejectMutation = useReservationReject();
@@ -57,6 +55,11 @@ export function QuotationDetailDrawer({
   const [rejectReasonCode, setRejectReasonCode] = useState("NO_ROOM_AVAILABLE");
   const [rejectNote, setRejectNote] = useState("");
   const [rejectErr, setRejectErr] = useState("");
+
+  // The closed drawer renders nothing, but the guard must sit *below* every hook:
+  // bailing out first made the hook count swing between 0 and 8 as `quote` toggled,
+  // which is what React reports as "Expected static flag was missing".
+  if (!quote) return null;
 
   const isReservationStaff =
     user?.roles?.includes("RESERVATION") ||

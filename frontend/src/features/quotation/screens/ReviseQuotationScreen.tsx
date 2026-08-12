@@ -33,6 +33,7 @@ import { useQuotationById, useReviseQuotation, useQuotations } from "@/features/
 import { useAuthStore } from "@/stores/auth_store";
 import { useQuery } from "@tanstack/react-query";
 import { productService } from "@/services/product_service";
+import { apiErrorMessage } from "@/services/api_error";
 
 const roomLineSchema = z.object({
   roomType: z.string().min(1, "Select a room type"),
@@ -257,7 +258,7 @@ export function ReviseQuotationScreen({ quotationId }: ReviseQuotationScreenProp
       setSubmitSuccess(true);
       setTimeout(() => router.push(ROUTE_PATHS.quotations), 1200);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to revise quotation. Please try again.";
+      const msg = apiErrorMessage(err);
       setSubmitError(msg);
     }
   };
