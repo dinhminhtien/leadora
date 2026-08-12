@@ -31,6 +31,7 @@ public class GetAspectDeepDiveFeedbackUseCase {
     public Page<FeedbackResponse> execute(
             String aspect,
             String sentiment,
+            String salesStaffName,
             OffsetDateTime startDate,
             OffsetDateTime endDate,
             int page,
@@ -63,6 +64,11 @@ public class GetAspectDeepDiveFeedbackUseCase {
             if (StringUtils.hasText(aspect) && StringUtils.hasText(sentiment)) {
                 String columnName = mapAspectToColumnName(aspect);
                 predicates.add(cb.equal(root.get(columnName), sentiment));
+            }
+
+            // 5. Sales Staff Name Filter
+            if (StringUtils.hasText(salesStaffName)) {
+                predicates.add(cb.equal(root.get("salesStaff").get("fullName"), salesStaffName));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));

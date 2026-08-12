@@ -16,6 +16,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BedDouble,
   Bell,
+  BrainCircuit,
   BriefcaseBusiness,
   CalendarCheck,
   CalendarDays,
@@ -220,7 +221,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         href: ROUTE_PATHS.sentimentAnalytics,
         label: "GX Insights",
-        icon: ChartNoAxesCombined,
+        icon: BrainCircuit,
         hint: "ABSA guest experience analytics",
         badgeText: "AI",
       },

@@ -4,7 +4,7 @@ import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.common.exception.BusinessRuleException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.integration.ai.AbsaEngineClient;
-import com.novax.leadora.infrastructure.integration.ai.AbsaEngineClient.SentimentResult;
+import com.novax.leadora.api.dto.response.AbsaResponseDto;
 import com.novax.leadora.infrastructure.persistence.entity.SalesFeedbackEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepository;
@@ -19,7 +19,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -46,53 +45,83 @@ public class ReanalyzeFeedbackUseCase {
         SalesFeedbackEntity feedback = salesFeedbackRepository.findById(feedbackId)
                 .orElseThrow(() -> new ResourceNotFoundException("Feedback", feedbackId));
 
-        String comment = feedback.getComment();
-        if (comment == null || comment.trim().isEmpty()) {
+        String rawComment = feedback.getComment();
+        if (rawComment == null || rawComment.trim().isEmpty()) {
             throw new BusinessRuleException("Cannot analyze feedback with an empty comment");
         }
+        String comment = org.springframework.web.util.HtmlUtils.htmlUnescape(rawComment);
 
         try {
             feedback.setAbsaStatus("PROCESSING");
             salesFeedbackRepository.saveAndFlush(feedback);
 
-            Map<String, SentimentResult> results = absaEngineClient.analyze(comment);
+            AbsaResponseDto results = absaEngineClient.analyze(comment);
 
-            feedback.setAbsaAttitudeSentiment(results.get("attitude").getSentiment());
-            feedback.setAbsaAttitudeConfidence(results.get("attitude").getConfidence());
+            int lockAttempt = 0;
+            int maxLockRetries = 3;
+            while (lockAttempt < maxLockRetries) {
+                try {
+                    SalesFeedbackEntity currentFeedback = salesFeedbackRepository.findById(feedbackId)
+                            .orElseThrow(() -> new ResourceNotFoundException("Feedback", feedbackId));
 
-            feedback.setAbsaSpeedSentiment(results.get("speed").getSentiment());
-            feedback.setAbsaSpeedConfidence(results.get("speed").getConfidence());
+                    currentFeedback.setAbsaAttitudeSentiment(results.attitude() != null ? results.attitude().sentiment() : null);
+                    currentFeedback.setAbsaAttitudeConfidence(results.attitude() != null ? results.attitude().confidence() : null);
 
-            feedback.setAbsaAccuracySentiment(results.get("accuracy").getSentiment());
-            feedback.setAbsaAccuracyConfidence(results.get("accuracy").getConfidence());
+                    currentFeedback.setAbsaSpeedSentiment(results.speed() != null ? results.speed().sentiment() : null);
+                    currentFeedback.setAbsaSpeedConfidence(results.speed() != null ? results.speed().confidence() : null);
 
-            feedback.setAbsaFacilitySentiment(results.get("facility").getSentiment());
-            feedback.setAbsaFacilityConfidence(results.get("facility").getConfidence());
+                    currentFeedback.setAbsaAccuracySentiment(results.accuracy() != null ? results.accuracy().sentiment() : null);
+                    currentFeedback.setAbsaAccuracyConfidence(results.accuracy() != null ? results.accuracy().confidence() : null);
 
-            feedback.setAbsaPriceSentiment(results.get("price").getSentiment());
-            feedback.setAbsaPriceConfidence(results.get("price").getConfidence());
+                    currentFeedback.setAbsaFacilitySentiment(results.facility() != null ? results.facility().sentiment() : null);
+                    currentFeedback.setAbsaFacilityConfidence(results.facility() != null ? results.facility().confidence() : null);
 
-            feedback.setAbsaStatus("SUCCESS");
-            
-            SalesFeedbackEntity saved = salesFeedbackRepository.save(feedback);
+                    currentFeedback.setAbsaPriceSentiment(results.price() != null ? results.price().sentiment() : null);
+                    currentFeedback.setAbsaPriceConfidence(results.price() != null ? results.price().confidence() : null);
 
-            // Log activity history for BR-37 audit trail
-            ObjectNode payload = objectMapper.createObjectNode()
-                    .put("action", "RE_ANALYZE")
-                    .put("triggeredBy", actor.getUserId().toString());
-            
-            activityLogPublisher.publish(
-                    ActivityLogType.FEEDBACK_REVIEW_STATUS_UPDATED,
-                    EntityType.FEEDBACK,
-                    saved.getFeedbackId(),
-                    "Manual ABSA analysis re-triggered by " + actor.getFullName(),
-                    payload
-            );
+                    currentFeedback.setComment(comment);
+                    currentFeedback.setAbsaStatus("SUCCESS");
+
+                    SalesFeedbackEntity saved = salesFeedbackRepository.save(currentFeedback);
+
+                    // Log activity history for BR-37 audit trail
+                    ObjectNode payload = objectMapper.createObjectNode()
+                            .put("action", "RE_ANALYZE")
+                            .put("triggeredBy", actor.getUserId().toString());
+                    
+                    activityLogPublisher.publish(
+                            ActivityLogType.FEEDBACK_REVIEW_STATUS_UPDATED,
+                            EntityType.FEEDBACK,
+                            saved.getFeedbackId(),
+                            "Manual ABSA analysis re-triggered by " + actor.getFullName(),
+                            payload
+                    );
+                    break;
+                } catch (org.springframework.orm.ObjectOptimisticLockingFailureException ex) {
+                    lockAttempt++;
+                    if (lockAttempt >= maxLockRetries) {
+                        throw ex;
+                    }
+                    try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                }
+            }
 
         } catch (Exception e) {
             log.error("Manual ABSA re-analysis failed for feedback {}: {}", feedbackId, e.getMessage(), e);
-            feedback.setAbsaStatus("FAILED");
-            salesFeedbackRepository.save(feedback);
+            // Fallback status FAILED with safety lock
+            int attempt = 0;
+            while (attempt < 3) {
+                try {
+                    SalesFeedbackEntity failFeedback = salesFeedbackRepository.findById(feedbackId)
+                            .orElseThrow(() -> new ResourceNotFoundException("Feedback", feedbackId));
+                    failFeedback.setAbsaStatus("FAILED");
+                    salesFeedbackRepository.save(failFeedback);
+                    break;
+                } catch (org.springframework.orm.ObjectOptimisticLockingFailureException ex) {
+                    attempt++;
+                    try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                }
+            }
             throw new BusinessRuleException("AI analysis failed: " + e.getMessage());
         }
     }

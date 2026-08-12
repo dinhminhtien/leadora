@@ -53,6 +53,44 @@ export interface SentimentTrendResponse {
   points: TrendPoint[];
 }
 
+export interface StaffSentimentPerformanceResponse {
+  staffId: string;
+  staffName: string;
+  email?: string;
+  avatarUrl?: string;
+
+  // Feedback metrics
+  totalFeedbacks: number;
+  positiveFeedbacks: number;
+  neutralFeedbacks: number;
+  negativeFeedbacks: number;
+  satisfactionRatio: number; // Overall CSAT (%)
+
+  // 5-Aspect Satisfaction Matrix (% Positive)
+  attitudePositiveRatio: number;
+  speedPositiveRatio: number;
+  accuracyPositiveRatio: number;
+  facilityPositiveRatio: number;
+  pricePositiveRatio: number;
+
+  // Sales Performance Correlation
+  totalDeals: number;
+  wonDeals: number;
+  lostDeals: number;
+  conversionRate: number; // won / (won + lost) %
+  totalRevenueWon: number;
+
+  // SLA & Task Correlation
+  completedTasks: number;
+  onTimeTasks: number;
+  taskPunctualityRate: number; // onTime / completed %
+  overdueTasksCount: number;
+
+  // AI Highlight Tags
+  topStrongAspect: string;
+  topWeakAspect: string;
+}
+
 const ENDPOINT = "/analytics/sentiment";
 
 export const sentimentAnalyticsService = {
@@ -72,9 +110,18 @@ export const sentimentAnalyticsService = {
     return response.data;
   },
 
+  async getStaffPerformance(params?: { startDate?: string; endDate?: string }) {
+    const response = await apiClient.get<ApiResponse<StaffSentimentPerformanceResponse[]>>(
+      `${ENDPOINT}/staff-performance`,
+      { params },
+    );
+    return response.data;
+  },
+
   async getDeepDive(params: {
     aspect?: string;
     sentiment?: string;
+    salesStaffName?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
@@ -87,3 +134,4 @@ export const sentimentAnalyticsService = {
     return response.data;
   },
 };
+
