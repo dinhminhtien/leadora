@@ -1,6 +1,7 @@
 package com.novax.leadora.application.usecase.contract;
 
 import com.novax.leadora.common.exception.BusinessException;
+import com.novax.leadora.common.security.OtpStore;
 import com.novax.leadora.config.ContractProperties;
 import com.novax.leadora.application.event.ContractOtpRequestedEvent;
 import com.novax.leadora.infrastructure.persistence.entity.ContractEntity;
@@ -9,13 +10,12 @@ import com.novax.leadora.infrastructure.persistence.repository.ContractRepositor
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -24,12 +24,12 @@ public class RequestContractOtpUseCase {
 
     private final ContractRepository contractRepository;
     private final GetContractByTokenUseCase getContractByTokenUseCase;
-    private final StringRedisTemplate redisTemplate;
+    private final OtpStore otpStore;
     private final ContractProperties contractProperties;
     private final ApplicationEventPublisher eventPublisher;
 
     private static final SecureRandom secureRandom = new SecureRandom();
-    private static final String OTP_REDIS_PREFIX = "contract_otp:";
+    private static final String OTP_KEY_PREFIX = "contract_otp:";
 
     @Transactional(readOnly = true)
     public void execute(UUID contractId, String token) {
@@ -51,16 +51,11 @@ public class RequestContractOtpUseCase {
         int code = 100000 + secureRandom.nextInt(900000);
         String otpCode = String.valueOf(code);
 
-        // 4. Save to Redis
-        String key = OTP_REDIS_PREFIX + contractId.toString();
+        // 4. Store the code until it expires (Redis when reachable, this process otherwise)
+        String key = OTP_KEY_PREFIX + contractId.toString();
         int expirySeconds = contractProperties.getOtpExpirySeconds();
-        try {
-            redisTemplate.opsForValue().set(key, otpCode, expirySeconds, TimeUnit.SECONDS);
-            log.info("OTP generated and saved in Redis for contract {}. TTL: {} seconds", contract.getContractCode(), expirySeconds);
-        } catch (Exception e) {
-            log.error("Failed to connect to Redis for contract OTP generation: {}", e.getMessage(), e);
-            throw new BusinessException("REDIS_CONNECTION_FAILED", "Unable to issue OTP. Please try again later.", org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+        otpStore.put(key, otpCode, Duration.ofSeconds(expirySeconds));
+        log.info("OTP issued for contract {}. TTL: {} seconds", contract.getContractCode(), expirySeconds);
 
         // 5. Publish event to send OTP email
         eventPublisher.publishEvent(new ContractOtpRequestedEvent(contract, otpCode));

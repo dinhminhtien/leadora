@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import type { Quotation } from "@/services/quotation_service";
 import { useTrackCustomerResponse } from "@/features/quotation/hooks/use_quotations";
 import { Portal } from "@/components/ui/Portal";
+import { apiErrorMessage } from "@/services/api_error";
 
 
 type ResponseType = "accepted" | "rejected" | "interested" | "need_revision";
@@ -122,7 +123,7 @@ export function RecordResponseModal({ quote, onClose, onRecorded }: RecordRespon
         onRecorded(quote.id, STATUS_MAP[selected]);
       }, 1000);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to record response. Please try again.";
+      const msg = apiErrorMessage(err);
       setApiError(msg);
     }
   };

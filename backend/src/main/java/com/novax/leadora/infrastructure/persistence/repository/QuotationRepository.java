@@ -46,13 +46,14 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
             FROM QuotationEntity q
             LEFT JOIN q.deal d
             LEFT JOIN q.customer c
-            WHERE (:ownerId IS NULL OR q.createdBy.userId = :ownerId)
+            LEFT JOIN q.createdBy cb
+            WHERE (:ownerId IS NULL OR cb.userId = :ownerId)
               AND (:status IS NULL OR q.status = :status)
               AND (coalesce(:statuses, null) IS NULL OR q.status IN :statuses)
-              AND (:search IS NULL OR 
-                   LOWER(c.fullName) LIKE LOWER(CONCAT('%', :search, '%')) OR
-                   LOWER(d.dealName) LIKE LOWER(CONCAT('%', :search, '%')) OR
-                   LOWER(CAST(q.quotationId AS string)) LIKE LOWER(CONCAT('%', :search, '%'))
+              AND (CAST(:search AS string) IS NULL OR
+                   LOWER(c.fullName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR
+                   LOWER(d.dealName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR
+                   LOWER(CAST(q.quotationId AS string)) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
                   )
             """)
     Page<QuotationSummaryDto> findAllSummaries(

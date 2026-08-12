@@ -7,17 +7,17 @@ import com.novax.leadora.infrastructure.persistence.entity.ContractEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.common.security.OtpStore;
 import com.novax.leadora.infrastructure.persistence.repository.ContractRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -26,14 +26,15 @@ public class ConfirmContractOtpUseCase {
 
     private final ContractRepository contractRepository;
     private final GetContractByTokenUseCase getContractByTokenUseCase;
-    private final StringRedisTemplate redisTemplate;
+    private final OtpStore otpStore;
     private final ActivityLogPublisher activityLogPublisher;
     private final ApplicationEventPublisher eventPublisher;
     private final ActivateContractUseCase activateContractUseCase;
 
-    private static final String OTP_REDIS_PREFIX = "contract_otp:";
-    private static final String FAIL_REDIS_PREFIX = "contract_otp_fail:";
+    private static final String OTP_KEY_PREFIX = "contract_otp:";
+    private static final String FAIL_KEY_PREFIX = "contract_otp_fail:";
     private static final int MAX_ATTEMPTS = 5;
+    private static final Duration FAIL_COUNTER_TTL = Duration.ofMinutes(15);
 
     @Transactional
     public ContractEntity execute(UUID contractId, String token, String otpInput) {
@@ -51,29 +52,28 @@ public class ConfirmContractOtpUseCase {
                     "Contract cannot be confirmed in its current status: " + contract.getStatus(), org.springframework.http.HttpStatus.BAD_REQUEST);
         }
 
-        String otpKey = OTP_REDIS_PREFIX + contractId.toString();
-        String failKey = FAIL_REDIS_PREFIX + contractId.toString();
+        String otpKey = OTP_KEY_PREFIX + contractId.toString();
+        String failKey = FAIL_KEY_PREFIX + contractId.toString();
 
-        // 3. Retrieve OTP from Redis
-        String cachedOtp = redisTemplate.opsForValue().get(otpKey);
+        // 3. Retrieve the issued OTP
+        String cachedOtp = otpStore.get(otpKey);
         if (cachedOtp == null) {
             throw new BusinessException("OTP_EXPIRED", "The verification code has expired or was not requested. Please request a new code.", org.springframework.http.HttpStatus.BAD_REQUEST);
         }
 
         // 4. Validate OTP and handle failure counts
         if (!cachedOtp.equals(otpInput)) {
-            Long currentFailures = redisTemplate.opsForValue().increment(failKey);
-            redisTemplate.expire(failKey, 15, TimeUnit.MINUTES);
-            
-            if (currentFailures != null && currentFailures >= MAX_ATTEMPTS) {
+            long currentFailures = otpStore.increment(failKey, FAIL_COUNTER_TTL);
+
+            if (currentFailures >= MAX_ATTEMPTS) {
                 // Lock / invalidate the OTP
-                redisTemplate.delete(otpKey);
-                redisTemplate.delete(failKey);
+                otpStore.delete(otpKey);
+                otpStore.delete(failKey);
                 log.warn("OTP locked for contract {} due to {} failed attempts", contract.getContractCode(), currentFailures);
                 throw new BusinessException("OTP_LOCKED", "Too many incorrect attempts. This code is now invalid. Please request a new verification code.", org.springframework.http.HttpStatus.BAD_REQUEST);
             }
-            
-            int attemptsLeft = MAX_ATTEMPTS - (currentFailures != null ? currentFailures.intValue() : 0);
+
+            int attemptsLeft = MAX_ATTEMPTS - (int) currentFailures;
             throw new BusinessException("INVALID_OTP", "The verification code is incorrect. Attempts remaining: " + attemptsLeft, org.springframework.http.HttpStatus.BAD_REQUEST);
         }
 
@@ -85,9 +85,9 @@ public class ConfirmContractOtpUseCase {
         // Activate the contract immediately
         activateContractUseCase.execute(contract.getId());
 
-        // Clean up Redis
-        redisTemplate.delete(otpKey);
-        redisTemplate.delete(failKey);
+        // The code is single-use: discard it and the attempt counter
+        otpStore.delete(otpKey);
+        otpStore.delete(failKey);
 
         log.info("Contract {} successfully ACKNOWLEDGED by OTP validation.", contract.getContractCode());
 
