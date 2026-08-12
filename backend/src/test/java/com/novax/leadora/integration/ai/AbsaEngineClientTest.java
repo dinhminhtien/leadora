@@ -15,6 +15,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.ai.google.genai.vertex-ai=false",
         "spring.ai.google.genai.api-key=dummy-api-key",
         "spring.ai.google.genai.embedding.api-key=dummy-api-key",
+        "spring.datasource.hikari.maximum-pool-size=1",
+        "spring.datasource.hikari.minimum-idle=1",
         "absa.engine.read-timeout=20000"
 })
 @ActiveProfiles("dev")

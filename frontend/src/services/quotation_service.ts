@@ -1,4 +1,4 @@
-import { apiClient, type ApiResponse } from "@/services/api_client";
+import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_client";
 
 export type QuotationStatus =
   | "draft"
@@ -14,7 +14,9 @@ export type QuotationStatus =
   | "pending_revision"
   | "pending_customer_response"
   | "accepted_by_customer"
-  | "booking_request";
+  | "booking_request"
+  | "reservation_pending"
+  | "reservation_rejected";
 
 export type RoomLine = {
   roomType: string;
@@ -59,6 +61,7 @@ export type Quotation = {
   validUntil?: string;
   parentQuotationId?: string;
   changeReason?: string;
+  reservationDecision?: "APPROVED" | "REJECTED" | null;
 };
 
 export type CloseQuotationPayload = {
@@ -147,11 +150,21 @@ export type SendQuotationPayload = {
   personalMessage?: string;
 };
 
+export type QuotationListParams = {
+  status?: string;
+  statuses?: string[];
+  search?: string;
+  page?: number;
+  size?: number;
+  sortBy?: string;
+  sortDir?: string;
+};
+
 const ENDPOINT = "/quotations";
 
 export const quotationService = {
-  async getList(): Promise<ApiResponse<Quotation[]>> {
-    const response = await apiClient.get<ApiResponse<Quotation[]>>(ENDPOINT);
+  async getList(params?: QuotationListParams): Promise<ApiResponse<PageResponse<Quotation>>> {
+    const response = await apiClient.get<ApiResponse<PageResponse<Quotation>>>(ENDPOINT, { params });
     return response.data;
   },
 
@@ -182,6 +195,11 @@ export const quotationService = {
 
   async send(id: string, payload: SendQuotationPayload): Promise<ApiResponse<Quotation>> {
     const response = await apiClient.post<ApiResponse<Quotation>>(`${ENDPOINT}/${id}/send`, payload);
+    return response.data;
+  },
+
+  async resend(id: string): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(`${ENDPOINT}/${id}/resend`);
     return response.data;
   },
 
@@ -223,6 +241,21 @@ export const quotationService = {
 
   async publicConfirmOtp(id: string, token: string, otpCode: string): Promise<ApiResponse<Quotation>> {
     const response = await apiClient.post<ApiResponse<Quotation>>(`/public/quotations/${id}/confirm-otp?token=${token}`, { otpCode });
+    return response.data;
+  },
+
+  async publicReject(id: string, token: string, reason: string): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(`/public/quotations/${id}/reject?token=${token}`, { reason });
+    return response.data;
+  },
+
+  async reservationApprove(id: string): Promise<ApiResponse<BookingResult>> {
+    const response = await apiClient.post<ApiResponse<BookingResult>>(`${ENDPOINT}/${id}/reservation-approve`);
+    return response.data;
+  },
+
+  async reservationReject(id: string, payload: { reason: string; note: string }): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(`${ENDPOINT}/${id}/reservation-reject`, payload);
     return response.data;
   },
 };

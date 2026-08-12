@@ -81,7 +81,7 @@ const ACTIVITY_TYPES = [
   { type: "SITE_VISIT", label: "Site Visit", Icon: MapPin, activeClass: "border-orange-400 bg-orange-50 text-orange-700", idleClass: "border-slate-200 bg-white text-slate-500 hover:border-orange-300 hover:text-orange-600" },
   { type: "FOLLOW_UP", label: "Follow-up", Icon: RefreshCw, activeClass: "border-teal-400 bg-teal-50 text-teal-700", idleClass: "border-slate-200 bg-white text-slate-500 hover:border-teal-300 hover:text-teal-600" },
   { type: "TASK", label: "Task", Icon: CheckSquare2, activeClass: "border-slate-500 bg-slate-100 text-slate-700", idleClass: "border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700" },
-] as const satisfies readonly { type: ActivityType; label: string; [k: string]: unknown }[];
+] as const satisfies readonly { type: ActivityType; label: string;[k: string]: unknown }[];
 /**
  * The task's activity type, as told to us by the server.
  *
@@ -1035,11 +1035,11 @@ export function TaskDetailDrawer({
               {/* Lead / Customer contact card */}
               {(task.leadId || task.customerId) && (() => {
                 const isLead = !!task.leadId;
-                const name    = isLead ? task.leadName        : task.customerName;
-                const phone   = isLead ? task.leadPhone       : task.customerPhone;
-                const email   = isLead ? task.leadEmail       : task.customerEmail;
+                const name = isLead ? task.leadName : task.customerName;
+                const phone = isLead ? task.leadPhone : task.customerPhone;
+                const email = isLead ? task.leadEmail : task.customerEmail;
                 const company = isLead ? task.leadCompanyName : task.customerCompanyName;
-                const hasAny  = name || phone || email || company;
+                const hasAny = name || phone || email || company;
                 if (!hasAny) return null;
                 return (
                   <div className="rounded-xl border border-slate-200 overflow-hidden">
@@ -1551,9 +1551,9 @@ export function CreateTaskDrawer({
                   type="button"
                   onClick={() => applyDatePreset(preset.days)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${extractLocalDate(form.startAt) === addDays(preset.days)
-                      ? "bg-[#185FA5] text-white border-[#185FA5] shadow-sm"
-                      : "bg-white text-slate-600 border-slate-200 hover:border-[#185FA5]/40 hover:text-[#185FA5]"
-                  }`}
+                    ? "bg-[#185FA5] text-white border-[#185FA5] shadow-sm"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-[#185FA5]/40 hover:text-[#185FA5]"
+                    }`}
                 >
                   {preset.label}
                 </button>

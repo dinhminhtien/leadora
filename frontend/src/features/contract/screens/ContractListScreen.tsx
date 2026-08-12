@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
   FileText,
   Search,
@@ -39,11 +40,14 @@ import {
   useUpdateContractBillingMethod,
   useSendContract,
   useCancelContract,
+  useResendContract,
+  useRegenerateContract,
 } from "@/features/contract/hooks/use_contracts";
 import { type Contract, type BillingMethod } from "@/services/contract_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { toast } from "@/stores/toast_store";
 
 export function ContractListScreen() {
   const { data: serverContracts = [], isLoading, isFetching, refetch } = useContracts();
@@ -53,6 +57,10 @@ export function ContractListScreen() {
   const updateBillingMethodMutation = useUpdateContractBillingMethod();
   const sendContractMutation = useSendContract();
   const cancelContractMutation = useCancelContract();
+  const resendContractMutation = useResendContract();
+  const regenerateContractMutation = useRegenerateContract();
+
+  const { confirm, confirmElement } = useConfirm();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -119,12 +127,49 @@ export function ContractListScreen() {
   };
 
   const handleCancelContract = async (id: string) => {
-    if (!confirm("Are you sure you want to cancel this contract?")) return;
+    const { ok } = await confirm({
+      title: "Cancel this contract?",
+      description: "The contract will be marked as CANCELLED. The quotation will remain active and a new contract can be generated if needed.",
+      severity: "danger",
+      confirmLabel: "Yes, Cancel Contract",
+    });
+    if (!ok) return;
     try {
       await cancelContractMutation.mutateAsync(id);
       setActionMenuOpenId(null);
     } catch (err) {
       console.error("Failed to cancel contract", err);
+    }
+  };
+
+  const handleResendContract = async (id: string) => {
+    const { ok } = await confirm({
+      title: "Resend contract email?",
+      description: "A fresh secure link will be generated and emailed to the customer. The previous link will be invalidated immediately.",
+      severity: "warning",
+      confirmLabel: "Yes, Resend",
+    });
+    if (!ok) return;
+    try {
+      await resendContractMutation.mutateAsync(id);
+    } catch (err) {
+      console.error("Failed to resend contract", err);
+    }
+  };
+
+  const handleRegenerateContract = async (id: string) => {
+    const { ok } = await confirm({
+      title: "Generate a new contract?",
+      description: "A fresh DRAFT contract (next version) will be created for the same quotation. You can then send it to the customer.",
+      severity: "info",
+      confirmLabel: "Yes, Generate",
+    });
+    if (!ok) return;
+    try {
+      await regenerateContractMutation.mutateAsync(id);
+      setDetailTarget(null);
+    } catch (err) {
+      console.error("Failed to regenerate contract", err);
     }
   };
 
@@ -146,7 +191,7 @@ export function ContractListScreen() {
     const token = "CLIENT_SECURED_OTP_TOKEN"; // Fallback representation
     const link = `${window.location.origin}/portal/contracts/${contract.id}?token=${token}`;
     navigator.clipboard.writeText(link);
-    alert("Copied public portal link to clipboard!");
+    toast.success("Public portal link copied to clipboard!");
   };
 
   const statusBadgeVariant = (status: Contract["status"]): "success" | "warning" | "danger" | "info" | "primary" | "default" => {
@@ -258,6 +303,18 @@ export function ContractListScreen() {
             </Button>
           )}
 
+          {["CANCELLED", "EXPIRED"].includes(c.status) && (
+            <Button
+              variant="secondary"
+              size="xs"
+              isLoading={regenerateContractMutation.isPending}
+              leftIcon={<FileSpreadsheet className="size-3" />}
+              onClick={() => handleRegenerateContract(c.id)}
+            >
+              New Contract
+            </Button>
+          )}
+
           {["DRAFT", "SENT", "ACKNOWLEDGED"].includes(c.status) && (
             <Button
               variant="danger"
@@ -266,6 +323,18 @@ export function ContractListScreen() {
               onClick={() => handleCancelContract(c.id)}
             >
               Cancel
+            </Button>
+          )}
+
+          {c.status === "SENT" && (
+            <Button
+              variant="secondary"
+              size="xs"
+              isLoading={resendContractMutation.isPending}
+              leftIcon={<RefreshCw className="size-3" />}
+              onClick={() => handleResendContract(c.id)}
+            >
+              Resend
             </Button>
           )}
 
@@ -524,6 +593,27 @@ export function ContractListScreen() {
               </div>
             </div>
 
+            {/* Cancelled / Expired — regeneration callout */}
+            {["CANCELLED", "EXPIRED"].includes(activeDetail.status) && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Contract Recovery</h3>
+                <div className="border border-red-100 bg-red-50/60 rounded-xl p-4 space-y-3">
+                  <p className="text-xs text-red-700 leading-relaxed">
+                    This contract is <span className="font-bold">{activeDetail.status}</span>. The quotation is still active and can have a new contract generated. This will create a fresh <span className="font-bold">DRAFT v{(activeDetail.version ?? 0) + 1}</span> linked to the same quotation.
+                  </p>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    isLoading={regenerateContractMutation.isPending}
+                    leftIcon={<FileSpreadsheet className="size-3.5" />}
+                    onClick={() => handleRegenerateContract(activeDetail.id)}
+                  >
+                    Generate New Contract
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Public Secure OTP Link */}
             {activeDetail.status === "SENT" && (
               <div className="space-y-3">
@@ -532,7 +622,7 @@ export function ContractListScreen() {
                   <p className="text-xs text-slate-600 leading-relaxed">
                     Provide this secure confirmation link to the customer. They can click the link, inspect the contract details, and acknowledge the terms securely with an OTP code sent directly to their email.
                   </p>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Button
                       variant="secondary"
                       size="sm"
@@ -541,6 +631,15 @@ export function ContractListScreen() {
                       onClick={() => copySecurePortalLink(activeDetail)}
                     >
                       Copy Secured Link
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      isLoading={resendContractMutation.isPending}
+                      leftIcon={<RefreshCw className="size-3.5" />}
+                      onClick={() => handleResendContract(activeDetail.id)}
+                    >
+                      Resend Email
                     </Button>
                     <a
                       href={`${window.location.origin}/portal/contracts/${activeDetail.id}?token=CLIENT_SECURED_OTP_TOKEN`}
@@ -595,6 +694,8 @@ export function ContractListScreen() {
           </div>
         </div>
       )}
+
+      {confirmElement}
     </div>
   );
 }

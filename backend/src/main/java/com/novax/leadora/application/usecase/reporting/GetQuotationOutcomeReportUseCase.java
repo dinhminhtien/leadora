@@ -45,7 +45,10 @@ public class GetQuotationOutcomeReportUseCase {
         long superseded = ReportingUtils.countOf(counts, QuotationStatus.SUPERSEDED);
         long total = counts.values().stream().mapToLong(Long::longValue).sum() - superseded;
 
-        long accepted = ReportingUtils.countOf(counts, QuotationStatus.ACCEPTED) + ReportingUtils.countOf(counts, QuotationStatus.ACCEPTED_BY_CUSTOMER);
+        long accepted = ReportingUtils.countOf(counts, QuotationStatus.ACCEPTED) 
+                + ReportingUtils.countOf(counts, QuotationStatus.ACCEPTED_BY_CUSTOMER)
+                + ReportingUtils.countOf(counts, QuotationStatus.RESERVATION_PENDING)
+                + ReportingUtils.countOf(counts, QuotationStatus.RESERVATION_REJECTED);
         long converted = ReportingUtils.countOf(counts, QuotationStatus.CONVERTED) + ReportingUtils.countOf(counts, QuotationStatus.BOOKING_REQUEST);
 
         long approved = quotationRepository.countApproved(
@@ -103,6 +106,8 @@ public class GetQuotationOutcomeReportUseCase {
             case PENDING_CUSTOMER_RESPONSE -> "Pending customer response";
             case ACCEPTED_BY_CUSTOMER -> "Accepted by customer";
             case BOOKING_REQUEST -> "Booking request";
+            case RESERVATION_PENDING -> "Pending reservation confirmation";
+            case RESERVATION_REJECTED -> "Reservation rejected";
         };
     }
 }

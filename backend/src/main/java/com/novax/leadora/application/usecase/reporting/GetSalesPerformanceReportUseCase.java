@@ -46,7 +46,8 @@ public class GetSalesPerformanceReportUseCase {
     /** A quotation the customer said yes to, whether or not it became a booking yet. */
     private static final Set<String> ACCEPTED_QUOTATIONS = Set.of(
             QuotationStatus.ACCEPTED.name(), QuotationStatus.CONVERTED.name(),
-            QuotationStatus.ACCEPTED_BY_CUSTOMER.name(), QuotationStatus.BOOKING_REQUEST.name());
+            QuotationStatus.ACCEPTED_BY_CUSTOMER.name(), QuotationStatus.BOOKING_REQUEST.name(),
+            QuotationStatus.RESERVATION_PENDING.name(), QuotationStatus.RESERVATION_REJECTED.name());
 
     private static final int MAX_REPS = 50;
     private static final String UNASSIGNED_LABEL = "(Unassigned)";
@@ -201,7 +202,7 @@ public class GetSalesPerformanceReportUseCase {
             }
         }
 
-        named.sort(Comparator.comparing(RepRow::getRevenue, Comparator.nullsLast(Comparator.reverseOrder())));
+        named.sort(Comparator.comparing(r -> r.getRevenue(), Comparator.nullsLast(Comparator.reverseOrder())));
         List<RepRow> rows = new ArrayList<>(
                 named.size() > MAX_REPS ? named.subList(0, MAX_REPS) : named);
         // Appended after the cap so the reconciling row can never be truncated away.
@@ -236,7 +237,6 @@ public class GetSalesPerformanceReportUseCase {
         private final Map<UUID, RepAgg> byUser = new LinkedHashMap<>();
 
         /** {@code ownerId} may be null — that is the unassigned bucket, deliberately kept. */
-        @SuppressWarnings("null")
         RepAgg forUser(Object ownerId, Object ownerName) {
             UUID key = toUuid(ownerId);
             return byUser.computeIfAbsent(key, id -> {
@@ -254,19 +254,28 @@ public class GetSalesPerformanceReportUseCase {
         private final Map<String, Long> counts = new LinkedHashMap<>();
         private final Map<String, BigDecimal> amounts = new LinkedHashMap<>();
 
-        @SuppressWarnings("null")
         void put(String kind, String bucket, long count, BigDecimal amount) {
-            counts.merge(key(kind, bucket), count, Long::sum);
-            amounts.merge(key(kind, bucket), amount, BigDecimal::add);
+            counts.merge(key(kind, bucket), count, (oldVal, newVal) -> {
+                long o = oldVal != null ? oldVal : 0L;
+                long n = newVal != null ? newVal : 0L;
+                return o + n;
+            });
+            amounts.merge(key(kind, bucket), amount, (oldVal, newVal) -> {
+                BigDecimal o = oldVal != null ? oldVal : BigDecimal.ZERO;
+                BigDecimal n = newVal != null ? newVal : BigDecimal.ZERO;
+                return o.add(n);
+            });
         }
 
         /** Total across every bucket of a kind. */
-        @SuppressWarnings("null")
         long count(String kind) {
             String prefix = kind + "|";
             return counts.entrySet().stream()
                     .filter(e -> e.getKey().startsWith(prefix))
-                    .mapToLong(Map.Entry::getValue)
+                    .mapToLong(e -> {
+                        Long val = e.getValue();
+                        return val != null ? val : 0L;
+                    })
                     .sum();
         }
 

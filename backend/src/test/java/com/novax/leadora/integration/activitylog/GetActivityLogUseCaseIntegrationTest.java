@@ -13,7 +13,9 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest(properties = {
         "spring.ai.google.genai.vertex-ai=false",
         "spring.ai.google.genai.api-key=dummy-api-key",
-        "spring.ai.google.genai.embedding.api-key=dummy-api-key"
+        "spring.ai.google.genai.embedding.api-key=dummy-api-key",
+        "spring.datasource.hikari.maximum-pool-size=1",
+        "spring.datasource.hikari.minimum-idle=1"
 })
 @ActiveProfiles("dev")
 class GetActivityLogUseCaseIntegrationTest {
