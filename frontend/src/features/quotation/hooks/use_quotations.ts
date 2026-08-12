@@ -1,14 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { quotationService, type CreateQuotationPayload, type SubmitQuotationPayload, type SendQuotationPayload, type ReviseQuotationPayload, type TrackCustomerResponsePayload, type ConvertToBookingPayload, type CloseQuotationPayload, type ExpireOverduePayload } from "@/services/quotation_service";
+import { quotationService, type CreateQuotationPayload, type SubmitQuotationPayload, type SendQuotationPayload, type ReviseQuotationPayload, type TrackCustomerResponsePayload, type ConvertToBookingPayload, type CloseQuotationPayload, type ExpireOverduePayload, type QuotationListParams } from "@/services/quotation_service";
 
 // Quotation list
-export function useQuotations() {
+export function useQuotations(params?: QuotationListParams) {
   return useQuery({
-    queryKey: ["quotations"],
-    queryFn: () => quotationService.getList(),
-    select: (res) => res.data ?? [],
+    queryKey: ["quotations", params],
+    queryFn: () => quotationService.getList(params),
+    select: (res) => res.data,
   });
 }
 
@@ -41,6 +41,17 @@ export function useSendQuotation() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: SendQuotationPayload }) =>
       quotationService.send(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    },
+  });
+}
+
+// Resend quotation email (only if previous email hasn't been opened)
+export function useResendQuotationEmail() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => quotationService.resend(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["quotations"] });
     },
@@ -155,5 +166,33 @@ export function usePublicConfirmQuotationOtp() {
   return useMutation({
     mutationFn: ({ id, token, otpCode }: { id: string; token: string; otpCode: string }) =>
       quotationService.publicConfirmOtp(id, token, otpCode),
+  });
+}
+
+export function usePublicRejectQuotation() {
+  return useMutation({
+    mutationFn: ({ id, token, reason }: { id: string; token: string; reason: string }) =>
+      quotationService.publicReject(id, token, reason),
+  });
+}
+
+export function useReservationApprove() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => quotationService.reservationApprove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    },
+  });
+}
+
+export function useReservationReject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: { reason: string; note: string } }) =>
+      quotationService.reservationReject(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    },
   });
 }

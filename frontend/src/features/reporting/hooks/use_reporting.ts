@@ -45,8 +45,8 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 export function useQuotationsForReport() {
   return useQuery({
     queryKey: ["quotations-for-report"],
-    queryFn: () => quotationService.getList(),
-    select: (res) => res.data ?? [],
+    queryFn: () => quotationService.getList({ size: 200 }),
+    select: (res) => res.data?.content ?? [],
     staleTime: 60_000,
   });
 }

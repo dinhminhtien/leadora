@@ -41,7 +41,8 @@ public class ReviseQuotationUseCase {
     // the frontend already shows the Revise action for (QuotationListScreen.tsx).
     private static final Set<QuotationStatus> REVISABLE_STATUSES = Set.of(
             QuotationStatus.DRAFT, QuotationStatus.SENT, QuotationStatus.INTERESTED,
-            QuotationStatus.REJECTED, QuotationStatus.PENDING_REVISION
+            QuotationStatus.REJECTED, QuotationStatus.PENDING_REVISION,
+            QuotationStatus.RESERVATION_REJECTED
     );
 
     private final QuotationRepository quotationRepository;

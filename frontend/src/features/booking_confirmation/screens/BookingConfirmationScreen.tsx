@@ -183,9 +183,9 @@ export function BookingConfirmationScreen() {
         setRoomProducts(prodRes.data);
       }
       if (isNewRequestOpen) {
-        const quotRes = await quotationService.getList();
-        if (quotRes.success && quotRes.data) {
-          setQuotations(quotRes.data);
+        const quotRes = await quotationService.getList({ size: 100 });
+        if (quotRes.success && quotRes.data?.content) {
+          setQuotations(quotRes.data.content);
         }
       }
     } catch (err) {

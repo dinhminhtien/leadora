@@ -1,17 +1,12 @@
 package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.common.exception.BusinessException;
-import com.novax.leadora.api.dto.request.ConvertToBookingRequest;
-import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
-import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.application.usecase.contract.GenerateContractUseCase;
 import com.novax.leadora.infrastructure.persistence.entity.ContractEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationOtpAuditEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
-import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
-import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
 import com.novax.leadora.infrastructure.persistence.repository.ContractRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationOtpAuditRepository;
@@ -27,6 +22,16 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Confirms OTP for quotation acceptance.
+ * Delegates actual quotation state transition and logging to CustomerAcceptQuotationUseCase,
+ * thereby keeping OTP audit logs and customer acceptance logs aligned.
+ *
+ * <p><strong>BR-14 compliance</strong>: Auto-conversion to Booking is removed.
+ * Transitioning quotation status to {@code RESERVATION_PENDING} is the only outcome.
+ * Converting the quotation to a booking must be performed explicitly by Reservation
+ * staff once room availability is verified.</p>
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -36,9 +41,7 @@ public class ConfirmQuotationOtpUseCase {
     private final GetQuotationByTokenUseCase getQuotationByTokenUseCase;
     private final StringRedisTemplate redisTemplate;
     private final QuotationOtpAuditRepository otpAuditRepository;
-    private final ConvertToBookingUseCase convertToBookingUseCase;
-    private final ActivityLogPublisher activityLogPublisher;
-    private final SystemAuditLogService systemAuditLogService;
+    private final CustomerAcceptQuotationUseCase customerAcceptQuotationUseCase;
     private final GenerateContractUseCase generateContractUseCase;
     private final ContractRepository contractRepository;
 
@@ -47,10 +50,10 @@ public class ConfirmQuotationOtpUseCase {
     private static final int MAX_ATTEMPTS = 5;
 
     @Transactional
-    public QuotationEntity execute(UUID quotationId, String token, String otpInput, String ipAddress) {
+    public QuotationEntity execute(UUID quotationId, String token, String otpInput, String ipAddress, String userAgent) {
         log.info("Confirming OTP for quotation id: {}, IP: {}", quotationId, ipAddress);
 
-        // 1. Validate secure link token
+        // 1. Validate secure link token (checks usedAt is null)
         getQuotationByTokenUseCase.validateToken(quotationId, token);
 
         QuotationEntity quotation = quotationRepository.findById(quotationId)
@@ -97,70 +100,23 @@ public class ConfirmQuotationOtpUseCase {
             throw new BusinessException("INVALID_OTP", "The verification code is incorrect. Attempts remaining: " + attemptsLeft, HttpStatus.BAD_REQUEST);
         }
 
-        // 5. Successful validation -> Accept quotation
-        quotation.setStatus(QuotationStatus.ACCEPTED_BY_CUSTOMER);
-        quotation = quotationRepository.save(quotation);
+        // 5. Successful validation -> Accept quotation via delegating use case
+        quotation = customerAcceptQuotationUseCase.execute(quotationId, ipAddress, userAgent);
 
-        // Generate or update Contract to ACKNOWLEDGED (customer accepted quotation via OTP)
+        // Generate Contract in DRAFT (customer accepted quotation via OTP)
         List<ContractEntity> existingContracts = contractRepository.findByQuotation_QuotationId(quotationId);
-        ContractEntity contract;
         if (existingContracts.isEmpty()) {
-            contract = generateContractUseCase.execute(quotation, quotation.getCreatedBy());
-        } else {
-            contract = existingContracts.stream()
-                    .max(java.util.Comparator.comparingInt(c->c.getVersion()))
-                    .get();
+            generateContractUseCase.execute(quotation, quotation.getCreatedBy());
         }
-        contract.setStatus(ContractStatus.ACKNOWLEDGED);
-        contract.setAcknowledgedAt(OffsetDateTime.now());
-        contractRepository.save(contract);
 
-        // Record successful attempt
-        recordAuditLog(quotationId, registeredEmail, ipAddress, true, previousStatus, QuotationStatus.ACCEPTED_BY_CUSTOMER.name());
+        // Record successful attempt in OTP audit logs
+        recordAuditLog(quotationId, registeredEmail, ipAddress, true, previousStatus, QuotationStatus.RESERVATION_PENDING.name());
 
         // Clean up Redis
         redisTemplate.delete(otpKey);
         redisTemplate.delete(failKey);
 
-        log.info("Quotation {} successfully ACCEPTED_BY_CUSTOMER by OTP validation.", quotationId);
-
-        // System audit log
-        systemAuditLogService.log("QUOTATION", "QUOTATION", quotationId, "CUSTOMER_OTP_ACCEPTED",
-                quotation.getCreatedBy(), previousStatus, QuotationStatus.ACCEPTED_BY_CUSTOMER.name(),
-                "OTP verified by customer via IP: " + ipAddress);
-
-        // Publish activity logs
-        activityLogPublisher.publish(
-                ActivityLogType.QUOTATION_UPDATED,
-                EntityType.QUOTATION,
-                quotation.getQuotationId(),
-                "Quotation accepted by customer via OTP verification from IP: " + ipAddress,
-                null
-        );
-
-        // 6. Automatically convert to Booking Request (status: BOOKING_REQUEST)
-        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
-            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                new org.springframework.transaction.support.TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        try {
-                            log.info("Auto-converting quotation {} to Booking Request (afterCommit)", quotationId);
-                            convertToBookingUseCase.execute(quotationId, new ConvertToBookingRequest());
-                        } catch (Exception e) {
-                            log.error("Failed to auto-convert quotation {} to booking request: {}", quotationId, e.getMessage(), e);
-                        }
-                    }
-                }
-            );
-        } else {
-            try {
-                log.info("Auto-converting quotation {} to Booking Request (fallback)", quotationId);
-                convertToBookingUseCase.execute(quotationId, new ConvertToBookingRequest());
-            } catch (Exception e) {
-                log.error("Failed to auto-convert quotation {} to booking request: {}", quotationId, e.getMessage(), e);
-            }
-        }
+        log.info("Quotation {} successfully transitioned to RESERVATION_PENDING by OTP validation.", quotationId);
 
         return quotation;
     }

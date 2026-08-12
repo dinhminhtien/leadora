@@ -54,6 +54,27 @@ export function useCancelContract() {
   });
 }
 
+export function useResendContract() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => contractService.resend(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ["contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["contract", id] });
+    },
+  });
+}
+
+export function useRegenerateContract() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => contractService.regenerate(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contracts"] });
+    },
+  });
+}
+
 // Public client portal hooks
 export function usePublicContract(id: string, token: string) {
   return useQuery({

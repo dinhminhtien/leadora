@@ -113,6 +113,8 @@ const DOMAIN_TONES: Record<StatusDomain, ToneMap> = {
     PENDING_CUSTOMER_RESPONSE: "primary",
     ACCEPTED_BY_CUSTOMER: "success",
     BOOKING_REQUEST: "success",
+    RESERVATION_PENDING: "info",
+    RESERVATION_REJECTED: "danger",
   },
 
   booking: {
@@ -232,6 +234,8 @@ const LABEL_OVERRIDES: Partial<Record<StatusDomain, Record<string, string>>> = {
     PENDING_CUSTOMER_RESPONSE: "Pending customer response",
     ACCEPTED_BY_CUSTOMER: "Accepted by customer",
     BOOKING_REQUEST: "Booking request",
+    RESERVATION_PENDING: "Awaiting reservation",
+    RESERVATION_REJECTED: "Reservation rejected",
   },
 };
 

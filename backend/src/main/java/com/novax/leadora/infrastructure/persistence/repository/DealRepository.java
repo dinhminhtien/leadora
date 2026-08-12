@@ -297,4 +297,13 @@ public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpec
             GROUP BY u.fullName, d.status
             """)
     List<RepDealStat> statsPerAssignee();
+    /**
+     * Load the {@link DealEntity} that owns a given quotation.
+     *
+     * <p>Used by {@code CustomerAcceptQuotationUseCase} to update {@code expectedRevenue}
+     * without navigating the lazy {@code quotation.getDeal()} proxy, which would throw
+     * {@code LazyInitializationException} when the session is not open at that point.
+     */
+    @Query("SELECT d FROM DealEntity d WHERE d.dealId = (SELECT q.deal.dealId FROM QuotationEntity q WHERE q.quotationId = :quotationId)")
+    java.util.Optional<DealEntity> findByQuotationId(@Param("quotationId") UUID quotationId);
 }
