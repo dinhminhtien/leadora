@@ -66,4 +66,38 @@ public class SalesFeedbackEntity extends BaseEntity {
 
     @Column(name = "reviewed_at")
     private OffsetDateTime reviewedAt;
+
+    @Column(name = "absa_attitude_sentiment", length = 20)
+    private String absaAttitudeSentiment;
+
+    @Column(name = "absa_attitude_confidence", precision = 5, scale = 2)
+    private java.math.BigDecimal absaAttitudeConfidence;
+
+    @Column(name = "absa_speed_sentiment", length = 20)
+    private String absaSpeedSentiment;
+
+    @Column(name = "absa_speed_confidence", precision = 5, scale = 2)
+    private java.math.BigDecimal absaSpeedConfidence;
+
+    @Column(name = "absa_accuracy_sentiment", length = 20)
+    private String absaAccuracySentiment;
+
+    @Column(name = "absa_accuracy_confidence", precision = 5, scale = 2)
+    private java.math.BigDecimal absaAccuracyConfidence;
+
+    @Column(name = "absa_facility_sentiment", length = 20)
+    private String absaFacilitySentiment;
+
+    @Column(name = "absa_facility_confidence", precision = 5, scale = 2)
+    private java.math.BigDecimal absaFacilityConfidence;
+
+    @Column(name = "absa_price_sentiment", length = 20)
+    private String absaPriceSentiment;
+
+    @Column(name = "absa_price_confidence", precision = 5, scale = 2)
+    private java.math.BigDecimal absaPriceConfidence;
+
+    @Column(name = "absa_status", length = 20)
+    private String absaStatus;
 }
+

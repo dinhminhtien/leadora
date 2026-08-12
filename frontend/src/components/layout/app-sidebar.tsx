@@ -108,6 +108,40 @@ export function AppSidebar({
   const renderContent = (expanded: boolean) => (
     <TooltipProvider delayDuration={200}>
       <div className="flex h-full flex-col bg-sidebar">
+        <style dangerouslySetInnerHTML={{ __html: `
+          @keyframes subtleRgb {
+            0% { border-color: rgba(6, 182, 212, 0.4); }
+            50% { border-color: rgba(99, 102, 241, 0.4); }
+            100% { border-color: rgba(6, 182, 212, 0.4); }
+          }
+          @keyframes subtleRgbText {
+            0% { color: #0891b2; }
+            50% { color: #4f46e5; }
+            100% { color: #0891b2; }
+          }
+          @keyframes subtleRgbBg {
+            0% { background-color: rgba(6, 182, 212, 0.05); }
+            50% { background-color: rgba(99, 102, 241, 0.05); }
+            100% { background-color: rgba(6, 182, 212, 0.05); }
+          }
+          @keyframes subtleRgbDot {
+            0% { background-color: #06b6d4; }
+            50% { background-color: #6366f1; }
+            100% { background-color: #06b6d4; }
+          }
+          .animate-subtle-rgb {
+            animation: subtleRgb 8s infinite ease-in-out;
+          }
+          .animate-subtle-rgb-text {
+            animation: subtleRgbText 8s infinite ease-in-out;
+          }
+          .animate-subtle-rgb-bg {
+            animation: subtleRgbBg 8s infinite ease-in-out;
+          }
+          .animate-subtle-rgb-dot {
+            animation: subtleRgbDot 8s infinite ease-in-out, pulse 2s infinite;
+          }
+        ` }} />
         {/* ── Brand block (56 tall per §4.1) ─────────────────────────────── */}
         <div
           className={cn(
@@ -213,7 +247,8 @@ export function AppSidebar({
                       ? unreadCount > 99
                         ? "99+"
                         : String(unreadCount)
-                      : null;
+                      : item.badgeText || null;
+                  const isAiBadge = item.badgeText === "AI";
 
                   const link = (
                     <Link
@@ -244,9 +279,19 @@ export function AppSidebar({
                         )}
                         strokeWidth={active ? 2.4 : 2}
                       />
-                      {expanded && <span className="flex-1 truncate">{item.label}</span>}
+                      {expanded && (
+                        <div className="flex-1 min-w-0 flex items-center gap-1 overflow-visible">
+                          <span className="truncate">{item.label}</span>
+                          {isAiBadge && (
+                            <span className="inline-flex items-center gap-1 rounded border px-1 py-0.5 text-[8px] font-bold font-mono leading-none uppercase tracking-wider scale-90 origin-left shadow-sm animate-subtle-rgb animate-subtle-rgb-bg animate-subtle-rgb-text">
+                              <span className="size-1 rounded-full animate-subtle-rgb-dot" />
+                              AI
+                            </span>
+                          )}
+                        </div>
+                      )}
 
-                      {badge &&
+                      {badge && !isAiBadge &&
                         (expanded ? (
                           <span className="numeric ml-auto rounded-pill bg-danger px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
                             {badge}
@@ -258,6 +303,13 @@ export function AppSidebar({
                             className="absolute right-2 top-2 size-1.5 rounded-full bg-danger"
                           />
                         ))}
+
+                      {isAiBadge && !expanded && (
+                        <span
+                          aria-hidden
+                          className="absolute right-2 top-2 size-1.5 rounded-full bg-cyan-400 animate-pulse"
+                        />
+                      )}
                     </Link>
                   );
 

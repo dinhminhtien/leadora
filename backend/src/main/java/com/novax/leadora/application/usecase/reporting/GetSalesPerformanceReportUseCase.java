@@ -5,9 +5,7 @@ import com.novax.leadora.api.dto.response.SalesPerformanceReportResponse.RepRow;
 import com.novax.leadora.common.util.ReportRange;
 import com.novax.leadora.common.util.ReportRangeFactory;
 import com.novax.leadora.common.util.ReportingUtils;
-import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
-import com.novax.leadora.infrastructure.persistence.entity.enums.LeadStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -28,56 +25,63 @@ import java.util.UUID;
 /**
  * UC-23.1 — View Sales Performance Statistics Report.
  *
- * <p>Two database round trips: one for the headline aggregates, one for the per-rep breakdown.
+ * <p>One database round trip. The consolidated {@code salesPerformanceAggregates} statement returns
+ * every population already grouped by status <em>and</em> by owner, so the headline KPIs are the
+ * per-rep rows summed — the two can no longer drift apart, which is a property the previous
+ * two-statement version could only promise.
  *
- * <p>The original implementation loaded whole entities from five tables and counted them with Java
- * streams — with the filters left empty, which is how the screen opens, that is a full scan of
- * leads, deals, quotations, bookings and payments into heap. Replacing that with ten small grouped
- * queries fixed the memory profile but not the latency: the database is remote, so the cost is
- * round trips rather than rows, and ten of them is slower than five fat ones at these table sizes.
- * The two UNION ALL statements behind {@code salesPerformanceAggregates} /
- * {@code salesPerformanceByOwner} give both — aggregation in SQL, and two trips.
+ * <p>Three time axes, deliberately, and the report is laid out to match: what was <b>opened</b> in
+ * the period (created_at), what was <b>closed</b> in it (closed_at, qualified_at, confirmed_at) and
+ * what was <b>collected</b> in it (paid_at). Mixing them is what made the old win rate wrong.
+ *
+ * <p>Event-dated KPIs — qualified leads, confirmed bookings — are counted on when the event
+ * happened, reconstructed from activity_log, not on the record's current status. Counting current
+ * status made {@code qualifiedLeads} <em>fall</em> when a rep qualified a lead and then converted
+ * it, because the lead left the bucket. A metric that punishes progress is worse than no metric.
  */
 @Service
 @RequiredArgsConstructor
 public class GetSalesPerformanceReportUseCase {
 
-    /** Booking states that represent business actually won. */
-    private static final Set<String> CONFIRMED_BOOKINGS = Set.of(
-            BookingStatus.CONFIRMED.name(),
-            BookingStatus.CHECKED_IN.name(),
-            BookingStatus.CHECKED_OUT.name());
     /** A quotation the customer said yes to, whether or not it became a booking yet. */
     private static final Set<String> ACCEPTED_QUOTATIONS = Set.of(
-            QuotationStatus.ACCEPTED.name(), QuotationStatus.CONVERTED.name());
+            QuotationStatus.ACCEPTED.name(), QuotationStatus.CONVERTED.name(),
+            QuotationStatus.ACCEPTED_BY_CUSTOMER.name(), QuotationStatus.BOOKING_REQUEST.name());
 
     private static final int MAX_REPS = 50;
     private static final String UNASSIGNED_LABEL = "(Unassigned)";
 
-    // Discriminators emitted by the two consolidated queries.
-    private static final String KIND_LEAD = "LEAD";
-    private static final String KIND_DEAL_OPENED = "DEAL_OPENED";
-    private static final String KIND_DEAL_CLOSED = "DEAL_CLOSED";
-    private static final String KIND_QUOTATION = "QUOTATION";
-    private static final String KIND_BOOKING = "BOOKING";
-    private static final String KIND_REVENUE = "REVENUE";
-    private static final String OWNER_LEADS = "LEADS";
-    private static final String OWNER_DEALS_WON = "DEALS_WON";
-    private static final String OWNER_BOOKINGS = "BOOKINGS";
-    private static final String OWNER_REVENUE = "REVENUE";
+    // Discriminators emitted by the consolidated query — shared with the rep scorecard, which reads
+    // the same statement.
+    private static final String KIND_LEAD = SalesAggregateKinds.LEAD;
+    private static final String KIND_LEAD_QUALIFIED = SalesAggregateKinds.LEAD_QUALIFIED;
+    private static final String KIND_LEAD_CONVERTED = SalesAggregateKinds.LEAD_CONVERTED;
+    private static final String KIND_LEAD_COHORT_CONVERTED = SalesAggregateKinds.LEAD_COHORT_CONVERTED;
+    private static final String KIND_DEAL_OPENED = SalesAggregateKinds.DEAL_OPENED;
+    private static final String KIND_DEAL_CLOSED = SalesAggregateKinds.DEAL_CLOSED;
+    private static final String KIND_QUOTATION = SalesAggregateKinds.QUOTATION;
+    private static final String KIND_BOOKING_CONFIRMED = SalesAggregateKinds.BOOKING_CONFIRMED;
+    private static final String KIND_REVENUE = SalesAggregateKinds.REVENUE;
+
+    private static final String BUCKET_QUALIFIED = SalesAggregateKinds.BUCKET_QUALIFIED;
+    private static final String BUCKET_CONVERTED = SalesAggregateKinds.BUCKET_CONVERTED;
+    private static final String BUCKET_CONFIRMED = SalesAggregateKinds.BUCKET_CONFIRMED;
+    private static final String BUCKET_PAID = SalesAggregateKinds.BUCKET_PAID;
 
     private final DealRepository dealRepository;
     private final ReportRangeFactory reportRangeFactory;
 
-    @Cacheable(value = "sales-performance-report", key = "#from + '_' + #to", unless = "#result == null")
+    @Cacheable(value = "sales-performance-report", key = "#filter.cacheKey()", unless = "#result == null")
     @Transactional(readOnly = true)
-    public SalesPerformanceReportResponse execute(LocalDate from, LocalDate to) {
-        ReportRange range = reportRangeFactory.resolve(from, to);
-        Totals totals = readTotals(range);
+    public SalesPerformanceReportResponse execute(SalesPerformanceFilter filter) {
+        ReportRange range = reportRangeFactory.resolve(filter.dateFrom(), filter.dateTo());
+        Aggregates aggregates = read(range, filter);
+        Totals totals = aggregates.totals;
 
         long leadsCreated = totals.count(KIND_LEAD);
-        long qualifiedLeads = totals.count(KIND_LEAD, LeadStatus.QUALIFIED.name());
-        long leadsConverted = totals.count(KIND_LEAD, LeadStatus.CONVERTED.name());
+        long qualifiedLeads = totals.count(KIND_LEAD_QUALIFIED, BUCKET_QUALIFIED);
+        long leadsConverted = totals.count(KIND_LEAD_CONVERTED, BUCKET_CONVERTED);
+        long cohortConverted = totals.count(KIND_LEAD_COHORT_CONVERTED, BUCKET_CONVERTED);
 
         long dealsTotal = totals.count(KIND_DEAL_OPENED);
         long dealsOpen = totals.count(KIND_DEAL_OPENED, DealStatus.OPEN.name());
@@ -91,18 +95,25 @@ public class GetSalesPerformanceReportUseCase {
         long quotationsCreated = totals.count(KIND_QUOTATION)
                 - totals.count(KIND_QUOTATION, QuotationStatus.SUPERSEDED.name());
         long quotationsAccepted = totals.countIn(KIND_QUOTATION, ACCEPTED_QUOTATIONS);
-        long quotationsConverted = totals.count(KIND_QUOTATION, QuotationStatus.CONVERTED.name());
+        long quotationsConverted = totals.count(KIND_QUOTATION, QuotationStatus.CONVERTED.name())
+                + totals.count(KIND_QUOTATION, QuotationStatus.BOOKING_REQUEST.name());
 
-        long bookingsConfirmed = totals.countIn(KIND_BOOKING, CONFIRMED_BOOKINGS);
-        BigDecimal revenue = totals.amount(KIND_REVENUE, "PAID");
+        long bookingsConfirmed = totals.count(KIND_BOOKING_CONFIRMED, BUCKET_CONFIRMED);
+        BigDecimal revenue = totals.amount(KIND_REVENUE, BUCKET_PAID);
 
         return SalesPerformanceReportResponse.builder()
-                .dateFrom(from)
-                .dateTo(to)
+                .dateFrom(filter.dateFrom())
+                .dateTo(filter.dateTo())
+                .timezone(reportRangeFactory.zone().getId())
                 .leadsCreated(leadsCreated)
                 .qualifiedLeads(qualifiedLeads)
                 .leadsConverted(leadsConverted)
-                .leadConversionRate(ReportingUtils.calculateRate(leadsConverted, leadsCreated))
+                .cohortConverted(cohortConverted)
+                // Cohort over cohort: of the leads raised in this period, how many ever converted.
+                // The old form divided conversions that happened in the period by leads created in
+                // it — two different populations, so the rate could exceed 100% in a month spent
+                // closing out a backlog, and read as a collapse in a month full of fresh leads.
+                .leadConversionRate(ReportingUtils.calculateRate(cohortConverted, leadsCreated))
                 .dealsTotal(dealsTotal)
                 .dealsOpen(dealsOpen)
                 .dealsWon(dealsWon)
@@ -116,55 +127,63 @@ public class GetSalesPerformanceReportUseCase {
                 .bookingsConfirmed(bookingsConfirmed)
                 .quotationToBookingRate(ReportingUtils.calculateRate(quotationsConverted, quotationsCreated))
                 .revenue(revenue)
-                .reps(buildReps(range))
+                .reps(buildReps(aggregates.byUser))
                 .build();
     }
 
-    /** Round trip 1: {@code [kind, bucket, count, amount]}. */
-    private Totals readTotals(ReportRange range) {
-        Totals totals = new Totals();
-        for (Object[] row : dealRepository.salesPerformanceAggregates(range.start(), range.endExclusive())) {
-            totals.put(asString(row[0]), asString(row[1]),
-                    ReportingUtils.toLong(row[2]), ReportingUtils.toBigDecimal(row[3]));
+    /**
+     * The single round trip: {@code [kind, bucket, ownerId, ownerName, count, amount]}.
+     *
+     * <p>Each row is folded into both views at once — the headline totals and the per-rep table —
+     * which is the whole point of carrying the owner in the query.
+     */
+    private Aggregates read(ReportRange range, SalesPerformanceFilter filter) {
+        Aggregates aggregates = new Aggregates();
+        List<Object[]> rows = dealRepository.salesPerformanceAggregates(
+                range.start(), range.endExclusive(),
+                filter.ownerIdParam(), filter.sourceParam(), filter.serviceParam(),
+                filter.corporateParam(), filter.segmentOff());
+
+        for (Object[] row : rows) {
+            String kind = asString(row[0]);
+            String bucket = asString(row[1]);
+            long count = ReportingUtils.toLong(row[4]);
+            BigDecimal amount = ReportingUtils.toBigDecimal(row[5]);
+
+            aggregates.totals.put(kind, bucket, count, amount);
+
+            RepAgg agg = aggregates.forUser(row[2], row[3]);
+            switch (kind) {
+                case KIND_LEAD -> agg.leads += count;
+                case KIND_DEAL_CLOSED -> {
+                    if (DealStatus.WON.name().equals(bucket)) {
+                        agg.dealsWon += count;
+                        agg.wonValue = agg.wonValue.add(amount);
+                    }
+                }
+                case KIND_BOOKING_CONFIRMED -> agg.bookings += count;
+                case KIND_REVENUE -> agg.revenue = agg.revenue.add(amount);
+                default -> { /* the other kinds are headline-only; ignore them here */ }
+            }
         }
-        return totals;
+        return aggregates;
     }
 
     /**
-     * Round trip 2: the per-rep breakdown.
+     * The per-rep breakdown.
      *
      * <p>Records with no assignee land in an explicit "(Unassigned)" row rather than being dropped,
      * so the table reconciles with the headline KPIs — a mismatch there reads to anyone checking as
      * the report being wrong.
      */
-    @SuppressWarnings("null")
-    private List<RepRow> buildReps(ReportRange range) {
-        Map<UUID, RepAgg> byUser = new LinkedHashMap<>();
-
-        for (Object[] row : dealRepository.salesPerformanceByOwner(range.start(), range.endExclusive())) {
-            String kind = asString(row[0]);
-            RepAgg agg = forUser(byUser, row[1], row[2]);
-            long count = ReportingUtils.toLong(row[3]);
-            BigDecimal amount = ReportingUtils.toBigDecimal(row[4]);
-            switch (kind) {
-                case OWNER_LEADS -> agg.leads += count;
-                case OWNER_DEALS_WON -> {
-                    agg.dealsWon += count;
-                    agg.wonValue = agg.wonValue.add(amount);
-                }
-                case OWNER_BOOKINGS -> agg.bookings += count;
-                case OWNER_REVENUE -> agg.revenue = agg.revenue.add(amount);
-                default -> { /* an unknown discriminator must not corrupt the other buckets */ }
-            }
-        }
-
+    private List<RepRow> buildReps(Map<UUID, RepAgg> byUser) {
         List<RepRow> named = new ArrayList<>();
         RepRow unassigned = null;
         for (Map.Entry<UUID, RepAgg> entry : byUser.entrySet()) {
             RepAgg agg = entry.getValue();
             boolean isUnassigned = entry.getKey() == null;
-            if (isUnassigned && !agg.hasActivity()) {
-                continue; // nothing unassigned in this period — no need for the extra row
+            if (!agg.hasActivity()) {
+                continue; // an owner the query touched but who did nothing in this period
             }
             RepRow row = RepRow.builder()
                     .name(isUnassigned ? UNASSIGNED_LABEL : agg.name)
@@ -192,18 +211,6 @@ public class GetSalesPerformanceReportUseCase {
         return rows;
     }
 
-    /** {@code ownerId} may be null — that is the unassigned bucket, deliberately kept. */
-    private RepAgg forUser(Map<UUID, RepAgg> byUser, Object ownerId, Object ownerName) {
-        UUID key = toUuid(ownerId);
-        return byUser.computeIfAbsent(key, id -> {
-            RepAgg agg = new RepAgg();
-            agg.name = (ownerName instanceof String name && !name.isBlank())
-                    ? name
-                    : (id == null ? UNASSIGNED_LABEL : id.toString());
-            return agg;
-        });
-    }
-
     /** A native query hands back whatever the driver mapped uuid to; accept both forms. */
     private static UUID toUuid(Object value) {
         if (value instanceof UUID uuid) {
@@ -223,7 +230,26 @@ public class GetSalesPerformanceReportUseCase {
         return value == null ? "" : value.toString();
     }
 
-    /** Counts and amounts from the consolidated aggregate query, keyed by kind and bucket. */
+    /** The two views of the same rows: headline totals, and the per-owner breakdown. */
+    private static final class Aggregates {
+        private final Totals totals = new Totals();
+        private final Map<UUID, RepAgg> byUser = new LinkedHashMap<>();
+
+        /** {@code ownerId} may be null — that is the unassigned bucket, deliberately kept. */
+        @SuppressWarnings("null")
+        RepAgg forUser(Object ownerId, Object ownerName) {
+            UUID key = toUuid(ownerId);
+            return byUser.computeIfAbsent(key, id -> {
+                RepAgg agg = new RepAgg();
+                agg.name = (ownerName instanceof String name && !name.isBlank())
+                        ? name
+                        : (id == null ? UNASSIGNED_LABEL : id.toString());
+                return agg;
+            });
+        }
+    }
+
+    /** Counts and amounts from the consolidated query, summed across owners, keyed by kind+bucket. */
     private static final class Totals {
         private final Map<String, Long> counts = new LinkedHashMap<>();
         private final Map<String, BigDecimal> amounts = new LinkedHashMap<>();

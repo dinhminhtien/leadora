@@ -4,6 +4,7 @@ export const PROTECTED_ROUTES = [
   ROUTE_PATHS.dashboard,
   ROUTE_PATHS.identityAccess,
   ROUTE_PATHS.customerFeedback,
+  ROUTE_PATHS.sentimentAnalytics,
   ROUTE_PATHS.leads,
   ROUTE_PATHS.customerProfiles,
   ROUTE_PATHS.followUpTasks,
@@ -23,4 +24,5 @@ export const PROTECTED_ROUTES = [
   ROUTE_PATHS.reporting,
   ROUTE_PATHS.aiAssistant,
   ROUTE_PATHS.activityLogs,
+  ROUTE_PATHS.contracts,
 ] as const;

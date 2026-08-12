@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { FileText, Download, Printer, AlertCircle, CheckCircle2, ClipboardList, Loader2, TrendingUp, GitBranch, ReceiptText, ShieldCheck } from "lucide-react";
+import { FileText, Download, Printer, AlertCircle, CheckCircle2, ClipboardList, Loader2, TrendingUp, GitBranch, ReceiptText, ShieldCheck, Gauge } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -15,6 +15,7 @@ import { useQuotationsForReport, useSaveReportLog } from "@/features/reporting/h
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
 import { SalesPerformanceTab } from "@/features/reporting/components/SalesPerformanceTab";
+import { RepScorecardTab } from "@/features/reporting/components/RepScorecardTab";
 import { TaskPerformanceTab } from "@/features/reporting/components/TaskPerformanceTab";
 import { PipelineProgressionTab } from "@/features/reporting/components/PipelineProgressionTab";
 import { QuotationOutcomeTab } from "@/features/reporting/components/QuotationOutcomeTab";
@@ -335,6 +336,7 @@ function DiscountReportTab() {
 
 type Tab =
   | "sales-performance"
+  | "rep-scorecard"
   | "pipeline-progression"
   | "quotation-outcome"
   | "sla-compliance"
@@ -358,6 +360,7 @@ export function ReportingScreen() {
     ...(isManagerScope
       ? ([
           { key: "sales-performance", label: "Sales Performance", icon: <TrendingUp className="size-3.5" /> },
+          { key: "rep-scorecard", label: "Rep Scorecard", icon: <Gauge className="size-3.5" /> },
           { key: "pipeline-progression", label: "Pipeline Progression", icon: <GitBranch className="size-3.5" /> },
           { key: "quotation-outcome", label: "Quotation Outcome", icon: <ReceiptText className="size-3.5" /> },
           { key: "sla-compliance", label: "SLA Compliance", icon: <ShieldCheck className="size-3.5" /> },
@@ -395,6 +398,7 @@ export function ReportingScreen() {
       </div>
 
       {activeTab === "sales-performance" && <SalesPerformanceTab />}
+      {activeTab === "rep-scorecard" && isManagerScope && <RepScorecardTab />}
       {activeTab === "pipeline-progression" && <PipelineProgressionTab />}
       {activeTab === "quotation-outcome" && <QuotationOutcomeTab />}
       {activeTab === "sla-compliance" && <SlaComplianceTab />}

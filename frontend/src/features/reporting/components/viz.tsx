@@ -39,8 +39,25 @@ export const VIZ = {
   surface: "#ffffff",
 } as const;
 
+/**
+ * Sequential ramp for a 0–100 score (UC-23.6): one hue, more-is-darker.
+ *
+ * <p>A score grid is a magnitude question, so it gets a sequential ramp rather than the categorical
+ * marks above — and the steps are spaced by perceptual lightness, not by eye: 0.080 / 0.096 / 0.156
+ * / 0.127 apart in OKLab L, monotonically decreasing. The two lightest steps sit under 3:1 against
+ * the page, which is exactly why every cell carries its number as a visible label instead of asking
+ * anyone to read a value off a shade.
+ */
+export const SCORE_RAMP = ["#e2ecfa", "#b8d4f4", "#86b6ef", "#3f86cd", "#1d5ea6"] as const;
+
+/** The ramp step for a 0–100 score. */
+export function scoreFill(score: number): string {
+  const band = Math.min(SCORE_RAMP.length - 1, Math.max(0, Math.floor(score / 20)));
+  return SCORE_RAMP[band];
+}
+
 /** Pick white or ink for a label sitting inside a colored fill, by the fill's luminance. */
-function textOnFill(hex: string): string {
+export function textOnFill(hex: string): string {
   const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
@@ -364,6 +381,78 @@ export function SegmentBar({
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ── Score cells & scale (UC-23.6 rep scorecard) ───────────────────────────── */
+
+/**
+ * One 0–100 score in a grid of them, shaded on the sequential ramp and always carrying its number.
+ *
+ * <p>A null score means the axis had nothing to measure, and it renders as an em dash on the plain
+ * surface rather than as the lightest step of the ramp: "not measured" and "measured badly" must not
+ * be the same picture, or a rep with no customer feedback looks like a rep customers disliked.
+ */
+export function ScoreCell({
+  score,
+  label,
+  hint,
+}: {
+  score?: number | null;
+  label: string;
+  hint?: string;
+}) {
+  if (score === null || score === undefined) {
+    return (
+      <td className="px-1 py-1">
+        <div
+          className="flex h-8 items-center justify-center rounded-md border border-dashed border-slate-200 text-[11px] text-slate-300"
+          title={`${label}: not measured in this period`}
+        >
+          —
+        </div>
+      </td>
+    );
+  }
+  const fill = scoreFill(score);
+  // A native title rather than the floating tooltip the other marks use: this cell lives inside the
+  // table's `overflow-x-auto` scroller, and a positioned tooltip is clipped by that box on the first
+  // and last rows. The exact value is already printed in the cell and the axis is named in the
+  // column header, so the hover layer is enrichment here, not the only way to read the mark.
+  return (
+    <td className="group px-1 py-1">
+      <div
+        className="flex h-8 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-shadow group-hover:ring-2 group-hover:ring-slate-300"
+        style={{ background: fill, color: textOnFill(fill) }}
+        title={`${label}: ${score.toFixed(1)} / 100${hint ? ` — ${hint}` : ""}`}
+      >
+        {Math.round(score)}
+      </div>
+    </td>
+  );
+}
+
+/** The ramp's key. A shaded grid without one is a decoration. */
+export function ScoreScaleLegend() {
+  return (
+    <div className="flex items-center gap-2 text-[10px] text-slate-400">
+      <span>0</span>
+      <div className="flex overflow-hidden rounded">
+        {SCORE_RAMP.map((step, i) => (
+          <span
+            key={step}
+            className="h-2.5 w-6"
+            style={{ background: step }}
+            title={`${i * 20}–${i * 20 + 20}`}
+          />
+        ))}
+      </div>
+      <span>100</span>
+      <span className="ml-1 flex items-center gap-1">
+        <span className="inline-block h-2.5 w-6 rounded border border-dashed border-slate-200" />
+        not measured
+      </span>
     </div>
   );
 }

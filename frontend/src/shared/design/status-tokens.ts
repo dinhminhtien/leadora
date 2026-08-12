@@ -110,6 +110,9 @@ const DOMAIN_TONES: Record<StatusDomain, ToneMap> = {
     CLOSED: "muted",
     CONVERTED: "success",
     PENDING_REVISION: "warning",
+    PENDING_CUSTOMER_RESPONSE: "primary",
+    ACCEPTED_BY_CUSTOMER: "success",
+    BOOKING_REQUEST: "success",
   },
 
   booking: {
@@ -223,7 +226,13 @@ const LABEL_OVERRIDES: Partial<Record<StatusDomain, Record<string, string>>> = {
   },
   booking: { NO_SHOW: "No show", CHECKED_IN: "Checked in", CHECKED_OUT: "Checked out" },
   sla: { WITHIN_SLA: "Within SLA" },
-  quotation: { PENDING_APPROVAL: "Pending approval", PENDING_REVISION: "Pending revision" },
+  quotation: {
+    PENDING_APPROVAL: "Pending approval",
+    PENDING_REVISION: "Pending revision",
+    PENDING_CUSTOMER_RESPONSE: "Pending customer response",
+    ACCEPTED_BY_CUSTOMER: "Accepted by customer",
+    BOOKING_REQUEST: "Booking request",
+  },
 };
 
 /** The tone for a status, or `muted` when the value is unknown to this build. */

@@ -32,7 +32,8 @@ public class ExpireOverdueQuotationsUseCase {
             QuotationStatus.SENT,
             QuotationStatus.PENDING_APPROVAL,
             QuotationStatus.INTERESTED,
-            QuotationStatus.PENDING_REVISION
+            QuotationStatus.PENDING_REVISION,
+            QuotationStatus.PENDING_CUSTOMER_RESPONSE
     );
 
     private final QuotationRepository quotationRepository;

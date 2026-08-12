@@ -96,6 +96,12 @@ export const PAGE_META = {
     "Review the discount and policy exceptions waiting on your decision.",
   ),
 
+  contracts: meta(
+    ROUTE_PATHS.contracts,
+    "Contracts",
+    "Track legal agreements, signature status, and payment terms.",
+  ),
+
   quotationCreate: meta(
     ROUTE_PATHS.quotationCreate,
     "New Quotation",
@@ -208,6 +214,12 @@ export const PAGE_META = {
     ROUTE_PATHS.customerFeedback,
     "Feedback",
     "Review and moderate the feedback guests submit after their stay.",
+  ),
+
+  sentimentAnalytics: meta(
+    ROUTE_PATHS.sentimentAnalytics,
+    "GX Insights",
+    "Aspect-based guest experience sentiments and satisfaction trends.",
   ),
 
   notifications: meta(

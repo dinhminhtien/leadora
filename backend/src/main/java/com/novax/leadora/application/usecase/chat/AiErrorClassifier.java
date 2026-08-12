@@ -11,12 +11,12 @@ import java.util.Locale;
  * the exception chain's messages. We walk the whole cause chain, concatenate the messages, and
  * pattern-match. Order matters: quota is checked before the generic auth bucket.
  */
-final class AiErrorClassifier {
+public final class AiErrorClassifier {
 
     private AiErrorClassifier() {
     }
 
-    enum Kind {
+    public enum Kind {
         /** HTTP 429 / RESOURCE_EXHAUSTED — the free-tier quota or rate limit was hit. */
         QUOTA,
         /** Bad/missing API key, 401/403, or the provider was unreachable (timeout / connection). */
@@ -26,7 +26,7 @@ final class AiErrorClassifier {
     }
 
     /** Maps the throwable to a localized, actionable message. */
-    static String userMessage(Throwable error, boolean vietnamese) {
+    public static String userMessage(Throwable error, boolean vietnamese) {
         return switch (classify(error)) {
             case QUOTA -> GuardrailMessages.quotaExceeded(vietnamese);
             case UNAVAILABLE -> GuardrailMessages.aiUnavailable(vietnamese);
@@ -34,7 +34,7 @@ final class AiErrorClassifier {
         };
     }
 
-    static Kind classify(Throwable error) {
+    public static Kind classify(Throwable error) {
         String signal = collectMessages(error);
 
         // Quota / rate limit first — Gemini free tier returns 429 RESOURCE_EXHAUSTED.

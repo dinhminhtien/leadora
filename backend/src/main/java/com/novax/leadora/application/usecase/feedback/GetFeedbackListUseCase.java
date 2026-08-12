@@ -89,6 +89,7 @@ public class GetFeedbackListUseCase {
 
         return FeedbackResponse.builder()
                 .feedbackId(entity.getFeedbackId())
+                .customerId(entity.getCustomer() != null ? entity.getCustomer().getCustomerId() : null)
                 .customerName(customerName)
                 .bookingCode(bookingCode)
                 .salesStaffName(salesStaffName)
@@ -102,6 +103,18 @@ public class GetFeedbackListUseCase {
                 .reviewedByName(reviewedByName)
                 .reviewedAt(entity.getReviewedAt())
                 .createdAt(entity.getCreatedAt())
+                .absaAttitudeSentiment(entity.getAbsaAttitudeSentiment())
+                .absaAttitudeConfidence(entity.getAbsaAttitudeConfidence())
+                .absaSpeedSentiment(entity.getAbsaSpeedSentiment())
+                .absaSpeedConfidence(entity.getAbsaSpeedConfidence())
+                .absaAccuracySentiment(entity.getAbsaAccuracySentiment())
+                .absaAccuracyConfidence(entity.getAbsaAccuracyConfidence())
+                .absaFacilitySentiment(entity.getAbsaFacilitySentiment())
+                .absaFacilityConfidence(entity.getAbsaFacilityConfidence())
+                .absaPriceSentiment(entity.getAbsaPriceSentiment())
+                .absaPriceConfidence(entity.getAbsaPriceConfidence())
+                .absaStatus(entity.getAbsaStatus())
                 .build();
     }
 }
+
