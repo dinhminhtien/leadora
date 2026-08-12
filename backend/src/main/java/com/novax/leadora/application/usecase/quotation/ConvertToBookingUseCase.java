@@ -2,6 +2,9 @@ package com.novax.leadora.application.usecase.quotation;
 
 import com.novax.leadora.api.dto.request.ConvertToBookingRequest;
 import com.novax.leadora.api.dto.response.BookingResponse;
+import com.novax.leadora.application.usecase.inventory.RoomAllotmentHoldService;
+import com.novax.leadora.application.usecase.inventory.RoomLineDemand;
+import com.novax.leadora.application.usecase.roomrequest.RoomConfirmationReader;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
@@ -40,6 +43,8 @@ public class ConvertToBookingUseCase {
         private final BookingDetailRepository bookingDetailRepository;
         private final QuotationAccessPolicy quotationAccessPolicy;
         private final QuotationAvailabilityChecker availabilityChecker;
+        private final RoomAllotmentHoldService roomAllotmentHoldService;
+        private final RoomConfirmationReader roomConfirmationReader;
         private final StartSlaTrackingUseCase startSlaTrackingUseCase;
         private final com.novax.leadora.infrastructure.persistence.repository.ContractRepository contractRepository;
         private final com.novax.leadora.application.usecase.contract.ActivateContractUseCase activateContractUseCase;
@@ -47,7 +52,13 @@ public class ConvertToBookingUseCase {
 
         @Transactional
         public BookingResponse execute(UUID quotationId, ConvertToBookingRequest request) {
-                QuotationEntity quotation = quotationRepository.findById(quotationId)
+                // Locked read, and the first lock taken in this transaction. Two clicks on
+                // Convert used to be able to run side by side: both would pass the status check
+                // and both create a booking, whose code is derived from the quotation id and is
+                // therefore identical — so the second failed on a unique-constraint violation
+                // rather than a business message. It also anchors the lock order the rest of the
+                // flow follows: quotation, then booking, then allotment nights.
+                QuotationEntity quotation = quotationRepository.findByIdForUpdate(quotationId)
                                 .orElseThrow(() -> new ResourceNotFoundException("Quotation", quotationId));
 
                 quotationAccessPolicy.assertCanView(quotationAccessPolicy.currentUser(), quotation);
@@ -170,24 +181,47 @@ public class ConvertToBookingUseCase {
                                         HttpStatus.UNPROCESSABLE_ENTITY);
                 }
 
-                // Room confirmation is not required to convert. The booking is created PENDING
-                // and
-                // the Reservation team confirms it separately, so an unconfirmed room delays t
-                // e
-                // booking rather than blocking the conversion.
-                //
-
                 // Line items may span several room types (BR-23) — fetch them once, up front,
                 // both for the availability re-check below and to copy into booking details.
                 List<QuotationDetailEntity> quotationDetails = quotationDetailRepository
                                 .findByQuotation_QuotationId(quotationId);
 
-                // E3: every room type must still be available for the (possibly
-                // re-confirmed) dates — BR-24
-                List<String> roomTypes = quotationDetails.stream()
-                                .map(d -> d.getDescription())
+                // E3/BR-24: this is where the CRM stops offering and starts committing, so it is
+                // the one point in the quotation flow that refuses to proceed on unconfirmed
+                // rooms. Creating and revising a quotation deliberately do not — an offer costs
+                // nothing if the hotel turns out to be full, whereas a booking promises a guest a
+                // room. A confirmed room request satisfies the check on its own: the Reservation
+                // team has looked at the real PMS, which outranks our allotment figures.
+                //
+                // Demands are resolved by product_id. This used to re-match the free-text
+                // description against product names, which meant a line whose description had
+                // been edited could never be found.
+                // Refuse if *any* line is unlinked, not merely if they all are. Skipping the
+                // unlinked ones and checking the rest would be the worst of both: the booking is
+                // still created from every line, so those rooms get committed to a guest without
+                // ever being checked against allotment or held — a partial oversell, produced by
+                // the very guard whose message promises it cannot happen.
+                if (quotationDetails.stream().anyMatch(d -> d.getProductService() == null)) {
+                        throw new BusinessException("QUOTATION_LINES_UNRESOLVED",
+                                        "One or more of this quotation's room lines are not linked to a room type,"
+                                                        + " so availability cannot be verified. Revise the quotation and"
+                                                        + " re-select the room types before converting.",
+                                        HttpStatus.CONFLICT);
+                }
+
+                List<RoomLineDemand> demands = quotationDetails.stream()
+                                .map(d -> new RoomLineDemand(d.getProductService().getProductId(), d.getQuantity()))
                                 .toList();
-                availabilityChecker.assertRoomsAvailable(checkInDate, checkOutDate, roomTypes);
+
+                if (demands.isEmpty()) {
+                        throw new BusinessException("QUOTATION_LINES_UNRESOLVED",
+                                        "This quotation has no room lines to convert.",
+                                        HttpStatus.CONFLICT);
+                }
+
+                boolean roomsConfirmed = roomConfirmationReader.isRoomConfirmed(quotation);
+                availabilityChecker.assertCanCommit(checkInDate, checkOutDate, demands,
+                                quotationId, roomsConfirmed);
 
                 // Generate booking code from year + quotation UUID prefix (unique per
                 // quotation)
@@ -226,6 +260,13 @@ public class ConvertToBookingUseCase {
                                 .toList();
 
                 bookingDetailRepository.saveAll(bookingDetails);
+
+                // Hand the deduction over from the quotation's hold to the booking, in this same
+                // transaction (BR-47). The booking now counts against allotment, so leaving the
+                // hold active would take the rooms twice; releasing it in a later transaction
+                // would risk the booking rolling back after the rooms had already been given
+                // back, and the last room being quietly resold.
+                roomAllotmentHoldService.convertForQuotation(quotationId, saved);
 
                 // POST-1: Update quotation status to CONVERTED or BOOKING_REQUEST
                 if (isAcceptedByCustomer) {

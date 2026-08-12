@@ -91,6 +91,8 @@ public class CacheConfig implements CachingConfigurer {
         // Shorter still: "overdue" is derived from the clock, so a cached copy of this report ages
         // into being wrong rather than merely stale.
         customConfigs.put("task-performance-report", defaultConfig.entryTtl(Duration.ofMinutes(1)));
+        customConfigs.put("product-catalogue", defaultConfig.entryTtl(Duration.ofMinutes(30)));
+        customConfigs.put("room-allotment-nights", defaultConfig.entryTtl(Duration.ofSeconds(60)));
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaultConfig)

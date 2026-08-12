@@ -21,6 +21,7 @@ public class ProductServiceController {
     private final ProductServiceRepository productServiceRepository;
 
     @GetMapping
+    @org.springframework.cache.annotation.Cacheable(value = "product-catalogue", key = "#category != null ? #category.trim().toLowerCase() : 'all'")
     public ResponseEntity<ApiResponse<List<ProductServiceResponse>>> getProductServices(
             @RequestParam(required = false) String category
     ) {

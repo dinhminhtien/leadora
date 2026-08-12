@@ -27,6 +27,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
+import com.novax.leadora.infrastructure.persistence.entity.ProductServiceEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ProductCategory;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ProductStatus;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collections;
@@ -60,6 +64,12 @@ class ConvertToBookingUseCaseTest {
     private QuotationAvailabilityChecker availabilityChecker;
 
     @Mock
+    private com.novax.leadora.application.usecase.inventory.RoomAllotmentHoldService roomAllotmentHoldService;
+
+    @Mock
+    private com.novax.leadora.application.usecase.roomrequest.RoomConfirmationReader roomConfirmationReader;
+
+    @Mock
     private StartSlaTrackingUseCase startSlaTrackingUseCase;
 
     @Mock
@@ -78,7 +88,7 @@ class ConvertToBookingUseCaseTest {
     @DisplayName("UT-CONVERT-01: Throw ResourceNotFoundException if quotation does not exist")
     void testQuotationNotFound() {
         UUID quotationId = UUID.randomUUID();
-        when(quotationRepository.findById(quotationId)).thenReturn(Optional.empty());
+        when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> 
                 convertToBookingUseCase.execute(quotationId, new ConvertToBookingRequest())
@@ -94,7 +104,7 @@ class ConvertToBookingUseCaseTest {
                 .status(QuotationStatus.SENT)
                 .build();
 
-        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+        when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.of(quotation));
 
         BusinessException exception = assertThrows(BusinessException.class, () -> 
                 convertToBookingUseCase.execute(quotationId, new ConvertToBookingRequest())
@@ -112,7 +122,7 @@ class ConvertToBookingUseCaseTest {
                 .status(QuotationStatus.ACCEPTED)
                 .build();
 
-        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+        when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.of(quotation));
         when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(Collections.emptyList());
 
         BusinessException exception = assertThrows(BusinessException.class, () -> 
@@ -137,7 +147,7 @@ class ConvertToBookingUseCaseTest {
                 .version(1)
                 .build();
 
-        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+        when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.of(quotation));
         when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
 
         BusinessException exception = assertThrows(BusinessException.class, () -> 
@@ -162,7 +172,7 @@ class ConvertToBookingUseCaseTest {
                 .version(1)
                 .build();
 
-        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+        when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.of(quotation));
         when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
 
         BusinessException exception = assertThrows(BusinessException.class, () -> 
@@ -195,7 +205,18 @@ class ConvertToBookingUseCaseTest {
                 .version(1)
                 .build();
 
+        // The line must point at a product: availability is keyed on the product, and Convert
+        // refuses a line it cannot resolve rather than skipping the check.
+        ProductServiceEntity roomProduct = ProductServiceEntity.builder()
+                .productId(UUID.randomUUID())
+                .name("Deluxe Room")
+                .category(ProductCategory.ROOM)
+                .status(ProductStatus.ACTIVE)
+                .unitPrice(BigDecimal.valueOf(1000000))
+                .build();
+
         QuotationDetailEntity detail = QuotationDetailEntity.builder()
+                .productService(roomProduct)
                 .description("Deluxe Room")
                 .quantity(2)
                 .nights(3)
@@ -205,7 +226,7 @@ class ConvertToBookingUseCaseTest {
 
         ConvertToBookingRequest request = new ConvertToBookingRequest();
 
-        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+        when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.of(quotation));
         when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
         when(quotationDetailRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(detail));
         
@@ -251,7 +272,18 @@ class ConvertToBookingUseCaseTest {
                 .version(1)
                 .build();
 
+        // The line must point at a product: availability is keyed on the product, and Convert
+        // refuses a line it cannot resolve rather than skipping the check.
+        ProductServiceEntity roomProduct = ProductServiceEntity.builder()
+                .productId(UUID.randomUUID())
+                .name("Deluxe Room")
+                .category(ProductCategory.ROOM)
+                .status(ProductStatus.ACTIVE)
+                .unitPrice(BigDecimal.valueOf(1000000))
+                .build();
+
         QuotationDetailEntity detail = QuotationDetailEntity.builder()
+                .productService(roomProduct)
                 .description("Deluxe Room")
                 .quantity(2)
                 .nights(3)
@@ -261,7 +293,7 @@ class ConvertToBookingUseCaseTest {
 
         ConvertToBookingRequest request = new ConvertToBookingRequest();
 
-        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+        when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.of(quotation));
         when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
         when(quotationDetailRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(detail));
         
@@ -307,7 +339,18 @@ class ConvertToBookingUseCaseTest {
                 .version(1)
                 .build();
 
+        // The line must point at a product: availability is keyed on the product, and Convert
+        // refuses a line it cannot resolve rather than skipping the check.
+        ProductServiceEntity roomProduct = ProductServiceEntity.builder()
+                .productId(UUID.randomUUID())
+                .name("Deluxe Room")
+                .category(ProductCategory.ROOM)
+                .status(ProductStatus.ACTIVE)
+                .unitPrice(BigDecimal.valueOf(1000000))
+                .build();
+
         QuotationDetailEntity detail = QuotationDetailEntity.builder()
+                .productService(roomProduct)
                 .description("Deluxe Room")
                 .quantity(2)
                 .nights(3)
@@ -317,7 +360,7 @@ class ConvertToBookingUseCaseTest {
 
         ConvertToBookingRequest request = new ConvertToBookingRequest();
 
-        when(quotationRepository.findById(quotationId)).thenReturn(Optional.of(quotation));
+        when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.of(quotation));
         when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
         when(quotationDetailRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(detail));
         

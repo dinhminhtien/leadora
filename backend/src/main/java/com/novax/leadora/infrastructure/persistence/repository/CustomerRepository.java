@@ -68,4 +68,18 @@ public interface CustomerRepository extends JpaRepository<CustomerEntity, UUID>,
             ORDER BY c.createdAt DESC
             """)
     List<CustomerEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
+
+    @Query(value = """
+            SELECT 'DEAL' AS type, d.deal_id::text AS id, d.deal_name AS title, d.status::text AS status, d.pipeline_stage::text AS stage, d.expected_revenue AS amount, null AS "checkIn", null AS "checkOut", d.expected_close_date::text AS "expectedClose", d.created_at::text AS "createdAt", d.notes AS notes
+            FROM deals d WHERE d.customer_id = :customerId
+            UNION ALL
+            SELECT 'BOOKING' AS type, b.booking_id::text AS id, COALESCE('Booking #' || b.booking_code, 'Booking') AS title, b.status::text AS status, null AS stage, b.total_amount AS amount, b.check_in_date::text AS "checkIn", b.check_out_date::text AS "checkOut", null AS "expectedClose", b.created_at::text AS "createdAt", b.special_requests AS notes
+            FROM bookings b WHERE b.customer_id = :customerId
+            UNION ALL
+            SELECT 'QUOTATION' AS type, q.quotation_id::text AS id, 'Quotation v' || COALESCE(q.version, 1) || COALESCE(' – ' || q.room_type, '') AS title, q.status::text AS status, null AS stage, q.total_amount AS amount, q.check_in_date::text AS "checkIn", q.check_out_date::text AS "checkOut", null AS "expectedClose", q.created_at::text AS "createdAt", q.notes AS notes
+            FROM quotations q WHERE q.customer_id = :customerId
+            ORDER BY "createdAt" DESC
+            """, nativeQuery = true)
+    List<com.novax.leadora.api.dto.response.CustomerHistoryProjection> findCustomerHistory(
+            @Param("customerId") UUID customerId);
 }

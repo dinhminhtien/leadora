@@ -73,6 +73,8 @@ class CrmSnapshotServiceTest {
     @Mock private PaymentRepository paymentRepository;
     @Mock private CustomerRepository customerRepository;
     @Mock private UserRepository userRepository;
+    @Mock private com.novax.leadora.infrastructure.persistence.repository.ProductServiceRepository productServiceRepository;
+    @Mock private com.novax.leadora.application.usecase.inventory.RoomAvailabilityService roomAvailabilityService;
 
     private CrmSnapshotService service;
 
@@ -80,7 +82,8 @@ class CrmSnapshotServiceTest {
     void setUp() {
         service = new CrmSnapshotService(chatAggregateRepository, leadRepository, dealRepository,
                 taskRepository, quotationRepository, bookingRepository, paymentRepository,
-                customerRepository, userRepository);
+                customerRepository, userRepository, productServiceRepository,
+                roomAvailabilityService);
 
         // Default: nothing anywhere. Individual tests fill in what they need.
         when(chatAggregateRepository.countAll(any())).thenReturn(counts(Map.of(), 0));
@@ -90,6 +93,9 @@ class CrmSnapshotServiceTest {
         when(leadRepository.countPerAssignee(any())).thenReturn(List.of());
         when(dealRepository.statsPerAssignee()).thenReturn(List.of());
         when(userRepository.findAllWithRole()).thenReturn(List.of());
+        // No room products by default: the allotment section is skipped entirely, which keeps
+        // the existing expectations about the snapshot text unchanged.
+        when(productServiceRepository.findByCategory(any())).thenReturn(List.of());
     }
 
     // ── fixtures ──────────────────────────────────────────────────────────────
