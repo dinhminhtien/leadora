@@ -1,11 +1,8 @@
 package com.novax.leadora.application.usecase.inventory;
 
 import com.novax.leadora.infrastructure.persistence.entity.ProductServiceEntity;
-import com.novax.leadora.infrastructure.persistence.entity.RoomAllotmentEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
-import com.novax.leadora.infrastructure.persistence.repository.BookingDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.RoomAllotmentHoldRepository;
-import com.novax.leadora.infrastructure.persistence.repository.RoomAllotmentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -43,9 +40,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class RoomAvailabilityService {
 
-    private final RoomAllotmentRepository allotmentRepository;
     private final RoomAllotmentHoldRepository holdRepository;
-    private final BookingDetailRepository bookingDetailRepository;
+    private final RoomAvailabilityDbFetcher dbFetcher;
 
     /** How old published quota may get before the UI has to warn about it (BR-50). */
     @Value("${leadora.room-allotment.stale-hours:24}")
@@ -70,19 +66,19 @@ public class RoomAvailabilityService {
             return result;
         }
 
-        List<UUID> productIds = products.stream().map(ProductServiceEntity::getProductId).toList();
+        List<UUID> productIds = products.stream().map(p -> p.getProductId()).toList();
 
-        Map<UUID, Map<LocalDate, RoomAllotmentEntity>> quota = new HashMap<>();
-        for (RoomAllotmentEntity row : allotmentRepository.findPublished(productIds, from, toExclusive)) {
-            quota.computeIfAbsent(row.getProduct().getProductId(), k -> new HashMap<>())
-                    .put(row.getStayDate(), row);
+        Map<UUID, Map<LocalDate, AllotmentNightDto>> quota = new HashMap<>();
+        for (AllotmentNightDto row : dbFetcher.getPublishedAllotments(productIds, from, toExclusive)) {
+            quota.computeIfAbsent(row.productId(), k -> new HashMap<>())
+                    .put(row.stayDate(), row);
         }
 
         Map<UUID, Map<LocalDate, Integer>> booked = new HashMap<>();
-        for (BookingDetailRepository.BookingNightSpan span : bookingDetailRepository.findCommittedSpans(
+        for (CommittedSpanDto span : dbFetcher.getCommittedSpans(
                 BookingStatus.CONSUMING_INVENTORY, productIds, from, toExclusive)) {
-            spread(booked, span.getProductId(), span.getCheckInDate(), span.getCheckOutDate(),
-                    from, toExclusive, span.getQuantity());
+            spread(booked, span.productId(), span.checkInDate(), span.checkOutDate(),
+                    from, toExclusive, span.quantity());
         }
 
         Map<UUID, Map<LocalDate, Integer>> held = new HashMap<>();
@@ -99,7 +95,7 @@ public class RoomAvailabilityService {
 
         for (ProductServiceEntity product : products) {
             UUID productId = product.getProductId();
-            Map<LocalDate, RoomAllotmentEntity> productQuota = quota.getOrDefault(productId, Map.of());
+            Map<LocalDate, AllotmentNightDto> productQuota = quota.getOrDefault(productId, Map.of());
             Map<LocalDate, Integer> productBooked = booked.getOrDefault(productId, Map.of());
             Map<LocalDate, Integer> productHeld = held.getOrDefault(productId, Map.of());
 
@@ -107,20 +103,20 @@ public class RoomAvailabilityService {
             for (LocalDate date = from; date.isBefore(toExclusive); date = date.plusDays(1)) {
                 int nightBooked = productBooked.getOrDefault(date, 0);
                 int nightHeld = productHeld.getOrDefault(date, 0);
-                RoomAllotmentEntity row = productQuota.get(date);
+                AllotmentNightDto row = productQuota.get(date);
 
                 if (row == null) {
                     perNight.add(NightAvailability.unpublished(date, nightBooked, nightHeld));
                     continue;
                 }
 
-                int allotted = row.getAllottedQty();
+                int allotted = row.allottedQty();
                 // Floored at zero: quota can legitimately be cut below what is already sold
                 // (BR-49), and a negative figure on screen would read as a system fault rather
                 // than as the overbooking it actually is. The overbooking is surfaced by the
                 // publish path, which notifies the affected reps.
                 int available = Math.max(0, allotted - nightBooked - nightHeld);
-                OffsetDateTime asOf = row.getAsOf();
+                OffsetDateTime asOf = row.asOf();
 
                 perNight.add(new NightAvailability(
                         date,
@@ -128,7 +124,7 @@ public class RoomAvailabilityService {
                         nightBooked,
                         nightHeld,
                         available,
-                        Boolean.TRUE.equals(row.getClosed()),
+                        Boolean.TRUE.equals(row.closed()),
                         asOf,
                         asOf != null && asOf.isBefore(staleBefore)));
             }
@@ -224,7 +220,7 @@ public class RoomAvailabilityService {
 
         Map<LocalDate, Integer> byDate = accumulator.computeIfAbsent(productId, k -> new HashMap<>());
         while (cursor.isBefore(end)) {
-            byDate.merge(cursor, quantity, Integer::sum);
+            byDate.merge(cursor, quantity, (a, b) -> a + b);
             cursor = cursor.plusDays(1);
         }
     }
