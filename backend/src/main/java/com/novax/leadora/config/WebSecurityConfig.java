@@ -107,6 +107,14 @@ public class WebSecurityConfig {
         return (request, response, authException) -> {
             securityAuditLogger.logInvalidTokenAccess(request, authException);
 
+            String origin = request.getHeader("Origin");
+            if (origin != null && !origin.isBlank()) {
+                response.setHeader("Access-Control-Allow-Origin", origin);
+                response.setHeader("Access-Control-Allow-Credentials", "true");
+                response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+                response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, X-User-Id");
+            }
+
             response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
             response.getWriter().write("{\"success\":false,\"errorCode\":\"UNAUTHORIZED\",\"message\":\""
@@ -117,6 +125,14 @@ public class WebSecurityConfig {
     private AccessDeniedHandler customAccessDeniedHandler() {
         return (request, response, accessDeniedException) -> {
             securityAuditLogger.logAccessDenied(request, accessDeniedException);
+
+            String origin = request.getHeader("Origin");
+            if (origin != null && !origin.isBlank()) {
+                response.setHeader("Access-Control-Allow-Origin", origin);
+                response.setHeader("Access-Control-Allow-Credentials", "true");
+                response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+                response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, X-User-Id");
+            }
 
             response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_FORBIDDEN);
             response.setContentType("application/json");
