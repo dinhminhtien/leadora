@@ -88,12 +88,14 @@ public class ActivityLogController {
                                         entity.getActorType(),
                                         entity.getActorUser().getUserId(),
                                         entity.getActorUser().getFullName(),
-                                        entity.getActorRoleSnapshot());
+                                        entity.getActorRoleSnapshot(),
+                                        entity.getActorUser().getEmail());
                 } else {
                         actorDto = new ActivityLogResponse.ActorDto(
                                         entity.getActorType(),
                                         null,
                                         "SYSTEM",
+                                        null,
                                         null);
                 }
 

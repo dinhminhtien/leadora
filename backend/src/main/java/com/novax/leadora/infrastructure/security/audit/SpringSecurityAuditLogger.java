@@ -1,5 +1,8 @@
 package com.novax.leadora.infrastructure.security.audit;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.common.exception.BusinessException;
@@ -19,8 +22,29 @@ import java.util.UUID;
 public class SpringSecurityAuditLogger implements SecurityAuditLogger {
 
     private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     private static final UUID SYSTEM_UUID = new UUID(0L, 0L);
+
+    private JsonNode buildSecurityPayload(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        try {
+            String ipAddress = request.getHeader("X-Forwarded-For");
+            if (ipAddress == null || ipAddress.isBlank()) {
+                ipAddress = request.getRemoteAddr();
+            }
+            String userAgent = request.getHeader("User-Agent");
+
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("ipAddress", ipAddress != null ? ipAddress.trim() : "unknown");
+            node.put("userAgent", userAgent != null ? userAgent.trim() : "unknown");
+            return node;
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     @Override
     public void logInvalidTokenAccess(HttpServletRequest request, AuthenticationException authException) {
@@ -39,6 +63,7 @@ public class SpringSecurityAuditLogger implements SecurityAuditLogger {
                 .entityType(EntityType.USER)
                 .entityId(SYSTEM_UUID)
                 .summary(summary)
+                .payload(buildSecurityPayload(request))
                 .build());
     }
 
@@ -67,6 +92,7 @@ public class SpringSecurityAuditLogger implements SecurityAuditLogger {
                 .entityType(EntityType.USER)
                 .entityId(userId)
                 .summary("Access Denied: User " + userName + " has insufficient permission to access protected URI: " + uri)
+                .payload(buildSecurityPayload(request))
                 .build());
     }
 
@@ -79,6 +105,7 @@ public class SpringSecurityAuditLogger implements SecurityAuditLogger {
                 .entityType(EntityType.USER)
                 .entityId(userId != null ? userId : SYSTEM_UUID)
                 .summary("Access Denied for user " + userName + " attempting to access URI: " + uri + ". Reason: " + ex.getMessage())
+                .payload(buildSecurityPayload(request))
                 .build());
     }
 
@@ -91,6 +118,7 @@ public class SpringSecurityAuditLogger implements SecurityAuditLogger {
                 .entityType(EntityType.USER)
                 .entityId(SYSTEM_UUID)
                 .summary("Access Denied: Unprovisioned account attempt at URI: " + uri + ". Reason: " + ex.getMessage())
+                .payload(buildSecurityPayload(request))
                 .build());
     }
 
@@ -103,6 +131,7 @@ public class SpringSecurityAuditLogger implements SecurityAuditLogger {
                 .entityType(EntityType.USER)
                 .entityId(SYSTEM_UUID)
                 .summary("Access Denied: Locked account login attempt at URI: " + uri + ". Reason: " + ex.getMessage())
+                .payload(buildSecurityPayload(request))
                 .build());
     }
 }
