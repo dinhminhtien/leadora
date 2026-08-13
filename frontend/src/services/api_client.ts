@@ -69,6 +69,7 @@ export type ApiErrorResponse = {
   errors?: Record<string, string | string[]>;
   path?: string;
   timestamp?: string;
+  correlationId?: string;
 };
 
 export const API_BASE_URL =
@@ -171,6 +172,26 @@ apiClient.interceptors.response.use(
       }
       if (window.location.pathname !== "/login") {
         window.location.assign("/login");
+      }
+    }
+
+    // Extract Correlation ID from headers or response payload
+    const correlationId =
+      error.response?.headers?.["x-correlation-id"] ||
+      error.response?.headers?.["X-Correlation-ID"] ||
+      error.response?.data?.correlationId;
+
+    if (correlationId) {
+      const suffix = ` (Correlation ID: ${correlationId})`;
+      if (error.response?.data) {
+        const data = error.response.data;
+        if (data.message && !data.message.includes("Correlation ID")) {
+          data.message = `${data.message}${suffix}`;
+        }
+        data.correlationId = correlationId;
+      }
+      if (error.message && !error.message.includes("Correlation ID")) {
+        error.message = `${error.message}${suffix}`;
       }
     }
 

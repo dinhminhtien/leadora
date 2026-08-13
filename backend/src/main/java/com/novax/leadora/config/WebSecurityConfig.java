@@ -22,6 +22,8 @@ import com.novax.leadora.common.security.TokenBlacklistService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import java.util.List;
+import com.novax.leadora.api.filter.MdcUserFilter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 
 import com.nimbusds.jwt.JWTParser;
 import com.nimbusds.jwt.SignedJWT;
@@ -99,6 +101,8 @@ public class WebSecurityConfig {
                             }
                             return null;
                         }));
+
+        http.addFilterAfter(new MdcUserFilter(), BearerTokenAuthenticationFilter.class);
 
         return http.build();
     }

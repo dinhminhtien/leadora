@@ -141,6 +141,29 @@ export function QuotationListScreen() {
   const [roomTarget, setRoomTarget] = useState<Quotation | null>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
 
+  const filterPills = useMemo(() => {
+    if (activeTab === "active") {
+      return [
+        { value: "", label: "All" },
+        { value: "draft", label: "Draft" },
+        { value: "pending_approval", label: "Pending Approval" },
+        { value: "approved", label: "Approved" },
+        { value: "sent", label: "Sent" },
+        { value: "accepted", label: "Accepted" },
+        { value: "rejected", label: "Rejected" },
+        { value: "reservation_pending", label: "Awaiting Reservation" },
+      ];
+    } else {
+      return [
+        { value: "", label: "All" },
+        { value: "converted", label: "Converted" },
+        { value: "booking_request", label: "Booking Requested" },
+        { value: "closed", label: "Closed" },
+        { value: "expired", label: "Expired" },
+      ];
+    }
+  }, [activeTab]);
+
   const handleSort = (field: SortField, dir: "asc" | "desc") => {
     setSortField(field);
     setSortDir(dir);
@@ -551,20 +574,24 @@ export function QuotationListScreen() {
                 className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
               />
             </div>
-            <div className="flex items-center gap-1.5 text-slate-400">
-              <ListFilter className="size-3.5" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="py-1.5 pl-2 pr-6 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700 focus:outline-none focus:border-blue-500 focus:bg-white transition appearance-none"
-              >
-                <option value="">All Status</option>
-                {(activeTab === "active" ? ACTIVE_STATUSES : DONE_STATUSES).map((s) => (
-                  <option key={s} value={s}>
-                    {statusLabel(s)}
-                  </option>
-                ))}
-              </select>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {filterPills.map((pill) => {
+                const isActive = statusFilter === pill.value;
+                return (
+                  <button
+                    key={pill.value}
+                    type="button"
+                    onClick={() => setStatusFilter(pill.value)}
+                    className={`px-3 py-1 rounded-full text-[11px] font-semibold border transition-all duration-150 cursor-pointer ${
+                      isActive
+                        ? "bg-primary text-white border-primary shadow-xs"
+                        : "bg-slate-50 dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-700 dark:hover:text-zinc-200"
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                );
+              })}
             </div>
             {(search || statusFilter) && (
               <button
