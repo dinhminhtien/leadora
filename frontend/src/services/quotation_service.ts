@@ -160,6 +160,36 @@ export type SendQuotationPayload = {
   personalMessage?: string;
 };
 
+/**
+ * Whether one action is currently available on a quotation, and the reason it is not.
+ *
+ * The reason is the backend's own sentence, produced by the very policy the write endpoint
+ * enforces — so a disabled button says exactly what an attempt would have said. Screens render
+ * `reason` verbatim rather than composing their own wording, which is what let the old UI offer
+ * "Convert to Booking" on every accepted quotation while the server also required a contract the
+ * customer had acknowledged.
+ */
+export type ActionEligibility = {
+  allowed: boolean;
+  /** Matches the `errorCode` the write endpoint would return. */
+  errorCode?: string;
+  /** Present only when `allowed` is false. */
+  reason?: string;
+  /** Dotted path of the input to correct, e.g. `customer.email`. */
+  field?: string;
+};
+
+export type QuotationEligibility = {
+  quotationId: string;
+  status: string;
+  /** Status and customer identity — what every delivery method needs. */
+  send: ActionEligibility;
+  sendByEmail: ActionEligibility;
+  sendByWhatsApp: ActionEligibility;
+  requestAvailability: ActionEligibility;
+  convert: ActionEligibility;
+};
+
 export type QuotationListParams = {
   status?: string;
   statuses?: string[];
@@ -180,6 +210,14 @@ export const quotationService = {
 
   async getById(id: string): Promise<ApiResponse<Quotation>> {
     const response = await apiClient.get<ApiResponse<Quotation>>(`${ENDPOINT}/${id}`);
+    return response.data;
+  },
+
+  /** What this quotation currently allows, and why it does not allow the rest. */
+  async getEligibility(id: string): Promise<ApiResponse<QuotationEligibility>> {
+    const response = await apiClient.get<ApiResponse<QuotationEligibility>>(
+      `${ENDPOINT}/${id}/eligibility`,
+    );
     return response.data;
   },
 
@@ -244,13 +282,17 @@ export const quotationService = {
     return response.data;
   },
 
-  async publicRequestOtp(id: string, token: string): Promise<ApiResponse<void>> {
-    const response = await apiClient.post<ApiResponse<void>>(`/public/quotations/${id}/request-otp?token=${token}`);
-    return response.data;
-  },
-
-  async publicConfirmOtp(id: string, token: string, otpCode: string): Promise<ApiResponse<Quotation>> {
-    const response = await apiClient.post<ApiResponse<Quotation>>(`/public/quotations/${id}/confirm-otp?token=${token}`, { otpCode });
+  /**
+   * The customer accepts, in one call.
+   *
+   * Replaces `request-otp` + `confirm-otp`. Acceptance no longer routes through a code emailed to
+   * the customer: the link's token is the credential, and Report 1 requires no such verification
+   * anywhere in the quotation workflow. Rejection never had one, so the two are now symmetrical.
+   */
+  async publicAccept(id: string, token: string): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(
+      `/public/quotations/${id}/accept?token=${token}`,
+    );
     return response.data;
   },
 

@@ -46,12 +46,6 @@ export type RoomRequest = {
   createdAt: string;
 };
 
-/** Room type and dates come from the quotation server-side, so only quantity is sent. */
-export type CreateRoomRequestPayload = {
-  quotationId: string;
-  quantity: number;
-};
-
 export type RespondRoomRequestPayload = {
   /** Only CONFIRMED or REJECTED; the backend rejects anything else with 400. */
   decision: Extract<RoomRequestStatus, "CONFIRMED" | "REJECTED">;
@@ -61,20 +55,15 @@ export type RespondRoomRequestPayload = {
   heldUntil?: string;
 };
 
-/** Optional justification, carried into the audit trail (UC-26.4). */
-export type CancelRoomRequestPayload = {
-  reason?: string;
-};
-
 const ENDPOINT = "/room-requests";
 
+/**
+ * There is no `create` and no `cancel`. Both endpoints are gone from the API: a request is raised
+ * by the workflow when the customer accepts their quotation, so Sales never asks — or withdraws —
+ * by hand. Having both routes meant one quotation could put two questions in the Reservation
+ * inbox with no way to tell which was current.
+ */
 export const roomRequestService = {
-  /** Sales asks the Reservation team about a quotation's rooms. */
-  async create(payload: CreateRoomRequestPayload): Promise<ApiResponse<RoomRequest>> {
-    const { data } = await apiClient.post(ENDPOINT, payload);
-    return data;
-  },
-
   /** The Reservation inbox — oldest first, so the longest-waiting rep is served first. */
   async getInbox(params?: {
     status?: string;
@@ -100,18 +89,6 @@ export const roomRequestService = {
     return data;
   },
 
-  /**
-   * UC-26.4 — Sales withdraws a request Reservation has not answered yet. The backend
-   * rejects anything that is no longer PENDING with a 409, so the caller must surface
-   * the message rather than assume success.
-   */
-  async cancel(
-    requestId: string,
-    payload?: CancelRoomRequestPayload,
-  ): Promise<ApiResponse<RoomRequest>> {
-    const { data } = await apiClient.patch(`${ENDPOINT}/${requestId}/cancel`, payload ?? {});
-    return data;
-  },
 };
 
 /**
@@ -119,8 +96,8 @@ export const roomRequestService = {
  * superseded nor cancelled. Mirrors `RoomConfirmationReader.currentRequest` on the
  * backend — the list arrives newest-first, so this is the first row that still counts.
  *
- * Skipping cancelled rows is what lets an earlier confirmation resurface after Sales
- * withdraws a follow-up question, instead of the withdrawn row masking it.
+ * `CANCELLED` is still skipped even though nothing creates one any more: rows written before
+ * withdrawing was removed are still in the table, and they were never answers.
  */
 export function currentRoomRequest(requests: RoomRequest[] | undefined): RoomRequest | undefined {
   return requests?.find((r) => !NOT_SPEAKING_FOR_QUOTATION.has(r.status));

@@ -1,5 +1,6 @@
 package com.novax.leadora.application.usecase.email;
 
+import com.novax.leadora.application.usecase.email.exception.EmailException;
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.BookingDetailEntity;
 import lombok.RequiredArgsConstructor;
@@ -131,66 +132,82 @@ public class EmailService {
         "  </div>" +
         "</div>";
 
+    /**
+     * Synchronous: the caller is a user waiting on a reset link, so a failure is theirs to see.
+     *
+     * <p>The {@code EmailException} propagates untouched — wrapping it in a plain
+     * {@code RuntimeException} used to erase the distinction between a bad address, an
+     * unreachable provider and missing credentials, and reported all three as HTTP 500.
+     */
     public void sendResetPasswordHtmlEmail(String toEmail, String webResetLink, String mobileResetLink) {
-        try {
-            String htmlContent = templateRenderer.render(RESET_PASSWORD_TEMPLATE, Map.of(
-                    "webResetLink", webResetLink,
-                    "mobileResetLink", mobileResetLink
-            ));
+        String address = EmailContactPolicy.requireDeliverableEmail(
+                toEmail, "email", "the password reset link");
 
-            EmailRequest emailRequest = new EmailRequest(
-                    null,
-                    List.of(toEmail),
-                    List.of(),
-                    List.of(),
-                    "Reset Your Password - Leadora",
-                    htmlContent,
-                    List.of(),
-                    null
-            );
+        String htmlContent = templateRenderer.render(RESET_PASSWORD_TEMPLATE, Map.of(
+                "webResetLink", webResetLink,
+                "mobileResetLink", mobileResetLink
+        ));
 
-            emailGateway.send(emailRequest);
-            log.info("Reset password email successfully processed for {}", toEmail);
-        } catch (Exception e) {
-            log.error("Failed to process reset password email for {}", toEmail, e);
-            throw new RuntimeException("Could not send email. Please try again later.", e);
-        }
+        EmailRequest emailRequest = new EmailRequest(
+                null,
+                List.of(address),
+                List.of(),
+                List.of(),
+                "Reset Your Password - Leadora",
+                htmlContent,
+                List.of(),
+                null
+        );
+
+        emailGateway.send(emailRequest);
+        log.info("Reset password email successfully processed for {}", address);
     }
 
+    /**
+     * Fire-and-forget: raised from {@link EmailEventListener} after the stay is closed, with
+     * nobody waiting on the result.
+     *
+     * <p>An unusable address is logged and skipped rather than thrown, because the alternative is
+     * failing a check-out over a feedback survey. That is the one place this system tolerates a
+     * skipped send, and only because no workflow depends on the message arriving — unlike the OTP
+     * and contract emails, which are refused outright when the address is unusable.
+     */
     public void sendFeedbackInvitationEmail(String toEmail, String customerName, String feedbackLink) {
-        try {
-            String htmlContent = templateRenderer.render(FEEDBACK_INVITATION_TEMPLATE, Map.of(
-                    "customerName", customerName,
-                    "feedbackLink", feedbackLink
-            ));
-
-            EmailRequest emailRequest = new EmailRequest(
-                    null,
-                    List.of(toEmail),
-                    List.of(),
-                    List.of(),
-                    "We'd Love Your Feedback on Your Experience at Leadora Resort",
-                    htmlContent,
-                    List.of(),
-                    null
-            );
-
-            emailGateway.send(emailRequest);
-            log.info("Feedback invitation email successfully processed for {}", toEmail);
-        } catch (Exception e) {
-            log.error("Failed to process feedback invitation email for {}", toEmail, e);
-            throw new RuntimeException("Could not send email. Please try again later.", e);
+        if (!EmailContactPolicy.isValidEmail(toEmail)) {
+            log.warn("No usable email address for the feedback invitation to {} — skipping", customerName);
+            return;
         }
+
+        String htmlContent = templateRenderer.render(FEEDBACK_INVITATION_TEMPLATE, Map.of(
+                "customerName", customerName,
+                "feedbackLink", feedbackLink
+        ));
+
+        EmailRequest emailRequest = new EmailRequest(
+                null,
+                List.of(toEmail.trim()),
+                List.of(),
+                List.of(),
+                "We'd Love Your Feedback on Your Experience at Leadora Resort",
+                htmlContent,
+                List.of(),
+                null
+        );
+
+        emailGateway.send(emailRequest);
+        log.info("Feedback invitation email successfully processed for {}", toEmail);
     }
 
+    /** Fire-and-forget, for the same reason as the feedback invitation above. */
     public void sendBookingConfirmationEmail(BookingEntity booking, List<BookingDetailEntity> details) {
         if (booking == null || booking.getCustomer() == null) {
             log.warn("Booking or Customer is null — skipping confirmation email");
             return;
         }
         String toEmail = booking.getCustomer().getEmail();
-        if (toEmail == null || toEmail.isBlank()) {
-            log.warn("No customer email available for booking {} — skipping confirmation email", booking.getBookingCode());
+        if (!EmailContactPolicy.isValidEmail(toEmail)) {
+            log.warn("No usable customer email for booking {} — skipping confirmation email",
+                    booking.getBookingCode());
             return;
         }
 
@@ -247,9 +264,11 @@ public class EmailService {
 
             emailGateway.send(emailRequest);
             log.info("Booking confirmation email successfully processed for booking code {}", bookingCode);
-        } catch (Exception e) {
+        } catch (EmailException e) {
+            // Rethrown as-is so the listener logs the provider's real reason. Wrapping it lost
+            // that, and made every cause read the same in the log.
             log.error("Failed to process booking confirmation email for booking {}", booking.getBookingCode(), e);
-            throw new RuntimeException("Could not send booking confirmation email: " + e.getMessage(), e);
+            throw e;
         }
     }
 

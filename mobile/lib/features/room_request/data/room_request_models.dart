@@ -128,18 +128,6 @@ class RoomRequest {
   }
 }
 
-/// Sales asks the Reservation team. Room type and dates come from the quotation
-/// server-side, so only the quantity is sent.
-class CreateRoomRequestPayload {
-  const CreateRoomRequestPayload({required this.quotationId, required this.quantity});
-
-  final String quotationId;
-  final int quantity;
-
-  Map<String, dynamic> toJson() => {'quotationId': quotationId, 'quantity': quantity};
-}
-
-
 /// The request that currently speaks for a quotation: the newest one that is neither
 /// superseded nor cancelled. The API returns them newest-first, mirroring
 /// `RoomConfirmationReader.currentRequest`.

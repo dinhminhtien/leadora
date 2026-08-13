@@ -1,75 +1,63 @@
 package com.novax.leadora.application.usecase.roomrequest;
 
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
-import com.novax.leadora.application.usecase.inventory.RoomAvailabilityAssessment;
-import com.novax.leadora.application.usecase.inventory.StayAvailability;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
+import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.RoomRequestEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.RoomRequestStatus;
+import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.RoomRequestRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
- * Raises the room request for Sales when a quotation cannot be covered from allotment.
+ * Puts the availability question to the Reservation team the moment the customer accepts.
  *
- * <p>This is where the round trip the feature exists to remove actually disappears. Reading the
- * quota answers most enquiries outright; when it does not, the rep should not then have to notice
- * the warning, remember the procedure, and re-key the same room type, dates and numbers into a
- * second form. The system already knows all of it, so it asks on their behalf.
+ * <p>This is the canonical trigger. The customer's acceptance is the point at which the sales
+ * side needs a real answer about rooms — before that a quotation is an offer, and asking about
+ * every offer would fill the Reservation inbox with questions most of which never mattered. A rep
+ * who wants an earlier answer can still raise one by hand from the quotation.
  *
  * <p>Deliberately <b>not</b> built on {@link CreateRoomRequestUseCase}. That use case is the
- * deliberate act of asking and is allowed to fail loudly — notably with {@code NO_RESERVATION_STAFF}
- * when no one could answer. Failing loudly is wrong here: this runs as a side effect of saving a
- * quotation, and a missing Reservation account must never be the reason a rep cannot save their
- * work. Every problem this class meets is logged and swallowed.
+ * deliberate act of asking and is allowed to fail loudly — notably with
+ * {@code NO_RESERVATION_STAFF} when no one could answer. Failing loudly is wrong here: this runs
+ * as a side effect of the customer accepting through the portal, and a missing Reservation account
+ * must never be the reason a customer's acceptance is rejected. Every problem this class meets is
+ * logged and swallowed; the quotation still shows as awaiting confirmation either way.
+ *
+ * <p>This class used to run on every quotation save, asking whenever Leadora's own allotment
+ * arithmetic came up short. Both halves of that were wrong: the timing, and treating this system's
+ * figures as a reason to escalate. Report 1 (FE-19, LI-02) makes Reservation the authority, so the
+ * question is now asked because the sale reached the point of needing one.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AutoRoomRequestService {
 
-    private static final DateTimeFormatter AS_OF_FORMAT = DateTimeFormatter.ofPattern("HH:mm dd/MM");
-
     private final RoomRequestRepository roomRequestRepository;
+    private final QuotationDetailRepository quotationDetailRepository;
     private final RoomRequestNotifier roomRequestNotifier;
     private final StartSlaTrackingUseCase startSlaTrackingUseCase;
     private final SystemAuditLogService systemAuditLogService;
 
     /**
-     * Asks the Reservation team about the lines that could not be covered.
+     * Raises the availability request for a quotation the customer has just accepted.
      *
-     * <p>Skipped when the quotation already has an unanswered request: a rep adjusting a price or
-     * a note five times must not put five identical questions in the Reservation inbox. The check
-     * is on {@code PENDING} only — once answered, a genuinely new question deserves to be asked
-     * again.
-     *
-     * @param askAboutEveryLine ask about all lines rather than only the ones the assessment
-     *                          faulted. Set when the rooms were lost <em>after</em> a clean
-     *                          assessment — another rep took them between assessing and holding —
-     *                          in which case the assessment has no faulted lines to report and
-     *                          filtering by them would send no question at all.
+     * <p>Skipped when one is already open: the rep may have asked ahead of the acceptance, and a
+     * second identical question would only duplicate it in the Reservation inbox.
      */
     @Transactional
-    public void raiseIfNeeded(QuotationEntity quotation, RoomAvailabilityAssessment assessment,
-                              UserEntity actor, boolean askAboutEveryLine) {
-        if (quotation == null || assessment == null) {
-            return;
-        }
-        if (quotation.getCheckInDate() == null || quotation.getCheckOutDate() == null) {
-            return;
-        }
-
-        List<RoomAvailabilityAssessment.LineAssessment> unconfirmed =
-                askAboutEveryLine ? assessment.lines() : assessment.unconfirmedLines();
-        if (unconfirmed.isEmpty()) {
+    public void raiseOnCustomerAcceptance(QuotationEntity quotation, UserEntity actor) {
+        if (quotation == null
+                || quotation.getCheckInDate() == null
+                || quotation.getCheckOutDate() == null) {
             return;
         }
 
@@ -83,84 +71,72 @@ public class AutoRoomRequestService {
                 return;
             }
 
-            // Nobody to ask is a configuration problem worth a log line, not a reason to fail the
-            // rep's save. The quotation still shows as needing confirmation either way.
+            // Nobody to ask is a configuration problem worth a log line, not a reason to refuse
+            // the customer's acceptance.
             List<UserEntity> reservationStaff = roomRequestNotifier.activeReservationStaff();
             if (reservationStaff.isEmpty()) {
-                log.warn("Quotation {} needs room confirmation but no active RESERVATION user exists",
+                log.warn("Quotation {} was accepted but no active RESERVATION user exists to ask",
                         quotation.getQuotationId());
                 return;
             }
 
-            int totalRooms = unconfirmed.stream()
-                    .mapToInt(RoomAvailabilityAssessment.LineAssessment::requested)
+            List<QuotationDetailEntity> lines =
+                    quotationDetailRepository.findByQuotation_QuotationId(quotation.getQuotationId());
+            int totalRooms = lines.stream()
+                    .mapToInt(line -> line.getQuantity() == null ? 0 : line.getQuantity())
                     .sum();
+            if (totalRooms < 1) {
+                log.warn("Quotation {} was accepted but carries no room lines to ask about",
+                        quotation.getQuotationId());
+                return;
+            }
 
             RoomRequestEntity saved = roomRequestRepository.save(RoomRequestEntity.builder()
                     .quotation(quotation)
-                    .roomTypeRequested(roomTypeLabel(unconfirmed))
+                    .roomTypeRequested(quotation.getRoomType())
                     .checkInDate(quotation.getCheckInDate())
                     .checkOutDate(quotation.getCheckOutDate())
                     .quantity(totalRooms)
                     .status(RoomRequestStatus.PENDING)
-                    .requesterNote(buildContext(unconfirmed))
+                    .requesterNote(buildContext(lines))
                     .requestedBy(actor)
                     .build());
 
             try {
                 startSlaTrackingUseCase.execute("ROOM_REQUEST", "QUOTATION", quotation.getQuotationId());
             } catch (Exception e) {
-                log.warn("SLA tracking failed for auto room request {}: {}", saved.getRequestId(), e.getMessage());
+                log.warn("SLA tracking failed for room request {}: {}", saved.getRequestId(), e.getMessage());
             }
 
             systemAuditLogService.log("ROOM_REQUEST", "QUOTATION", quotation.getQuotationId(),
-                    "ROOM_REQUESTED_AUTO", actor, null, RoomRequestStatus.PENDING.name(),
+                    "ROOM_REQUESTED_ON_ACCEPTANCE", actor, null, RoomRequestStatus.PENDING.name(),
                     saved.getRequesterNote());
 
             roomRequestNotifier.requestRaised(saved, reservationStaff, actor);
 
-            log.info("Auto-raised room request {} for quotation {} ({} room(s) unconfirmed)",
+            log.info("Raised availability request {} for quotation {} on customer acceptance ({} room(s))",
                     saved.getRequestId(), quotation.getQuotationId(), totalRooms);
 
         } catch (Exception e) {
-            log.warn("Could not auto-raise room request for quotation {}: {}",
+            log.warn("Could not raise the availability request for quotation {}: {}",
                     quotation.getQuotationId(), e.getMessage());
         }
     }
 
-    private static String roomTypeLabel(List<RoomAvailabilityAssessment.LineAssessment> lines) {
-        String label = lines.stream()
-                .map(RoomAvailabilityAssessment.LineAssessment::roomTypeName)
-                .distinct()
-                .reduce((a, b) -> a + ", " + b)
-                .orElse("the quoted room");
-        return label.length() > 255 ? label.substring(0, 252) + "..." : label;
-    }
-
     /**
-     * Spells out what the CRM already believes, so the Reservation team can see at a glance
-     * whether they are being asked to extend a quota, publish a missing one, or re-confirm a
-     * stale one — three different jobs that a bare "is this available?" cannot distinguish.
+     * Spells out exactly what was sold, so the Reservation team can check it against the hotel's
+     * system without opening the quotation. A bare "is this available?" costs a round trip to
+     * establish what was actually asked for.
      */
-    private static String buildContext(List<RoomAvailabilityAssessment.LineAssessment> lines) {
-        StringBuilder note = new StringBuilder("Raised automatically — allotment does not cover this quotation.\n");
-        for (RoomAvailabilityAssessment.LineAssessment line : lines) {
-            StayAvailability stay = line.availability();
-            note.append("• ").append(line.roomTypeName()).append(": need ").append(line.requested());
-
-            if (stay == null || stay.availableForStay() == null) {
-                note.append(", allotment not published for these dates");
-            } else {
-                note.append(", allotment shows ").append(stay.availableForStay())
-                        .append(" (short ").append(line.shortfall()).append(')');
-                if (!stay.limitingDates().isEmpty()) {
-                    note.append(", tightest on ").append(stay.limitingDates().get(0));
-                }
-            }
-            if (stay != null && stay.stale() && stay.oldestAsOf() != null) {
-                note.append(", last updated ").append(AS_OF_FORMAT.format(stay.oldestAsOf()));
-            }
-            note.append('\n');
+    private static String buildContext(List<QuotationDetailEntity> lines) {
+        StringBuilder note = new StringBuilder("Raised automatically — the customer accepted this quotation.\n");
+        for (QuotationDetailEntity line : lines) {
+            String room = line.getProductService() != null
+                    ? line.getProductService().getName()
+                    : line.getDescription();
+            note.append("• ").append(room)
+                    .append(" × ").append(line.getQuantity() == null ? 0 : line.getQuantity())
+                    .append('\n');
         }
         return note.toString().trim();
     }

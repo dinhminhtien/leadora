@@ -3,11 +3,8 @@ package com.novax.leadora.application.usecase.quotation;
 import com.novax.leadora.api.dto.request.CreateQuotationRequest;
 import com.novax.leadora.api.dto.request.RoomLineRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
-import com.novax.leadora.application.usecase.inventory.RoomAllotmentHoldService;
 import com.novax.leadora.application.usecase.inventory.RoomAvailabilityAssessment;
-import com.novax.leadora.application.usecase.inventory.RoomAvailabilityVerdict;
 import com.novax.leadora.application.usecase.inventory.RoomLineDemand;
-import com.novax.leadora.application.usecase.roomrequest.AutoRoomRequestService;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
@@ -46,8 +43,6 @@ public class CreateQuotationUseCase {
         private final DealRepository dealRepository;
         private final CurrentUserProvider currentUserProvider;
         private final QuotationAvailabilityChecker availabilityChecker;
-        private final RoomAllotmentHoldService roomAllotmentHoldService;
-        private final AutoRoomRequestService autoRoomRequestService;
         private final DealWorkflowSyncService dealWorkflowSyncService;
         private final ActivityLogPublisher activityLogPublisher;
         private final ObjectMapper objectMapper;
@@ -59,14 +54,14 @@ public class CreateQuotationUseCase {
                         throw new IllegalArgumentException("Check-out date must be after check-in date");
                 }
 
-                // E2/BR-24: assess the room lines against allotment. Only BLOCKED throws — a
-                // shortfall lets the quotation through and routes it to the Reservation team
-                // below, because an offer the hotel may still be able to service is worth making.
+                // Resolves the room types and reports how they look against the quota Reservation
+                // published. Advisory: a shortfall never stops a quotation, because an offer the
+                // hotel may still be able to service is worth making, and only Reservation can say.
                 List<RoomLineDemand> demands = request.getRoomLines().stream()
                                 .map(line -> new RoomLineDemand(line.getProductId(), line.getNumberOfRooms()))
                                 .toList();
                 RoomAvailabilityAssessment assessment = availabilityChecker.assess(
-                                request.getCheckInDate(), request.getCheckOutDate(), demands, null);
+                                request.getCheckInDate(), request.getCheckOutDate(), demands);
 
                 // 2. Fetch deal and get linked customer
                 DealEntity deal = dealRepository.findById(request.getDealId())
@@ -146,19 +141,12 @@ public class CreateQuotationUseCase {
 
                 quotationDetailRepository.saveAll(details);
 
-                // 7. Take the rooms out of availability, or ask the Reservation team for them.
-                // The hold can still be refused here even though the assessment said OK — another
-                // rep may have taken the last room in between — so the outcome of the attempt,
-                // not the earlier verdict, decides which way this goes.
-                boolean assessedOk = assessment.verdict() == RoomAvailabilityVerdict.OK;
-                boolean holdTaken = assessedOk && roomAllotmentHoldService.holdForQuotation(saved,
-                                request.getCheckInDate(), request.getCheckOutDate(),
-                                demands, assessment.products());
-                if (!holdTaken) {
-                        // assessedOk here means the rooms vanished between assessing and holding,
-                        // so the assessment lists no faulted line to ask about — ask about them all.
-                        autoRoomRequestService.raiseIfNeeded(saved, assessment, creator, assessedOk);
-                }
+                // Nothing is held or reserved here. Creating a quotation is an offer, and Report 1
+                // (FE-19, LI-02) puts holding and locking room inventory on the Reservation side of
+                // the boundary — this used to take a soft hold on the quota and, when it could not,
+                // put a question to the Reservation team on the rep's behalf. The availability
+                // question is now raised once, at the point it is actually needed: when the customer
+                // accepts. A rep who wants an earlier answer can still ask from the quotation.
 
                 // Publish Activity Log event
                 try {

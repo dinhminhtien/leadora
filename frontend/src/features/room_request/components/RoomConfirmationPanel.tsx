@@ -1,31 +1,32 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { BedDouble, CheckCircle2, Clock, Send, TriangleAlert, XCircle } from "lucide-react";
+import React, { useEffect } from "react";
+import { BedDouble, CheckCircle2, Clock, TriangleAlert, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { apiErrorMessage } from "@/services/api_error";
 import {
   currentRoomRequest,
   isRoomConfirmationUsable,
   type RoomRequest,
 } from "@/services/room_request_service";
-import {
-  useCancelRoomRequest,
-  useCreateRoomRequest,
-  useRoomRequestsByQuotation,
-} from "@/features/room_request/hooks/use_room_requests";
-import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useRoomRequestsByQuotation } from "@/features/room_request/hooks/use_room_requests";
 
 /**
- * The room-confirmation state of one quotation, plus the button to ask about it.
+ * Where a quotation's rooms stand with the Reservation team. **Read-only.**
  *
- * Advisory: room confirmation is a condition recorded against a quotation, not a
- * precondition for sending or converting it — the server enforces nothing here. The rep
- * sees whether the Reservation team has confirmed the rooms and decides for themselves;
- * `onUsableChange` lets the parent adjust its wording, not block its action.
+ * There is no "ask" button and no "withdraw" button, because asking is no longer something a rep
+ * does. The request is raised by the workflow the moment the customer accepts their quotation —
+ * the point at which the sales side actually needs a real answer.
+ *
+ * Sales used to be able to ask at any time as well, which meant the same quotation could put two
+ * questions into the Reservation inbox by two different routes. The inbox could not tell which one
+ * was current, and reps re-asked questions that were already open. One route, raised automatically,
+ * removes that entirely.
+ *
+ * Withdrawing went with it: with no way to ask again by hand, a cancelled request would strand the
+ * quotation with no route to a confirmation and no way to convert. A question that no longer
+ * applies is retired automatically instead — revising a quotation supersedes its request, because
+ * the dates or the room type it asked about have changed.
  */
 
 import type { RoomLineDetail } from "@/services/quotation_service";
@@ -43,8 +44,6 @@ export interface RoomConfirmationPanelProps {
   quote: QuotationLike;
   /** Called whenever the confirmation becomes usable / unusable — for wording, not gating. */
   onUsableChange?: (usable: boolean) => void;
-  /** Rooms to ask for, when the panel has to raise a new request. */
-  defaultQuantity?: number;
 }
 
 function heldUntilLabel(iso: string): string {
@@ -65,9 +64,9 @@ function describe(
   if (!request) {
     return {
       tone: "neutral",
-      title: "Rooms not requested yet",
+      title: "Not requested yet",
       detail:
-        "The Reservation team has not been asked about these rooms. Ask them so the customer gets a quotation you can honour.",
+        "The Reservation team is asked automatically as soon as the customer accepts this quotation.",
     };
   }
 
@@ -79,7 +78,7 @@ function describe(
     return {
       tone: "warning",
       title: "Waiting on Reservation",
-      detail: `Asked for ${roomBreakdown}. They are checking the hotel system now.`,
+      detail: `Asked for ${roomBreakdown}. They are checking the hotel's system now.`,
     };
   }
 
@@ -89,7 +88,7 @@ function describe(
       title: "Reservation could not confirm",
       detail:
         request.reservationNote?.trim() ||
-        "No rooms available for these dates. Revise the quotation and ask again.",
+        "No rooms available for these dates. Revise the quotation with dates or a room type they can meet.",
     };
   }
 
@@ -100,13 +99,13 @@ function describe(
       ? {
           tone: "danger",
           title: "Room hold expired",
-          detail: `Reservation held the rooms until ${heldUntilLabel(request.heldUntil as string)}. Ask again to get a fresh confirmation.`,
+          detail: `Reservation held the rooms until ${heldUntilLabel(request.heldUntil as string)}. Revise the quotation to get a fresh confirmation.`,
         }
       : {
           tone: "danger",
           title: "Confirmation no longer matches",
           detail:
-            "The room type or dates changed after Reservation confirmed them. Ask again for the current details.",
+            "The room type or dates changed after Reservation confirmed them. Revise the quotation so a fresh request is raised.",
         };
   }
 
@@ -133,29 +132,8 @@ const TONE_BADGE = {
   neutral: "default",
 } as const;
 
-export function RoomConfirmationPanel({
-  quote,
-  onUsableChange,
-  defaultQuantity = 1,
-}: RoomConfirmationPanelProps) {
+export function RoomConfirmationPanel({ quote, onUsableChange }: RoomConfirmationPanelProps) {
   const { data: requests, isLoading } = useRoomRequestsByQuotation(quote.id);
-  const createRequest = useCreateRoomRequest();
-  const cancelRequest = useCancelRoomRequest();
-  const { confirm, confirmElement } = useConfirm();
-
-  const calculatedQuantity = React.useMemo(() => {
-    if (quote.roomLines && quote.roomLines.length > 0) {
-      return quote.roomLines.reduce((acc, r) => acc + (r.numberOfRooms ?? 1), 0);
-    }
-    return quote.numberOfRooms ?? defaultQuantity;
-  }, [quote, defaultQuantity]);
-
-  const [quantity, setQuantity] = useState(String(calculatedQuantity));
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    setQuantity(String(calculatedQuantity));
-  }, [calculatedQuantity]);
 
   const request = currentRoomRequest(requests);
   const usable = isRoomConfirmationUsable(request, quote);
@@ -166,57 +144,12 @@ export function RoomConfirmationPanel({
     onUsableChange?.(usable);
   }, [usable, onUsableChange]);
 
-  const canAsk = !isLoading && !usable && request?.status !== "PENDING";
-
-  // UC-26.4 — only an unanswered request can be withdrawn. The backend re-checks this
-  // under a lock and 409s if Reservation answered in the meantime.
-  const canCancel = !isLoading && request?.status === "PENDING";
-
-  const handleCancel = async () => {
-    if (!request) return;
-    setError("");
-    // A3 — dismissing the dialog leaves the request untouched.
-    const { ok, reason } = await confirm({
-      title: "Cancel this room request?",
-      description:
-        "The Reservation team will stop seeing it in their inbox. The request stays in the history, and you can ask again at any time.",
-      confirmLabel: "Cancel request",
-      cancelLabel: "Keep it",
-      severity: "warning",
-    });
-    if (!ok) return;
-    try {
-      await cancelRequest.mutateAsync({
-        id: request.requestId,
-        payload: reason ? { reason } : undefined,
-      });
-    } catch (e) {
-      // Most likely ROOM_REQUEST_ALREADY_PROCESSED — Reservation answered first.
-      setError(apiErrorMessage(e));
-    }
-  };
-
-  const handleAsk = async () => {
-    setError("");
-    const parsed = Number.parseInt(quantity, 10);
-    if (!Number.isFinite(parsed) || parsed < 1) {
-      setError("Enter how many rooms you need (at least 1).");
-      return;
-    }
-    try {
-      await createRequest.mutateAsync({ quotationId: quote.id, quantity: parsed });
-    } catch (e) {
-      // Surfaces NO_RESERVATION_STAFF and QUOTATION_DATES_MISSING in the user's words.
-      setError(apiErrorMessage(e));
-    }
-  };
-
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-zinc-700 dark:bg-zinc-800/40">
       <div className="mb-2 flex items-center gap-2">
         <BedDouble className="size-4 text-slate-500" />
         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-          Room Confirmation
+          Room Availability
         </p>
         {!isLoading && (
           <Badge variant={TONE_BADGE[state.tone]} className="ml-auto text-[9px] font-bold uppercase">
@@ -242,75 +175,39 @@ export function RoomConfirmationPanel({
             </div>
           </div>
 
-          {canAsk && (
-            <div className="mt-3 space-y-2">
-              {quote.roomLines && quote.roomLines.length > 0 && (
-                <div className="rounded border border-slate-200 bg-white p-2.5 text-xs shadow-xs">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Quotation Room Breakdown ({calculatedQuantity} total rooms)
-                  </p>
-                  <div className="space-y-1 font-medium text-slate-700">
-                    {quote.roomLines.map((line, idx) => (
-                      <div key={idx} className="flex justify-between items-center text-[11px]">
-                        <span className="text-slate-800 font-medium">{line.roomType}</span>
-                        <span className="font-bold text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded text-[10px]">
-                          × {line.numberOfRooms ?? 1}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+          {/* Requested vs confirmed, so the rep can see the shape of the answer without
+              opening the request. */}
+          {request && (
+            <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 rounded border border-slate-200 bg-white p-2.5 text-[11px] dark:border-zinc-700 dark:bg-zinc-900/40">
+              <dt className="text-slate-400">Requested</dt>
+              <dd className="text-right font-semibold text-slate-700 dark:text-zinc-200">
+                {request.quantity} × {request.roomTypeRequested ?? "—"}
+              </dd>
+              <dt className="text-slate-400">Stay</dt>
+              <dd className="text-right font-semibold text-slate-700 dark:text-zinc-200">
+                {request.checkInDate} → {request.checkOutDate}
+              </dd>
+              <dt className="text-slate-400">Source</dt>
+              <dd className="text-right font-semibold text-slate-700 dark:text-zinc-200">
+                Reservation
+              </dd>
+              {request.respondedAt && (
+                <>
+                  <dt className="text-slate-400">Answered</dt>
+                  <dd className="text-right font-semibold text-slate-700 dark:text-zinc-200">
+                    {new Date(request.respondedAt).toLocaleString(undefined, {
+                      day: "2-digit",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </dd>
+                </>
               )}
-              <div className="flex items-end gap-2">
-                <div className="w-28">
-                  <label className="mb-1 block text-[10px] font-semibold text-slate-500">Total Rooms</label>
-                  <Input
-                    type="number"
-                    value={quantity}
-                    readOnly
-                    disabled
-                    title="Room request quantity is hard-coded based on quotation details."
-                    className="h-8 text-xs font-bold bg-slate-100/80 text-slate-700 cursor-not-allowed border-slate-200"
-                  />
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleAsk}
-                  disabled={createRequest.isPending}
-                  leftIcon={<Send className="size-3" />}
-                >
-                  {createRequest.isPending ? "Sending…" : "Ask Reservation"}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {canCancel && (
-            <div className="mt-3">
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={handleCancel}
-                disabled={cancelRequest.isPending}
-                leftIcon={<XCircle className="size-3" />}
-                className="text-xs text-slate-500 hover:text-red-600"
-              >
-                {cancelRequest.isPending ? "Cancelling…" : "Cancel request"}
-              </Button>
-            </div>
-          )}
-
-          {error && (
-            <p className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
-              {error}
-            </p>
+            </dl>
           )}
         </>
       )}
-      {confirmElement}
     </div>
   );
 }

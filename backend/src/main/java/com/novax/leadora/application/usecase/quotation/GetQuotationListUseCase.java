@@ -33,14 +33,29 @@ public class GetQuotationListUseCase {
             List<QuotationStatus> statuses,
             String search,
             Pageable pageable) {
-        
+        return execute(status, statuses, search, pageable, false);
+    }
+
+    /**
+     * @param byPriority order by what the rep has to do next instead of by a column. The
+     *                   {@code pageable} must then be unsorted — the ordering is in the query.
+     */
+    @Transactional(readOnly = true)
+    public Page<QuotationResponse> execute(
+            QuotationStatus status,
+            List<QuotationStatus> statuses,
+            String search,
+            Pageable pageable,
+            boolean byPriority) {
+
         // Owner-scoping: SALES is restricted to quotations they created; MANAGER/ADMIN see all.
         UserEntity currentUser = quotationAccessPolicy.currentUser();
         UUID ownerId = quotationAccessPolicy.listScopeOwnerId(currentUser);
 
         // Fetch DTO Projections with database-side paging and filtering
-        Page<QuotationSummaryDto> summaryPage = quotationRepository.findAllSummaries(
-                ownerId, status, statuses, search, pageable);
+        Page<QuotationSummaryDto> summaryPage = byPriority
+                ? quotationRepository.findAllSummariesByPriority(ownerId, status, statuses, search, pageable)
+                : quotationRepository.findAllSummaries(ownerId, status, statuses, search, pageable);
 
         // Batch fetch detail lines for the retrieved page of parent quotations (2-query pattern)
         List<UUID> quotationIds = summaryPage.getContent().stream()
