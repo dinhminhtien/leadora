@@ -35,10 +35,18 @@ public class FeedbackSubmittedListener {
         int lockAttempt = 0;
         AbsaResponseDto results = null;
 
-        // 1. Fetch initial record to check comment availability
         SalesFeedbackEntity initialFeedback = salesFeedbackRepository.findById(event.getFeedbackId()).orElse(null);
         if (initialFeedback == null) {
             log.error("Feedback with ID {} not found for ABSA analysis", event.getFeedbackId());
+            return;
+        }
+
+        String currentStatus = initialFeedback.getAbsaStatus();
+        if ("SUCCESS".equalsIgnoreCase(currentStatus) || 
+            "PROCESSING".equalsIgnoreCase(currentStatus) || 
+            "SKIPPED".equalsIgnoreCase(currentStatus)) {
+            log.info("ABSA analysis for feedback ID {} is already processed or in progress (status: {}). Skipping.", 
+                     event.getFeedbackId(), currentStatus);
             return;
         }
 
