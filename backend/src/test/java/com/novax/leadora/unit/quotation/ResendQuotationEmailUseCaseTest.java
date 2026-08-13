@@ -1,6 +1,5 @@
 package com.novax.leadora.unit.quotation;
 
-import com.novax.leadora.api.dto.request.SendQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
@@ -111,13 +110,16 @@ class ResendQuotationEmailUseCaseTest {
         verify(tokenRepository, times(1)).deleteByQuotationId(quotationId);
         verify(tokenRepository, times(1)).save(any(QuotationConfirmationTokenEntity.class));
         
-        ArgumentCaptor<SendQuotationRequest> requestCaptor = ArgumentCaptor.forClass(SendQuotationRequest.class);
-        verify(quotationEmailService, times(1)).sendQuotationEmail(eq(quotation), requestCaptor.capture(), eq("John Sales"), anyString());
-        
-        SendQuotationRequest request = requestCaptor.getValue();
-        assertEquals("EMAIL", request.getSendMethod());
-        assertEquals("jane@example.com", request.getRecipientEmail());
-        assertEquals("Jane Doe", request.getRecipientName());
+        // The resend goes back to the address on the previous send log, not to whatever the
+        // customer record says now: the recipient is holding a link that this call replaces.
+        ArgumentCaptor<String> emailCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> nameCaptor = ArgumentCaptor.forClass(String.class);
+        verify(quotationEmailService, times(1)).sendQuotationEmail(
+                eq(quotation), emailCaptor.capture(), nameCaptor.capture(), any(),
+                eq("John Sales"), anyString());
+
+        assertEquals("jane@example.com", emailCaptor.getValue());
+        assertEquals("Jane Doe", nameCaptor.getValue());
 
         verify(sendLogRepository, times(1)).save(any(QuotationSendLogEntity.class));
         verify(systemAuditLogService, times(1)).log(eq("QUOTATION"), eq("QUOTATION"), eq(quotationId), eq("RESENT"), eq(actor), any(), any(), any());

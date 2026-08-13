@@ -4,11 +4,8 @@ import com.novax.leadora.api.dto.request.ReviseQuotationRequest;
 import com.novax.leadora.api.dto.request.RoomLineRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
-import com.novax.leadora.application.usecase.inventory.RoomAllotmentHoldService;
 import com.novax.leadora.application.usecase.inventory.RoomAvailabilityAssessment;
-import com.novax.leadora.application.usecase.inventory.RoomAvailabilityVerdict;
 import com.novax.leadora.application.usecase.inventory.RoomLineDemand;
-import com.novax.leadora.application.usecase.roomrequest.AutoRoomRequestService;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
@@ -56,8 +53,6 @@ public class ReviseQuotationUseCase {
     private final CurrentUserProvider currentUserProvider;
     private final QuotationAccessPolicy quotationAccessPolicy;
     private final QuotationAvailabilityChecker availabilityChecker;
-    private final RoomAllotmentHoldService roomAllotmentHoldService;
-    private final AutoRoomRequestService autoRoomRequestService;
     private final SystemAuditLogService systemAuditLogService;
     private final ActivityLogPublisher activityLogPublisher;
     private final ObjectMapper objectMapper;
@@ -81,14 +76,13 @@ public class ReviseQuotationUseCase {
                     "Quotation cannot be revised from status " + parent.getStatus().name(), HttpStatus.CONFLICT);
         }
 
-        // E2/BR-24: assess against allotment. The parent's own hold is excluded — a revision
-        // inherits the rooms the version it replaces is already sitting on, and counting them
-        // would have the quotation compete with itself.
+        // Resolves the room types and reports how they look against the quota Reservation
+        // published. Advisory only — a shortfall does not stop a revision.
         List<RoomLineDemand> demands = request.getRoomLines().stream()
                 .map(line -> new RoomLineDemand(line.getProductId(), line.getNumberOfRooms()))
                 .toList();
         RoomAvailabilityAssessment assessment = availabilityChecker.assess(
-                request.getCheckInDate(), request.getCheckOutDate(), demands, parentId);
+                request.getCheckInDate(), request.getCheckOutDate(), demands);
 
         // Pricing calculations — one line per room type, summed into the quotation total
         long nights = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
@@ -155,16 +149,10 @@ public class ReviseQuotationUseCase {
                 .toList();
         quotationDetailRepository.saveAll(details);
 
-        // The parent is about to be superseded, so its rooms go back before the revision takes
-        // its own — otherwise the two versions of one quotation would hold the stock twice.
-        roomAllotmentHoldService.releaseForQuotation(parentId);
-
-        boolean assessedOk = assessment.verdict() == RoomAvailabilityVerdict.OK;
-        boolean holdTaken = assessedOk && roomAllotmentHoldService.holdForQuotation(saved,
-                request.getCheckInDate(), request.getCheckOutDate(), demands, assessment.products());
-        if (!holdTaken) {
-            autoRoomRequestService.raiseIfNeeded(saved, assessment, creator, assessedOk);
-        }
+        // No rooms are held or released here. Holding quota was Leadora reserving inventory,
+        // which Report 1 (FE-19, LI-02) places with Reservation; the revision simply supersedes
+        // its parent. Any answer Reservation had already given is retired by the room-request
+        // supersede rule, because the question — dates or room type — has changed.
 
         // BR-22: exactly one version stays "active" — supersede the parent now that a
         // new version exists, instead of leaving both live simultaneously.

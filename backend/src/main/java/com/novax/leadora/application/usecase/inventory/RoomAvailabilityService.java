@@ -2,7 +2,6 @@ package com.novax.leadora.application.usecase.inventory;
 
 import com.novax.leadora.infrastructure.persistence.entity.ProductServiceEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
-import com.novax.leadora.infrastructure.persistence.repository.RoomAllotmentHoldRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -20,46 +19,41 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Works out how many rooms of each type are still sellable, per night and per stay.
+ * Presents the room figures the Reservation team has synchronized into this CRM (FE-19).
  *
  * <p>The whole calculation is one line:
- * <pre>available = allotted − booked − held</pre>
- * with each term coming from a different place — quota from {@code room_allotments}, sold rooms
- * from bookings, provisional rooms from live holds. Availability is never stored, only derived,
- * so it cannot fall out of step with the bookings the way a running balance would.
+ * <pre>available = allotted − booked</pre>
+ * quota from {@code room_allotments}, which only the Reservation team writes, less the rooms this
+ * CRM has already committed through bookings. Availability is never stored, only derived, so it
+ * cannot fall out of step with the bookings the way a running balance would.
  *
- * <p><b>This is quota, not the hotel's inventory.</b> The hotel does not disclose how full it is;
- * it grants a block to sell and this counts down within it. "None left" therefore means "our
- * allocation is spent", and the Reservation team can often get more — which is why running out
- * routes to {@link RoomAvailabilityVerdict#NEEDS_CONFIRMATION} rather than a refusal.
+ * <p><b>This is reference information, not an availability decision.</b> Report 1 (FE-19, LI-02)
+ * puts determining, allocating, holding and locking room inventory on the Reservation side of the
+ * boundary; Leadora displays what Reservation published so a rep can prepare a quotation and
+ * decide whether to raise a request. Nothing in the sales workflow is refused on the strength of
+ * these numbers — the only authority on whether rooms exist is the Reservation team's recorded
+ * answer to a room request.
  *
- * <p>Numbers only. Whether a given number is good enough to quote on is policy, and lives in
- * {@code QuotationAvailabilityChecker}.
+ * <p>A third term used to be subtracted here: soft holds this CRM placed on the quota when a
+ * quotation was saved. That was Leadora holding inventory, which the scope excludes, so the holds
+ * and the machinery behind them are gone.
  */
 @Service
 @RequiredArgsConstructor
 public class RoomAvailabilityService {
 
-    private final RoomAllotmentHoldRepository holdRepository;
     private final RoomAvailabilityDbFetcher dbFetcher;
 
     /** How old published quota may get before the UI has to warn about it (BR-50). */
     @Value("${leadora.room-allotment.stale-hours:24}")
     private long staleHours;
 
-    /**
-     * Per-night picture for a set of room types over {@code [from, toExclusive)}.
-     *
-     * <p>{@code excludeQuotationId} discounts one quotation's own live hold. A quotation being
-     * revised is already holding its rooms; counting them would have it compete with itself and
-     * report the rooms it is sitting on as unavailable.
-     */
+    /** Per-night picture for a set of room types over {@code [from, toExclusive)}. */
     @Transactional(readOnly = true)
     public Map<UUID, List<NightAvailability>> nights(
             Collection<ProductServiceEntity> products,
             LocalDate from,
-            LocalDate toExclusive,
-            UUID excludeQuotationId) {
+            LocalDate toExclusive) {
 
         Map<UUID, List<NightAvailability>> result = new LinkedHashMap<>();
         if (products == null || products.isEmpty() || !from.isBefore(toExclusive)) {
@@ -81,32 +75,20 @@ public class RoomAvailabilityService {
                     from, toExclusive, span.quantity());
         }
 
-        Map<UUID, Map<LocalDate, Integer>> held = new HashMap<>();
-        for (RoomAllotmentHoldRepository.HoldSpan span : holdRepository.findActiveSpans(
-                productIds, from, toExclusive)) {
-            if (excludeQuotationId != null && excludeQuotationId.equals(span.getQuotationId())) {
-                continue;
-            }
-            spread(held, span.getProductId(), span.getCheckInDate(), span.getCheckOutDate(),
-                    from, toExclusive, span.getQuantity());
-        }
-
         OffsetDateTime staleBefore = OffsetDateTime.now().minusHours(staleHours);
 
         for (ProductServiceEntity product : products) {
             UUID productId = product.getProductId();
             Map<LocalDate, AllotmentNightDto> productQuota = quota.getOrDefault(productId, Map.of());
             Map<LocalDate, Integer> productBooked = booked.getOrDefault(productId, Map.of());
-            Map<LocalDate, Integer> productHeld = held.getOrDefault(productId, Map.of());
 
             List<NightAvailability> perNight = new ArrayList<>();
             for (LocalDate date = from; date.isBefore(toExclusive); date = date.plusDays(1)) {
                 int nightBooked = productBooked.getOrDefault(date, 0);
-                int nightHeld = productHeld.getOrDefault(date, 0);
                 AllotmentNightDto row = productQuota.get(date);
 
                 if (row == null) {
-                    perNight.add(NightAvailability.unpublished(date, nightBooked, nightHeld));
+                    perNight.add(NightAvailability.unpublished(date, nightBooked));
                     continue;
                 }
 
@@ -115,14 +97,13 @@ public class RoomAvailabilityService {
                 // (BR-49), and a negative figure on screen would read as a system fault rather
                 // than as the overbooking it actually is. The overbooking is surfaced by the
                 // publish path, which notifies the affected reps.
-                int available = Math.max(0, allotted - nightBooked - nightHeld);
+                int available = Math.max(0, allotted - nightBooked);
                 OffsetDateTime asOf = row.asOf();
 
                 perNight.add(new NightAvailability(
                         date,
                         allotted,
                         nightBooked,
-                        nightHeld,
                         available,
                         Boolean.TRUE.equals(row.closed()),
                         asOf,
@@ -141,11 +122,9 @@ public class RoomAvailabilityService {
     public Map<UUID, StayAvailability> stays(
             Collection<ProductServiceEntity> products,
             LocalDate checkIn,
-            LocalDate checkOut,
-            UUID excludeQuotationId) {
+            LocalDate checkOut) {
 
-        Map<UUID, List<NightAvailability>> perNight =
-                nights(products, checkIn, checkOut, excludeQuotationId);
+        Map<UUID, List<NightAvailability>> perNight = nights(products, checkIn, checkOut);
 
         Map<UUID, StayAvailability> result = new LinkedHashMap<>();
         for (ProductServiceEntity product : products) {
