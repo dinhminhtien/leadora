@@ -7,7 +7,14 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "sales_feedbacks")
+@Table(
+    name = "sales_feedbacks",
+    indexes = {
+        @Index(name = "idx_feedbacks_submitted_at", columnList = "submitted_at"),
+        @Index(name = "idx_feedbacks_absa_status", columnList = "absa_status"),
+        @Index(name = "idx_feedbacks_staff_absa", columnList = "sales_staff_id, absa_status")
+    }
+)
 @Getter
 @Setter
 @NoArgsConstructor
