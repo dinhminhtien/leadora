@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import type { Quotation } from "@/services/quotation_service";
-import { useConvertToBooking } from "@/features/quotation/hooks/use_quotations";
+import { useConvertToBooking, useQuotationEligibility } from "@/features/quotation/hooks/use_quotations";
 import { useAuthStore } from "@/stores/auth_store";
 import { Portal } from "@/components/ui/Portal";
 import { RoomConfirmationPanel } from "@/features/room_request/components/RoomConfirmationPanel";
@@ -109,20 +109,19 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
   // the Reservation team to answer.
   const [roomConfirmed, setRoomConfirmed] = useState(false);
 
+  // Whether the server would accept this conversion, and its reason if not. The rules — the
+  // customer's acknowledged contract, an unconverted quotation, rooms covered by allotment or
+  // confirmed by Reservation — live only on the server, and the old modal knew none of them:
+  // it offered Convert on every accepted quotation and let the request come back refused.
+  const { data: eligibility } = useQuotationEligibility(quote.id);
+
   const nights = useMemo(() => {
     if (!checkInDate || !checkOutDate) return 0;
     const diff = new Date(checkOutDate).getTime() - new Date(checkInDate).getTime();
     return diff > 0 ? Math.floor(diff / (1000 * 60 * 60 * 24)) : 0;
   }, [checkInDate, checkOutDate]);
 
-  const hasMissingFields = !email || !phone || !roomType || !checkInDate || !checkOutDate;
-
-  const handleConvert = async () => {
-    setE3Error(null);
-    setE4Error(null);
-    setApiError(null);
-
-    // E4: missing required fields (BR-23)
+  const missingFields = useMemo(() => {
     const missing: string[] = [];
     if (!contactName.trim()) missing.push("Contact Name");
     if (!email.trim()) missing.push("Email");
@@ -130,9 +129,38 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
     if (!roomType.trim()) missing.push("Room Type");
     if (!checkInDate.trim()) missing.push("Check-In Date");
     if (!checkOutDate.trim()) missing.push("Check-Out Date");
+    return missing;
+  }, [contactName, email, phone, roomType, checkInDate, checkOutDate]);
 
-    if (missing.length > 0) {
-      setE4Error(`Incomplete customer/booking details — please fill in: ${missing.join(", ")}.`);
+  const hasMissingFields = missingFields.length > 0;
+
+  /** Why Convert cannot be used, or null when it can. Server verdict first, then this form. */
+  const blockedReason: string | null = (() => {
+    if (eligibility && !eligibility.convert.allowed) {
+      return eligibility.convert.reason ?? "This quotation cannot be converted in its current state.";
+    }
+    if (hasMissingFields) {
+      return `Cannot convert to booking: ${missingFields.join(", ")} ${
+        missingFields.length === 1 ? "is" : "are"
+      } still missing (BR-23). Fill in the highlighted field${
+        missingFields.length === 1 ? "" : "s"
+      } above.`;
+    }
+    if (nights <= 0) {
+      return "Cannot convert to booking: check-out must fall after check-in.";
+    }
+    return null;
+  })();
+
+  const handleConvert = async () => {
+    setE3Error(null);
+    setE4Error(null);
+    setApiError(null);
+
+    // Belt and braces: the button is disabled while this is set, so it only catches a state
+    // that changed between render and click.
+    if (blockedReason) {
+      setE4Error(blockedReason);
       return;
     }
 
@@ -194,9 +222,10 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
               <CheckCircle2 className="size-7 text-emerald-500" />
             </div>
             <div className="text-center">
-              <p className="text-sm font-bold text-slate-800">Booking Confirmed!</p>
+              <p className="text-sm font-bold text-slate-800">Booking Request Created</p>
               <p className="text-xs text-slate-500 mt-1">
-                Booking reference <strong className="text-slate-700">{success.bookingNo}</strong> has been created.
+                Booking reference <strong className="text-slate-700">{success.bookingNo}</strong> is with the
+                Reservation team, who confirm it against the hotel&apos;s system.
               </p>
             </div>
             <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-4 py-2.5 border border-slate-200">
@@ -353,9 +382,11 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
                   <CheckCircle2 className="size-3 shrink-0" />
                   <span>Status</span>
                 </div>
-                <span className="inline-flex items-center gap-1 font-bold text-emerald-700">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                  Confirmed
+                {/* PENDING, not "Confirmed". The booking goes to the Reservation team, who
+                    confirm it against the hotel's own system — this CRM does not. */}
+                <span className="inline-flex items-center gap-1 font-bold text-amber-700">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                  Pending Reservation
                 </span>
               </div>
             </div>
@@ -384,24 +415,36 @@ export function ConvertToBookingModal({ quote, onConverted, onClose }: ConvertTo
         )}
 
         {!success && (
-          <div className="shrink-0 mt-auto border-t border-slate-100 bg-white px-5 py-4 z-10 flex gap-2">
-            <Button
-              variant="primary"
-              className="flex-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-700"
-              onClick={handleConvert}
-              isLoading={convertToBooking.isPending}
-              leftIcon={<Building2 className="size-3.5" />}
-            >
-              Confirm &amp; Convert to Booking
-            </Button>
-            <Button
-              variant="outline"
-              className="text-xs border-slate-200 text-slate-600 px-4"
-              onClick={onClose}
-              disabled={convertToBooking.isPending}
-            >
-              Cancel
-            </Button>
+          <div className="shrink-0 mt-auto border-t border-slate-100 bg-white px-5 py-4 z-10">
+            {/* The unmet condition is stated next to the button rather than discovered by
+                clicking it — "Convert to Booking does not work" was this reason staying hidden. */}
+            {blockedReason && (
+              <p className="mb-2.5 flex items-start gap-1.5 text-[11px] font-medium text-amber-700">
+                <AlertCircle className="size-3.5 shrink-0 text-amber-500" />
+                <span>{blockedReason}</span>
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                className="flex-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-700"
+                onClick={handleConvert}
+                isLoading={convertToBooking.isPending}
+                disabled={!!blockedReason}
+                title={blockedReason ?? undefined}
+                leftIcon={<Building2 className="size-3.5" />}
+              >
+                Confirm &amp; Convert to Booking
+              </Button>
+              <Button
+                variant="outline"
+                className="text-xs border-slate-200 text-slate-600 px-4"
+                onClick={onClose}
+                disabled={convertToBooking.isPending}
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
         )}
       </div>

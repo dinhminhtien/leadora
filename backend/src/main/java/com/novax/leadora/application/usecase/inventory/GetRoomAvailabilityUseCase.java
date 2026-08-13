@@ -64,7 +64,7 @@ public class GetRoomAvailabilityUseCase {
 
         List<ProductServiceEntity> products = sellableRooms(productId);
         Map<UUID, List<NightAvailability>> nights =
-                roomAvailabilityService.nights(products, from, to.plusDays(1), null);
+                roomAvailabilityService.nights(products, from, to.plusDays(1));
 
         return RoomAvailabilityGridResponse.builder()
                 .from(from)
@@ -89,7 +89,7 @@ public class GetRoomAvailabilityUseCase {
 
         List<ProductServiceEntity> products = sellableRooms(productId);
         Map<UUID, StayAvailability> stays =
-                roomAvailabilityService.stays(products, checkIn, checkOut, null);
+                roomAvailabilityService.stays(products, checkIn, checkOut);
 
         return products.stream()
                 .map(product -> RoomStayAvailabilityResponse.of(

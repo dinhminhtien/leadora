@@ -87,16 +87,14 @@ class ApiPaths {
   static String quotationProcessApproval(String id) => '/quotations/$id/process-approval';
 
   // --- Room availability requests (RoomRequestController) ---
-  // This CRM owns no room inventory: Sales asks, the Reservation team answers from the
-  // hotel's real PMS. The answer is shown to the rep as context (RoomConfirmationCard)
-  // but does not gate Send or Convert — neither endpoint checks it server-side.
-  static const String roomRequests = '/room-requests';
+  // This CRM owns no room inventory: the Reservation team answers from the hotel's real PMS,
+  // and their answer is what authorises a booking conversion.
+  //
+  // Read-only from here. Requests are raised by the workflow when the customer accepts their
+  // quotation, so there is no create path and no withdraw path — Sales asking by hand as well
+  // meant one quotation could put two questions in the Reservation inbox by two routes.
   static String roomRequestsByQuotation(String quotationId) =>
       '/room-requests/by-quotation/$quotationId';
-
-  /// UC-26.4 — Sales withdraws a request Reservation has not answered yet. PATCH.
-  static String roomRequestCancel(String requestId) =>
-      '/room-requests/$requestId/cancel';
 
   // --- Deals (DealController) ---
   static const String deals = '/deals';

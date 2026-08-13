@@ -63,6 +63,85 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
             @Param("search") String search,
             Pageable pageable);
 
+    /**
+     * The same page, ordered by what the rep has to do next rather than by a column.
+     *
+     * <p>Opening the list on "newest first" put whatever happened to be created last at the top,
+     * which is rarely the quotation anyone needs. This orders by <b>whose move it is</b>: the ones
+     * waiting on this rep first — a manager asked for changes, a rejection to revise, an approved
+     * quotation to send, an accepted one to convert — then the ones waiting on someone else, then
+     * everything closed out. {@code validUntil} breaks ties, so within a band the quotation
+     * expiring soonest leads.
+     *
+     * <p>Ordering lives in the query rather than in a {@code Sort}, because Spring Data can only
+     * sort by a property and this is a ranking over the status enum. Callers must therefore pass an
+     * <b>unsorted</b> {@code Pageable}: a {@code Sort} would be appended after this {@code ORDER
+     * BY} and silently take precedence over none of it, but it would still confuse the two.
+     */
+    @Query("""
+            SELECT new com.novax.leadora.api.dto.response.QuotationSummaryDto(
+                q.quotationId,
+                d.dealId,
+                d.dealName,
+                c.customerId,
+                c.fullName,
+                c.email,
+                c.phone,
+                q.roomType,
+                q.checkInDate,
+                q.checkOutDate,
+                q.paymentPolicy,
+                q.subtotal,
+                q.discountPercent,
+                q.discountAmount,
+                q.totalAmount,
+                q.validUntil,
+                q.status,
+                q.notes,
+                q.version,
+                q.parentQuotationId,
+                q.changeReason,
+                q.createdAt
+            )
+            FROM QuotationEntity q
+            LEFT JOIN q.deal d
+            LEFT JOIN q.customer c
+            LEFT JOIN q.createdBy cb
+            WHERE (:ownerId IS NULL OR cb.userId = :ownerId)
+              AND (:status IS NULL OR q.status = :status)
+              AND (coalesce(:statuses, null) IS NULL OR q.status IN :statuses)
+              AND (CAST(:search AS string) IS NULL OR
+                   LOWER(c.fullName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR
+                   LOWER(d.dealName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR
+                   LOWER(CAST(q.quotationId AS string)) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                  )
+            ORDER BY
+              CASE q.status
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.PENDING_REVISION THEN 0
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.REJECTED THEN 1
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.RESERVATION_REJECTED THEN 2
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.APPROVED THEN 3
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.ACCEPTED THEN 4
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.ACCEPTED_BY_CUSTOMER THEN 5
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.DRAFT THEN 6
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.INTERESTED THEN 7
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.RESERVATION_PENDING THEN 8
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.PENDING_CUSTOMER_RESPONSE THEN 9
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.SENT THEN 10
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.PENDING_APPROVAL THEN 11
+                WHEN com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus.BOOKING_REQUEST THEN 12
+                ELSE 13
+              END ASC,
+              q.validUntil ASC NULLS LAST,
+              q.createdAt DESC
+            """)
+    Page<QuotationSummaryDto> findAllSummariesByPriority(
+            @Param("ownerId") UUID ownerId,
+            @Param("status") QuotationStatus status,
+            @Param("statuses") List<QuotationStatus> statuses,
+            @Param("search") String search,
+            Pageable pageable);
+
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT q FROM QuotationEntity q WHERE q.quotationId = :id")
     java.util.Optional<QuotationEntity> findByIdForUpdate(@Param("id") UUID id);

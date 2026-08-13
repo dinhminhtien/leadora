@@ -167,7 +167,6 @@ class QuotationDetailScreen extends ConsumerWidget {
                   roomType: quotation.roomType,
                   checkInDate: quotation.checkInDate,
                   checkOutDate: quotation.checkOutDate,
-                  defaultQuantity: quotation.numberOfRooms ?? 1,
                 ),
               ],
               const SizedBox(height: 20),

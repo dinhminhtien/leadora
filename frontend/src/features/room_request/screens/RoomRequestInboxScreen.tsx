@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { CalendarDays, CheckCircle2, Clock, Send, XCircle, Eye, Loader2 } from "lucide-react";
+import { ArrowDownWideNarrow, CalendarDays, CheckCircle2, Clock, Send, XCircle, Eye, Loader2 } from "lucide-react";
 
 
 import { StatusPill } from "@/components/ui/status-pill";
@@ -32,6 +32,14 @@ import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 
 const STATUS_FILTERS = ["PENDING", "CONFIRMED", "REJECTED", "all"] as const;
+
+/** Sentence case rather than the wire value shouted at the user. */
+const STATUS_LABELS: Record<(typeof STATUS_FILTERS)[number], string> = {
+  PENDING: "Awaiting answer",
+  CONFIRMED: "Confirmed",
+  REJECTED: "Rejected",
+  all: "All",
+};
 
 /** Rows per page — mirrors the server page size requested below. */
 const PAGE_SIZE = 10;
@@ -263,7 +271,7 @@ export function RoomRequestInboxScreen() {
     <div className="p-6">
       <PageHeader {...PAGE_META.roomRequests} />
 
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         {STATUS_FILTERS.map((s) => (
           <Button
             key={s}
@@ -274,9 +282,15 @@ export function RoomRequestInboxScreen() {
               setPage(0);
             }}
           >
-            {s === "all" ? "All" : s}
+            {s === "all" ? "All" : STATUS_LABELS[s]}
           </Button>
         ))}
+        {/* The order is fixed and server-side, so it is stated rather than offered as a
+            control: this is a queue to work through, not a table to browse. */}
+        <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <ArrowDownWideNarrow className="size-3.5" />
+          Unanswered first, then soonest check-in
+        </span>
       </div>
 
       <DataTable

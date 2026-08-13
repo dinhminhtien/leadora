@@ -58,7 +58,6 @@ public class RoomAvailabilityGridResponse {
         /** Null when the Reservation team has not published this night — never zero (BR-48). */
         private Integer allotted;
         private int booked;
-        private int held;
         /** Null when unpublished; the client must render this as "—", not as "sold out". */
         private Integer available;
         private boolean closed;
@@ -72,7 +71,6 @@ public class RoomAvailabilityGridResponse {
                     .date(night.date())
                     .allotted(night.allotted())
                     .booked(night.booked())
-                    .held(night.held())
                     .available(night.available())
                     .closed(night.closed())
                     .status(night.closed() ? "CLOSED" : night.published() ? "PUBLISHED" : "NOT_PUBLISHED")
