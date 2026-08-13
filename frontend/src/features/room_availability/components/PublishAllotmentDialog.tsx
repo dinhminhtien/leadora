@@ -133,6 +133,17 @@ function PublishAllotmentBody({
               </option>
             ))}
           </Select>
+          {/*
+            An empty picker used to look like a hotel with no room types. It is far more often the
+            catalogue request failing, and saying so is the difference between a one-line fix and
+            an afternoon spent looking in the wrong place.
+          */}
+          {rooms.length === 0 && (
+            <p className="mt-1 text-[12px] text-amber-700">
+              No room types loaded. The product catalogue could not be read — reload, and tell an
+              administrator if it stays empty.
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

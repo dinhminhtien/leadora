@@ -42,6 +42,7 @@ public class GetSentimentTrendUseCase {
             }
 
             predicates.add(cb.isNotNull(root.get("submittedAt")));
+            predicates.add(cb.equal(root.get("absaStatus"), "SUCCESS"));
 
             if (startDate != null) {
                 predicates.add(cb.greaterThanOrEqualTo(root.get("submittedAt"), startDate));

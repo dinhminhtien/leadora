@@ -155,17 +155,12 @@ export function SubmitFeedbackScreen({ token }: SubmitFeedbackScreenProps) {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const finalComment =
-        selectedCategories.length > 0
-          ? `[Tags: ${selectedCategories.join(", ")}] ${comment}`
-          : comment;
-
       const response = await customerFeedbackService.submitByToken(token, {
         rating,
         ratingAttitude,
         ratingSpeed,
         ratingAccuracy,
-        comment: finalComment,
+        comment: comment.trim(),
         recommendScore,
       });
 

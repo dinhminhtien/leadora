@@ -2,11 +2,12 @@ package com.novax.leadora.application.listener;
 
 import com.novax.leadora.application.event.FeedbackSubmittedEvent;
 import com.novax.leadora.infrastructure.integration.ai.AbsaEngineClient;
-import com.novax.leadora.infrastructure.integration.ai.AbsaEngineClient.SentimentResult;
+import com.novax.leadora.api.dto.response.AbsaResponseDto;
 import com.novax.leadora.infrastructure.persistence.entity.SalesFeedbackEntity;
 import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -14,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-import java.util.Map;
+import java.util.UUID;
 
 @Slf4j
 @Component
@@ -30,51 +31,92 @@ public class FeedbackSubmittedListener {
     public void handleFeedbackSubmitted(FeedbackSubmittedEvent event) {
         log.info("Starting asynchronous ABSA sentiment analysis for feedback ID: {}", event.getFeedbackId());
         
-        SalesFeedbackEntity feedback = salesFeedbackRepository.findById(event.getFeedbackId())
-                .orElse(null);
-                
-        if (feedback == null) {
+        int maxLockRetries = 3;
+        int lockAttempt = 0;
+        AbsaResponseDto results = null;
+
+        // 1. Fetch initial record to check comment availability
+        SalesFeedbackEntity initialFeedback = salesFeedbackRepository.findById(event.getFeedbackId()).orElse(null);
+        if (initialFeedback == null) {
             log.error("Feedback with ID {} not found for ABSA analysis", event.getFeedbackId());
             return;
         }
-        
-        String comment = feedback.getComment();
-        if (comment == null || comment.trim().isEmpty()) {
+
+        String rawComment = initialFeedback.getComment();
+        if (rawComment == null || rawComment.trim().isEmpty()) {
             log.info("Feedback comment is empty, skipping ABSA analysis for feedback ID: {}", event.getFeedbackId());
-            feedback.setAbsaStatus("SKIPPED");
-            salesFeedbackRepository.save(feedback);
+            updateFeedbackStatusWithLock(event.getFeedbackId(), "SKIPPED");
             return;
         }
-        
-        try {
-            feedback.setAbsaStatus("PROCESSING");
-            salesFeedbackRepository.saveAndFlush(feedback);
+        String comment = org.springframework.web.util.HtmlUtils.htmlUnescape(rawComment);
 
-            Map<String, SentimentResult> results = absaEngineClient.analyze(comment);
-            
-            feedback.setAbsaAttitudeSentiment(results.get("attitude").getSentiment());
-            feedback.setAbsaAttitudeConfidence(results.get("attitude").getConfidence());
-            
-            feedback.setAbsaSpeedSentiment(results.get("speed").getSentiment());
-            feedback.setAbsaSpeedConfidence(results.get("speed").getConfidence());
-            
-            feedback.setAbsaAccuracySentiment(results.get("accuracy").getSentiment());
-            feedback.setAbsaAccuracyConfidence(results.get("accuracy").getConfidence());
-            
-            feedback.setAbsaFacilitySentiment(results.get("facility").getSentiment());
-            feedback.setAbsaFacilityConfidence(results.get("facility").getConfidence());
-            
-            feedback.setAbsaPriceSentiment(results.get("price").getSentiment());
-            feedback.setAbsaPriceConfidence(results.get("price").getConfidence());
-            
-            feedback.setAbsaStatus("SUCCESS");
-            log.info("Successfully completed ABSA sentiment analysis for feedback ID: {}", event.getFeedbackId());
-            
+        // 2. Call AI ABSA Engine Client
+        try {
+            updateFeedbackStatusWithLock(event.getFeedbackId(), "PROCESSING");
+            results = absaEngineClient.analyze(comment);
         } catch (Exception e) {
             log.error("Error analyzing feedback comment for ID {}: {}", event.getFeedbackId(), e.getMessage(), e);
-            feedback.setAbsaStatus("FAILED");
+            updateFeedbackStatusWithLock(event.getFeedbackId(), "FAILED");
+            return;
         }
-        
-        salesFeedbackRepository.save(feedback);
+
+        // 3. Save ABSA results with optimistic locking retry logic
+        while (lockAttempt < maxLockRetries) {
+            try {
+                SalesFeedbackEntity feedback = salesFeedbackRepository.findById(event.getFeedbackId())
+                        .orElseThrow(() -> new IllegalStateException("Feedback not found: " + event.getFeedbackId()));
+
+                feedback.setAbsaAttitudeSentiment(results.attitude() != null ? results.attitude().sentiment() : null);
+                feedback.setAbsaAttitudeConfidence(results.attitude() != null ? results.attitude().confidence() : null);
+
+                feedback.setAbsaSpeedSentiment(results.speed() != null ? results.speed().sentiment() : null);
+                feedback.setAbsaSpeedConfidence(results.speed() != null ? results.speed().confidence() : null);
+
+                feedback.setAbsaAccuracySentiment(results.accuracy() != null ? results.accuracy().sentiment() : null);
+                feedback.setAbsaAccuracyConfidence(results.accuracy() != null ? results.accuracy().confidence() : null);
+
+                feedback.setAbsaFacilitySentiment(results.facility() != null ? results.facility().sentiment() : null);
+                feedback.setAbsaFacilityConfidence(results.facility() != null ? results.facility().confidence() : null);
+
+                feedback.setAbsaPriceSentiment(results.price() != null ? results.price().sentiment() : null);
+                feedback.setAbsaPriceConfidence(results.price() != null ? results.price().confidence() : null);
+
+                feedback.setComment(comment);
+                feedback.setAbsaStatus("SUCCESS");
+
+                salesFeedbackRepository.save(feedback);
+                log.info("Successfully completed and saved ABSA sentiment analysis for feedback ID: {}", event.getFeedbackId());
+                break;
+            } catch (ObjectOptimisticLockingFailureException e) {
+                lockAttempt++;
+                log.warn("Optimistic lock failure during ABSA saving for feedback ID: {}. Retry {}/{}", 
+                         event.getFeedbackId(), lockAttempt, maxLockRetries);
+                if (lockAttempt >= maxLockRetries) {
+                    log.error("Failed to save ABSA results due to persistent optimistic lock failure for ID: {}", event.getFeedbackId());
+                    updateFeedbackStatusWithLock(event.getFeedbackId(), "FAILED");
+                }
+                try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+            }
+        }
+    }
+
+    private void updateFeedbackStatusWithLock(UUID feedbackId, String status) {
+        int attempt = 0;
+        int maxAttempts = 3;
+        while (attempt < maxAttempts) {
+            try {
+                SalesFeedbackEntity feedback = salesFeedbackRepository.findById(feedbackId)
+                        .orElseThrow(() -> new IllegalStateException("Feedback not found"));
+                feedback.setAbsaStatus(status);
+                salesFeedbackRepository.saveAndFlush(feedback);
+                break;
+            } catch (ObjectOptimisticLockingFailureException ex) {
+                attempt++;
+                if (attempt >= maxAttempts) {
+                    log.error("Failed to update status to {} due to persistent locking failure", status);
+                }
+                try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+            }
+        }
     }
 }

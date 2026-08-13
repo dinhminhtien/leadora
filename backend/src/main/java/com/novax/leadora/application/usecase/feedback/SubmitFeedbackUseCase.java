@@ -11,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.util.HtmlUtils;
 
 import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
@@ -46,8 +45,8 @@ public class SubmitFeedbackUseCase {
             throw new BusinessRuleException("Feedback has already been submitted");
         }
 
-        // XSS sanitization
-        String sanitizedComment = request.getComment() != null ? HtmlUtils.htmlEscape(request.getComment().trim()) : null;
+        // XSS sanitization (React automatically escapes rendered strings to prevent XSS)
+        String sanitizedComment = request.getComment() != null ? request.getComment().trim() : null;
 
         feedback.setRating(request.getRating());
         feedback.setRatingAttitude(request.getRatingAttitude());

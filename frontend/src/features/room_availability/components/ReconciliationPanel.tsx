@@ -38,7 +38,20 @@ type Row = {
   date: string;
   allotted?: number;
   booked: number;
-  available?: number;
+  held: number;
+  /**
+   * What the hotel's own system should be showing for our block: the allocation less what we
+   * have entered into their system as sold.
+   *
+   * Deliberately **not** the grid's `available`. That figure also nets off our holds, which are
+   * internal to this CRM — the hotel has never been told about them, so a held room still counts
+   * as free on their screen. Comparing the desk's reading against `available` made the panel
+   * disagree with the server it feeds: the server reconstructs the block as
+   * `observed + booked`, so a desk that typed the CRM's own number would silently shrink the
+   * allocation by every held room, and a desk that typed the hotel's true figure would see a
+   * "mismatch" the save then reported as no change.
+   */
+  comparable?: number;
   published: boolean;
   closed: boolean;
   stale: boolean;
@@ -68,7 +81,8 @@ export function ReconciliationPanel() {
           date: day.date,
           allotted: day.allotted,
           booked: day.booked,
-          available: day.available,
+          held: day.held,
+          comparable: day.allotted === undefined ? undefined : Math.max(0, day.allotted - day.booked),
           published: day.status === "PUBLISHED",
           closed: day.closed,
           stale: day.stale,
@@ -114,8 +128,11 @@ export function ReconciliationPanel() {
     <div className="space-y-3">
       <div className="rounded-lg bg-slate-50 px-3 py-2.5 text-[12px] text-muted-foreground">
         Open the hotel&apos;s system and enter, for each night, how many rooms of ours are still
-        free there. Leave a row blank if you have not checked it. The block size is worked out
-        for you — rooms already sold are added back, so you never have to do the arithmetic.
+        free <em>there</em>. Leave a row blank if you have not checked it. The block size is
+        worked out for you — rooms already sold are added back, so you never have to do the
+        arithmetic. Rooms we are only holding against a quotation still show as free on the
+        hotel&apos;s side, so count them as free here too; the <strong>Expected there</strong>
+        column is the figure your reading should match.
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -166,7 +183,12 @@ export function ReconciliationPanel() {
                 <th className="px-3 py-2 font-medium">Night</th>
                 <th className="px-3 py-2 text-right font-medium">Allocated</th>
                 <th className="px-3 py-2 text-right font-medium">Sold</th>
-                <th className="px-3 py-2 text-right font-medium">Free (CRM)</th>
+                <th className="px-3 py-2 text-right font-medium" title="Rooms we are holding against open quotations. The hotel has not been told, so these still show as free on their side.">
+                  Held
+                </th>
+                <th className="px-3 py-2 text-right font-medium" title="What the hotel's system should be showing for our block: allocated less what we have entered there as sold. Holds are not subtracted — the hotel does not know about them.">
+                  Expected there
+                </th>
                 <th className="px-3 py-2 text-right font-medium">Free (hotel)</th>
               </tr>
             </thead>
@@ -177,7 +199,7 @@ export function ReconciliationPanel() {
                 // Highlight only where the desk has actually contradicted the CRM. Flagging
                 // every row would make the signal worthless on a screen that is mostly matches.
                 const mismatch =
-                  entered && row.available !== undefined && Number(raw) !== row.available;
+                  entered && row.comparable !== undefined && Number(raw) !== row.comparable;
 
                 return (
                   <tr
@@ -195,8 +217,11 @@ export function ReconciliationPanel() {
                       {row.published ? row.allotted : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-3 py-1.5 text-right">{row.booked}</td>
+                    <td className="px-3 py-1.5 text-right text-muted-foreground">
+                      {row.held > 0 ? row.held : <span className="text-slate-300">—</span>}
+                    </td>
                     <td className="px-3 py-1.5 text-right">
-                      {row.published ? row.available : <span className="text-slate-300">—</span>}
+                      {row.published ? row.comparable : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-3 py-1.5 text-right">
                       <div className="ml-auto w-24">
