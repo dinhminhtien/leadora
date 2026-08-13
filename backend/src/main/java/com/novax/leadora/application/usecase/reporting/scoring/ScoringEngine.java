@@ -209,7 +209,7 @@ public class ScoringEngine {
         if (present.isEmpty()) {
             return null;
         }
-        present.sort(Double::compareTo);
+        present.sort((a, b) -> a.compareTo(b));
         int mid = present.size() / 2;
         double result = present.size() % 2 == 1
                 ? present.get(mid)

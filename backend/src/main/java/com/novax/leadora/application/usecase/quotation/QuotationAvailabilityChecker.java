@@ -111,7 +111,7 @@ public class QuotationAvailabilityChecker {
             throw new BusinessException("INVALID_ROOM_TYPE",
                     "Every room line must name a room type.", HttpStatus.BAD_REQUEST);
         }
-        List<UUID> ids = demands.stream().map(RoomLineDemand::productId).distinct().toList();
+        List<UUID> ids = demands.stream().map(d -> d.productId()).distinct().toList();
 
         Map<UUID, ProductServiceEntity> byId = new LinkedHashMap<>();
         for (ProductServiceEntity product : productServiceRepository.findAllById(ids)) {
@@ -149,7 +149,7 @@ public class QuotationAvailabilityChecker {
     private static String blockedNames(List<RoomAvailabilityAssessment.LineAssessment> lines) {
         return lines.stream()
                 .filter(line -> line.verdict() == RoomAvailabilityVerdict.BLOCKED)
-                .map(RoomAvailabilityAssessment.LineAssessment::roomTypeName)
+                .map(l -> l.roomTypeName())
                 .distinct()
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("the selected room type");

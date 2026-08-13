@@ -84,8 +84,8 @@ public class StaleAllotmentScheduler {
                     .distinct()
                     .count();
             OffsetDateTime oldest = stale.stream()
-                    .map(RoomAllotmentEntity::getAsOf)
-                    .min(OffsetDateTime::compareTo)
+                    .map(row -> row.getAsOf())
+                    .min((a, b) -> a.compareTo(b))
                     .orElse(null);
 
             List<UserEntity> reservationStaff = userRepository.findByRoleName(RESERVATION_ROLE).stream()

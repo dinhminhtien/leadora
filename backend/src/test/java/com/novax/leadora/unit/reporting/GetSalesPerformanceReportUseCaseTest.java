@@ -282,7 +282,7 @@ class GetSalesPerformanceReportUseCaseTest {
         SalesPerformanceReportResponse report = run();
 
         assertThat(report.getReps().stream()
-                .mapToLong(SalesPerformanceReportResponse.RepRow::getDealsWon).sum())
+                .mapToLong(row -> row.getDealsWon()).sum())
                 .isEqualTo(report.getDealsWon())
                 .isEqualTo(8);
     }

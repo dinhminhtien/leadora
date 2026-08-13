@@ -48,11 +48,7 @@ public class GetDashboardSummaryUseCase {
     private static final List<String> PIPELINE_STAGES = List.of(
             "Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed");
 
-    @Cacheable(
-        value = "dashboard-summary",
-        key = "#actor.userId",
-        unless = "#result == null"
-    )
+    @Cacheable(value = "dashboard-summary", key = "#actor.userId", unless = "#result == null")
     @Transactional(readOnly = true)
     public DashboardSummaryResponse execute(UserEntity actor) {
         boolean unscoped = canSeeAll(actor);
@@ -62,22 +58,28 @@ public class GetDashboardSummaryUseCase {
         OffsetDateTime fourteenDaysAgo = now.minusDays(14);
 
         // ── Lead KPIs ─────────────────────────────────────────────────────────
-        Specification<LeadEntity> totalLeadsSpec = LeadSpecification.filter(null, null, null, null, null, null, unscoped, userId, false, false);
+        Specification<LeadEntity> totalLeadsSpec = LeadSpecification.filter(null, null, null, null, null, null,
+                unscoped, userId, false, false);
         long totalLeads = leadRepository.count(totalLeadsSpec);
 
-        Specification<LeadEntity> lostLeadsSpec = LeadSpecification.filter(null, LeadStatus.LOST, null, null, null, null, unscoped, userId, false, false);
+        Specification<LeadEntity> lostLeadsSpec = LeadSpecification.filter(null, LeadStatus.LOST, null, null, null,
+                null, unscoped, userId, false, false);
         long lostLeads = leadRepository.count(lostLeadsSpec);
 
-        Specification<LeadEntity> convertedLeadsSpec = LeadSpecification.filter(null, LeadStatus.CONVERTED, null, null, null, null, unscoped, userId, false, false);
+        Specification<LeadEntity> convertedLeadsSpec = LeadSpecification.filter(null, LeadStatus.CONVERTED, null, null,
+                null, null, unscoped, userId, false, false);
         long convertedLeads = leadRepository.count(convertedLeadsSpec);
 
         long activeLeads = totalLeads - lostLeads - convertedLeads;
 
         // Lead WoW Growth
         List<LeadEntity> allLeads = leadRepository.findAll(totalLeadsSpec);
-        long recentLeads = allLeads.stream().filter(l -> l.getCreatedAt() != null && l.getCreatedAt().isAfter(sevenDaysAgo)).count();
-        long prevLeads = allLeads.stream().filter(l -> l.getCreatedAt() != null && l.getCreatedAt().isAfter(fourteenDaysAgo) && l.getCreatedAt().isBefore(sevenDaysAgo)).count();
-        double activeLeadsGrowthPct = prevLeads == 0 ? (recentLeads > 0 ? 12.5 : 0.0) : Math.round((double) (recentLeads - prevLeads) / prevLeads * 1000.0) / 10.0;
+        long recentLeads = allLeads.stream()
+                .filter(l -> l.getCreatedAt() != null && l.getCreatedAt().isAfter(sevenDaysAgo)).count();
+        long prevLeads = allLeads.stream().filter(l -> l.getCreatedAt() != null
+                && l.getCreatedAt().isAfter(fourteenDaysAgo) && l.getCreatedAt().isBefore(sevenDaysAgo)).count();
+        double activeLeadsGrowthPct = prevLeads == 0 ? (recentLeads > 0 ? 12.5 : 0.0)
+                : Math.round((double) (recentLeads - prevLeads) / prevLeads * 1000.0) / 10.0;
 
         // ── Deal KPIs ─────────────────────────────────────────────────────────
         List<DealEntity> allDeals = dealRepository.findAll(DealSpecification.filter(null, null, unscoped, userId));
@@ -112,15 +114,15 @@ public class GetDashboardSummaryUseCase {
 
         // Avg Deal Size & MoM Growth
         BigDecimal avgDealSize = activeDeals.isEmpty()
-                ? (allDeals.isEmpty() ? BigDecimal.valueOf(18400) : totalDealsValue.divide(BigDecimal.valueOf(allDeals.size()), 0, RoundingMode.HALF_UP))
+                ? (allDeals.isEmpty() ? BigDecimal.valueOf(18400)
+                        : totalDealsValue.divide(BigDecimal.valueOf(allDeals.size()), 0, RoundingMode.HALF_UP))
                 : activeDealsValue.divide(BigDecimal.valueOf(activeDeals.size()), 0, RoundingMode.HALF_UP);
         double avgDealSizeGrowthPct = 8.0; // MoM trend comparison default benchmark
 
         // ── Task KPIs ─────────────────────────────────────────────────────────
         Specification<TaskEntity> pendingTasksSpec = (root, query, cb) -> cb.and(
                 cb.notEqual(root.get("status"), TaskStatus.COMPLETED),
-                cb.notEqual(root.get("status"), TaskStatus.CANCELLED)
-        );
+                cb.notEqual(root.get("status"), TaskStatus.CANCELLED));
         if (!unscoped) {
             pendingTasksSpec = pendingTasksSpec.and(TaskSpecification.assignedTo(userId));
         }
@@ -142,18 +144,22 @@ public class GetDashboardSummaryUseCase {
         for (SlaTrackingEntity e : slaRecords) {
             if (e.getStatus() == SlaStatus.RESOLVED) {
                 resolvedCount++;
-                if (e.getResolvedAt() != null && e.getDeadlineAt() != null && !e.getResolvedAt().isAfter(e.getDeadlineAt())) {
+                if (e.getResolvedAt() != null && e.getDeadlineAt() != null
+                        && !e.getResolvedAt().isAfter(e.getDeadlineAt())) {
                     compliantCount++;
                 }
                 if (e.getResolvedAt() != null && e.getStartedAt() != null) {
                     double hrs = Duration.between(e.getStartedAt(), e.getResolvedAt()).toMinutes() / 60.0;
-                    if (hrs >= 0) totalHrs += hrs;
+                    if (hrs >= 0)
+                        totalHrs += hrs;
                 }
-            } else if (e.getStatus() == SlaStatus.ACTIVE && e.getDeadlineAt() != null && !now.isAfter(e.getDeadlineAt())) {
+            } else if (e.getStatus() == SlaStatus.ACTIVE && e.getDeadlineAt() != null
+                    && !now.isAfter(e.getDeadlineAt())) {
                 compliantCount++;
             }
         }
-        double slaComplianceRatePct = totalSla == 0 ? 91.8 : Math.round((double) compliantCount / totalSla * 1000.0) / 10.0;
+        double slaComplianceRatePct = totalSla == 0 ? 91.8
+                : Math.round((double) compliantCount / totalSla * 1000.0) / 10.0;
         double avgResponseHours = resolvedCount == 0 ? 1.4 : Math.round((totalHrs / resolvedCount) * 10.0) / 10.0;
 
         // ── Sales Funnel ──────────────────────────────────────────────────────
@@ -191,12 +197,13 @@ public class GetDashboardSummaryUseCase {
 
         if (leaderboard.isEmpty()) {
             leaderboard = List.of(
-                    LeaderboardEntry.builder().name(actor.getFullName() != null ? actor.getFullName() : "Sales Staff").actionCount(14).build()
-            );
+                    LeaderboardEntry.builder().name(actor.getFullName() != null ? actor.getFullName() : "Sales Staff")
+                            .actionCount(14).build());
         }
 
         List<DashboardSummaryResponse.MonthlyForecast> monthlyForecasts = new ArrayList<>();
-        java.time.format.DateTimeFormatter monthFormatter = java.time.format.DateTimeFormatter.ofPattern("MMM", Locale.US);
+        java.time.format.DateTimeFormatter monthFormatter = java.time.format.DateTimeFormatter.ofPattern("MMM",
+                Locale.US);
         LocalDate currentDate = LocalDate.now();
         for (int i = 5; i >= 0; i--) {
             LocalDate targetDate = currentDate.minusMonths(i);
@@ -208,13 +215,14 @@ public class GetDashboardSummaryUseCase {
             }
 
             BigDecimal monthWeightedValue = allDeals.stream()
-                    .filter(d -> d.getExpectedCloseDate() != null 
-                            && d.getExpectedCloseDate().getYear() == year 
+                    .filter(d -> d.getExpectedCloseDate() != null
+                            && d.getExpectedCloseDate().getYear() == year
                             && d.getExpectedCloseDate().getMonthValue() == monthValue)
                     .map(d -> {
                         BigDecimal value = d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO;
                         int prob = dealMapper.calculateProbability(d.getPipelineStage(), d.getStatus());
-                        return value.multiply(BigDecimal.valueOf(prob)).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                        return value.multiply(BigDecimal.valueOf(prob)).divide(BigDecimal.valueOf(100), 2,
+                                RoundingMode.HALF_UP);
                     })
                     .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
 

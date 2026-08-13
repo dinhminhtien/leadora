@@ -146,7 +146,7 @@ public class ImportAllotmentUseCase {
 
                 allotmentRepository.upsertNight(matches.get(0).getProductId(), stayDate, quantity,
                         closed, null, effectiveAsOf, actorId);
-                importedPerProduct.merge(matches.get(0), 1, Integer::sum);
+                importedPerProduct.merge(matches.get(0), 1, (a, b) -> a + b);
                 imported++;
 
             } catch (DateTimeParseException e) {

@@ -213,7 +213,7 @@ public class UpdateReservationStatusUseCase {
 
             List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(bookingId);
             List<ProductServiceEntity> products = details.stream()
-                    .map(BookingDetailEntity::getProductService)
+                    .map(d -> d.getProductService())
                     .filter(java.util.Objects::nonNull)
                     .distinct()
                     .toList();

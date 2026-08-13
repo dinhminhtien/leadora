@@ -673,6 +673,7 @@ public class CrmSnapshotService {
             case SLA -> sb.append(", of which breached: ")
                     .append(companyWide.count(CrmArea.SLA, SlaStatus.BREACHED.name()))
                     .append("\nYou may offer the team's breached or active SLA records.\n");
+            case ROOM_AVAILABILITY -> sb.append("\nYou may offer the team's room availability.\n");
         }
     }
 
