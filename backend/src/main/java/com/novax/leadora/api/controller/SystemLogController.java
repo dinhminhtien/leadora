@@ -43,7 +43,7 @@ public class SystemLogController {
                     return true;
                 })
                 // Newest first
-                .sorted(Comparator.comparing(LogEntry::timestamp).reversed())
+                .sorted(Comparator.comparing((LogEntry log) -> log.timestamp()).reversed())
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(ApiResponse.success(logs));

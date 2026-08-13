@@ -199,7 +199,7 @@ public class UpdateHandoverReadinessUseCase {
         // changed an arrival, so it has to stand out from the ordinary readiness traffic.
         if (actedOnAnotherDesk) {
             log.warn("[AUDIT] Action: UPDATE_HANDOVER_READINESS_ON_ANOTHER_DESK, TargetRecord: {}, AssignedTo: {}, UpdatedBy: {}, OldReadiness: {}, NewReadiness: {}, Timestamp: {}",
-                    saved.getHandoverId(), assignedFoUserId, actor.getUserId(),
+                    saved.getHandoverId(), assignedFoUserId, actor != null ? actor.getUserId() : null,
                     previousReadiness, newReadiness, OffsetDateTime.now());
         }
 

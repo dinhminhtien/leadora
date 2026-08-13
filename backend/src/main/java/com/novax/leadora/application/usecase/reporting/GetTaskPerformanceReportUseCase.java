@@ -276,8 +276,8 @@ public class GetTaskPerformanceReportUseCase {
         }
 
         named.sort(Comparator
-                .comparing(StaffRow::getPunctualityRate, Comparator.nullsLast(Comparator.reverseOrder()))
-                .thenComparing(StaffRow::getTotal, Comparator.reverseOrder()));
+                .comparing((StaffRow r) -> r.getPunctualityRate(), Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing((StaffRow r) -> r.getTotal(), Comparator.reverseOrder()));
         List<StaffRow> rows = new ArrayList<>(
                 named.size() > MAX_STAFF ? named.subList(0, MAX_STAFF) : named);
         // Kept out of the cap so the breakdown always reconciles with the headline total.
@@ -372,17 +372,17 @@ public class GetTaskPerformanceReportUseCase {
         long slaOnTime;
 
         void add(String metric, String bucket, long count, double value) {
-            counts.merge(key(metric, bucket), count, Long::sum);
+            counts.merge(key(metric, bucket), count, (a, b) -> a + b);
             // Averages arrive per group, so they are re-weighted by group size before being pooled.
-            weighted.merge(metric, value * count, Double::sum);
-            samples.merge(metric, count, Long::sum);
+            weighted.merge(metric, value * count, (a, b) -> a + b);
+            samples.merge(metric, count, (a, b) -> a + b);
         }
 
         long count(String metric) {
             String prefix = metric + "|";
             return counts.entrySet().stream()
                     .filter(e -> e.getKey().startsWith(prefix))
-                    .mapToLong(Map.Entry::getValue)
+                    .mapToLong(e -> e.getValue())
                     .sum();
         }
 

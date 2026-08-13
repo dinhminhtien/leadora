@@ -6,7 +6,6 @@ import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.infrastructure.persistence.entity.ContractEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
-import com.novax.leadora.infrastructure.persistence.entity.RoomRequestEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.ContractStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.RoomRequestStatus;
@@ -58,13 +57,6 @@ public class QuotationActionPolicy {
             QuotationStatus.ACCEPTED_BY_CUSTOMER,
             QuotationStatus.RESERVATION_PENDING);
 
-    /** Nothing more can be asked of a quotation that has run its course. */
-    private static final List<QuotationStatus> CLOSED_OUT = List.of(
-            QuotationStatus.CONVERTED,
-            QuotationStatus.BOOKING_REQUEST,
-            QuotationStatus.EXPIRED,
-            QuotationStatus.CLOSED,
-            QuotationStatus.REJECTED);
 
     private final ContractRepository contractRepository;
     private final QuotationDetailRepository quotationDetailRepository;
@@ -271,7 +263,7 @@ public class QuotationActionPolicy {
         }
 
         RoomRequestStatus status = roomConfirmationReader.currentRequest(quotation.getQuotationId())
-                .map(RoomRequestEntity::getStatus)
+                .map(r -> r.getStatus())
                 .orElse(null);
 
         String detail;
@@ -349,7 +341,7 @@ public class QuotationActionPolicy {
 
     private Optional<ContractEntity> latestContract(UUID quotationId) {
         return contractRepository.findByQuotation_QuotationId(quotationId).stream()
-                .max(Comparator.comparingInt(ContractEntity::getVersion));
+                .max(Comparator.comparingInt(c -> c.getVersion()));
     }
 
     private static String statusRefusal(QuotationEntity quotation) {

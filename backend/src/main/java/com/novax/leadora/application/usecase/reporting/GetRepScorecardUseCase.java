@@ -291,7 +291,7 @@ public class GetRepScorecardUseCase {
                 case "CSAT_ACCURACY" -> acc.csatAccuracy = count > 0 ? value : null;
                 case "LOST_REASON" -> {
                     if (label != null) {
-                        acc.lostReasons.merge(label, count, Long::sum);
+                        acc.lostReasons.merge(label, count, (a, b) -> a + b);
                     }
                 }
                 default -> { /* unknown metric */ }

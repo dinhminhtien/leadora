@@ -9,8 +9,11 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
-public interface InteractTimelineRepository extends JpaRepository<InteractTimelineEntity, UUID>, JpaSpecificationExecutor<InteractTimelineEntity> {
+public interface InteractTimelineRepository
+        extends JpaRepository<InteractTimelineEntity, UUID>, JpaSpecificationExecutor<InteractTimelineEntity> {
     List<InteractTimelineEntity> findByCustomer_CustomerIdOrderByOccurredAtDesc(UUID customerId);
+
     List<InteractTimelineEntity> findByLead_LeadIdOrderByOccurredAtDesc(UUID leadId);
+
     List<InteractTimelineEntity> findByDeal_DealIdOrderByOccurredAtDesc(UUID dealId);
 }

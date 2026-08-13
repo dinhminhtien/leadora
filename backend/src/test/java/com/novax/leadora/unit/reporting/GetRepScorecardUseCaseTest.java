@@ -286,7 +286,7 @@ class GetRepScorecardUseCaseTest {
 
         assertThat(rep(run(), ANNA).getTopLostReasons())
                 .hasSize(3)
-                .extracting(RepScorecardResponse.LostReason::getReason)
+                .extracting(reason -> reason.getReason())
                 .containsExactly("Price too high", "Chose competitor", "No availability");
     }
 
@@ -348,7 +348,7 @@ class GetRepScorecardUseCaseTest {
 
         RepScorecardResponse report = run();
 
-        assertThat(report.getReps()).extracting(RepScorecard::getName).containsExactly("Anna");
+        assertThat(report.getReps()).extracting(rep -> rep.getName()).containsExactly("Anna");
         assertThat(report.getTeam().getRepCount())
                 .as("a non-rep must not inflate the team either")
                 .isEqualTo(1);

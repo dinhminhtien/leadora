@@ -89,7 +89,7 @@ public class UpsertRoomAllotmentUseCase {
 
         List<LocalDate> written = new ArrayList<>();
         for (LocalDate date = request.getDateFrom(); date.isBefore(toExclusive); date = date.plusDays(1)) {
-            if (!everyDay && !weekdays.contains(date.getDayOfWeek())) {
+            if (!everyDay && weekdays != null && !weekdays.contains(date.getDayOfWeek())) {
                 continue;
             }
             allotmentRepository.upsertNight(product.getProductId(), date, request.getAllottedQty(),
@@ -132,7 +132,7 @@ public class UpsertRoomAllotmentUseCase {
             LocalDate cursor = span.getCheckInDate().isBefore(first) ? first : span.getCheckInDate();
             LocalDate end = span.getCheckOutDate().isAfter(lastExclusive) ? lastExclusive : span.getCheckOutDate();
             while (cursor.isBefore(end)) {
-                soldPerNight.merge(cursor, span.getQuantity(), Integer::sum);
+                soldPerNight.merge(cursor, span.getQuantity(), (a, b) -> a + b);
                 cursor = cursor.plusDays(1);
             }
         }

@@ -74,10 +74,10 @@ public class ReconcileAllotmentUseCase {
         List<ReconcileAllotmentRequest.Entry> entries = request.getEntries();
 
         Map<UUID, ProductServiceEntity> products = resolveRooms(entries);
-        LocalDate first = entries.stream().map(ReconcileAllotmentRequest.Entry::getStayDate)
-                .min(LocalDate::compareTo).orElseThrow();
-        LocalDate lastExclusive = entries.stream().map(ReconcileAllotmentRequest.Entry::getStayDate)
-                .max(LocalDate::compareTo).orElseThrow().plusDays(1);
+        LocalDate first = entries.stream().map(e -> e.getStayDate())
+                .min((d1, d2) -> d1.compareTo(d2)).orElseThrow();
+        LocalDate lastExclusive = entries.stream().map(e -> e.getStayDate())
+                .max((d1, d2) -> d1.compareTo(d2)).orElseThrow().plusDays(1);
 
         // Lock the nights being corrected: a sale landing between reading "sold" and writing the
         // new total would be silently absorbed into it, and the room would go missing.
@@ -139,7 +139,7 @@ public class ReconcileAllotmentUseCase {
         // of it — "who last touched the Deluxe quota" — rather than only "a batch happened".
         Map<UUID, Long> reconciledPerProduct = changes.stream()
                 .collect(java.util.stream.Collectors.groupingBy(
-                        AllotmentReconciliationResponse.Change::getProductId,
+                        c -> c.getProductId(),
                         java.util.stream.Collectors.counting()));
 
         reconciledPerProduct.forEach((productId, nightCount) ->
@@ -160,7 +160,7 @@ public class ReconcileAllotmentUseCase {
 
     private Map<UUID, ProductServiceEntity> resolveRooms(List<ReconcileAllotmentRequest.Entry> entries) {
         List<UUID> ids = entries.stream()
-                .map(ReconcileAllotmentRequest.Entry::getProductId)
+                .map(e -> e.getProductId())
                 .distinct()
                 .toList();
 
@@ -194,7 +194,7 @@ public class ReconcileAllotmentUseCase {
             LocalDate end = span.getCheckOutDate().isAfter(toExclusive) ? toExclusive : span.getCheckOutDate();
             Map<LocalDate, Integer> byDate = sold.computeIfAbsent(span.getProductId(), k -> new HashMap<>());
             while (cursor.isBefore(end)) {
-                byDate.merge(cursor, span.getQuantity(), Integer::sum);
+                byDate.merge(cursor, span.getQuantity(), (a, b) -> a + b);
                 cursor = cursor.plusDays(1);
             }
         }
