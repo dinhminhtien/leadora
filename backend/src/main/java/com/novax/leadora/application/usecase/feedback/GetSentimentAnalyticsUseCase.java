@@ -40,8 +40,9 @@ public class GetSentimentAnalyticsUseCase {
                 predicates.add(cb.equal(root.get("salesStaff").get("userId"), actor.getUserId()));
             }
 
-            // 2. Filter only submitted feedbacks
+            // 2. Filter only submitted feedbacks with successful ABSA analysis
             predicates.add(cb.isNotNull(root.get("submittedAt")));
+            predicates.add(cb.equal(root.get("absaStatus"), "SUCCESS"));
 
             // 3. Date Range
             if (startDate != null) {

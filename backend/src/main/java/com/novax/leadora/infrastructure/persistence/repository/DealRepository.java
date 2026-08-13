@@ -17,6 +17,8 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import com.novax.leadora.infrastructure.persistence.repository.projection.StaffDealPerformanceProjection;
+
 @Repository
 public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpecificationExecutor<DealEntity> {
     
@@ -26,6 +28,22 @@ public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpec
     List<DealEntity> findByAssignedUser_UserId(UUID assignedUserId);
     List<DealEntity> findByCustomer_CustomerId(UUID customerId);
     List<DealEntity> findByStatus(DealStatus status);
+
+    @Query("SELECT d.assignedUser.userId as staffId, " +
+           "COUNT(d) as totalDeals, " +
+           "SUM(CASE WHEN d.status = 'WON' THEN 1 ELSE 0 END) as wonDeals, " +
+           "SUM(CASE WHEN d.status = 'LOST' THEN 1 ELSE 0 END) as lostDeals, " +
+           "SUM(CASE WHEN d.status = 'WON' AND d.expectedRevenue IS NOT NULL THEN d.expectedRevenue ELSE 0 END) as totalRevenueWon " +
+           "FROM DealEntity d " +
+           "WHERE d.assignedUser.userId IN :staffIds " +
+           "AND d.closedAt IS NOT NULL " +
+           "AND d.closedAt >= :startDate " +
+           "AND d.closedAt <= :endDate " +
+           "GROUP BY d.assignedUser.userId")
+    List<StaffDealPerformanceProjection> aggregateDealPerformance(
+            @Param("startDate") OffsetDateTime startDate, 
+            @Param("endDate") OffsetDateTime endDate,
+            @Param("staffIds") List<UUID> staffIds);
 
     // ── UC-23.1 / UC-23.4 report aggregates ───────────────────────────────────
     // Ranges are half-open: [start, end) — see ReportRange.

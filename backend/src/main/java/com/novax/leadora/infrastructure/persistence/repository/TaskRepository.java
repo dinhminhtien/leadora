@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.novax.leadora.infrastructure.persistence.repository.projection.StaffTaskPerformanceProjection;
+
 @Repository
 public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpecificationExecutor<TaskEntity> {
 
@@ -94,4 +96,16 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
 
         @Query("SELECT t.taskId FROM TaskEntity t WHERE t.assignedUser.userId = :userId")
         List<UUID> findTaskIdsByAssignedUser_UserId(@Param("userId") UUID userId);
+
+        @Query("SELECT t.assignedUser.userId as staffId, " +
+               "SUM(CASE WHEN t.status = 'COMPLETED' AND t.completedAt IS NOT NULL AND t.completedAt >= :startDate AND t.completedAt <= :endDate THEN 1 ELSE 0 END) as completedTasks, " +
+               "SUM(CASE WHEN t.status = 'COMPLETED' AND t.completedAt IS NOT NULL AND t.completedAt >= :startDate AND t.completedAt <= :endDate AND (t.endAt IS NULL OR t.completedAt <= t.endAt) THEN 1 ELSE 0 END) as onTimeTasks, " +
+               "SUM(CASE WHEN t.status = 'OPEN' AND t.endAt IS NOT NULL AND t.endAt < CURRENT_TIMESTAMP THEN 1 ELSE 0 END) as overdueTasks " +
+               "FROM TaskEntity t " +
+               "WHERE t.assignedUser.userId IN :staffIds " +
+               "GROUP BY t.assignedUser.userId")
+        List<StaffTaskPerformanceProjection> aggregateTaskPerformance(
+                @Param("startDate") OffsetDateTime startDate, 
+                @Param("endDate") OffsetDateTime endDate,
+                @Param("staffIds") List<UUID> staffIds);
 }

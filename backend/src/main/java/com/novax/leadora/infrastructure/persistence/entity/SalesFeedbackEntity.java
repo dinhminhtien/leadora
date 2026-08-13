@@ -99,5 +99,9 @@ public class SalesFeedbackEntity extends BaseEntity {
 
     @Column(name = "absa_status", length = 20)
     private String absaStatus;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 }
 

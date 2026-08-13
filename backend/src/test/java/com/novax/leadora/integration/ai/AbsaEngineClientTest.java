@@ -1,13 +1,11 @@
 package com.novax.leadora.integration.ai;
 
 import com.novax.leadora.infrastructure.integration.ai.AbsaEngineClient;
-import com.novax.leadora.infrastructure.integration.ai.AbsaEngineClient.SentimentResult;
+import com.novax.leadora.api.dto.response.AbsaResponseDto;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,19 +26,15 @@ class AbsaEngineClientTest {
     @Test
     void testAbsaIntegration() {
         String comment = "Very good service, but price is high and attitude was bad.";
-        Map<String, SentimentResult> results = absaEngineClient.analyze(comment);
+        AbsaResponseDto results = absaEngineClient.analyze(comment);
 
         assertThat(results).isNotNull();
-        assertThat(results.keySet()).containsExactlyInAnyOrder("attitude", "speed", "accuracy", "facility", "price");
+        assertThat(results.attitude()).isNotNull();
+        assertThat(results.attitude().sentiment()).isNotNull();
+        assertThat(results.attitude().confidence()).isNotNull();
 
-        // Verify attitude result
-        SentimentResult attitude = results.get("attitude");
-        assertThat(attitude.getSentiment()).isNotNull();
-        assertThat(attitude.getConfidence()).isNotNull();
-
-        // Verify price result
-        SentimentResult price = results.get("price");
-        assertThat(price.getSentiment()).isNotNull();
-        assertThat(price.getConfidence()).isNotNull();
+        assertThat(results.price()).isNotNull();
+        assertThat(results.price().sentiment()).isNotNull();
+        assertThat(results.price().confidence()).isNotNull();
     }
 }
