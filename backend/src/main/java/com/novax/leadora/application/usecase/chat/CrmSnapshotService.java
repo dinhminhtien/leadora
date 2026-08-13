@@ -292,7 +292,7 @@ public class CrmSnapshotService {
         LocalDate from = LocalDate.now();
         LocalDate toExclusive = from.plusDays(AVAILABILITY_LOOKAHEAD_NIGHTS);
         Map<UUID, List<NightAvailability>> byRoom =
-                roomAvailabilityService.nights(rooms, from, toExclusive, null);
+                roomAvailabilityService.nights(rooms, from, toExclusive);
 
         sb.append("Room availability (rooms the hotel allocated to us to sell over the next ")
                 .append(AVAILABILITY_LOOKAHEAD_NIGHTS)

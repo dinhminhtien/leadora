@@ -6,7 +6,7 @@ import com.novax.leadora.application.usecase.contract.ActivateContractUseCase;
 import com.novax.leadora.application.usecase.quotation.ConvertToBookingUseCase;
 import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 import com.novax.leadora.application.usecase.quotation.QuotationAccessPolicy;
-import com.novax.leadora.application.usecase.quotation.QuotationAvailabilityChecker;
+import com.novax.leadora.application.usecase.quotation.QuotationActionPolicy;
 import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
@@ -19,10 +19,10 @@ import com.novax.leadora.infrastructure.persistence.repository.BookingRepository
 import com.novax.leadora.infrastructure.persistence.repository.ContractRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -61,12 +61,6 @@ class ConvertToBookingUseCaseTest {
     private QuotationAccessPolicy quotationAccessPolicy;
 
     @Mock
-    private QuotationAvailabilityChecker availabilityChecker;
-
-    @Mock
-    private com.novax.leadora.application.usecase.inventory.RoomAllotmentHoldService roomAllotmentHoldService;
-
-    @Mock
     private com.novax.leadora.application.usecase.roomrequest.RoomConfirmationReader roomConfirmationReader;
 
     @Mock
@@ -81,8 +75,46 @@ class ConvertToBookingUseCaseTest {
     @Mock
     private DealWorkflowSyncService dealWorkflowSyncService;
 
-    @InjectMocks
     private ConvertToBookingUseCase convertToBookingUseCase;
+
+    /**
+     * The policy is built for real from the same mocks rather than stubbed.
+     *
+     * <p>Its refusals are the subject of half these tests, and the whole point of extracting it
+     * was that the conversion and the UI's eligibility read run the identical checks — a mocked
+     * policy here would assert only that the use case calls something, and would keep passing if
+     * the rules themselves broke.
+     */
+    @BeforeEach
+    void setUp() {
+        QuotationActionPolicy quotationActionPolicy = new QuotationActionPolicy(
+                contractRepository,
+                quotationDetailRepository,
+                bookingRepository,
+                roomConfirmationReader);
+
+        convertToBookingUseCase = new ConvertToBookingUseCase(
+                quotationRepository,
+                bookingRepository,
+                quotationDetailRepository,
+                bookingDetailRepository,
+                quotationAccessPolicy,
+                quotationActionPolicy,
+                startSlaTrackingUseCase,
+                activateContractUseCase,
+                dealWorkflowSyncService);
+    }
+
+    /** A quotation that clears every condition except the one a test is about. */
+    private static QuotationEntity convertibleQuotation(UUID quotationId, QuotationStatus status) {
+        return QuotationEntity.builder()
+                .quotationId(quotationId)
+                .status(status)
+                .customer(CustomerEntity.builder().customerId(UUID.randomUUID()).build())
+                .checkInDate(LocalDate.now().plusDays(2))
+                .checkOutDate(LocalDate.now().plusDays(5))
+                .build();
+    }
 
     @Test
     @DisplayName("UT-CONVERT-01: Throw ResourceNotFoundException if quotation does not exist")
@@ -117,10 +149,7 @@ class ConvertToBookingUseCaseTest {
     @DisplayName("UT-CONVERT-03: Throw BusinessException if no contract exists")
     void testNoContractExists() {
         UUID quotationId = UUID.randomUUID();
-        QuotationEntity quotation = QuotationEntity.builder()
-                .quotationId(quotationId)
-                .status(QuotationStatus.ACCEPTED)
-                .build();
+        QuotationEntity quotation = convertibleQuotation(quotationId, QuotationStatus.ACCEPTED);
 
         when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.of(quotation));
         when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(Collections.emptyList());
@@ -136,10 +165,7 @@ class ConvertToBookingUseCaseTest {
     @DisplayName("UT-CONVERT-04: Throw BusinessException if contract is in DRAFT or SENT status")
     void testContractNotAcknowledged() {
         UUID quotationId = UUID.randomUUID();
-        QuotationEntity quotation = QuotationEntity.builder()
-                .quotationId(quotationId)
-                .status(QuotationStatus.ACCEPTED)
-                .build();
+        QuotationEntity quotation = convertibleQuotation(quotationId, QuotationStatus.ACCEPTED);
 
         ContractEntity contract = ContractEntity.builder()
                 .id(UUID.randomUUID())
@@ -161,10 +187,7 @@ class ConvertToBookingUseCaseTest {
     @DisplayName("UT-CONVERT-05: Throw BusinessException if contract is CANCELLED")
     void testContractInvalidState() {
         UUID quotationId = UUID.randomUUID();
-        QuotationEntity quotation = QuotationEntity.builder()
-                .quotationId(quotationId)
-                .status(QuotationStatus.ACCEPTED)
-                .build();
+        QuotationEntity quotation = convertibleQuotation(quotationId, QuotationStatus.ACCEPTED);
 
         ContractEntity contract = ContractEntity.builder()
                 .id(UUID.randomUUID())
@@ -180,6 +203,50 @@ class ConvertToBookingUseCaseTest {
         );
         assertEquals("CONTRACT_INVALID_STATE", exception.getErrorCode());
         assertEquals(HttpStatus.BAD_REQUEST, exception.getHttpStatus());
+    }
+
+    @Test
+    @DisplayName("UT-CONVERT-09: Blocked when the Reservation team has not confirmed the rooms")
+    void testBlockedWhenRoomsNotConfirmed() {
+        UUID quotationId = UUID.randomUUID();
+        QuotationEntity quotation = convertibleQuotation(quotationId, QuotationStatus.ACCEPTED);
+
+        ContractEntity contract = ContractEntity.builder()
+                .id(UUID.randomUUID())
+                .status(ContractStatus.ACKNOWLEDGED)
+                .version(1)
+                .build();
+
+        ProductServiceEntity roomProduct = ProductServiceEntity.builder()
+                .productId(UUID.randomUUID())
+                .name("Deluxe Room")
+                .category(ProductCategory.ROOM)
+                .status(ProductStatus.ACTIVE)
+                .unitPrice(BigDecimal.valueOf(1000000))
+                .build();
+
+        QuotationDetailEntity detail = QuotationDetailEntity.builder()
+                .productService(roomProduct)
+                .description("Deluxe Room")
+                .quantity(2)
+                .nights(3)
+                .unitPrice(BigDecimal.valueOf(1000000))
+                .lineTotal(BigDecimal.valueOf(6000000))
+                .build();
+
+        when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.of(quotation));
+        when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
+        when(quotationDetailRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(detail));
+        // No answer from Reservation — and that is now the whole gate. Published allotment,
+        // however generous, no longer authorises a booking on its own (Report 1 FE-19/LI-02).
+        when(roomConfirmationReader.isRoomConfirmed(quotation)).thenReturn(false);
+
+        BusinessException exception = assertThrows(BusinessException.class, () ->
+                convertToBookingUseCase.execute(quotationId, new ConvertToBookingRequest()));
+
+        assertEquals("ROOM_NOT_CONFIRMED", exception.getErrorCode());
+        assertEquals(HttpStatus.CONFLICT, exception.getHttpStatus());
+        verify(bookingRepository, never()).save(any(BookingEntity.class));
     }
 
     @Test
@@ -229,6 +296,8 @@ class ConvertToBookingUseCaseTest {
         when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.of(quotation));
         when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
         when(quotationDetailRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(detail));
+        // The room gate is now solely the Reservation team's recorded answer.
+        when(roomConfirmationReader.isRoomConfirmed(quotation)).thenReturn(true);
         
         when(bookingRepository.save(any(BookingEntity.class))).thenAnswer(inv -> {
             BookingEntity booking = inv.getArgument(0);
@@ -296,6 +365,8 @@ class ConvertToBookingUseCaseTest {
         when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.of(quotation));
         when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
         when(quotationDetailRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(detail));
+        // The room gate is now solely the Reservation team's recorded answer.
+        when(roomConfirmationReader.isRoomConfirmed(quotation)).thenReturn(true);
         
         when(bookingRepository.save(any(BookingEntity.class))).thenAnswer(inv -> {
             BookingEntity booking = inv.getArgument(0);
@@ -363,6 +434,8 @@ class ConvertToBookingUseCaseTest {
         when(quotationRepository.findByIdForUpdate(quotationId)).thenReturn(Optional.of(quotation));
         when(contractRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(contract));
         when(quotationDetailRepository.findByQuotation_QuotationId(quotationId)).thenReturn(List.of(detail));
+        // The room gate is now solely the Reservation team's recorded answer.
+        when(roomConfirmationReader.isRoomConfirmed(quotation)).thenReturn(true);
         
         when(bookingRepository.save(any(BookingEntity.class))).thenAnswer(inv -> {
             BookingEntity booking = inv.getArgument(0);

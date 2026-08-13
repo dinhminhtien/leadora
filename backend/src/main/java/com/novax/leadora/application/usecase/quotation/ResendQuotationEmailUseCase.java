@@ -1,6 +1,5 @@
 package com.novax.leadora.application.usecase.quotation;
 
-import com.novax.leadora.api.dto.request.SendQuotationRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.common.exception.BusinessException;
@@ -132,16 +131,13 @@ public class ResendQuotationEmailUseCase {
         }
         String secureLink = portalBase + "/portal/quotations/" + quotation.getQuotationId() + "?token=" + tokenHex;
 
-        // Construct a request object matching the email service requirement
-        SendQuotationRequest emailReq = new SendQuotationRequest();
-        emailReq.setSendMethod(lastLog.getSendMethod());
-        emailReq.setRecipientName(lastLog.getRecipientName());
-        emailReq.setRecipientEmail(lastLog.getRecipientEmail());
-        emailReq.setRecipientPhone(lastLog.getRecipientPhone());
-        emailReq.setPersonalMessage(lastLog.getPersonalMessage());
-
+        // The address the quotation actually went to last time, not the customer record as it
+        // stands now: a resend replaces a link the same person is waiting on, so redirecting it
+        // to a newer address would leave the original recipient holding a token that no longer
+        // works and no explanation.
         if ("EMAIL".equalsIgnoreCase(lastLog.getSendMethod())) {
-            quotationEmailService.sendQuotationEmail(quotation, emailReq, actor.getFullName(), secureLink);
+            quotationEmailService.sendQuotationEmail(quotation, lastLog.getRecipientEmail(),
+                    lastLog.getRecipientName(), lastLog.getPersonalMessage(), actor.getFullName(), secureLink);
         }
 
         // Update send time

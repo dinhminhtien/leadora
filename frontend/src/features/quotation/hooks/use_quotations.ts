@@ -105,6 +105,26 @@ export function useTrackCustomerResponse() {
   });
 }
 
+/**
+ * Which actions this quotation currently allows, and the reason for the rest.
+ *
+ * Screens use it to disable a button *with* its explanation instead of letting the user find
+ * out by clicking. Not a substitute for the server's checks — the write endpoints run the same
+ * policy again — so a stale answer costs a clearer error, never a wrong outcome.
+ *
+ * Kept unstale rather than cached long: room confirmation, the contract's state and the
+ * quotation's own status all move underneath it while a modal is open.
+ */
+export function useQuotationEligibility(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["quotation-eligibility", id],
+    queryFn: () => quotationService.getEligibility(id as string),
+    select: (res) => res.data,
+    enabled: !!id && enabled,
+    staleTime: 0,
+  });
+}
+
 // Get single quotation by ID (UC-14.5 pre-populate revision form)
 export function useQuotationById(id: string) {
   return useQuery({
@@ -155,17 +175,10 @@ export function usePublicQuotation(id: string, token: string) {
   });
 }
 
-export function usePublicRequestQuotationOtp() {
+export function usePublicAcceptQuotation() {
   return useMutation({
     mutationFn: ({ id, token }: { id: string; token: string }) =>
-      quotationService.publicRequestOtp(id, token),
-  });
-}
-
-export function usePublicConfirmQuotationOtp() {
-  return useMutation({
-    mutationFn: ({ id, token, otpCode }: { id: string; token: string; otpCode: string }) =>
-      quotationService.publicConfirmOtp(id, token, otpCode),
+      quotationService.publicAccept(id, token),
   });
 }
 

@@ -236,7 +236,7 @@ public class UpdateReservationStatusUseCase {
     private void reportShortfall(UUID bookingId, List<ProductServiceEntity> products,
                                  List<BookingDetailEntity> details, LocalDate from, LocalDate toExclusive) {
         Map<UUID, StayAvailability> stays =
-                roomAvailabilityService.stays(products, from, toExclusive, null);
+                roomAvailabilityService.stays(products, from, toExclusive);
 
         for (BookingDetailEntity detail : details) {
             if (detail.getProductService() == null) {

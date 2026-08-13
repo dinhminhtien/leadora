@@ -42,7 +42,12 @@ public final class RolePermissionScope {
             "DEAL_VIEW", "DEAL_WRITE",
             "QUOTATION_VIEW", "QUOTATION_WRITE",
             "INTERACTION_VIEW", "INTERACTION_WRITE",
-            "BOOKING_VIEW", "BOOKING_WRITE",
+            // Sales reads bookings but writes none. A booking is created by converting a
+            // quotation, which is QUOTATION_WRITE, and every status a booking moves through
+            // afterwards belongs to the Reservation desk or the arrival desk. The separate
+            // "submit a booking request" endpoint that once gave Sales BOOKING_WRITE is gone —
+            // it duplicated the conversion without its contract and room checks.
+            "BOOKING_VIEW",
             "RESERVATION_VIEW",
             // Sales raises a room request from inside a quotation; the queue screen itself is the
             // Reservation desk's, so this is VIEW only.
@@ -122,7 +127,7 @@ public final class RolePermissionScope {
     private static final Set<String> SALES_DEFAULT = Set.of(
             "LEAD_VIEW", "LEAD_WRITE", "CUSTOMER_VIEW", "CUSTOMER_WRITE", "TASK_VIEW", "TASK_WRITE",
             "PIPELINE_VIEW", "DEAL_VIEW", "DEAL_WRITE", "QUOTATION_VIEW", "QUOTATION_WRITE",
-            "INTERACTION_VIEW", "INTERACTION_WRITE", "BOOKING_VIEW", "BOOKING_WRITE",
+            "INTERACTION_VIEW", "INTERACTION_WRITE", "BOOKING_VIEW",
             "RESERVATION_VIEW", "RESERVATION_WRITE", "HANDOVER_VIEW", "HANDOVER_WRITE",
             "ROOM_REQUEST_VIEW", "PAYMENT_VIEW", "PAYMENT_WRITE", "NOTIFICATION_VIEW",
             "REMINDER_VIEW", "REMINDER_WRITE", "CHAT_VIEW", "REPORTING_VIEW", "INVENTORY_VIEW"
