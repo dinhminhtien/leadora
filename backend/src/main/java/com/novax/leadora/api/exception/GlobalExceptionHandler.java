@@ -60,6 +60,10 @@ public class GlobalExceptionHandler {
                 problemDetail.setProperty("errors", details);
             }
         }
+        String correlationId = org.slf4j.MDC.get("correlationId");
+        if (correlationId != null) {
+            problemDetail.setProperty("correlationId", correlationId);
+        }
         problemDetail.setProperty("timestamp", java.time.OffsetDateTime.now().toString());
 
         return ResponseEntity.status(status)

@@ -8,6 +8,7 @@ export type ActorDto = {
   id: string | null;
   fullName: string;
   role: string | null;
+  email: string | null;
 };
 
 export type EntityDto = {

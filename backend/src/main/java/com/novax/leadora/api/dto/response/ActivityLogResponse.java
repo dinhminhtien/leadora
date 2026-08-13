@@ -26,7 +26,8 @@ public record ActivityLogResponse(
             ActorType type,
             UUID id,
             String fullName,
-            String role
+            String role,
+            String email
     ) {}
 
     public record EntityDto(
