@@ -49,6 +49,9 @@ public class ResendQuotationEmailUseCase {
     private final QuotationConfirmationTokenRepository tokenRepository;
     private final QuotationProperties quotationProperties;
 
+    @org.springframework.beans.factory.annotation.Value("${app.frontend-url}")
+    private String frontendUrl;
+
     private static final SecureRandom secureRandom = new SecureRandom();
 
     private String bytesToHex(byte[] bytes) {
@@ -124,9 +127,9 @@ public class ResendQuotationEmailUseCase {
 
         String portalBase = quotationProperties.getPortalBaseUrl();
         if (portalBase == null || portalBase.isBlank()) {
-            portalBase = "http://localhost:3000";
+            portalBase = frontendUrl;
         }
-        if (portalBase.endsWith("/")) {
+        if (portalBase != null && portalBase.endsWith("/")) {
             portalBase = portalBase.substring(0, portalBase.length() - 1);
         }
         String secureLink = portalBase + "/portal/quotations/" + quotation.getQuotationId() + "?token=" + tokenHex;
