@@ -11,10 +11,12 @@ import com.novax.leadora.api.dto.request.SendQuotationRequest;
 import com.novax.leadora.api.dto.request.SubmitQuotationRequest;
 import com.novax.leadora.api.dto.request.TrackCustomerResponseRequest;
 import com.novax.leadora.api.dto.request.ReservationRejectRequest;
+import com.novax.leadora.api.dto.response.QuotationEligibilityResponse;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.application.usecase.quotation.CreateQuotationUseCase;
 import com.novax.leadora.application.usecase.quotation.GetPendingApprovalsUseCase;
 import com.novax.leadora.application.usecase.quotation.GetQuotationByIdUseCase;
+import com.novax.leadora.application.usecase.quotation.GetQuotationEligibilityUseCase;
 import com.novax.leadora.application.usecase.quotation.GetQuotationListUseCase;
 import com.novax.leadora.application.usecase.quotation.ProcessQuotationApprovalUseCase;
 import com.novax.leadora.application.usecase.quotation.ReviseQuotationUseCase;
@@ -62,6 +64,7 @@ public class QuotationController {
     private final ApproveReservationUseCase approveReservationUseCase;
     private final RejectReservationUseCase rejectReservationUseCase;
     private final ResendQuotationEmailUseCase resendQuotationEmailUseCase;
+    private final GetQuotationEligibilityUseCase getQuotationEligibilityUseCase;
 
     /** UC-14.1 — Create Room Quotation */
     @PostMapping("/api/v1/quotations")
@@ -82,12 +85,19 @@ public class QuotationController {
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "validUntil") String sortBy,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir) {
-        
-        Sort sort = Sort.by(Sort.Direction.fromString(sortDir), sortBy);
-        Pageable pageable = PageRequest.of(page, size, sort);
-        Page<QuotationResponse> quotations = getQuotationListUseCase.execute(status, statuses, search, pageable);
+
+        // "priority" is a ranking over the status enum, not a column, so it lives in the query
+        // and the Pageable stays unsorted. It is the default because opening the list on
+        // "newest first" showed whatever was created last, which is rarely what anyone needs.
+        boolean byPriority = "priority".equalsIgnoreCase(sortBy);
+        Pageable pageable = byPriority
+                ? PageRequest.of(page, size)
+                : PageRequest.of(page, size, Sort.by(Sort.Direction.fromString(sortDir), sortBy));
+
+        Page<QuotationResponse> quotations =
+                getQuotationListUseCase.execute(status, statuses, search, pageable, byPriority);
         return ResponseEntity.ok(ApiResponse.success(quotations));
     }
 
@@ -97,6 +107,20 @@ public class QuotationController {
     public ResponseEntity<ApiResponse<QuotationResponse>> getQuotationById(@PathVariable UUID id) {
         QuotationResponse response = getQuotationByIdUseCase.execute(id);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * Which of this quotation's actions are currently available, and why the others are not.
+     *
+     * <p>Read-only, scoped exactly like {@link #getQuotationById}. The client calls it to decide
+     * what to enable; the write endpoints re-check the same policy, so this is a convenience for
+     * the user interface and never the authority.
+     */
+    @GetMapping("/api/v1/quotations/{id}/eligibility")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN','RESERVATION') and @access.can('QUOTATION_VIEW')")
+    public ResponseEntity<ApiResponse<QuotationEligibilityResponse>> getQuotationEligibility(
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(getQuotationEligibilityUseCase.execute(id)));
     }
 
     /** UC-14.3 — Get quotations pending manager approval. Manager only. */

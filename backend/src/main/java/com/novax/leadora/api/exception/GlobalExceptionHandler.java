@@ -1,8 +1,12 @@
 package com.novax.leadora.api.exception;
 
+import com.novax.leadora.application.usecase.email.exception.EmailConfigurationException;
+import com.novax.leadora.application.usecase.email.exception.EmailException;
+import com.novax.leadora.application.usecase.email.exception.InvalidEmailException;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.BusinessRuleException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -60,11 +64,24 @@ public class GlobalExceptionHandler {
                 problemDetail.setProperty("errors", details);
             }
         }
+        String correlationId = org.slf4j.MDC.get("correlationId");
+        if (correlationId != null) {
+            problemDetail.setProperty("correlationId", correlationId);
+        }
         problemDetail.setProperty("timestamp", java.time.OffsetDateTime.now().toString());
 
         return ResponseEntity.status(status)
                 .contentType(org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON)
                 .body(problemDetail);
+    }
+
+    private ResponseEntity<ProblemDetail> createProblemResponse(HttpStatus status, String errorCode, String message,
+            Object details, String field) {
+        ResponseEntity<ProblemDetail> response = createProblemResponse(status, errorCode, message, details);
+        if (field != null && response.getBody() != null) {
+            response.getBody().setProperty("field", field);
+        }
+        return response;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -139,7 +156,60 @@ public class GlobalExceptionHandler {
         }
 
         return createProblemResponse(HttpStatus.valueOf(ex.getHttpStatus().value()), ex.getErrorCode(), ex.getMessage(),
-                ex.getDetails());
+                ex.getDetails(), ex.getField());
+    }
+
+    /**
+     * Email failures are known outcomes, not surprises, so none of them may surface as an
+     * internal error.
+     *
+     * <p>The split matters to the caller: a malformed address is theirs to fix and comes back as
+     * 422; a provider that rejected or could not be reached is ours, and comes back as 502 so the
+     * client can offer "try again" rather than "check the address". Missing credentials are a
+     * deployment fault — 503, because retrying the same request will keep failing until someone
+     * configures the service.
+     *
+     * <p>Before this handler existed these all fell through to {@link #handleAllExceptions}, and a
+     * rep whose customer had no usable email address was told "An unexpected error occurred".
+     */
+    @ExceptionHandler(EmailException.class)
+    public ResponseEntity<ProblemDetail> handleEmailFailure(EmailException ex) {
+        if (ex instanceof InvalidEmailException) {
+            log.warn("Invalid email recipient: {}", ex.getMessage());
+            return createProblemResponse(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_EMAIL_FORMAT", ex.getMessage(), null);
+        }
+        if (ex instanceof EmailConfigurationException) {
+            String reference = newReference();
+            log.error("Email service is not configured [ref={}]: {}", reference, ex.getMessage(), ex);
+            return createProblemResponse(HttpStatus.SERVICE_UNAVAILABLE, "EMAIL_NOT_CONFIGURED",
+                    "Email delivery is not configured on this environment, so the message could not be sent. "
+                            + "Nothing has been changed — contact an administrator and try again afterwards.",
+                    reference);
+        }
+        String reference = newReference();
+        log.error("Email delivery failed [ref={}]: {}", reference, ex.getMessage(), ex);
+        return createProblemResponse(HttpStatus.BAD_GATEWAY, "EMAIL_DELIVERY_FAILED",
+                "The email provider could not deliver this message. Verify the recipient address, "
+                        + "then try again — nothing else has been changed.",
+                reference);
+    }
+
+    /**
+     * Constraint violations raised outside a controller — most often by a {@code @Validated}
+     * service boundary such as {@code EmailGateway}. Without this they reached
+     * {@link #handleAllExceptions} as a 500, which is how an unusable recipient address ended up
+     * reported as an internal error.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ProblemDetail> handleConstraintViolation(ConstraintViolationException ex) {
+        java.util.Map<String, String> errors = ex.getConstraintViolations().stream()
+                .collect(Collectors.toMap(
+                        v -> String.valueOf(v.getPropertyPath()),
+                        v -> v.getMessage() != null ? v.getMessage() : "Invalid value",
+                        (existing, replacement) -> existing));
+        log.warn("Constraint violation: {}", errors);
+        return createProblemResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                "Some of the values sent are not valid.", errors);
     }
 
     @ExceptionHandler(ResponseStatusException.class)

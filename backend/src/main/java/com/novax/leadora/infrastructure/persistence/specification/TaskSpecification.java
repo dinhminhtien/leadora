@@ -79,7 +79,7 @@ public final class TaskSpecification {
                             .when(root.get("startAt").isNull(), 1)
                             .otherwise(0)),
                     cb.asc(root.get("startAt")),
-                    cb.desc(root.get("updatedAt")));
+                    cb.desc(root.get("createdAt")));
             return cb.conjunction();
         };
     }

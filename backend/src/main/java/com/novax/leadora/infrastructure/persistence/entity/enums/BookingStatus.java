@@ -32,4 +32,28 @@ public enum BookingStatus {
     public boolean isLiveForArrival() {
         return LIVE_FOR_ARRIVAL.contains(this);
     }
+
+    /**
+     * The states in which a booking still occupies a room, and so must be subtracted from room
+     * allotment (BR-47).
+     *
+     * <p>{@code PENDING} counts. Reservation has not confirmed it yet, but Sales has promised the
+     * room to a customer, and quietly reselling it is worse than briefly understating what is
+     * left. The cost is that a booking left pending indefinitely sits on quota — which is a
+     * reason to chase stale bookings, not a reason to stop counting them.
+     *
+     * <p>{@code CHECKED_OUT} and {@code NO_SHOW} are excluded because the nights they covered are
+     * in the past: nothing is freed by releasing them, since those nights can no longer be sold.
+     *
+     * <p>Lives here for the same reason as {@link #LIVE_FOR_ARRIVAL} — the availability grid, the
+     * quotation gate and the hold logic all need the same answer, and three private copies is how
+     * they drift apart.
+     */
+    public static final Set<BookingStatus> CONSUMING_INVENTORY =
+            EnumSet.of(PENDING, CONFIRMED, CHECKED_IN);
+
+    /** @see #CONSUMING_INVENTORY */
+    public boolean isConsumingInventory() {
+        return CONSUMING_INVENTORY.contains(this);
+    }
 }

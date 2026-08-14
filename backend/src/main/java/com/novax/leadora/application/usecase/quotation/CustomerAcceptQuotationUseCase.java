@@ -4,6 +4,9 @@ import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.application.event.QuotationAcceptedByCustomerEvent;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
+import com.novax.leadora.application.usecase.contract.GenerateContractUseCase;
+import com.novax.leadora.application.usecase.roomrequest.AutoRoomRequestService;
+import com.novax.leadora.infrastructure.persistence.repository.ContractRepository;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationAcceptanceLogEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationConfirmationTokenEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
@@ -25,17 +28,23 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * UC-14.x — Internal use case called when customer completes OTP verification.
- * Transitions quotation status to {@code RESERVATION_PENDING}, marks the token
- * as used, records the audit trail, and fires the corresponding event.
+ * UC-14.x — the customer accepts their quotation from the secure link.
  *
- * <p>
- * At this moment — the single authoritative business event where a Sales
- * estimate becomes a confirmed figure — {@code deal.expectedRevenue} is updated
- * to match {@code quotation.totalAmount} within the same atomic transaction.
- * This is the ONLY place this sync happens; {@code DealWorkflowSyncService}
- * deliberately does NOT touch {@code deal_value} to preserve its role as an
- * independent forecast field during earlier pipeline stages.
+ * <p>Acceptance is a single click. It used to be gated behind a one-time code emailed to the
+ * customer, who then had to find it and type it back; Report 1 requires no such step anywhere in
+ * the quotation workflow, and it cost the sale a round trip through the customer's inbox at the
+ * exact moment they had decided to say yes. The secure link itself is the credential — a 256-bit
+ * token, single-use, expiring in 24 hours — and every acceptance is still recorded with its IP
+ * address and user agent.
+ *
+ * <p>Transitions the quotation to {@code RESERVATION_PENDING}, marks the token used, records the
+ * audit trail, puts the availability question to the Reservation team, and fires the event.
+ *
+ * <p>At this moment — the single authoritative business event where a Sales estimate becomes a
+ * confirmed figure — {@code deal.expectedRevenue} is updated to match
+ * {@code quotation.totalAmount} within the same atomic transaction. This is the ONLY place this
+ * sync happens; {@code DealWorkflowSyncService} deliberately does NOT touch {@code deal_value} to
+ * preserve its role as an independent forecast field during earlier pipeline stages.
  */
 @Service
 @RequiredArgsConstructor
@@ -49,10 +58,18 @@ public class CustomerAcceptQuotationUseCase {
         private final ActivityLogPublisher activityLogPublisher;
         private final SystemAuditLogService systemAuditLogService;
         private final ApplicationEventPublisher eventPublisher;
+        private final GetQuotationByTokenUseCase getQuotationByTokenUseCase;
+        private final AutoRoomRequestService autoRoomRequestService;
+        private final GenerateContractUseCase generateContractUseCase;
+        private final ContractRepository contractRepository;
 
         @Transactional
-        public QuotationEntity execute(UUID quotationId, String ipAddress, String userAgent) {
+        public QuotationEntity execute(UUID quotationId, String token, String ipAddress, String userAgent) {
                 log.info("Processing customer acceptance for quotation: {}", quotationId);
+
+                // The link is the credential: rejects an unknown, expired, already-used or
+                // tampered token before anything else happens.
+                getQuotationByTokenUseCase.validateToken(quotationId, token);
 
                 QuotationEntity quotation = quotationRepository.findById(quotationId)
                                 .orElseThrow(() -> new BusinessException("QUOTATION_NOT_FOUND", "Quotation not found",
@@ -124,7 +141,23 @@ public class CustomerAcceptQuotationUseCase {
                                                 + ipAddress,
                                 null);
 
-                // 7. Publish Spring ApplicationEvent
+                // 7. Put the availability question to the Reservation team. This is the canonical
+                // trigger: the customer has committed, so the sales side now needs a real answer
+                // about rooms. Non-fatal — a problem raising it must not undo the acceptance.
+                autoRoomRequestService.raiseOnCustomerAcceptance(savedQuotation,
+                                savedQuotation.getCreatedBy());
+
+                // 8. Draft the contract so it is ready for the rep to send once the Reservation
+                // team confirms. Non-fatal for the same reason.
+                try {
+                        if (contractRepository.findByQuotation_QuotationId(quotationId).isEmpty()) {
+                                generateContractUseCase.execute(savedQuotation, savedQuotation.getCreatedBy());
+                        }
+                } catch (Exception e) {
+                        log.warn("Could not draft the contract for quotation {}: {}", quotationId, e.getMessage());
+                }
+
+                // 9. Publish Spring ApplicationEvent
                 eventPublisher.publishEvent(new QuotationAcceptedByCustomerEvent(savedQuotation));
 
                 return savedQuotation;

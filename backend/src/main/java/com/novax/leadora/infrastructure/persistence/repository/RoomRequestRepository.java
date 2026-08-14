@@ -51,6 +51,37 @@ public interface RoomRequestRepository extends JpaRepository<RoomRequestEntity, 
     @EntityGraph(attributePaths = {"quotation", "quotation.customer", "requestedBy", "respondedBy"})
     Page<RoomRequestEntity> findAll(Pageable pageable);
 
+    /**
+     * The Reservation inbox, ordered by how urgent each row is to answer.
+     *
+     * <p>Three keys, in this order:
+     *
+     * <ol>
+     *   <li><b>Unanswered first.</b> Matters on the "All" view, where a plain date sort buried
+     *       live questions among rows that were settled weeks ago.</li>
+     *   <li><b>Soonest check-in first.</b> A stay starting on Friday has to be answered before one
+     *       starting in three months, however long each has been sitting there. Ordering purely by
+     *       when the request was raised got this backwards whenever a rep quoted far ahead.</li>
+     *   <li><b>Longest-waiting first.</b> The tie-break, and the SLA clock started then.</li>
+     * </ol>
+     *
+     * <p>The ranking is in the query because it spans the status enum, so callers pass an
+     * <b>unsorted</b> {@code Pageable}.
+     *
+     * @param status {@code null} for every status
+     */
+    @EntityGraph(attributePaths = {"quotation", "quotation.customer", "requestedBy", "respondedBy"})
+    @Query("""
+            SELECT r FROM RoomRequestEntity r
+            WHERE (:status IS NULL OR r.status = :status)
+            ORDER BY
+              CASE WHEN r.status = com.novax.leadora.infrastructure.persistence.entity.enums.RoomRequestStatus.PENDING
+                   THEN 0 ELSE 1 END ASC,
+              r.checkInDate ASC,
+              r.createdAt ASC
+            """)
+    Page<RoomRequestEntity> findInbox(@Param("status") RoomRequestStatus status, Pageable pageable);
+
     @EntityGraph(attributePaths = {"requestedBy", "respondedBy"})
     List<RoomRequestEntity> findByQuotation_QuotationIdOrderByCreatedAtDesc(UUID quotationId);
 }

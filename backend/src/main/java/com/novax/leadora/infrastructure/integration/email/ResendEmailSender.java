@@ -39,19 +39,17 @@ public class ResendEmailSender implements EmailGateway {
     }
 
     @Override
-    @Retryable(
-        retryFor = {EmailRetryableException.class, ResourceAccessException.class},
-        maxAttempts = 3,
-        backoff = @Backoff(delay = 1000, multiplier = 2.0)
-    )
+    @Retryable(retryFor = { EmailRetryableException.class,
+            ResourceAccessException.class }, maxAttempts = 3, backoff = @Backoff(delay = 1000, multiplier = 2.0))
     public EmailSendResult send(EmailRequest request) {
-        String sender = (request.from() != null && !request.from().isBlank()) ? request.from() : properties.defaultFrom();
+        String sender = (request.from() != null && !request.from().isBlank()) ? request.from()
+                : properties.defaultFrom();
 
         List<AttachmentPayload> attachmentPayloads = request.attachments().stream()
                 .map(att -> new AttachmentPayload(
                         att.filename(),
-                        encodeStreamToBase64(att.streamSupplier())
-                )).toList();
+                        encodeStreamToBase64(att.streamSupplier())))
+                .toList();
 
         ResendPayload payload = new ResendPayload(
                 sender,
@@ -60,8 +58,7 @@ public class ResendEmailSender implements EmailGateway {
                 request.bcc(),
                 request.subject(),
                 request.html(),
-                attachmentPayloads.isEmpty() ? null : attachmentPayloads
-        );
+                attachmentPayloads.isEmpty() ? null : attachmentPayloads);
 
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
@@ -90,17 +87,20 @@ public class ResendEmailSender implements EmailGateway {
 
         } catch (RestClientResponseException e) {
             sample.stop(meterRegistry.timer("email.send.duration", "status", "failure"));
-            meterRegistry.counter("email.send.failure", "reason", String.valueOf(e.getStatusCode().value())).increment();
-            
+            meterRegistry.counter("email.send.failure", "reason", String.valueOf(e.getStatusCode().value()))
+                    .increment();
+
             HttpStatusCode status = e.getStatusCode();
             String responseBody = e.getResponseBodyAsString();
             log.error("Resend API Error. Subject: '{}' | Recipients: {} | HTTP Status: {} | Response Body: {}",
                     request.subject(), request.to(), status.value(), responseBody);
 
             if (status.value() == 429 || status.is5xxServerError()) {
-                throw new EmailRetryableException("Retryable error from Resend: " + status.value() + " - " + responseBody, e);
+                throw new EmailRetryableException(
+                        "Retryable error from Resend: " + status.value() + " - " + responseBody, e);
             } else {
-                throw new EmailDeliveryException("Non-retryable error from Resend: " + status.value() + " - " + responseBody, e);
+                throw new EmailDeliveryException(
+                        "Non-retryable error from Resend: " + status.value() + " - " + responseBody, e);
             }
         } catch (ResourceAccessException e) {
             sample.stop(meterRegistry.timer("email.send.duration", "status", "failure"));
@@ -126,21 +126,21 @@ public class ResendEmailSender implements EmailGateway {
     }
 
     private record ResendPayload(
-        String from,
-        List<String> to,
-        List<String> cc,
-        List<String> bcc,
-        String subject,
-        String html,
-        List<AttachmentPayload> attachments
-    ) {}
+            String from,
+            List<String> to,
+            List<String> cc,
+            List<String> bcc,
+            String subject,
+            String html,
+            List<AttachmentPayload> attachments) {
+    }
 
     private record AttachmentPayload(
-        String filename,
-        String content
-    ) {}
+            String filename,
+            String content) {
+    }
 
     private record ResendResponse(
-        String id
-    ) {}
+            String id) {
+    }
 }

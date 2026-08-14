@@ -23,8 +23,7 @@ import { Badge } from "@/components/ui/Badge";
 import { LoadingState } from "@/shared/components/LoadingState";
 import {
   usePublicQuotation,
-  usePublicRequestQuotationOtp,
-  usePublicConfirmQuotationOtp,
+  usePublicAcceptQuotation,
   usePublicRejectQuotation,
 } from "@/features/quotation/hooks/use_quotations";
 
@@ -36,15 +35,15 @@ export default function PublicQuotationPortalPage() {
   const token = searchParams.get("token") || "";
 
   const { data: quotation, isLoading, error, refetch } = usePublicQuotation(id, token);
-  const requestOtpMutation = usePublicRequestQuotationOtp();
-  const confirmOtpMutation = usePublicConfirmQuotationOtp();
+  const acceptMutation = usePublicAcceptQuotation();
   const rejectMutation = usePublicRejectQuotation();
 
   const [agreed, setAgreed] = useState(false);
-  const [step, setStep] = useState<"inspect" | "otp" | "success" | "reject" | "rejected">("inspect");
-  const [otpCode, setOtpCode] = useState("");
-  const [otpError, setOtpError] = useState("");
-  const [otpSuccessMsg, setOtpSuccessMsg] = useState("");
+  // No "otp" step any more: accepting is one click, the same shape as rejecting. The customer
+  // used to have to leave this page, find a 6-digit code in their inbox and type it back, for a
+  // verification Report 1 asks for nowhere — at the exact moment they had decided to say yes.
+  const [step, setStep] = useState<"inspect" | "success" | "reject" | "rejected">("inspect");
+  const [acceptError, setAcceptError] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [rejectError, setRejectError] = useState("");
 
@@ -83,31 +82,17 @@ export default function PublicQuotationPortalPage() {
     );
   }
 
-  const handleRequestOtp = async () => {
+  const handleAccept = async () => {
     if (!agreed) return;
-    setOtpError("");
-    setOtpSuccessMsg("");
+    setAcceptError("");
     try {
-      await requestOtpMutation.mutateAsync({ id, token });
-      setOtpSuccessMsg("A 6-digit confirmation code has been sent to your email.");
-      setStep("otp");
-    } catch (err: any) {
-      setOtpError(err?.response?.data?.message || "Could not dispatch verification code. Please try again.");
-    }
-  };
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpCode || otpCode.length < 6) {
-      setOtpError("Please enter a valid 6-digit verification code.");
-      return;
-    }
-    setOtpError("");
-    try {
-      await confirmOtpMutation.mutateAsync({ id, token, otpCode });
+      await acceptMutation.mutateAsync({ id, token });
       setStep("success");
     } catch (err: any) {
-      setOtpError(err?.response?.data?.message || "Invalid or expired OTP code.");
+      setAcceptError(
+        err?.response?.data?.message ||
+          "Could not record your acceptance. Please try again, or contact your salesperson.",
+      );
     }
   };
 
@@ -298,7 +283,7 @@ export default function PublicQuotationPortalPage() {
             {step === "inspect" && (
               <div className="space-y-6">
                 <div className="text-xs text-slate-500 leading-relaxed">
-                  Please review the accommodation offer and terms on the left. Once you are satisfied with this quote, tick the checkbox below to request your secure confirmation OTP code.
+                  Please review the accommodation offer and terms on the left. Once you are satisfied with this quote, tick the checkbox below and accept.
                 </div>
                 <div className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <input
@@ -312,13 +297,20 @@ export default function PublicQuotationPortalPage() {
                     I confirm that I have reviewed the check-in dates, rates, and values, and I agree to proceed with booking this quotation.
                   </label>
                 </div>
+                {acceptError && (
+                  <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg border border-red-100">
+                    <AlertCircle className="size-4 shrink-0" />
+                    <span>{acceptError}</span>
+                  </div>
+                )}
+
                 <div className="flex flex-col gap-2 mt-4">
                   <Button
                     variant="primary"
                     className="w-full"
-                    onClick={handleRequestOtp}
+                    onClick={handleAccept}
                     disabled={!agreed}
-                    isLoading={requestOtpMutation.isPending}
+                    isLoading={acceptMutation.isPending}
                     rightIcon={<ArrowRight className="size-4" />}
                   >
                     Accept Quotation
@@ -338,55 +330,6 @@ export default function PublicQuotationPortalPage() {
               </div>
             )}
 
-            {step === "otp" && (
-              <form onSubmit={handleVerifyOtp} className="space-y-5">
-                <div className="flex items-start gap-2.5 p-3.5 bg-blue-50/60 border border-blue-100 rounded-xl text-[11px] text-blue-700 leading-normal">
-                  <Mail className="size-4.5 text-blue-600 shrink-0 mt-0.5" />
-                  <div>
-                    {otpSuccessMsg || "A verification OTP has been dispatched to your email address."}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Verification OTP Code</label>
-                  <input
-                    type="text"
-                    maxLength={6}
-                    placeholder="Enter 6-digit OTP"
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                    className="w-full text-center tracking-widest text-lg font-black py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition bg-slate-50/50"
-                  />
-                </div>
-
-                {otpError && (
-                  <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg border border-red-100">
-                    <AlertCircle className="size-4 shrink-0" />
-                    <span>{otpError}</span>
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    className="flex-1"
-                    type="button"
-                    onClick={() => setStep("inspect")}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    variant="primary"
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                    type="submit"
-                    isLoading={confirmOtpMutation.isPending}
-                  >
-                    Verify &amp; Accept
-                  </Button>
-                </div>
-              </form>
-            )}
-
             {step === "success" && (
               <div className="text-center py-6 space-y-4">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 shadow-inner">
@@ -395,7 +338,7 @@ export default function PublicQuotationPortalPage() {
                 <div>
                   <h4 className="text-base font-bold text-slate-900">Quotation Accepted</h4>
                   <p className="text-xs text-slate-500 mt-1 leading-relaxed px-4">
-                    The quotation terms have been successfully accepted and verified via OTP. The booking setup is now in progress. You may close this tab.
+                    Your acceptance has been recorded and sent to our reservations team, who will confirm your rooms. You may close this tab.
                   </p>
                 </div>
                 <div className="pt-4 border-t border-slate-100">
@@ -483,7 +426,7 @@ export default function PublicQuotationPortalPage() {
             {/* Footer lock indicator */}
             <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-center gap-1.5 text-[10px] text-slate-400">
               <ShieldCheck className="size-3.5 text-emerald-500" />
-              Secured with AES-256 OTP authentication
+              Secured with a single-use encrypted link
             </div>
           </CardContent>
         </Card>

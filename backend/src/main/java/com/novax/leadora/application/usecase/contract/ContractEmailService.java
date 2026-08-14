@@ -1,6 +1,7 @@
 package com.novax.leadora.application.usecase.contract;
 
 import com.novax.leadora.application.usecase.email.EmailAttachment;
+import com.novax.leadora.application.usecase.email.EmailContactPolicy;
 import com.novax.leadora.application.usecase.email.EmailGateway;
 import com.novax.leadora.application.usecase.email.EmailRequest;
 import com.novax.leadora.application.usecase.email.EmailTemplateRenderer;
@@ -85,72 +86,64 @@ public class ContractEmailService {
         + "</td></tr>"
         + "</table></td></tr></table></body></html>";
 
+    /**
+     * Sends the contract link and its PDF to the address the contract was addressed to.
+     *
+     * <p>Both methods here refuse a blank or malformed address rather than skipping the send.
+     * The customer's acknowledgement of this contract is what authorises the booking, so a
+     * contract silently not sent stalls the deal with nothing on screen to explain it.
+     */
     public void sendSecureLinkEmail(ContractEntity contract, String secureLink, byte[] pdfBytes) {
-        String recipientEmail = contract.getSentTo();
-        if (recipientEmail == null || recipientEmail.isBlank()) {
-            log.warn("No recipient email provided for contract {} — skipping email send", contract.getContractCode());
-            return;
-        }
+        String address = EmailContactPolicy.requireDeliverableEmail(
+                contract.getSentTo(), "customer.email", "contract " + contract.getContractCode());
 
-        try {
-            String htmlContent = templateRenderer.render(CONTRACT_LINK_TEMPLATE, Map.of(
-                    "contractCode", contract.getContractCode(),
-                    "secureLink", secureLink
-            ));
+        String htmlContent = templateRenderer.render(CONTRACT_LINK_TEMPLATE, Map.of(
+                "contractCode", contract.getContractCode(),
+                "secureLink", secureLink
+        ));
 
-            EmailAttachment attachment = new EmailAttachment(
-                    contract.getContractCode() + ".pdf",
-                    () -> new ByteArrayInputStream(pdfBytes)
-            );
+        EmailAttachment attachment = new EmailAttachment(
+                contract.getContractCode() + ".pdf",
+                () -> new ByteArrayInputStream(pdfBytes)
+        );
 
-            EmailRequest emailRequest = new EmailRequest(
-                    null,
-                    List.of(recipientEmail),
-                    List.of(),
-                    List.of(),
-                    "Commercial Contract " + contract.getContractCode() + " — Action Required",
-                    htmlContent,
-                    List.of(attachment),
-                    "contract-link-" + contract.getId()
-            );
+        EmailRequest emailRequest = new EmailRequest(
+                null,
+                List.of(address),
+                List.of(),
+                List.of(),
+                "Commercial Contract " + contract.getContractCode() + " — Action Required",
+                htmlContent,
+                List.of(attachment),
+                "contract-link-" + contract.getId()
+        );
 
-            emailGateway.send(emailRequest);
-            log.info("Contract secure link email processed: {} → {}", contract.getContractCode(), recipientEmail);
-        } catch (Exception e) {
-            log.error("Failed to send contract link email for {}: {}", contract.getContractCode(), e.getMessage(), e);
-            throw new RuntimeException("Failed to send contract link email: " + e.getMessage(), e);
-        }
+        emailGateway.send(emailRequest);
+        log.info("Contract secure link email processed: {} → {}", contract.getContractCode(), address);
     }
 
     public void sendOtpEmail(ContractEntity contract, String otpCode) {
-        String recipientEmail = contract.getSentTo();
-        if (recipientEmail == null || recipientEmail.isBlank()) {
-            log.warn("No recipient email provided for contract {} OTP — skipping email send", contract.getContractCode());
-            return;
-        }
+        String address = EmailContactPolicy.requireDeliverableEmail(
+                contract.getSentTo(), "customer.email",
+                "the verification code for contract " + contract.getContractCode());
 
-        try {
-            String htmlContent = templateRenderer.render(CONTRACT_OTP_TEMPLATE, Map.of(
-                    "contractCode", contract.getContractCode(),
-                    "otpCode", otpCode
-            ));
+        String htmlContent = templateRenderer.render(CONTRACT_OTP_TEMPLATE, Map.of(
+                "contractCode", contract.getContractCode(),
+                "otpCode", otpCode
+        ));
 
-            EmailRequest emailRequest = new EmailRequest(
-                    null,
-                    List.of(recipientEmail),
-                    List.of(),
-                    List.of(),
-                    "Your Verification Code: " + otpCode + " — Contract " + contract.getContractCode(),
-                    htmlContent,
-                    List.of(),
-                    "contract-otp-" + contract.getId() + "-" + System.currentTimeMillis() / 60000 // unique per min
-            );
+        EmailRequest emailRequest = new EmailRequest(
+                null,
+                List.of(address),
+                List.of(),
+                List.of(),
+                "Your Verification Code: " + otpCode + " — Contract " + contract.getContractCode(),
+                htmlContent,
+                List.of(),
+                "contract-otp-" + contract.getId() + "-" + System.currentTimeMillis() / 60000 // unique per min
+        );
 
-            emailGateway.send(emailRequest);
-            log.info("Contract OTP email processed: {} → {}", contract.getContractCode(), recipientEmail);
-        } catch (Exception e) {
-            log.error("Failed to send contract OTP email for {}: {}", contract.getContractCode(), e.getMessage(), e);
-            throw new RuntimeException("Failed to send contract OTP email: " + e.getMessage(), e);
-        }
+        emailGateway.send(emailRequest);
+        log.info("Contract OTP email processed: {} → {}", contract.getContractCode(), address);
     }
 }

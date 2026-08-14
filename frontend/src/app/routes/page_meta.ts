@@ -158,6 +158,14 @@ export const PAGE_META = {
     "Manage individual and corporate customer relationships.",
   ),
 
+  roomAvailability: meta(
+    ROUTE_PATHS.roomAvailability,
+    "Room Availability",
+    // Says "allocated to us" rather than "available", because the two are not the same and the
+    // difference is the whole point: the hotel never discloses its real vacancy.
+    "Rooms the hotel has allocated to us to sell, night by night. Reservation publishes; everyone else reads.",
+  ),
+
   roomRequests: meta(
     ROUTE_PATHS.roomRequests,
     "Room Requests",

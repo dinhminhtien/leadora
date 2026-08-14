@@ -4,9 +4,12 @@ import com.novax.leadora.api.dto.request.ReviseQuotationRequest;
 import com.novax.leadora.api.dto.request.RoomLineRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
+import com.novax.leadora.application.usecase.inventory.RoomAvailabilityAssessment;
+import com.novax.leadora.application.usecase.inventory.RoomLineDemand;
 import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
+import com.novax.leadora.infrastructure.persistence.entity.ProductServiceEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.ContractEntity;
@@ -73,11 +76,13 @@ public class ReviseQuotationUseCase {
                     "Quotation cannot be revised from status " + parent.getStatus().name(), HttpStatus.CONFLICT);
         }
 
-        // E2: every room type must exist and be available for the requested dates (BR-24)
-        List<String> roomTypes = request.getRoomLines().stream()
-                .map(line -> line.getRoomType())
+        // Resolves the room types and reports how they look against the quota Reservation
+        // published. Advisory only — a shortfall does not stop a revision.
+        List<RoomLineDemand> demands = request.getRoomLines().stream()
+                .map(line -> new RoomLineDemand(line.getProductId(), line.getNumberOfRooms()))
                 .toList();
-        availabilityChecker.assertRoomsAvailable(request.getCheckInDate(), request.getCheckOutDate(), roomTypes);
+        RoomAvailabilityAssessment assessment = availabilityChecker.assess(
+                request.getCheckInDate(), request.getCheckOutDate(), demands);
 
         // Pricing calculations — one line per room type, summed into the quotation total
         long nights = ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
@@ -110,7 +115,7 @@ public class ReviseQuotationUseCase {
                 .customer(parent.getCustomer())
                 .createdBy(creator)
                 .version((parent.getVersion() != null ? parent.getVersion() : 1) + 1)
-                .roomType(roomTypeSummary(request.getRoomLines()))
+                .roomType(roomTypeSummary(request.getRoomLines(), assessment))
                 .checkInDate(request.getCheckInDate())
                 .checkOutDate(request.getCheckOutDate())
                 .paymentPolicy(request.getPaymentPolicy())
@@ -127,18 +132,27 @@ public class ReviseQuotationUseCase {
 
         QuotationEntity saved = quotationRepository.save(revision);
 
-        // Save one detail line per room type
+        // Save one detail line per room type, carrying the resolved product forward
         List<QuotationDetailEntity> details = request.getRoomLines().stream()
-                .map(line -> QuotationDetailEntity.builder()
-                        .quotation(saved)
-                        .description(line.getRoomType())
-                        .quantity(line.getNumberOfRooms())
-                        .unitPrice(line.getPricePerNight())
-                        .nights((int) nights)
-                        .lineTotal(lineSubtotal(line, nights))
-                        .build())
+                .map(line -> {
+                    ProductServiceEntity product = assessment.products().get(line.getProductId());
+                    return QuotationDetailEntity.builder()
+                            .quotation(saved)
+                            .productService(product)
+                            .description(product.getName())
+                            .quantity(line.getNumberOfRooms())
+                            .unitPrice(line.getPricePerNight())
+                            .nights((int) nights)
+                            .lineTotal(lineSubtotal(line, nights))
+                            .build();
+                })
                 .toList();
         quotationDetailRepository.saveAll(details);
+
+        // No rooms are held or released here. Holding quota was Leadora reserving inventory,
+        // which Report 1 (FE-19, LI-02) places with Reservation; the revision simply supersedes
+        // its parent. Any answer Reservation had already given is retired by the room-request
+        // supersede rule, because the question — dates or room type — has changed.
 
         // BR-22: exactly one version stays "active" — supersede the parent now that a
         // new version exists, instead of leaving both live simultaneously.
@@ -215,9 +229,13 @@ public class ReviseQuotationUseCase {
                 .multiply(BigDecimal.valueOf(line.getNumberOfRooms()));
     }
 
-    /** Human-readable summary for single-line display surfaces (list, emails, chat). */
-    private static String roomTypeSummary(List<RoomLineRequest> roomLines) {
-        String first = roomLines.get(0).getRoomType();
+    /**
+     * Human-readable summary for single-line display surfaces (list, emails, chat).
+     * Names come from the resolved products so the label cannot drift from the room it names.
+     */
+    private static String roomTypeSummary(List<RoomLineRequest> roomLines,
+                                          RoomAvailabilityAssessment assessment) {
+        String first = assessment.products().get(roomLines.get(0).getProductId()).getName();
         return roomLines.size() == 1 ? first : first + " +" + (roomLines.size() - 1) + " more";
     }
 }

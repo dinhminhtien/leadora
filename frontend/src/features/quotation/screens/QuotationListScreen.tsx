@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ListFilter, Bell, BedDouble, X } from "lucide-react";
+import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ListFilter, ArrowDownWideNarrow, Bell, BedDouble, X } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -22,6 +22,8 @@ import {
 
 /** Sortable fields the local comparator implements. */
 type SortField = "total" | "validUntil";
+/** What the sort picker offers. `priority` is the server-side "whose move is it" ranking. */
+type SortMode = SortField | "priority";
 
 const QUOTATION_EXPORT_HEADERS = [
   "Quote no", "Client", "Deal", "Amount (VND)", "Valid until", "Status",
@@ -73,6 +75,7 @@ export function QuotationListScreen() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
+  // `null` means the priority ordering, which is the default and is computed server-side.
   const [sortField, setSortField] = useState<"total" | "validUntil" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [search, setSearch] = useState("");
@@ -88,7 +91,8 @@ export function QuotationListScreen() {
       search: search || undefined,
       status: backendStatus,
       statuses: backendStatuses,
-      sortBy: sortField === "total" ? "totalAmount" : (sortField || "validUntil"),
+      // "priority" is not a column — the backend ranks by whose move it is and ignores sortDir.
+      sortBy: sortField === "total" ? "totalAmount" : (sortField ?? "priority"),
       sortDir: sortDir,
     };
   }, [activeTab, statusFilter, search, currentPage, sortField, sortDir]);
@@ -120,7 +124,7 @@ export function QuotationListScreen() {
   const submitQuotation = useSubmitQuotation();
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [localStatusMap, setLocalStatusMap] = useState<Record<string, Quotation["status"]>>({});
-  
+
   const quotes = useMemo(
     () => serverQuotes.map(q => ({
       ...q,
@@ -144,6 +148,15 @@ export function QuotationListScreen() {
   const handleSort = (field: SortField, dir: "asc" | "desc") => {
     setSortField(field);
     setSortDir(dir);
+    setCurrentPage(1);
+  };
+
+  /** The sort picker. "priority" maps back to `null`, the server-ranked default. */
+  const handleSortChange = (mode: SortMode) => {
+    setSortField(mode === "priority" ? null : mode);
+    // Soonest expiry and highest value each have one useful direction; nobody wants the
+    // quotation expiring furthest away, or the cheapest, at the top of the list.
+    setSortDir(mode === "total" ? "desc" : "asc");
     setCurrentPage(1);
   };
 
@@ -189,7 +202,7 @@ export function QuotationListScreen() {
       minWidth: "lg",
       className: "text-xs text-muted-foreground",
       cell: (q) => (
-        <span className="max-w-[180px] truncate block text-xs text-muted-foreground" title={q.dealName}>
+        <span className="max-w-45 truncate block text-xs text-muted-foreground" title={q.dealName}>
           {q.dealName}
         </span>
       ),
@@ -411,15 +424,25 @@ export function QuotationListScreen() {
   };
 
   const statusLabel = (status: Quotation["status"]) => {
-    if (status === "pending_approval") return "Pending Approval";
-    if (status === "pending_revision") return "Needs Revision";
-    if (status === "interested") return "Interested";
-    if (status === "converted") return "Converted";
-    if (status === "closed") return "Closed";
-    if (status === "reservation_pending") return "Awaiting Reservation";
-    if (status === "reservation_rejected") return "Reservation Rejected";
-    if (status === "booking_request") return "Booking Requested";
-    return status;
+    const labelMap: Record<Quotation["status"], string> = {
+      draft: "Draft",
+      pending_approval: "Pending Approval",
+      approved: "Approved",
+      sent: "Sent",
+      accepted: "Accepted",
+      interested: "Interested",
+      pending_revision: "Needs Revision",
+      rejected: "Rejected",
+      pending_customer_response: "Waiting Customer Response",
+      reservation_pending: "Waiting Reservation",
+      reservation_rejected: "Reservation Rejected",
+      converted: "Converted",
+      closed: "Closed",
+      expired: "Expired",
+      accepted_by_customer: "Accepted By Customer",
+      booking_request: "Booking Requested",
+    };
+    return labelMap[status] || status;
   };
 
   // One clear primary action per row (the single next step) plus an overflow
@@ -459,7 +482,7 @@ export function QuotationListScreen() {
     // Sending and converting are both gated on a confirmed room, so let the rep ask as
     // early as they like rather than only from inside those modals.
     if (!["converted", "expired", "closed", "accepted_by_customer", "booking_request"].includes(q.status)) {
-      actions.push({ key: "rooms", label: "Room Confirmation", Icon: BedDouble, onClick: () => setRoomTarget(q), tone: "primary" });
+      actions.push({ key: "rooms", label: "Room Availability", Icon: BedDouble, onClick: () => setRoomTarget(q) });
     }
     actions.push({ key: "remind", label: "Add Reminder", Icon: Bell, onClick: () => setReminderTarget(q) });
     return actions;
@@ -490,11 +513,10 @@ export function QuotationListScreen() {
 
       {/* Auto-expire result banner */}
       {autoExpireResult !== null && (
-        <div className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border ${
-          autoExpireResult > 0
+        <div className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border ${autoExpireResult > 0
             ? "bg-amber-50 border-amber-200 text-amber-700"
             : "bg-slate-50 border-slate-200 text-slate-500"
-        }`}>
+          }`}>
           <TimerOff className="size-3.5 shrink-0" />
           {autoExpireResult > 0
             ? `${autoExpireResult} overdue quotation${autoExpireResult !== 1 ? "s" : ""} marked as Expired. Linked reminders resolved.`
@@ -507,39 +529,67 @@ export function QuotationListScreen() {
         <button
           type="button"
           onClick={() => handleTabChange("active")}
-          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
-            activeTab === "active"
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${activeTab === "active"
               ? "border-primary text-blue-700"
               : "border-transparent text-slate-500 hover:text-slate-700"
-          }`}
+            }`}
         >
           In Progress
-          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-            activeTab === "active" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"
-          }`}>
+          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${activeTab === "active" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"
+            }`}>
             {activeCount}
           </span>
         </button>
         <button
           type="button"
           onClick={() => handleTabChange("done")}
-          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
-            activeTab === "done"
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${activeTab === "done"
               ? "border-slate-600 text-slate-700"
               : "border-transparent text-slate-500 hover:text-slate-700"
-          }`}
+            }`}
         >
           Completed
-          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-            activeTab === "done" ? "bg-slate-200 text-slate-600" : "bg-slate-100 text-slate-400"
-          }`}>
+          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${activeTab === "done" ? "bg-slate-200 text-slate-600" : "bg-slate-100 text-slate-400"
+            }`}>
             {doneCount}
           </span>
         </button>
       </div>
 
       <Card className="border-slate-100 shadow-sm bg-white rounded-t-none">
-        <CardContent className="py-3 px-4">
+        <CardContent className="py-3 px-4 space-y-2.5">
+          {/* One click per status, so a rep can jump straight to "everything I have to send"
+              without going through a dropdown. The set follows the tab, because the two tabs
+              hold disjoint statuses. */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <ListFilter className="size-3.5 text-slate-400 shrink-0" />
+            <button
+              type="button"
+              onClick={() => setStatusFilter("")}
+              aria-pressed={statusFilter === ""}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${statusFilter === ""
+                  ? "border-primary bg-blue-50 text-blue-700"
+                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                }`}
+            >
+              All
+            </button>
+            {(activeTab === "active" ? ACTIVE_STATUSES : DONE_STATUSES).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter(statusFilter === s ? "" : s)}
+                aria-pressed={statusFilter === s}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${statusFilter === s
+                    ? "border-primary bg-blue-50 text-blue-700"
+                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                  }`}
+              >
+                {statusLabel(s)}
+              </button>
+            ))}
+          </div>
+
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative w-full md:w-72">
               <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
@@ -550,21 +600,6 @@ export function QuotationListScreen() {
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
               />
-            </div>
-            <div className="flex items-center gap-1.5 text-slate-400">
-              <ListFilter className="size-3.5" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="py-1.5 pl-2 pr-6 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700 focus:outline-none focus:border-blue-500 focus:bg-white transition appearance-none"
-              >
-                <option value="">All Status</option>
-                {(activeTab === "active" ? ACTIVE_STATUSES : DONE_STATUSES).map((s) => (
-                  <option key={s} value={s}>
-                    {statusLabel(s)}
-                  </option>
-                ))}
-              </select>
             </div>
             {(search || statusFilter) && (
               <button
@@ -577,7 +612,7 @@ export function QuotationListScreen() {
             )}
 
             {/* §2.6 control cluster */}
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-2 shrink-0">
               <RefreshButton onRefresh={() => refetch()} isRefreshing={isFetching} />
               <ColumnPicker
                 columns={quotationColumns}
@@ -701,7 +736,7 @@ export function QuotationListScreen() {
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-sm font-bold text-slate-800">Room Confirmation</h2>
+                <h2 className="text-sm font-bold text-slate-800">Room Availability</h2>
                 <p className="mt-0.5 text-xs text-slate-500">
                   {roomTarget.quoteNo} · {roomTarget.roomType ?? "—"} ·{" "}
                   {roomTarget.checkInDate ?? "—"} → {roomTarget.checkOutDate ?? "—"}

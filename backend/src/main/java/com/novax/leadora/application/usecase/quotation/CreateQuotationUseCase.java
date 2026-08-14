@@ -3,10 +3,13 @@ package com.novax.leadora.application.usecase.quotation;
 import com.novax.leadora.api.dto.request.CreateQuotationRequest;
 import com.novax.leadora.api.dto.request.RoomLineRequest;
 import com.novax.leadora.api.dto.response.QuotationResponse;
+import com.novax.leadora.application.usecase.inventory.RoomAvailabilityAssessment;
+import com.novax.leadora.application.usecase.inventory.RoomLineDemand;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
+import com.novax.leadora.infrastructure.persistence.entity.ProductServiceEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationDetailEntity;
 import com.novax.leadora.infrastructure.persistence.entity.QuotationEntity;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
@@ -51,12 +54,14 @@ public class CreateQuotationUseCase {
                         throw new IllegalArgumentException("Check-out date must be after check-in date");
                 }
 
-                // E2: every room type on the quotation must exist and be available for the
-                // requested dates (BR-24)
-                List<String> roomTypes = request.getRoomLines().stream()
-                                .map(line -> line.getRoomType())
+                // Resolves the room types and reports how they look against the quota Reservation
+                // published. Advisory: a shortfall never stops a quotation, because an offer the
+                // hotel may still be able to service is worth making, and only Reservation can say.
+                List<RoomLineDemand> demands = request.getRoomLines().stream()
+                                .map(line -> new RoomLineDemand(line.getProductId(), line.getNumberOfRooms()))
                                 .toList();
-                availabilityChecker.assertRoomsAvailable(request.getCheckInDate(), request.getCheckOutDate(), roomTypes);
+                RoomAvailabilityAssessment assessment = availabilityChecker.assess(
+                                request.getCheckInDate(), request.getCheckOutDate(), demands);
 
                 // 2. Fetch deal and get linked customer
                 DealEntity deal = dealRepository.findById(request.getDealId())
@@ -102,7 +107,7 @@ public class CreateQuotationUseCase {
                                 .createdBy(creator)
                                 .version(1)
                                 .status(status)
-                                .roomType(roomTypeSummary(request.getRoomLines()))
+                                .roomType(roomTypeSummary(request.getRoomLines(), assessment))
                                 .checkInDate(request.getCheckInDate())
                                 .checkOutDate(request.getCheckOutDate())
                                 .paymentPolicy(request.getPaymentPolicy())
@@ -116,19 +121,32 @@ public class CreateQuotationUseCase {
 
                 QuotationEntity saved = quotationRepository.save(quotation);
 
-                // 6. Save one detail line per room type
+                // 6. Save one detail line per room type. product_id is what later stages resolve
+                // the room by — it used to be left null, forcing Convert to re-match on the
+                // free-text description.
                 List<QuotationDetailEntity> details = request.getRoomLines().stream()
-                                .map(line -> QuotationDetailEntity.builder()
+                                .map(line -> {
+                                        ProductServiceEntity product = assessment.products().get(line.getProductId());
+                                        return QuotationDetailEntity.builder()
                                                 .quotation(saved)
-                                                .description(line.getRoomType())
+                                                .productService(product)
+                                                .description(product.getName())
                                                 .quantity(line.getNumberOfRooms())
                                                 .unitPrice(line.getPricePerNight())
                                                 .nights((int) nights)
                                                 .lineTotal(lineSubtotal(line, nights))
-                                                .build())
+                                                .build();
+                                })
                                 .toList();
 
                 quotationDetailRepository.saveAll(details);
+
+                // Nothing is held or reserved here. Creating a quotation is an offer, and Report 1
+                // (FE-19, LI-02) puts holding and locking room inventory on the Reservation side of
+                // the boundary — this used to take a soft hold on the quota and, when it could not,
+                // put a question to the Reservation team on the rep's behalf. The availability
+                // question is now raised once, at the point it is actually needed: when the customer
+                // accepts. A rep who wants an earlier answer can still ask from the quotation.
 
                 // Publish Activity Log event
                 try {
@@ -159,9 +177,15 @@ public class CreateQuotationUseCase {
                                 .multiply(BigDecimal.valueOf(line.getNumberOfRooms()));
         }
 
-        /** Human-readable summary for single-line display surfaces (list, emails, chat). */
-        private static String roomTypeSummary(List<RoomLineRequest> roomLines) {
-                String first = roomLines.get(0).getRoomType();
+        /**
+         * Human-readable summary for single-line display surfaces (list, emails, chat).
+         *
+         * <p>Names come from the resolved products, not from what the client sent, so the summary
+         * cannot disagree with the room the line actually points at.
+         */
+        private static String roomTypeSummary(List<RoomLineRequest> roomLines,
+                        RoomAvailabilityAssessment assessment) {
+                String first = assessment.products().get(roomLines.get(0).getProductId()).getName();
                 return roomLines.size() == 1 ? first : first + " +" + (roomLines.size() - 1) + " more";
         }
 }

@@ -74,7 +74,7 @@ public class ProcessBookingUseCase {
 
         // UC-17.2: the Reservation team answered, so the BOOKING_CONFIRM clock stops here.
         // Uses entityType BOOKING to match the tracking rows started by
-        // ConvertToBookingUseCase / CreateBookingRequestUseCase.
+        // ConvertToBookingUseCase.
         try {
             resolveSlaBreachUseCase.executeByEntity("BOOKING", bookingId);
         } catch (Exception e) {

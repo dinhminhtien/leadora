@@ -92,7 +92,7 @@ class GetTaskPerformanceReportUseCaseTest {
     }
 
     private static long countOf(List<CountRow> list, String key) {
-        return list.stream().filter(r -> key.equals(r.getKey())).mapToLong(CountRow::getCount).findFirst().orElse(0L);
+        return list.stream().filter(r -> key.equals(r.getKey())).mapToLong(r -> r.getCount()).findFirst().orElse(0L);
     }
 
     // ── The defect this rewrite exists for ───────────────────────────────────
@@ -175,7 +175,7 @@ class GetTaskPerformanceReportUseCaseTest {
 
         List<CountRow> byPriority = run().getOverdueByPriority();
 
-        assertThat(byPriority).extracting(CountRow::getKey)
+        assertThat(byPriority).extracting(r -> r.getKey())
                 .as("HIGH first — the order must not change between periods")
                 .containsExactly("HIGH", "LOW");
         assertThat(countOf(byPriority, "HIGH")).isEqualTo(3);
@@ -189,7 +189,7 @@ class GetTaskPerformanceReportUseCaseTest {
 
         TaskPerformanceReportResponse report = run();
 
-        assertThat(report.getOverdueAging()).extracting(CountRow::getKey)
+        assertThat(report.getOverdueAging()).extracting(r -> r.getKey())
                 .containsExactly("D1_3", "D8_PLUS");
         assertThat(report.getOpenOverdue()).isEqualTo(8);
         assertThat(report.getAvgDaysOverdue())
@@ -205,7 +205,7 @@ class GetTaskPerformanceReportUseCaseTest {
 
         List<CountRow> mix = run().getActivityMix();
 
-        assertThat(mix).extracting(CountRow::getLabel).contains("Call", "Site visit");
+        assertThat(mix).extracting(r -> r.getLabel()).contains("Call", "Site visit");
         assertThat(countOf(mix, "SITE_VISIT")).isEqualTo(2);
     }
 
@@ -270,7 +270,7 @@ class GetTaskPerformanceReportUseCaseTest {
         agg("RAISED", "OPEN", BINH, "Binh", 4);
         agg("RESOLVED", "ON_TIME", BINH, "Binh", 4);
 
-        assertThat(run().getStaff()).extracting(StaffRow::getName)
+        assertThat(run().getStaff()).extracting(r -> r.getName())
                 .as("ranking on volume rewards whoever logged the most work, not who did it well")
                 .containsExactly("Binh", "Anna");
     }
@@ -284,7 +284,7 @@ class GetTaskPerformanceReportUseCaseTest {
 
         List<StaffRow> staff = run().getStaff();
 
-        assertThat(staff).extracting(StaffRow::getName).containsExactly("Binh", "Anna");
+        assertThat(staff).extracting(r -> r.getName()).containsExactly("Binh", "Anna");
         assertThat(staff.get(1).getPunctualityRate())
                 .as("no judged outcome is null, never zero")
                 .isNull();
@@ -300,10 +300,10 @@ class GetTaskPerformanceReportUseCaseTest {
 
         assertThat(report.getTotalTasks()).isEqualTo(10);
         assertThat(report.getStaff()).hasSize(2);
-        assertThat(report.getStaff().stream().mapToLong(StaffRow::getTotal).sum())
+        assertThat(report.getStaff().stream().mapToLong(r -> r.getTotal()).sum())
                 .isEqualTo(report.getTotalTasks());
         assertThat(report.getStaff())
-                .filteredOn(StaffRow::isUnassigned)
+                .filteredOn(r -> r.isUnassigned())
                 .singleElement()
                 .satisfies(row -> assertThat(row.getName()).isEqualTo("(Unassigned)"));
     }

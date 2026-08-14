@@ -19,6 +19,9 @@ import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepo
 import com.novax.leadora.application.usecase.email.event.FeedbackInvitationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import com.novax.leadora.application.usecase.booking.BookingStatusTransitionService;
+import com.novax.leadora.application.usecase.inventory.RoomAvailabilityService;
+import com.novax.leadora.application.usecase.inventory.StayAvailability;
+import com.novax.leadora.infrastructure.persistence.entity.ProductServiceEntity;
 import com.novax.leadora.application.usecase.booking.TransitionActor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +33,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -43,6 +47,7 @@ public class UpdateReservationStatusUseCase {
     private final ApplicationEventPublisher eventPublisher;
     private final BookingStatusTransitionService bookingStatusTransitionService;
     private final PaymentRepository paymentRepository;
+    private final RoomAvailabilityService roomAvailabilityService;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
@@ -71,6 +76,7 @@ public class UpdateReservationStatusUseCase {
             if (!newCheckOut.isAfter(newCheckIn)) {
                 throw new BusinessRuleException("Check-out date must be after the check-in date");
             }
+            warnIfExtensionExceedsAllotment(id, oldCheckIn, oldCheckOut, newCheckIn, newCheckOut);
         }
 
         // Call the centralized transition service
@@ -178,5 +184,72 @@ public class UpdateReservationStatusUseCase {
                 id, oldStatus, newStatus, oldCheckIn, newCheckIn, oldCheckOut, newCheckOut, request.getReason(), OffsetDateTime.now());
 
         return ReservationResponse.from(booking, details);
+    }
+
+    /**
+     * Checks the allotment for nights a stay change <em>adds</em>.
+     *
+     * <p>Changing a booking's dates used to bypass every availability check there is: the only
+     * validation was that check-out came after check-in, so extending a stay into nights whose
+     * quota was already spent went through silently. An early departure is the harmless direction
+     * — it gives nights back — but an extension consumes them like any other sale.
+     *
+     * <p>Only the added nights are examined. Re-checking the nights the booking already occupies
+     * would have it fail against itself, since its own rooms are counted in what is committed.
+     *
+     * <p><b>Warns rather than refuses.</b> The person doing this is Reservation staff, who have
+     * the hotel's real PMS in front of them and outrank our figures; a guest standing at the desk
+     * asking for another night is not a request the CRM should be able to veto. What matters is
+     * that the overrun is recorded rather than silent.
+     */
+    private void warnIfExtensionExceedsAllotment(UUID bookingId, LocalDate oldCheckIn, LocalDate oldCheckOut,
+                                                 LocalDate newCheckIn, LocalDate newCheckOut) {
+        try {
+            boolean extendsEarlier = newCheckIn.isBefore(oldCheckIn);
+            boolean extendsLater = newCheckOut.isAfter(oldCheckOut);
+            if (!extendsEarlier && !extendsLater) {
+                return;
+            }
+
+            List<BookingDetailEntity> details = bookingDetailRepository.findByBooking_BookingId(bookingId);
+            List<ProductServiceEntity> products = details.stream()
+                    .map(d -> d.getProductService())
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .toList();
+            if (products.isEmpty()) {
+                return;
+            }
+
+            if (extendsEarlier) {
+                reportShortfall(bookingId, products, details, newCheckIn, oldCheckIn);
+            }
+            if (extendsLater) {
+                reportShortfall(bookingId, products, details, oldCheckOut, newCheckOut);
+            }
+        } catch (Exception e) {
+            // Advisory only — a failure to look up quota must not stop the desk changing a stay.
+            log.warn("Allotment check skipped for booking {} date change: {}", bookingId, e.getMessage());
+        }
+    }
+
+    private void reportShortfall(UUID bookingId, List<ProductServiceEntity> products,
+                                 List<BookingDetailEntity> details, LocalDate from, LocalDate toExclusive) {
+        Map<UUID, StayAvailability> stays =
+                roomAvailabilityService.stays(products, from, toExclusive);
+
+        for (BookingDetailEntity detail : details) {
+            if (detail.getProductService() == null) {
+                continue;
+            }
+            StayAvailability stay = stays.get(detail.getProductService().getProductId());
+            if (stay == null || stay.canCover(detail.getQuantity())) {
+                continue;
+            }
+            log.warn("[ALLOTMENT] Booking {} extended into {} → {} for {} x {}, beyond available allotment ({})",
+                    bookingId, from, toExclusive, detail.getQuantity(),
+                    detail.getProductService().getName(),
+                    stay.availableForStay() == null ? "not published" : stay.availableForStay());
+        }
     }
 }

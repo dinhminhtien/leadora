@@ -19,7 +19,7 @@ public enum QuotationStatus {
     /**
      * UC-14.x: Customer completed OTP verification. Quotation is awaiting
      * Reservation staff availability check before a Booking is created.
-     * Set by CustomerAcceptQuotationUseCase (called from ConfirmQuotationOtpUseCase).
+     * Set by CustomerAcceptQuotationUseCase when the customer accepts from the portal.
      */
     RESERVATION_PENDING,
     /**

@@ -12,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,25 +29,25 @@ public class GetRoomRequestsUseCase {
     private final QuotationAccessPolicy quotationAccessPolicy;
 
     /**
-     * The Reservation inbox. Oldest first — the longest-waiting Sales rep is the one
-     * whose customer is waiting too, and the SLA clock started when it was raised.
+     * The Reservation inbox, ordered by urgency: unanswered first, then soonest check-in, then
+     * longest-waiting. See {@link RoomRequestRepository#findInbox} for why each key is there.
+     *
+     * <p>Unsorted {@code Pageable} — the ordering spans the status enum and lives in the query.
      */
     @Transactional(readOnly = true)
     public Page<RoomRequestResponse> execute(String status, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "createdAt"));
+        Pageable pageable = PageRequest.of(page, size);
 
-        if (!StringUtils.hasText(status) || "all".equalsIgnoreCase(status)) {
-            return roomRequestRepository.findAll(pageable).map(RoomRequestResponse::from);
+        RoomRequestStatus parsed = null;
+        if (StringUtils.hasText(status) && !"all".equalsIgnoreCase(status)) {
+            try {
+                parsed = RoomRequestStatus.valueOf(status.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new BusinessException("INVALID_ROOM_REQUEST_STATUS",
+                        "Unknown room request status: " + status, HttpStatus.BAD_REQUEST);
+            }
         }
-
-        RoomRequestStatus parsed;
-        try {
-            parsed = RoomRequestStatus.valueOf(status.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new BusinessException("INVALID_ROOM_REQUEST_STATUS",
-                    "Unknown room request status: " + status, HttpStatus.BAD_REQUEST);
-        }
-        return roomRequestRepository.findByStatus(parsed, pageable).map(RoomRequestResponse::from);
+        return roomRequestRepository.findInbox(parsed, pageable).map(RoomRequestResponse::from);
     }
 
     /**

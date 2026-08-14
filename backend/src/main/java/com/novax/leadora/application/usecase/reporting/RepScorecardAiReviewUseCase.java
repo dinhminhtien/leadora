@@ -103,8 +103,8 @@ public class RepScorecardAiReviewUseCase {
                         .language(vietnamese ? "vi" : "en")
                         .disclaimer(vietnamese ? DISCLAIMER_VI : DISCLAIMER_EN)
                         .lowConfidenceReps(scope.stream()
-                                .filter(RepScorecard::isLowConfidence)
-                                .map(RepScorecard::getName)
+                                .filter(rep -> rep.isLowConfidence())
+                                .map(rep -> rep.getName())
                                 .toList());
 
         if (scope.isEmpty()) {

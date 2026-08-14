@@ -25,6 +25,8 @@ public class RoomRequestResponse {
     private LocalDate checkOutDate;
     private Integer quantity;
     private RoomRequestStatus status;
+    /** Allotment context captured when the request was raised — see RoomRequestEntity. */
+    private String requesterNote;
     private String reservationNote;
     private OffsetDateTime heldUntil;
     private String requestedByName;
@@ -46,6 +48,7 @@ public class RoomRequestResponse {
                 .checkOutDate(entity.getCheckOutDate())
                 .quantity(entity.getQuantity())
                 .status(entity.getStatus())
+                .requesterNote(entity.getRequesterNote())
                 .reservationNote(entity.getReservationNote())
                 .heldUntil(entity.getHeldUntil())
                 .requestedByName(entity.getRequestedBy() != null ? entity.getRequestedBy().getFullName() : null)

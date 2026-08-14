@@ -15,12 +15,16 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/product-services")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+@PreAuthorize("hasAnyRole('SALES','MANAGER','RESERVATION','ADMIN')")
 public class ProductServiceController {
+    // Reservation reads this to publish allotment — the room type they allocate against is a row
+    // in this catalogue, so locking them out left the picker empty with no error to explain it.
+    // The catalogue is reference data: names, categories and list prices, no customer in it.
 
     private final ProductServiceRepository productServiceRepository;
 
     @GetMapping
+    @org.springframework.cache.annotation.Cacheable(value = "product-catalogue", key = "#category != null ? #category.trim().toLowerCase() : 'all'")
     public ResponseEntity<ApiResponse<List<ProductServiceResponse>>> getProductServices(
             @RequestParam(required = false) String category
     ) {

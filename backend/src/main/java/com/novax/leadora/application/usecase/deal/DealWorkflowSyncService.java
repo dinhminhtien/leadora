@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -30,7 +31,7 @@ public class DealWorkflowSyncService {
     private final RecordDealStageChangeService recordDealStageChangeService;
     private final ObjectMapper objectMapper;
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void syncPipelineStage(UUID dealId) {
         if (dealId == null) {
             return;
@@ -46,7 +47,7 @@ public class DealWorkflowSyncService {
         syncPipelineStage(deal);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void syncPipelineStage(DealEntity deal) {
         if (deal == null || deal.getStatus() != DealStatus.OPEN) {
             return;

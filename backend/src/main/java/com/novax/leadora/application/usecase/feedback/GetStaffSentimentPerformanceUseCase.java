@@ -46,20 +46,20 @@ public class GetStaffSentimentPerformanceUseCase {
             return Collections.emptyList();
         }
 
-        List<UUID> staffIds = salesReps.stream().map(UserEntity::getUserId).toList();
+        List<UUID> staffIds = salesReps.stream().map(u -> u.getUserId()).toList();
 
         // 2. Fetch aggregated performance metrics from database using projections
         Map<UUID, StaffFeedbackPerformanceProjection> feedbackMap = salesFeedbackRepository
                 .aggregateFeedbackPerformance(start, end).stream()
-                .collect(Collectors.toMap(StaffFeedbackPerformanceProjection::getStaffId, p -> p, (p1, p2) -> p1));
+                .collect(Collectors.toMap(p -> p.getStaffId(), p -> p, (p1, p2) -> p1));
 
         Map<UUID, StaffDealPerformanceProjection> dealMap = dealRepository
                 .aggregateDealPerformance(start, end, staffIds).stream()
-                .collect(Collectors.toMap(StaffDealPerformanceProjection::getStaffId, p -> p, (p1, p2) -> p1));
+                .collect(Collectors.toMap(p -> p.getStaffId(), p -> p, (p1, p2) -> p1));
 
         Map<UUID, StaffTaskPerformanceProjection> taskMap = taskRepository
                 .aggregateTaskPerformance(start, end, staffIds).stream()
-                .collect(Collectors.toMap(StaffTaskPerformanceProjection::getStaffId, p -> p, (p1, p2) -> p1));
+                .collect(Collectors.toMap(p -> p.getStaffId(), p -> p, (p1, p2) -> p1));
 
         List<StaffSentimentPerformanceResponse> response = new ArrayList<>();
 

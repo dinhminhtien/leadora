@@ -10,8 +10,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Storage for the short-lived one-time codes behind the customer-facing quotation and contract
- * acceptance flows (UC-14.x).
+ * Storage for the short-lived one-time codes behind customer-facing contract confirmation.
+ *
+ * <p>Quotation acceptance no longer uses a code at all — Report 1 requires none, and the secure
+ * link is the credential — so contracts are the only consumer left.
  *
  * <p>Redis stays the preferred store — it is shared by every instance and expires keys itself — but
  * it is <b>optional</b> infrastructure here: {@code .env} ships its block commented out, there is no

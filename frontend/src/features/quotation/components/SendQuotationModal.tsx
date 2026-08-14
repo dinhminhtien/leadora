@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import type { Quotation } from "@/services/quotation_service";
-import { useSendQuotation } from "@/features/quotation/hooks/use_quotations";
+import { useSendQuotation, useQuotationEligibility } from "@/features/quotation/hooks/use_quotations";
 import { Portal } from "@/components/ui/Portal";
 import { RoomConfirmationPanel } from "@/features/room_request/components/RoomConfirmationPanel";
 import { apiErrorMessage } from "@/services/api_error";
@@ -52,22 +52,16 @@ const PAYMENT_LABELS: Record<string, string> = {
   pay_on_arrival: "Pay on Arrival",
 };
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function simulateDelivery(
-  method: SendMethod,
-  email: string,
-  phone: string
-): { success: boolean; reason?: string } {
-  // E4: Simulate failure when email contains ".fail" (test scenario)
-  if (method === "email" && email.toLowerCase().includes(".fail")) {
-    return { success: false, reason: "SMTP server rejected recipient address. Mailbox unreachable." };
-  }
-  if (method === "whatsapp" && phone.replace(/\D/g, "").endsWith("0000000")) {
-    return { success: false, reason: "Mobile number is not registered or unreachable on WhatsApp." };
-  }
-  return { success: true };
-}
+/**
+ * Mirrors `EmailContactPolicy.EMAIL` on the backend, so an address this form accepts is not
+ * then rejected by the server for a different reason.
+ *
+ * Delivery itself is never simulated here. This used to fake a failure for any address
+ * containing ".fail" and a WhatsApp number ending "0000000", and report success for everything
+ * else without asking the provider — so a genuinely undeliverable address showed the success
+ * screen, and the magic strings were live in production.
+ */
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 function escapeHtml(value: string): string {
   return value
@@ -215,32 +209,53 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
   // stays available either way.
   const [roomConfirmed, setRoomConfirmed] = useState(false);
 
+  // The server's own verdict on this quotation, so the button carries the true reason rather
+  // than the user discovering it by clicking. Re-checked server-side on submit regardless.
+  const { data: eligibility } = useQuotationEligibility(quote.id);
+
   const clearErrors = () => {
     setE3Error("");
     setE4Error("");
   };
 
-  const validate = (): boolean => {
+  /**
+   * Why Send cannot be used right now, or null when it can.
+   *
+   * Two sources, in order: the quotation's own state (status, customer), which only the server
+   * knows, and the contact details in this form, which the user is editing and the server has
+   * not seen. The form's copy of the address takes precedence over the customer record, so a
+   * rep who types a valid address for a customer that has none is not blocked by a verdict
+   * about the record.
+   */
+  const blockedReason: string | null = (() => {
+    if (eligibility && !eligibility.send.allowed) {
+      return eligibility.send.reason ?? "This quotation cannot be sent in its current state.";
+    }
     if (method === "email") {
       if (!recipientEmail.trim()) {
-        setE3Error("Email address is required for this delivery method (E3). Please enter a valid email.");
-        return false;
+        return "Cannot send by email: a recipient email address is required. Enter one above, or add it to the customer record.";
       }
       if (!EMAIL_REGEX.test(recipientEmail.trim())) {
-        setE3Error("Invalid email format (E3). Please verify the recipient's email address and try again.");
-        return false;
+        return "Cannot send by email: the recipient's email address is not valid. Correct it above and try again.";
       }
     }
     if (method === "whatsapp" && !recipientPhone.trim()) {
-      setE3Error("Phone number is required for WhatsApp / SMS delivery (E3).");
-      return false;
+      return "Cannot send by WhatsApp/SMS: a recipient phone number is required. Enter one above, or add it to the customer record.";
     }
-    return true;
-  };
+    if (!recipientName.trim()) {
+      return "Cannot send: a recipient name is required.";
+    }
+    return null;
+  })();
 
   const handleSend = async () => {
     clearErrors();
-    if (!validate()) return;
+    // Belt and braces: the button is disabled while `blockedReason` is set, so this only
+    // catches a state that changed between render and click.
+    if (blockedReason) {
+      setE3Error(blockedReason);
+      return;
+    }
 
     setIsSending(true);
 
@@ -259,15 +274,9 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
       }
     }
 
-    // E4: Simulate delivery failure (email containing ".fail" / WhatsApp 0000000)
-    const result = simulateDelivery(method, recipientEmail, recipientPhone);
-    if (!result.success) {
-      setIsSending(false);
-      setE4Error(`${result.reason} The failure has been logged. Please verify the contact details or choose a different delivery method.`);
-      return;
-    }
-
-    // POST to backend: update status to SENT, record send log (BR-37)
+    // POST to backend. Delivery is the provider's answer, not a guess made here: the request
+    // only returns once the email has actually been handed over, and a rejected recipient or
+    // an unreachable provider comes back as EMAIL_DELIVERY_FAILED with the reason.
     try {
       await sendQuotation.mutateAsync({
         id: quote.id,
@@ -563,36 +572,43 @@ export function SendQuotationModal({ quote, onClose, onSent }: SendQuotationModa
             )}
           </section>
 
-          {/* Test hint */}
-          <p className="text-[10px] text-slate-300 text-center italic">
-            Dev tip: Use an email containing &quot;.fail&quot; to trigger the E4 delivery failure scenario.
-          </p>
-
         </div>
 
         {/* Action Footer */}
-        <div className="shrink-0 mt-auto border-t border-slate-100 bg-white px-5 py-4 z-10 flex items-center justify-end gap-2">
-          <Button
-            variant="ghost"
-            onClick={onClose}
-            className="text-xs text-slate-500 hover:text-slate-700 px-4"
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            onClick={handleSend}
-            isLoading={isSending}
-            title={
-              roomConfirmed
-                ? undefined
-                : "The Reservation team has not confirmed these rooms yet — you can still send."
-            }
-            leftIcon={!isSending ? <Send className="size-3.5" /> : undefined}
-            className="flex-1 text-xs font-bold"
-          >
-            {isSending ? "Sending…" : `Send via ${METHOD_CONFIG[method].label}`}
-          </Button>
+        <div className="shrink-0 mt-auto border-t border-slate-100 bg-white px-5 py-4 z-10">
+          {/* The reason lives next to the button, not behind a click: an action the user can
+              see but not use has to say why on the same screen. */}
+          {blockedReason && (
+            <p className="mb-2.5 flex items-start gap-1.5 text-[11px] font-medium text-amber-700">
+              <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
+              <span>{blockedReason}</span>
+            </p>
+          )}
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="ghost"
+              onClick={onClose}
+              className="text-xs text-slate-500 hover:text-slate-700 px-4"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSend}
+              isLoading={isSending}
+              disabled={!!blockedReason}
+              title={
+                blockedReason ??
+                (roomConfirmed
+                  ? undefined
+                  : "The Reservation team has not confirmed these rooms yet — you can still send.")
+              }
+              leftIcon={!isSending ? <Send className="size-3.5" /> : undefined}
+              className="flex-1 text-xs font-bold"
+            >
+              {isSending ? "Sending…" : `Send via ${METHOD_CONFIG[method].label}`}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
