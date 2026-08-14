@@ -211,6 +211,9 @@ contract:
 absa:
   engine:
     url: ${ABSA_ENGINE_URL:https://timano4--leadora-absa-engine-fastapi-app.modal.run}
+    connect-timeout: ${ABSA_ENGINE_CONNECT_TIMEOUT:20000}
+    read-timeout: ${ABSA_ENGINE_READ_TIMEOUT:30000}
+
 
 
 
