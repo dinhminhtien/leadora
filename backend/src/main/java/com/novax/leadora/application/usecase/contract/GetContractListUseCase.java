@@ -26,7 +26,9 @@ public class GetContractListUseCase {
         UserEntity currentUser = contractAccessPolicy.currentUser();
         UUID ownerId = contractAccessPolicy.listScopeOwnerId(currentUser);
 
-        List<ContractEntity> contracts = contractRepository.findAll();
+        List<ContractEntity> contracts = contractRepository.findAll(
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt")
+        );
         if (ownerId != null) {
             contracts = contracts.stream()
                     .filter(c -> c.getCreatedBy() != null && ownerId.equals(c.getCreatedBy().getUserId()))
