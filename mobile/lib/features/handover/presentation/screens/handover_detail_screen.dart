@@ -33,10 +33,12 @@ class HandoverDetailScreen extends ConsumerWidget {
         value: async,
         onRetry: refresh,
         loading: const DetailSkeleton(),
-        data: (handover) => RefreshIndicator(
-          onRefresh: () async => refresh(),
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
+        data: (handover) {
+          debugPrint('Handover received in detail: ID=${handover.handoverId}, ref=${handover.paymentReference}');
+          return RefreshIndicator(
+            onRefresh: () async => refresh(),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.lg,
               AppSpacing.lg,
@@ -182,9 +184,10 @@ class HandoverDetailScreen extends ConsumerWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
+        );
+      },
+    ),
+  );
   }
 
   static bool _hasAnyNote(Handover h) =>
