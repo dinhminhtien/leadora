@@ -218,7 +218,7 @@ export function QuotationListScreen() {
           const allBreakdown = q.roomLines.map((l) => `${l.roomType} × ${l.numberOfRooms}`).join(", ");
           return (
             <div
-              className="flex items-center gap-1.5 text-xs max-w-[220px] overflow-hidden whitespace-nowrap"
+              className="flex items-center gap-1.5 text-xs max-w-55 overflow-hidden whitespace-nowrap"
               title={allBreakdown}
             >
               <span className="font-medium text-foreground truncate min-w-0">
@@ -234,7 +234,7 @@ export function QuotationListScreen() {
         }
         return (
           <span
-            className="text-xs text-muted-foreground truncate max-w-[200px] block"
+            className="text-xs text-muted-foreground truncate max-w-50 block"
             title={q.roomType ? `${q.roomType} (${q.numberOfRooms ?? 1})` : "—"}
           >
             {q.roomType ? `${q.roomType} (${q.numberOfRooms ?? 1})` : "—"}
@@ -514,8 +514,8 @@ export function QuotationListScreen() {
       {/* Auto-expire result banner */}
       {autoExpireResult !== null && (
         <div className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border ${autoExpireResult > 0
-            ? "bg-amber-50 border-amber-200 text-amber-700"
-            : "bg-slate-50 border-slate-200 text-slate-500"
+          ? "bg-amber-50 border-amber-200 text-amber-700"
+          : "bg-slate-50 border-slate-200 text-slate-500"
           }`}>
           <TimerOff className="size-3.5 shrink-0" />
           {autoExpireResult > 0
@@ -530,8 +530,8 @@ export function QuotationListScreen() {
           type="button"
           onClick={() => handleTabChange("active")}
           className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${activeTab === "active"
-              ? "border-primary text-blue-700"
-              : "border-transparent text-slate-500 hover:text-slate-700"
+            ? "border-primary text-blue-700"
+            : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
         >
           In Progress
@@ -544,8 +544,8 @@ export function QuotationListScreen() {
           type="button"
           onClick={() => handleTabChange("done")}
           className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${activeTab === "done"
-              ? "border-slate-600 text-slate-700"
-              : "border-transparent text-slate-500 hover:text-slate-700"
+            ? "border-slate-600 text-slate-700"
+            : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
         >
           Completed
@@ -568,8 +568,8 @@ export function QuotationListScreen() {
               onClick={() => setStatusFilter("")}
               aria-pressed={statusFilter === ""}
               className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${statusFilter === ""
-                  ? "border-primary bg-blue-50 text-blue-700"
-                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                ? "border-primary bg-blue-50 text-blue-700"
+                : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                 }`}
             >
               All
@@ -581,8 +581,8 @@ export function QuotationListScreen() {
                 onClick={() => setStatusFilter(statusFilter === s ? "" : s)}
                 aria-pressed={statusFilter === s}
                 className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${statusFilter === s
-                    ? "border-primary bg-blue-50 text-blue-700"
-                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                  ? "border-primary bg-blue-50 text-blue-700"
+                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                   }`}
               >
                 {statusLabel(s)}
@@ -811,7 +811,7 @@ export function QuotationListScreen() {
                       <TableCell className="py-2 text-xs text-slate-500 capitalize">{log.previousStatus.replace("_", " ")}</TableCell>
                       <TableCell className="py-2 text-xs text-slate-500">{log.closedAt}</TableCell>
                       <TableCell className="py-2 text-xs text-slate-500">{log.closedBy}</TableCell>
-                      <TableCell className="py-2 text-xs text-slate-400 max-w-[160px] truncate">{log.reason}</TableCell>
+                      <TableCell className="py-2 text-xs text-slate-400 max-w-40 truncate">{log.reason}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
