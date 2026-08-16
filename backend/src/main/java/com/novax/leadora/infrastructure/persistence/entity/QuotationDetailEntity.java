@@ -9,7 +9,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "quotation_details")
+@Table(name = "quotation_details", indexes = {
+    @Index(name = "idx_quotation_details_quotation_id", columnList = "quotation_id")
+})
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
