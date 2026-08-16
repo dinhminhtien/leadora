@@ -17,6 +17,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
+  Download,
   HelpCircle,
   Keyboard,
   LogOut,
@@ -276,6 +277,14 @@ export function AppTopbar({
                 onClick={() => {
                   setUserMenuOpen(false);
                   onOpenShortcuts();
+                }}
+              />
+              <MenuButton
+                icon={<Download className="size-4" />}
+                label="APK Download"
+                onClick={() => {
+                  setUserMenuOpen(false);
+                  window.open("https://github.com/dinhminhtien/leadora/releases/download/mobile-v1.0.0/app-release.apk", "_blank");
                 }}
               />
               <div aria-hidden className="my-1 h-px bg-border" />
