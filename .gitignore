@@ -65,7 +65,7 @@ replay_pid*
 *.env
 env
 
-# *docs/
+docs/
 *sql/
 *.sql
 # ...except the checked-in schema/seed scripts. The project runs ddl-auto=validate with no
