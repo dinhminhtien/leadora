@@ -25,6 +25,7 @@ class Routes {
   static const String dealDetailSub = 'detail/:id';
   static const String leadCreateSub = 'new';
   static const String leadDetailSub = 'detail/:id';
+  static const String leadEditSub = 'edit/:id';
   static const String taskDetailSub = 'detail/:id';
   static const String taskCreateSub = 'new';
   static const String taskEditSub = 'edit/:id';
@@ -33,6 +34,7 @@ class Routes {
   static const String profileEditSub = 'edit';
 
   static String leadDetailPath(String id) => '/leads/detail/$id';
+  static String leadEditPath(String id) => '/leads/edit/$id';
   static String taskDetailPath(String id) => '/tasks/detail/$id';
   static const String taskCreate = '/tasks/new';
   static String taskEditPath(String id) => '/tasks/edit/$id';
@@ -47,9 +49,20 @@ class Routes {
   static String customerEditPath(String id) => '/customers/edit/$id';
 
   // Full-screen routes reached only via notification deep-link (no list/tab yet).
+  static const String quotationCreateSub = 'new';
+  static const String quotationCreate = '/quotations/new';
+  static const String quotationReviseSub = 'revise';
   static const String quotationDetail = '/quotations/:id';
+  static const String quotationRevise = '/quotations/:id/revise';
+
+  /// UC-14.3 Processing Quotations — manager's queue. Registered before
+  /// [quotationDetail] (same trap as [quotationCreate]): otherwise this literal
+  /// segment would match the `:id` route with an id of "pending-approvals".
+  static const String quotationPendingApprovals = '/quotations/pending-approvals';
 
   static String quotationDetailPath(String id) => '/quotations/$id';
+
+  static String quotationRevisePath(String id) => '/quotations/$id/revise';
 
   /// `detail/` segment (rather than `/deals/:id`) keeps the create route from
   /// being swallowed as a deal whose id is literally "new".
@@ -67,14 +80,28 @@ class Routes {
   static const String bookingDetailSub = 'detail/:id';
   static String bookingDetailPath(String id) => '/bookings/detail/$id';
 
-  // Sales pipeline (Kanban) — reached from the More hub.
-  static const String pipeline = '/pipeline';
+  /// Reservation team's queue of rooms Sales is waiting on.
+  /// Handovers Sales submitted to the Front Office — read-only on mobile.
+  static const String handovers = '/handovers';
+
+  /// Guest feedback (UC-25) — reached from the More hub. `detail/` segment so a
+  /// future literal sub-route can never be swallowed as an id.
+  static const String feedbacks = '/feedbacks';
+  static const String feedbackDetailSub = 'detail/:id';
+  static String feedbackDetailPath(String id) => '/feedbacks/detail/$id';
 
   // Full-screen browse entry points, reached from the Dashboard quick actions
   // and from the header notification bell.
   static const String notifications = '/notifications';
   static const String sla = '/sla';
   static const String reminders = '/reminders';
+
+  // Reminder create/edit — full-screen over the shell, nested under the
+  // `/reminders` browse entry point.
+  static const String reminderCreateSub = 'new';
+  static const String reminderCreate = '/reminders/new';
+  static const String reminderEditSub = 'edit/:id';
+  static String reminderEditPath(String id) => '/reminders/edit/$id';
 
   /// [highlightId], when set, is read back by the target list screen to
   /// flash + scroll to that row — mirrors the web `?highlight=` param used
@@ -144,15 +171,16 @@ class RouteNames {
   static const String more = 'more';
   static const String deals = 'deals';
   static const String dealCreate = 'dealCreate';
-  static const String pipeline = 'pipeline';
   static const String payments = 'payments';
   static const String paymentCreate = 'paymentCreate';
   static const String paymentDetail = 'paymentDetail';
   static const String bookings = 'bookings';
   static const String bookingDetail = 'bookingDetail';
+  static const String handovers = 'handovers';
   static const String leads = 'leads';
   static const String leadCreate = 'leadCreate';
   static const String leadDetail = 'leadDetail';
+  static const String leadEdit = 'leadEdit';
   static const String tasks = 'tasks';
   static const String taskDetail = 'taskDetail';
   static const String taskCreate = 'taskCreate';
@@ -167,12 +195,20 @@ class RouteNames {
   static const String profileEdit = 'profileEdit';
   static const String changePassword = 'changePassword';
   static const String quotationDetail = 'quotationDetail';
+  static const String quotationCreate = 'quotationCreate';
+  static const String quotationRevise = 'quotationRevise';
+  static const String quotationPendingApprovals = 'quotationPendingApprovals';
   static const String dealDetail = 'dealDetail';
   static const String quotations = 'quotations';
   static const String sla = 'sla';
   static const String reminders = 'reminders';
+  static const String reminderCreate = 'reminderCreate';
+  static const String reminderEdit = 'reminderEdit';
   static const String interactionTimeline = 'interactionTimeline';
   static const String logInteraction = 'logInteraction';
   static const String interactionDetail = 'interactionDetail';
   static const String editInteraction = 'editInteraction';
+  static const String feedbacks = 'feedbacks';
+  static const String feedbackDetail = 'feedbackDetail';
+  static const String roomRequests = 'roomRequests';
 }

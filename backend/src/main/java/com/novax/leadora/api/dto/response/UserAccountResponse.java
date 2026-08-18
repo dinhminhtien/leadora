@@ -24,6 +24,8 @@ public class UserAccountResponse {
     private String roleName;
     private UserStatus status;
     private String avatarUrl;
+    /** UC-6.1 — "last login activity" column of the account list; null until the first sign-in. */
+    private OffsetDateTime lastLoginAt;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 
@@ -37,6 +39,7 @@ public class UserAccountResponse {
                 .roleName(u.getRole() != null ? u.getRole().getRoleName() : null)
                 .status(u.getStatus())
                 .avatarUrl(u.getAvatarUrl())
+                .lastLoginAt(u.getLastLoginAt())
                 .createdAt(u.getCreatedAt())
                 .updatedAt(u.getUpdatedAt())
                 .build();

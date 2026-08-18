@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell,
@@ -16,8 +16,12 @@ import {
   ChevronRight,
   Users,
 } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { useTableControls } from "@/components/ui/table-controls";
+import { RowActions, OwnerCell } from "@/components/ui/row-actions";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Badge } from "@/components/ui/Badge";
 import {
   useNotifications,
@@ -99,16 +103,16 @@ function getRelatedRoute(n: Notification): string | null {
   if (!n.relatedEntity || !n.relatedId) return null;
   const entity = n.relatedEntity.toUpperCase();
   const highlight = `highlight=${encodeURIComponent(n.relatedId)}`;
-  if (entity === "LEAD") return ROUTE_PATHS.leadDetail(n.relatedId);
-  // No standalone quotation detail page exists (only /quotations,
-  // /quotations/[id]/revise) — route to the list (with highlight), not
-  // ROUTE_PATHS.quotationDetail, which 404s since that page was never built.
+  if (entity === "LEAD") return `${ROUTE_PATHS.leads}?lead=${encodeURIComponent(n.relatedId)}&${highlight}`;
   if (entity === "QUOTATION") return `${ROUTE_PATHS.quotations}?${highlight}`;
   if (entity === "BOOKING") return `${ROUTE_PATHS.bookingConfirmation}?${highlight}`;
   if (entity === "REMINDER") return `${ROUTE_PATHS.reminders}?${highlight}`;
   if (entity === "TASK") return `${ROUTE_PATHS.followUpTasks}?${highlight}`;
   if (entity === "SLA") return `${ROUTE_PATHS.sla}?${highlight}`;
   if (entity === "HANDOVER") return `${ROUTE_PATHS.frontOfficeHandover}?${highlight}`;
+  if (entity === "CUSTOMER") return `${ROUTE_PATHS.customerProfiles}?${highlight}`;
+  if (entity === "DEAL") return `${ROUTE_PATHS.deals}?${highlight}`;
+  if (entity === "ROOM_REQUEST") return `${ROUTE_PATHS.roomRequests}?${highlight}`;
   return null;
 }
 
@@ -202,25 +206,136 @@ export function NotificationListScreen() {
     await markAllRead.mutateAsync();
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-start">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-800">Notification Center</h1>
-            {unreadCount > 0 && (
-              <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-white text-[10px] font-bold">
-                {unreadCount}
-              </span>
+  /**
+   * Column set — Blueprint §10.17.
+   *
+   * The Recipient column only exists in the Manager/Admin "team activity" view;
+   * for everyone else every row is their own, so the column would be a wall of
+   * the reader's own name.
+   */
+  const notificationColumns: ColumnDef<Notification>[] = useMemo(() => {
+    const cols: ColumnDef<Notification>[] = [
+      {
+        id: "read",
+        header: "",
+        width: "w-8",
+        cell: (n) =>
+          !n.isRead ? (
+            <span className="inline-block size-2 rounded-full bg-primary" title="Unread" />
+          ) : (
+            <CheckCircle2 className="inline-block size-3 text-success/70" aria-label="Read" />
+          ),
+      },
+      {
+        id: "notification",
+        header: "Notification",
+        sticky: "left",
+        cell: (n) => (
+          <div className="flex items-start gap-2">
+            <TypeIcon type={n.type} />
+            <div className="min-w-0">
+              <p className={n.isRead ? "text-xs text-muted-foreground" : "text-xs font-bold text-foreground"}>
+                {n.title}
+              </p>
+              <p className="mt-0.5 line-clamp-2 text-[10px] leading-relaxed text-muted-foreground">
+                {n.message}
+              </p>
+            </div>
+          </div>
+        ),
+      },
+    ];
+
+    if (allUsers) {
+      cols.push({
+        id: "recipient",
+        header: "Recipient",
+        minWidth: "md",
+        cell: (n) => <OwnerCell name={n.recipientName} />,
+      });
+    }
+
+    cols.push(
+      {
+        id: "type",
+        header: "Type",
+        minWidth: "lg",
+        cell: (n) => (
+          <div className="flex items-center gap-1">
+            <Badge variant={TYPE_VARIANT[n.type] ?? "default"} size="sm" className="text-[9px] font-bold uppercase">
+              {TYPE_LABEL[n.type] ?? n.type}
+            </Badge>
+            {n.priority && n.priority !== "NORMAL" && (
+              <Badge variant={PRIORITY_VARIANT[n.priority] ?? "default"} size="sm" className="text-[9px] font-bold uppercase">
+                {n.priority}
+              </Badge>
             )}
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Leads, quotations, bookings, reminders, handovers, and SLA alerts
-          </p>
-        </div>
+        ),
+      },
+      {
+        id: "time",
+        header: "Time",
+        minWidth: "md",
+        className: "whitespace-nowrap text-[10px] font-semibold text-muted-foreground",
+        cell: (n) => formatTime(n.createdAt),
+      },
+      {
+        id: "actions",
+        header: "",
+        width: "w-12",
+        sticky: "right",
+        cell: (n) => {
+          const route = getRelatedRoute(n);
+          return (
+            <div className="flex justify-end">
+              <RowActions
+                label="Notification actions"
+                actions={[
+                  {
+                    key: "open",
+                    label: "Go to record",
+                    icon: ExternalLink,
+                    reason: route ? null : "This notification has no linked record to open.",
+                    onSelect: () => handleNotificationClick(n),
+                  },
+                  {
+                    key: "read",
+                    label: n.isRead ? "Mark as unread" : "Mark as read",
+                    icon: n.isRead ? Bell : MailOpen,
+                    reason: isOwnNotification(n)
+                      ? null
+                      : "This alert belongs to another user — only they can change its read state.",
+                    onSelect: () => markRead.mutate({ id: n.id, read: !n.isRead }),
+                  },
+                ]}
+              />
+            </div>
+          );
+        },
+      },
+    );
 
-        <div className="flex items-center gap-2">
+    return cols;
+    // Handlers are stable for the screen's lifetime; `allUsers` changes the shape.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allUsers]);
+
+  const controls = useTableControls<Notification>("notifications", notificationColumns);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        {...PAGE_META.notifications}
+        meta={
+          unreadCount > 0 ? (
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-white">
+              {unreadCount}
+            </span>
+          ) : undefined
+        }
+        actions={
+          <div className="flex items-center gap-2">
           {unreadCount > 0 && (
             <Button
               variant="outline"
@@ -233,8 +348,9 @@ export function NotificationListScreen() {
               Mark all read
             </Button>
           )}
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
@@ -322,174 +438,48 @@ export function NotificationListScreen() {
         )}
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        <Table>
-          <TableHeader className="bg-slate-50 border-b border-slate-100">
-            <TableRow hoverable={false}>
-              <TableHead className="font-semibold text-xs text-slate-500 w-8" />
-              <TableHead className="font-semibold text-xs text-slate-500">Notification</TableHead>
-              {allUsers && <TableHead className="font-semibold text-xs text-slate-500">Recipient</TableHead>}
-              <TableHead className="font-semibold text-xs text-slate-500">Type</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Time</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500 text-center">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow hoverable={false}>
-                <TableCell colSpan={allUsers ? 6 : 5} className="py-12 text-center text-xs text-slate-400">
-                  Loading notifications…
-                </TableCell>
-              </TableRow>
-            ) : isError ? (
-              <TableRow hoverable={false}>
-                <TableCell colSpan={allUsers ? 6 : 5} className="py-12 text-center text-xs text-red-500">
-                  Failed to load notifications. Please refresh.
-                </TableCell>
-              </TableRow>
-            ) : notifications.length === 0 ? (
-              /* E3 — no notifications */
-              <TableRow hoverable={false}>
-                <TableCell colSpan={allUsers ? 6 : 5} className="py-14 text-center text-xs text-slate-400">
-                  <div className="flex flex-col items-center gap-2">
-                    <BellOff className="size-8 text-slate-300" />
-                    <span className="font-bold text-slate-600 text-sm">No notifications available</span>
-                    <span>
-                      {unreadOnly || typeFilter || priorityFilter || dateFrom || dateTo
-                        ? "Try clearing the filters to see all notifications."
-                        : "You're all caught up — no alerts or updates right now."}
-                    </span>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : (
-              notifications.map((n) => {
-                const route = getRelatedRoute(n);
-                const isClickable = !!route;
-                return (
-                  <TableRow
-                    key={n.id}
-                    onClick={() => handleNotificationClick(n)}
-                    className={`border-b border-slate-100 transition ${
-                      isClickable ? "cursor-pointer hover:bg-slate-50/80" : "hover:bg-slate-50/50"
-                    } ${!n.isRead ? "bg-blue-50/30" : "opacity-70"}`}
-                  >
-                    {/* Unread dot */}
-                    <TableCell className="py-3 px-3 text-center">
-                      {!n.isRead ? (
-                        <span className="inline-block w-2 h-2 rounded-full bg-primary" title="Unread" />
-                      ) : (
-                        <CheckCircle2 className="inline-block size-3 text-emerald-400" aria-label="Read" />
-                      )}
-                    </TableCell>
-
-                    {/* Title + message */}
-                    <TableCell className="py-3 px-4 max-w-sm">
-                      <div className="flex items-start gap-2">
-                        <TypeIcon type={n.type} />
-                        <div>
-                          <p className={!n.isRead ? "text-xs font-bold text-slate-800" : "text-xs font-normal text-slate-500"}>
-                            {n.title}
-                          </p>
-                          <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">
-                            {n.message}
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-
-                    {/* Recipient — Manager/Admin team activity view only */}
-                    {allUsers && (
-                      <TableCell className="py-3 px-4 text-xs font-semibold text-slate-600 whitespace-nowrap">
-                        {n.recipientName ?? "—"}
-                      </TableCell>
-                    )}
-
-                    {/* Type + priority badges */}
-                    <TableCell className="py-3 px-4">
-                      <div className="flex items-center gap-1">
-                        <Badge
-                          variant={TYPE_VARIANT[n.type] ?? "default"}
-                          size="sm"
-                          className="text-[9px] font-bold uppercase"
-                        >
-                          {TYPE_LABEL[n.type] ?? n.type}
-                        </Badge>
-                        {n.priority && n.priority !== "NORMAL" && (
-                          <Badge
-                            variant={PRIORITY_VARIANT[n.priority] ?? "default"}
-                            size="sm"
-                            className="text-[9px] font-bold uppercase"
-                          >
-                            {n.priority}
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-
-                    {/* Time */}
-                    <TableCell className="py-3 px-4 text-[10px] text-slate-500 font-semibold whitespace-nowrap">
-                      {formatTime(n.createdAt)}
-                    </TableCell>
-
-                    {/* Actions */}
-                    <TableCell className="py-3 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {route && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => { e.stopPropagation(); handleNotificationClick(n); }}
-                            className="px-2 py-1 text-[10px] border-slate-200 font-bold hover:bg-slate-50 text-slate-600"
-                          >
-                            <ExternalLink className="size-3 mr-1 inline" /> Go to
-                          </Button>
-                        )}
-                        {isOwnNotification(n) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => handleToggleRead(e, n)}
-                            disabled={markRead.isPending}
-                            className="px-2 py-1 text-[10px] border-slate-200 font-bold hover:bg-slate-50 text-slate-500"
-                          >
-                            {n.isRead ? (
-                              <><Bell className="size-3 mr-1 inline" /> Unread</>
-                            ) : (
-                              <><MailOpen className="size-3 mr-1 inline" /> Read</>
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50/50">
-            <p className="text-xs text-slate-500">
-              Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong>
-              <span className="text-slate-400 ml-2">· {totalElements} results</span>
-            </p>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">
-                <ChevronLeft className="size-3.5" /> Prev
-              </button>
-              <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">
-                Next <ChevronRight className="size-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      <DataTable
+        label="Notifications"
+        rows={notifications}
+        columns={controls.visibleColumns}
+        rowId={(n) => n.id}
+        isLoading={isLoading}
+        error={isError ? new Error("Could not load notifications.") : undefined}
+        density={controls.density}
+        onRowClick={(n) => handleNotificationClick(n)}
+        selectedIds={controls.selectedIds}
+        onSelectionChange={controls.setSelectedIds}
+        bulkActions={
+          <Button
+            size="xs"
+            variant="secondary"
+            leftIcon={<MailOpen className="size-3.5" />}
+            isLoading={markRead.isPending}
+            onClick={() => {
+              // Bulk mark-as-read only touches the user's own rows; a manager
+              // viewing team activity cannot mark someone else's notification.
+              notifications
+                .filter((n) => controls.selectedIds.has(n.id) && isOwnNotification(n) && !n.isRead)
+                .forEach((n) => markRead.mutate({ id: n.id, read: true }));
+              controls.clearSelection();
+            }}
+          >
+            Mark read
+          </Button>
+        }
+        isFiltered={!!typeFilter || !!priorityFilter}
+        emptyTitle="You are all caught up"
+        emptyMessage="New alerts about leads, quotations, bookings and SLA breaches land here."
+        footer={
+          <TablePagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            totalElements={totalElements}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        }
+      />
     </div>
   );
 }

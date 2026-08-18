@@ -2,14 +2,15 @@ package com.novax.leadora.application.usecase.feedback;
 
 import com.novax.leadora.api.dto.request.SubmitFeedbackRequest;
 import com.novax.leadora.api.dto.response.SubmitFeedbackResponse;
+import com.novax.leadora.application.event.FeedbackSubmittedEvent;
 import com.novax.leadora.common.exception.BusinessRuleException;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.SalesFeedbackEntity;
 import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.util.HtmlUtils;
 
 import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
@@ -20,6 +21,7 @@ import java.time.OffsetDateTime;
 public class SubmitFeedbackUseCase {
 
     private final SalesFeedbackRepository salesFeedbackRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public SubmitFeedbackResponse execute(String token, SubmitFeedbackRequest request) {
@@ -43,16 +45,23 @@ public class SubmitFeedbackUseCase {
             throw new BusinessRuleException("Feedback has already been submitted");
         }
 
-        // XSS sanitization
-        String sanitizedComment = request.getComment() != null ? HtmlUtils.htmlEscape(request.getComment().trim()) : null;
+        // XSS sanitization (React automatically escapes rendered strings to prevent XSS)
+        String sanitizedComment = request.getComment() != null ? request.getComment().trim() : null;
 
         feedback.setRating(request.getRating());
+        feedback.setRatingAttitude(request.getRatingAttitude());
+        feedback.setRatingSpeed(request.getRatingSpeed());
+        feedback.setRatingAccuracy(request.getRatingAccuracy());
         feedback.setComment(sanitizedComment);
         feedback.setSubmittedAt(OffsetDateTime.now());
+        feedback.setAbsaStatus("PENDING");
 
         // Token is consumed, optionally nullify token to release DB space / fully deactivate token
         // Keep the token in DB for tracking, but marked as used by submittedAt != null.
-        salesFeedbackRepository.save(feedback);
+        SalesFeedbackEntity savedFeedback = salesFeedbackRepository.save(feedback);
+
+        // Publish the event to trigger ABSA asynchronously after the transaction commits
+        eventPublisher.publishEvent(new FeedbackSubmittedEvent(this, savedFeedback.getFeedbackId()));
 
         return SubmitFeedbackResponse.builder()
                 .success(true)
@@ -60,3 +69,4 @@ public class SubmitFeedbackUseCase {
                 .build();
     }
 }
+

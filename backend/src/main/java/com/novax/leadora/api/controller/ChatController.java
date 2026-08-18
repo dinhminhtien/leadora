@@ -38,7 +38,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/chat")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+@PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('CHAT_VIEW')")
 public class ChatController {
 
     private final CurrentUserProvider currentUserProvider;

@@ -4,6 +4,7 @@ import com.novax.leadora.api.dto.response.DealResponse;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -11,6 +12,24 @@ import java.util.UUID;
 
 @Component
 public class DealMapper {
+
+    @Value("${app.deal.probability.inquiry:10}")
+    private int inquiryProbability;
+
+    @Value("${app.deal.probability.qualification:30}")
+    private int qualificationProbability;
+
+    @Value("${app.deal.probability.quotation-sent:50}")
+    private int quotationSentProbability;
+
+    @Value("${app.deal.probability.negotiation:70}")
+    private int negotiationProbability;
+
+    @Value("${app.deal.probability.pending-confirmation:80}")
+    private int pendingConfirmationProbability;
+
+    @Value("${app.deal.probability.booking-confirmed:90}")
+    private int bookingConfirmedProbability;
 
     public DealResponse mapToResponse(DealEntity deal) {
         String contactName = deal.getCustomer() != null ? deal.getCustomer().getFullName() : "N/A";
@@ -42,26 +61,29 @@ public class DealMapper {
 
     public DealPipelineStage mapStageToEnum(String stage) {
         if (stage == null) {
-            return DealPipelineStage.PROSPECTING;
+            return DealPipelineStage.INQUIRY;
         }
         switch (stage.toLowerCase()) {
             case "inquiry":
-                return DealPipelineStage.PROSPECTING;
+                return DealPipelineStage.INQUIRY;
+            case "qualification":
             case "site visit":
+            case "qualified":
                 return DealPipelineStage.QUALIFICATION;
             case "proposal":
-                return DealPipelineStage.PROPOSAL;
+            case "quotation sent":
+                return DealPipelineStage.QUOTATION_SENT;
             case "negotiation":
                 return DealPipelineStage.NEGOTIATION;
             case "contract":
-                return DealPipelineStage.CLOSED_WON;
+                return DealPipelineStage.PENDING_CONFIRMATION;
             case "confirmed":
-                return DealPipelineStage.CLOSED_WON;
+                return DealPipelineStage.BOOKING_CONFIRMED;
             default:
                 try {
                     return DealPipelineStage.valueOf(stage.toUpperCase());
                 } catch (Exception e) {
-                    return DealPipelineStage.PROSPECTING;
+                    return DealPipelineStage.INQUIRY;
                 }
         }
     }
@@ -71,20 +93,18 @@ public class DealMapper {
             return "Inquiry";
         }
         switch (stage) {
-            case PROSPECTING:
+            case INQUIRY:
                 return "Inquiry";
             case QUALIFICATION:
-                return "Site Visit";
-            case PROPOSAL:
+                return "Qualification";
+            case QUOTATION_SENT:
                 return "Proposal";
             case NEGOTIATION:
                 return "Negotiation";
+            case PENDING_CONFIRMATION:
+                return "Contract";
+            case BOOKING_CONFIRMED:
             case CLOSED_WON:
-                if (status == DealStatus.WON) {
-                    return "Confirmed";
-                } else {
-                    return "Contract";
-                }
             case CLOSED_LOST:
                 return "Confirmed";
             default:
@@ -136,23 +156,27 @@ public class DealMapper {
             return 0;
         }
         if (stage == null) {
-            return 50;
+            return inquiryProbability;
         }
         switch (stage) {
-            case PROSPECTING:
-                return 10;
+            case INQUIRY:
+                return inquiryProbability;
             case QUALIFICATION:
-                return 30;
-            case PROPOSAL:
-                return 50;
+                return qualificationProbability;
+            case QUOTATION_SENT:
+                return quotationSentProbability;
             case NEGOTIATION:
-                return 70;
+                return negotiationProbability;
+            case PENDING_CONFIRMATION:
+                return pendingConfirmationProbability;
+            case BOOKING_CONFIRMED:
+                return bookingConfirmedProbability;
             case CLOSED_WON:
                 return 100;
             case CLOSED_LOST:
                 return 0;
             default:
-                return 50;
+                return inquiryProbability;
         }
     }
 }

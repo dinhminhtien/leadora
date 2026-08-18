@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "732291906105",
+    "project_id": "leadora-499809",
+    "storage_bucket": "leadora-499809.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:732291906105:android:3eb61c51ecb63ca8132be8",
+        "android_client_info": {
+          "package_name": "com.novax.leadora_mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "732291906105-bhd1sd1n1795o2h3hqfpt62ui5in5sd1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAaDE-UV3CItZM0Fa37WnI-jo_oMD1MGGQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "732291906105-bhd1sd1n1795o2h3hqfpt62ui5in5sd1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

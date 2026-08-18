@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   TrendingUp,
   TrendingDown,
@@ -30,6 +31,28 @@ import { taskService } from "@/services/follow_up_task_service";
 import { interactionTimelineService } from "@/services/interaction_timeline_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { apiClient, type ApiResponse } from "@/services/api_client";
+import { GreetingBar, KpiCard } from "@/components/ui/kpi-card";
+import { KpiSkeleton, CardSkeleton } from "@/components/ui/skeletons";
+import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { getUserRole } from "@/shared/auth/access";
+
+/** VND, compacted so a 9-figure pipeline still fits a KPI card. */
+function formatVnd(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  if (Math.abs(value) >= 1_000_000_000)
+    return `${(value / 1_000_000_000).toFixed(1)}B ₫`;
+  if (Math.abs(value) >= 1_000_000)
+    return `${(value / 1_000_000).toFixed(1)}M ₫`;
+  return `${value.toLocaleString("vi-VN")} ₫`;
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN: "Administrator",
+  MANAGER: "Sales Manager",
+  SALES: "Sales Staff",
+  FO: "Front Office",
+  RESERVATION: "Reservation",
+};
 
 export type FollowUpTask = {
   id: string;
@@ -41,6 +64,8 @@ export type FollowUpTask = {
 };
 
 export function DashboardScreen() {
+  const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; month: string; value: number } | null>(null);
+  const [hoveredStage, setHoveredStage] = useState<{ stage: string; count: number; value: number; color: string } | null>(null);
   // ── Backend-computed KPIs (no aggregation in the browser) ───────────────
   const { data: summary, isLoading: loadingSummary } = useDashboardSummary();
 
@@ -72,6 +97,7 @@ export function DashboardScreen() {
     transitionMutation.mutate({ taskId, status: newStatus });
   };
 
+  const router = useRouter();
   const { user } = useAuthStore();
   const userName = user?.name || "User";
 
@@ -97,10 +123,40 @@ export function DashboardScreen() {
   const totalDealsValue = summary?.totalDealsValue ?? 0;
   const weightedPipelineValue = summary?.weightedPipelineValue ?? 0;
 
+  const monthlyForecasts = React.useMemo(() => {
+    return summary?.monthlyForecasts ?? [
+      { month: "Jan", value: 0 },
+      { month: "Feb", value: 0 },
+      { month: "Mar", value: 0 },
+      { month: "Apr", value: 0 },
+      { month: "May", value: 0 },
+      { month: "Jun (Current)", value: 0 }
+    ];
+  }, [summary]);
+
+  const chartData = React.useMemo(() => {
+    const maxVal = Math.max(...monthlyForecasts.map(f => f.value), 1);
+    return monthlyForecasts.map((f, idx) => {
+      const x = idx * 100;
+      const y = 100 - (f.value / maxVal) * 90;
+      return { x, y, month: f.month, value: f.value };
+    });
+  }, [monthlyForecasts]);
+
+  const linePath = React.useMemo(() => {
+    if (chartData.length === 0) return "";
+    return chartData.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  }, [chartData]);
+
+  const areaPath = React.useMemo(() => {
+    if (chartData.length === 0) return "";
+    return `${linePath} L 500 120 L 0 120 Z`;
+  }, [linePath, chartData]);
+
   // Color mapping for funnel bars
   const STAGE_COLORS: Record<string, string> = {
     "Inquiry": "bg-primary/80",
-    "Site Visit": "bg-accent/80",
+    "Qualification": "bg-accent/80",
     "Proposal": "bg-indigo-500/80",
     "Negotiation": "bg-pink-500/80",
     "Contract": "bg-warning/80",
@@ -116,11 +172,22 @@ export function DashboardScreen() {
 
   const isLoading = loadingSummary || loadingTasks;
 
+  // §3.12 / §12.2 — a skeleton that mirrors the final layout, so nothing shifts
+  // when the data lands. The previous full-page spinner collapsed to zero height
+  // and then pushed the whole dashboard down on arrival.
   if (isLoading) {
     return (
-      <div className="card-elev flex flex-col items-center justify-center py-24">
-        <Loader2 className="size-8 text-primary animate-spin mb-3" />
-        <p className="text-xs text-muted-foreground font-bold">Loading dashboard analytics...</p>
+      <div className="space-y-6">
+        <div className="h-[104px] animate-pulse rounded-lg border border-border bg-surface" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <KpiSkeleton key={i} />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <CardSkeleton className="lg:col-span-2" />
+          <CardSkeleton />
+        </div>
       </div>
     );
   }
@@ -131,114 +198,81 @@ export function DashboardScreen() {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Banner: v2 elevated surface with brand glow */}
-      <div className="card-elev relative overflow-hidden p-6">
-        <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-primary/8 blur-[80px] pointer-events-none" />
-        <div className="absolute -bottom-20 -left-20 w-60 h-60 rounded-full bg-teal/8 blur-[80px] pointer-events-none" />
+      {/* Greeting bar — §2.15: every dashboard opens with one. */}
+      <GreetingBar
+        name={userName}
+        roleLabel={ROLE_LABEL[getUserRole(user)] ?? "Workspace"}
+        subtitle="Here is your hotel sales pipeline and follow-up activity for today."
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => router.push(ROUTE_PATHS.calendar)}
+              leftIcon={<Calendar className="size-4" />}
+            >
+              Calendar
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => router.push(`${ROUTE_PATHS.manageFollowUpTasks}?new=1`)}
+              leftIcon={<Plus className="size-4" />}
+            >
+              New task
+            </Button>
+          </>
+        }
+      />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary tracking-wider uppercase mb-3">
-              <Sparkles className="size-3" />
-              <span>Direct Sales Active</span>
-            </div>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-foreground">Welcome back, {userName}!</h1>
-            <p className="text-xs text-muted-foreground mt-1">
-              Here is the status of your hotel sales pipeline and follow-up activities for today.
-            </p>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <span className="text-xs text-muted-foreground font-semibold bg-muted border border-border px-2.5 py-1 rounded-lg">
-              {currentDateString}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1 */}
-        <Card className="hover:-translate-y-0.5 transition-all duration-300">
-          <CardContent className="pt-5">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Leads</p>
-                <h3 className="text-2xl font-bold text-foreground mt-1.5">{activeLeadsCount} Leads</h3>
-                <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-0.5 mt-1.5">
-                  <TrendingUp className="size-3" /> +{summary?.activeLeadsGrowthPct ?? 12.5}% this week
-                </span>
-              </div>
-              <div className="p-2 bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground rounded-lg animate-pulse-slow">
-                <Users className="size-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* KPI 2 */}
-        <Card className="hover:-translate-y-0.5 transition-all duration-300">
-          <CardContent className="pt-5">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Deals Pipeline</p>
-                <h3 className="text-2xl font-bold text-foreground mt-1.5">
-                  {activeDealsValue.toLocaleString("vi-VN")} ₫
-                </h3>
-                <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-0.5 mt-1.5">
-                  <TrendingUp className="size-3" /> {activeDealsCount} active deals
-                </span>
-              </div>
-              <div className="p-2 bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20 dark:text-emerald-400 rounded-lg">
-                <Briefcase className="size-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* KPI 3 */}
-        <Card className="hover:-translate-y-0.5 transition-all duration-300">
-          <CardContent className="pt-5">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Pending Activities</p>
-                <h3 className="text-2xl font-bold text-foreground mt-1.5">{pendingTasksCount} Tasks</h3>
-                {overdueTasksCount > 0 ? (
-                  <span className="text-[10px] bg-danger/10 text-danger px-1.5 py-0.5 rounded-md font-semibold inline-block mt-1.5 border border-danger/15">
-                    {overdueTasksCount} overdue
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-zinc-400 font-semibold inline-block mt-1.5">All on track</span>
-                )}
-              </div>
-              <div className="p-2 bg-amber-500/10 text-amber-500 dark:bg-amber-500/20 dark:text-amber-400 rounded-lg">
-                <AlertCircle className="size-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* KPI 4 */}
-        <Card className="hover:-translate-y-0.5 transition-all duration-300">
-          <CardContent className="pt-5">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">SLA Compliance Rate</p>
-                <h3 className="text-2xl font-bold text-foreground mt-1.5">{summary?.slaComplianceRatePct ?? 91.8}%</h3>
-                <span className="text-[10px] text-primary font-semibold flex items-center gap-0.5 mt-1.5">
-                  Target threshold 90%
-                </span>
-              </div>
-              <div className="p-2 bg-indigo-500/10 text-indigo-500 dark:bg-indigo-500/20 dark:text-indigo-400 rounded-lg">
-                <Clock className="size-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* KPI row — §2.15. Four cards, one component, tokens throughout. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          label="Active leads"
+          value={activeLeadsCount.toLocaleString()}
+          delta={summary?.activeLeadsGrowthPct}
+          deltaLabel="vs last week"
+          hint={`${(summary?.totalLeadsCount ?? 0).toLocaleString()} total`}
+          icon={Users}
+          tone="brand"
+          href={ROUTE_PATHS.leads}
+        />
+        <KpiCard
+          label="Active pipeline"
+          value={formatVnd(activeDealsValue)}
+          hint={`${activeDealsCount} open ${activeDealsCount === 1 ? "deal" : "deals"}`}
+          icon={Briefcase}
+          tone="teal"
+          href={ROUTE_PATHS.deals}
+        />
+        <KpiCard
+          label="Tasks due"
+          value={pendingTasksCount.toLocaleString()}
+          // A rise in overdue work is bad news, so the chip inverts.
+          hint={
+            overdueTasksCount > 0
+              ? `${overdueTasksCount} overdue`
+              : "Nothing overdue"
+          }
+          icon={CheckCircle2}
+          tone={overdueTasksCount > 0 ? "danger" : "success"}
+          href={ROUTE_PATHS.manageFollowUpTasks}
+        />
+        <KpiCard
+          label="SLA compliance"
+          value={`${(summary?.slaComplianceRatePct ?? 0).toFixed(1)}%`}
+          hint="Target 90%"
+          icon={Clock}
+          tone={
+            (summary?.slaComplianceRatePct ?? 0) >= 90 ? "success" : "warning"
+          }
+          href={ROUTE_PATHS.sla}
+        />
       </div>
 
       {/* Main Charts & Visualizations Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Pipeline Stage Distribution */}
+        {/* Sales Funnel Distribution Card */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-bold text-foreground">Sales Funnel Distribution</CardTitle>
@@ -248,23 +282,57 @@ export function DashboardScreen() {
           </CardHeader>
           <CardContent>
             {/* SVG Visual Stage Chart */}
-            <div className="space-y-3.5 pt-2">
-              {funnelData.map((stage, idx) => (
-                <div key={idx} className="space-y-1">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-foreground/80">{stage.stage}</span>
-                    <span className="text-muted-foreground text-[10px]">
-                      {stage.count} {stage.count === 1 ? "deal" : "deals"} ({totalDealsValue > 0 ? ((stage.value / totalDealsValue) * 100).toFixed(0) : 0}%) • <strong className="text-foreground/90">{stage.value.toLocaleString("vi-VN")} ₫</strong>
-                    </span>
+            <div className="space-y-3.5 pt-2 relative">
+              {funnelData.map((stage, idx) => {
+                const pct = totalDealsValue > 0 ? ((stage.value / totalDealsValue) * 100).toFixed(1) : "0";
+                const avgValue = stage.count > 0 ? Math.round(stage.value / stage.count) : 0;
+                const isHovered = hoveredStage?.stage === stage.stage;
+                return (
+                  <div
+                    key={idx}
+                    className="space-y-1 relative group cursor-pointer p-1.5 rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/50"
+                    onMouseEnter={() => setHoveredStage(stage)}
+                    onMouseLeave={() => setHoveredStage(null)}
+                  >
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-semibold text-foreground/80 flex items-center gap-1.5">
+                        <span className={`size-2 rounded-full ${stage.color}`} />
+                        {stage.stage}
+                      </span>
+                      <span className="text-muted-foreground text-[10px]">
+                        {stage.count} {stage.count === 1 ? "deal" : "deals"} ({pct}%) • <strong className="text-foreground/90">{stage.value.toLocaleString("vi-VN")} ₫</strong>
+                      </span>
+                    </div>
+                    <div className="w-full bg-muted rounded-lg h-3 overflow-hidden flex">
+                      <div
+                        className={`${stage.color} h-full rounded-lg transition-all duration-300 ${isHovered ? "brightness-110 shadow-sm" : ""}`}
+                        style={{ width: `${maxStageValue > 0 ? (stage.value / maxStageValue) * 100 : 0}%` }}
+                      />
+                    </div>
+
+                    {/* Hover Floating Tooltip */}
+                    {isHovered && (
+                      <div className="absolute left-1/2 -top-12 z-40 pointer-events-none -translate-x-1/2 bg-slate-900/95 backdrop-blur-xs text-white text-[11px] px-3 py-2 rounded-lg shadow-xl border border-slate-700 animate-in fade-in duration-150 whitespace-nowrap">
+                        <div className="font-bold text-slate-200">{stage.stage} Stage</div>
+                        <div className="text-emerald-400 font-bold text-xs mt-0.5">
+                          Total Value: {stage.value.toLocaleString("vi-VN")} ₫
+                        </div>
+                        <div className="text-[10px] text-slate-300 mt-0.5 flex items-center gap-2">
+                          <span>{stage.count} active deal{stage.count !== 1 ? "s" : ""}</span>
+                          <span>•</span>
+                          <span className="text-sky-400 font-semibold">{pct}% of pipeline</span>
+                          {avgValue > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="text-amber-300">Avg: {avgValue.toLocaleString("vi-VN")} ₫</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="w-full bg-muted rounded-lg h-3 overflow-hidden flex">
-                    <div
-                      className={`${stage.color} h-full rounded-lg transition-all duration-500`}
-                      style={{ width: `${maxStageValue > 0 ? (stage.value / maxStageValue) * 100 : 0}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Custom SVG Curved Revenue Forecast Line Chart */}
@@ -282,8 +350,25 @@ export function DashboardScreen() {
                 </div>
               </div>
 
-              {/* Responsive SVG Sparkline / Area Chart */}
-              <div className="h-44 w-full">
+              {/* Responsive SVG Sparkline / Area Chart with Rich Tooltip */}
+              <div className="relative h-44 w-full">
+                {hoveredPoint && (
+                  <div
+                    className="absolute z-30 pointer-events-none -translate-x-1/2 -translate-y-full mb-2 bg-slate-900/90 backdrop-blur-xs text-white text-[11px] px-3 py-2 rounded-lg shadow-xl border border-slate-700 animate-in fade-in duration-150 whitespace-nowrap"
+                    style={{ left: `${Math.min(Math.max((hoveredPoint.x / 500) * 100, 10), 90)}%`, top: `${(hoveredPoint.y / 120) * 100}%` }}
+                  >
+                    <div className="font-bold text-slate-200">{hoveredPoint.month}</div>
+                    <div className="text-emerald-400 font-bold text-xs mt-0.5">
+                      Forecast: {hoveredPoint.value.toLocaleString("vi-VN")} ₫
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                      <span>Target: 100.000.000 ₫</span>
+                      <span className="font-semibold text-sky-400">
+                        ({Math.round((hoveredPoint.value / 100000000) * 100)}%)
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <svg className="w-full h-full" viewBox="0 0 500 120" preserveAspectRatio="none">
                   <defs>
                     <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
@@ -299,13 +384,13 @@ export function DashboardScreen() {
 
                   {/* Area path */}
                   <path
-                    d="M 0 100 Q 100 85, 200 45 T 400 30 L 500 10 L 500 120 L 0 120 Z"
+                    d={areaPath}
                     fill="url(#chartGrad)"
                   />
 
                   {/* Forecast Line */}
                   <path
-                    d="M 0 100 Q 100 85, 200 45 T 400 30 L 500 10"
+                    d={linePath}
                     fill="none"
                     stroke="var(--primary)"
                     strokeWidth="2.5"
@@ -316,18 +401,28 @@ export function DashboardScreen() {
                   <line x1="0" y1="40" x2="500" y2="40" stroke="var(--success)" strokeWidth="1.5" strokeDasharray="4,4" />
 
                   {/* Nodes */}
-                  <circle cx="200" cy="45" r="4" fill="var(--primary)" stroke="var(--background)" strokeWidth="1.5" />
-                  <circle cx="400" cy="30" r="4" fill="var(--primary)" stroke="var(--background)" strokeWidth="1.5" />
-                  <circle cx="500" cy="10" r="4" fill="var(--primary)" stroke="var(--background)" strokeWidth="1.5" />
+                  {chartData.map((p, idx) => (
+                    <circle
+                      key={idx}
+                      cx={p.x}
+                      cy={p.y}
+                      r={hoveredPoint?.month === p.month ? "6" : "4"}
+                      fill="var(--primary)"
+                      stroke="var(--background)"
+                      strokeWidth="1.5"
+                      onMouseEnter={() => setHoveredPoint(p)}
+                      onMouseLeave={() => setHoveredPoint(null)}
+                      className="cursor-pointer transition-all duration-150 hover:opacity-100"
+                    >
+                      <title>{`${p.month}: ${p.value.toLocaleString("vi-VN")} ₫`}</title>
+                    </circle>
+                  ))}
                 </svg>
                 {/* Labels */}
                 <div className="flex justify-between text-[10px] text-muted-foreground font-semibold mt-1.5">
-                  <span>Jan</span>
-                  <span>Feb</span>
-                  <span>Mar</span>
-                  <span>Apr</span>
-                  <span>May</span>
-                  <span>Jun (Current)</span>
+                  {chartData.map((p, idx) => (
+                    <span key={idx}>{p.month}</span>
+                  ))}
                 </div>
               </div>
             </div>

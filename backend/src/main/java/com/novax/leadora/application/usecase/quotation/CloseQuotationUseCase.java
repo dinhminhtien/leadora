@@ -12,6 +12,11 @@ import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationClosureLogRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,6 +40,8 @@ public class CloseQuotationUseCase {
     private final QuotationAccessPolicy quotationAccessPolicy;
     private final ResolveSlaBreachUseCase resolveSlaBreachUseCase;
     private final SystemAuditLogService systemAuditLogService;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, CloseQuotationRequest request) {
@@ -80,6 +87,23 @@ public class CloseQuotationUseCase {
 
         systemAuditLogService.log("QUOTATION", "QUOTATION", quotationId, "CLOSED", actor,
                 previousStatus, "CLOSED", request.getReason());
+
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("reason", request.getReason())
+                    .put("notes", request.getNotes())
+                    .put("previousStatus", previousStatus)
+                    .put("newStatus", "CLOSED");
+            activityLogPublisher.publish(
+                    ActivityLogType.QUOTATION_UPDATED,
+                    EntityType.QUOTATION,
+                    saved.getQuotationId(),
+                    "Quotation closed",
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish quotation closure activity: {}", e.getMessage());
+        }
 
         // POST-3: resolve any pending SLA tracking tied to this quotation — it is no
         // longer an open opportunity to chase (UC-14.8)

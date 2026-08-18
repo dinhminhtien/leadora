@@ -10,10 +10,13 @@ import com.novax.leadora.api.dto.request.ReviseQuotationRequest;
 import com.novax.leadora.api.dto.request.SendQuotationRequest;
 import com.novax.leadora.api.dto.request.SubmitQuotationRequest;
 import com.novax.leadora.api.dto.request.TrackCustomerResponseRequest;
+import com.novax.leadora.api.dto.request.ReservationRejectRequest;
+import com.novax.leadora.api.dto.response.QuotationEligibilityResponse;
 import com.novax.leadora.api.dto.response.QuotationResponse;
 import com.novax.leadora.application.usecase.quotation.CreateQuotationUseCase;
 import com.novax.leadora.application.usecase.quotation.GetPendingApprovalsUseCase;
 import com.novax.leadora.application.usecase.quotation.GetQuotationByIdUseCase;
+import com.novax.leadora.application.usecase.quotation.GetQuotationEligibilityUseCase;
 import com.novax.leadora.application.usecase.quotation.GetQuotationListUseCase;
 import com.novax.leadora.application.usecase.quotation.ProcessQuotationApprovalUseCase;
 import com.novax.leadora.application.usecase.quotation.ReviseQuotationUseCase;
@@ -23,9 +26,17 @@ import com.novax.leadora.application.usecase.quotation.CloseQuotationUseCase;
 import com.novax.leadora.application.usecase.quotation.ConvertToBookingUseCase;
 import com.novax.leadora.application.usecase.quotation.ExpireOverdueQuotationsUseCase;
 import com.novax.leadora.application.usecase.quotation.TrackCustomerResponseUseCase;
+import com.novax.leadora.application.usecase.quotation.ApproveReservationUseCase;
+import com.novax.leadora.application.usecase.quotation.RejectReservationUseCase;
+import com.novax.leadora.application.usecase.quotation.ResendQuotationEmailUseCase;
 import com.novax.leadora.common.response.ApiResponse;
+import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -35,9 +46,7 @@ import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
-@RequestMapping("/api/v1/quotations")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
 public class QuotationController {
 
     private final CreateQuotationUseCase createQuotationUseCase;
@@ -52,9 +61,14 @@ public class QuotationController {
     private final ConvertToBookingUseCase convertToBookingUseCase;
     private final CloseQuotationUseCase closeQuotationUseCase;
     private final ExpireOverdueQuotationsUseCase expireOverdueUseCase;
+    private final ApproveReservationUseCase approveReservationUseCase;
+    private final RejectReservationUseCase rejectReservationUseCase;
+    private final ResendQuotationEmailUseCase resendQuotationEmailUseCase;
+    private final GetQuotationEligibilityUseCase getQuotationEligibilityUseCase;
 
     /** UC-14.1 — Create Room Quotation */
-    @PostMapping
+    @PostMapping("/api/v1/quotations")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> createQuotation(
             @Valid @RequestBody CreateQuotationRequest request) {
         QuotationResponse response = createQuotationUseCase.execute(request);
@@ -62,30 +76,64 @@ public class QuotationController {
                 .body(ApiResponse.success(response, "Quotation created successfully"));
     }
 
-    /** Get all quotations */
-    @GetMapping
-    public ResponseEntity<ApiResponse<List<QuotationResponse>>> getQuotations() {
-        List<QuotationResponse> quotations = getQuotationListUseCase.execute();
+    /** Get all quotations with server-side pagination, filters, and sorting */
+    @GetMapping("/api/v1/quotations")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN','RESERVATION') and @access.can('QUOTATION_VIEW')")
+    public ResponseEntity<ApiResponse<Page<QuotationResponse>>> getQuotations(
+            @RequestParam(required = false) QuotationStatus status,
+            @RequestParam(required = false) List<QuotationStatus> statuses,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "priority") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir) {
+
+        // "priority" is a ranking over the status enum, not a column, so it lives in the query
+        // and the Pageable stays unsorted. It is the default because opening the list on
+        // "newest first" showed whatever was created last, which is rarely what anyone needs.
+        boolean byPriority = "priority".equalsIgnoreCase(sortBy);
+        Pageable pageable = byPriority
+                ? PageRequest.of(page, size)
+                : PageRequest.of(page, size, Sort.by(Sort.Direction.fromString(sortDir), sortBy));
+
+        Page<QuotationResponse> quotations =
+                getQuotationListUseCase.execute(status, statuses, search, pageable, byPriority);
         return ResponseEntity.ok(ApiResponse.success(quotations));
     }
 
     /** UC-14.5 — Get quotation by ID (for pre-populating revision form) */
-    @GetMapping("/{id}")
+    @GetMapping("/api/v1/quotations/{id}")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN','RESERVATION') and @access.can('QUOTATION_VIEW')")
     public ResponseEntity<ApiResponse<QuotationResponse>> getQuotationById(@PathVariable UUID id) {
         QuotationResponse response = getQuotationByIdUseCase.execute(id);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
+    /**
+     * Which of this quotation's actions are currently available, and why the others are not.
+     *
+     * <p>Read-only, scoped exactly like {@link #getQuotationById}. The client calls it to decide
+     * what to enable; the write endpoints re-check the same policy, so this is a convenience for
+     * the user interface and never the authority.
+     */
+    @GetMapping("/api/v1/quotations/{id}/eligibility")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER','ADMIN','RESERVATION') and @access.can('QUOTATION_VIEW')")
+    public ResponseEntity<ApiResponse<QuotationEligibilityResponse>> getQuotationEligibility(
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(getQuotationEligibilityUseCase.execute(id)));
+    }
+
     /** UC-14.3 — Get quotations pending manager approval. Manager only. */
-    @GetMapping("/pending-approvals")
-    @PreAuthorize("hasRole('MANAGER')")
+    @GetMapping("/api/v1/quotations/pending-approvals")
+    @PreAuthorize("hasRole('MANAGER') and @access.can('QUOTATION_APPROVE')")
     public ResponseEntity<ApiResponse<List<QuotationResponse>>> getPendingApprovals() {
         List<QuotationResponse> pending = getPendingApprovalsUseCase.execute();
         return ResponseEntity.ok(ApiResponse.success(pending));
     }
 
     /** UC-14.1 — Submit a DRAFT quotation: discount ≤10% → APPROVED, >10% → PENDING_APPROVAL */
-    @PostMapping("/{id}/submit")
+    @PostMapping("/api/v1/quotations/{id}/submit")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> submitQuotation(
             @PathVariable UUID id,
             @RequestBody(required = false) SubmitQuotationRequest request) {
@@ -95,8 +143,8 @@ public class QuotationController {
     }
 
     /** UC-14.3 — Process approval decision (approve / reject / request changes). Manager only. */
-    @PostMapping("/{id}/process-approval")
-    @PreAuthorize("hasRole('MANAGER')")
+    @PostMapping("/api/v1/quotations/{id}/process-approval")
+    @PreAuthorize("hasRole('MANAGER') and @access.can('QUOTATION_APPROVE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> processApproval(
             @PathVariable UUID id,
             @Valid @RequestBody ProcessApprovalRequest request) {
@@ -105,7 +153,8 @@ public class QuotationController {
     }
 
     /** UC-14.5 — Create a new version of an existing quotation */
-    @PostMapping("/{id}/revise")
+    @PostMapping("/api/v1/quotations/{id}/revise")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> reviseQuotation(
             @PathVariable UUID id,
             @Valid @RequestBody ReviseQuotationRequest request) {
@@ -115,7 +164,8 @@ public class QuotationController {
     }
 
     /** UC-14.4 — Send approved quotation to customer */
-    @PostMapping("/{id}/send")
+    @PostMapping("/api/v1/quotations/{id}/send")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> sendQuotation(
             @PathVariable UUID id,
             @Valid @RequestBody SendQuotationRequest request) {
@@ -123,8 +173,18 @@ public class QuotationController {
         return ResponseEntity.ok(ApiResponse.success(response, "Quotation sent successfully"));
     }
 
-    /** UC-14.7 — Convert accepted quotation to confirmed booking */
-    @PostMapping("/{id}/convert")
+    /** Resend quotation email to customer (if previous email hasn't been opened) */
+    @PostMapping("/api/v1/quotations/{id}/resend")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
+    public ResponseEntity<ApiResponse<QuotationResponse>> resendQuotation(
+            @PathVariable UUID id) {
+        QuotationResponse response = resendQuotationEmailUseCase.execute(id);
+        return ResponseEntity.ok(ApiResponse.success(response, "Quotation email resent successfully"));
+    }
+
+    /** UC-14.7 — Convert manually accepted quotation to confirmed booking (Sales Flow) */
+    @PostMapping("/api/v1/quotations/{id}/convert")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<BookingResponse>> convertToBooking(
             @PathVariable UUID id,
             @Valid @RequestBody ConvertToBookingRequest request) {
@@ -134,7 +194,8 @@ public class QuotationController {
     }
 
     /** UC-14.8 — Manually close a quotation */
-    @PostMapping("/{id}/close")
+    @PostMapping("/api/v1/quotations/{id}/close")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> closeQuotation(
             @PathVariable UUID id,
             @Valid @RequestBody CloseQuotationRequest request) {
@@ -143,7 +204,8 @@ public class QuotationController {
     }
 
     /** UC-14.8 — Batch expire all overdue quotations (validUntil < today) */
-    @PostMapping("/expire-overdue")
+    @PostMapping("/api/v1/quotations/expire-overdue")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<Object>> expireOverdue(
             @RequestBody(required = false) ExpireOverdueRequest request) {
         ExpireOverdueRequest req = request != null ? request : new ExpireOverdueRequest();
@@ -152,11 +214,39 @@ public class QuotationController {
     }
 
     /** UC-14.6 — Track customer response (Accept / Reject / Interested / Need Revision) */
-    @PostMapping("/{id}/track-response")
+    @PostMapping("/api/v1/quotations/{id}/track-response")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('QUOTATION_WRITE')")
     public ResponseEntity<ApiResponse<QuotationResponse>> trackCustomerResponse(
             @PathVariable UUID id,
             @Valid @RequestBody TrackCustomerResponseRequest request) {
         QuotationResponse response = trackCustomerResponseUseCase.execute(id, request);
         return ResponseEntity.ok(ApiResponse.success(response, "Customer response recorded successfully"));
+    }
+
+    /**
+     * BR-15 — Approve Reservation Request.
+     * Invoked by Reservation staff to confirm availability and create the booking.
+     */
+    @PostMapping("/api/v1/quotations/{id}/reservation-approve")
+    @PreAuthorize("hasAnyRole('RESERVATION', 'MANAGER', 'ADMIN') and @access.can('RESERVATION_WRITE')")
+    public ResponseEntity<ApiResponse<BookingResponse>> approveReservation(
+            @PathVariable UUID id) {
+        BookingResponse response = approveReservationUseCase.execute(id);
+        return ResponseEntity.ok(ApiResponse.success(response, "Reservation request approved and booking created successfully."));
+    }
+
+    /**
+     * BR-15 — Reject Reservation Request.
+     * Invoked by Reservation staff to reject a portal-accepted quotation due to unavailability or other reasons.
+     */
+    @PostMapping("/api/v1/quotations/{id}/reservation-reject")
+    @PreAuthorize("hasAnyRole('RESERVATION', 'MANAGER', 'ADMIN') and @access.can('RESERVATION_WRITE')")
+    public ResponseEntity<ApiResponse<QuotationResponse>> rejectReservation(
+            @PathVariable UUID id,
+            @Valid @RequestBody ReservationRejectRequest requestBody) {
+        QuotationResponse response = QuotationResponse.from(
+                rejectReservationUseCase.execute(id, requestBody.getReason(), requestBody.getNote())
+        );
+        return ResponseEntity.ok(ApiResponse.success(response, "Reservation request rejected successfully."));
     }
 }

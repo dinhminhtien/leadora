@@ -5,7 +5,12 @@ import com.novax.leadora.infrastructure.persistence.entity.PasswordResetTokenEnt
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.PasswordResetTokenRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
-import com.novax.leadora.infrastructure.integration.email.EmailService;
+import com.novax.leadora.application.usecase.email.EmailService;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogCommand;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActorType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,43 +25,54 @@ import java.util.UUID;
 @Slf4j
 public class ForgotPasswordUseCase {
 
-    private final UserRepository userRepository;
-    private final PasswordResetTokenRepository tokenRepository;
-    private final EmailService emailService;
+        private final UserRepository userRepository;
+        private final PasswordResetTokenRepository tokenRepository;
+        private final EmailService emailService;
+        private final ActivityLogPublisher activityLogPublisher;
 
-    @Value("${app.frontend-url}")
-    private String frontendUrl;
+        @Value("${app.frontend-url}")
+        private String frontendUrl;
 
-    @Transactional
-    public void execute(String email, String clientType) {
-        String trimmedEmail = email.trim();
-        UserEntity user = userRepository.findWithRoleByEmailIgnoreCase(trimmedEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("User", trimmedEmail));
- 
-        // Generate secure 15-minute token
-        String token = UUID.randomUUID().toString();
-        PasswordResetTokenEntity resetToken = PasswordResetTokenEntity.builder()
-                .token(token)
-                .user(user)
-                .expiryDate(LocalDateTime.now().plusMinutes(15))
-                .used(false)
-                .build();
- 
-        tokenRepository.save(resetToken);
- 
-        String webResetLink = frontendUrl + "/reset-password?token=" + token;
-        String mobileResetLink = "com.novax.leadora-mobile://reset-password?token=" + token;
- 
-        // Send the real HTML email via SMTP
-        emailService.sendResetPasswordHtmlEmail(user.getEmail(), webResetLink, mobileResetLink);
- 
-        // Standard developer console log with link (simulates email sending for local debug visibility)
-        log.info("\n==================================================" +
-                 "\n[PASSWORD RESET EMAIL SENT]" +
-                 "\nTo: " + user.getEmail() +
-                 "\nSubject: Password Reset Request" +
-                 "\nWeb Link: " + webResetLink +
-                 "\nMobile Link: " + mobileResetLink +
-                 "\n==================================================");
-    }
+        @Transactional
+        public void execute(String email, String clientType) {
+                String trimmedEmail = email.trim();
+                UserEntity user = userRepository.findWithRoleByEmailIgnoreCase(trimmedEmail)
+                                .orElseThrow(() -> new ResourceNotFoundException("User", trimmedEmail));
+
+                // Generate secure 15-minute token
+                String token = UUID.randomUUID().toString();
+                PasswordResetTokenEntity resetToken = PasswordResetTokenEntity.builder()
+                                .token(token)
+                                .user(user)
+                                .expiryDate(LocalDateTime.now().plusMinutes(15))
+                                .used(false)
+                                .build();
+
+                tokenRepository.save(resetToken);
+
+                String webResetLink = frontendUrl + "/reset-password?token=" + token;
+                String mobileResetLink = "com.novax.leadora-mobile://reset-password?token=" + token;
+
+                // Send the real HTML email via SMTP
+                emailService.sendResetPasswordHtmlEmail(user.getEmail(), webResetLink, mobileResetLink);
+
+                activityLogPublisher.publish(ActivityLogCommand.builder()
+                                .actorType(ActorType.SYSTEM)
+                                .activityType(ActivityLogType.PASSWORD_RESET_REQUESTED)
+                                .entityType(EntityType.USER)
+                                .entityId(user.getUserId())
+                                .summary("Password reset requested for user: " + user.getFullName() + " ("
+                                                + user.getEmail() + ")")
+                                .build());
+
+                // Standard developer console log with link (simulates email sending for local
+                // debug visibility)
+                log.info("\n==================================================" +
+                                "\n[PASSWORD RESET EMAIL SENT]" +
+                                "\nTo: " + user.getEmail() +
+                                "\nSubject: Password Reset Request" +
+                                "\nWeb Link: " + webResetLink +
+                                "\nMobile Link: " + mobileResetLink +
+                                "\n==================================================");
+        }
 }

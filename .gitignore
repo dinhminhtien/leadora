@@ -63,14 +63,24 @@ replay_pid*
 .env.test.local
 .env.production.local
 *.env
+env
 
 *docs/
 *sql/
 *.sql
+# ...except the checked-in schema/seed scripts. The project runs ddl-auto=validate with no
+# migration framework, so these ARE the schema history — ignoring them meant the RBAC seed
+# lived on one developer's machine and nobody could see that the Front Office role had been
+# left with zero permissions. Dumps and backups anywhere else stay ignored by the rule above.
+!backend/src/main/resources/db/*.sql
 *.AGENTS.md
 *.CLAUDE.md
 *CODING_GUIDELINES.md
 *MILESTONES.md
 
+k6_bin/
 k6_bin
 k6.exe
+
+docs/test_docs
+backend/src/main/resources/db/

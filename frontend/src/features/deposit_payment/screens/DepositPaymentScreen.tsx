@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,30 +9,48 @@ import {
   CreditCard,
   CheckCircle2,
   Search,
-  Landmark,
   Plus,
   X,
   RefreshCw,
   AlertTriangle,
-  Copy,
-  ExternalLink,
   Calendar,
   FileText,
-  Download,
-  Banknote
+  Printer
 } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { ExportMenu, useTableControls } from "@/components/ui/table-controls";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { PaymentDetailDrawer } from "@/features/deposit_payment/components/PaymentDetailDrawer";
 import { toast } from "@/stores/toast_store";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+
+/** Rows per page — mirrors the `size: 10` requested from the payments endpoint. */
+const PAYMENTS_PAGE_SIZE = 10;
+
+const PAYMENT_EXPORT_HEADERS = [
+  "Booking code", "Guest", "Payment type", "Due date", "Status", "Amount (VND)",
+];
+
+function paymentExportRow(p: Payment): (string | number | null | undefined)[] {
+  return [
+    p.bookingCode ?? "", p.customerName ?? "", p.paymentType,
+    p.dueDate ?? "", p.status, p.amount,
+  ];
+}
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
+import { useAuthStore } from "@/stores/auth_store";
+import { getUserRole } from "@/shared/auth/access";
 import {
   depositPaymentService,
   type Payment,
   type PaymentStatus,
-  type PaymentType
+  type PaymentType,
 } from "@/services/deposit_payment_service";
 import {
   bookingConfirmationService,
@@ -50,16 +69,33 @@ const generatePaymentSchema = z.object({
 type GeneratePaymentFormData = z.infer<typeof generatePaymentSchema>;
 
 export function DepositPaymentScreen() {
+  const { user } = useAuthStore();
+  const userRole = getUserRole(user);
+  const canWrite = user?.permissions?.includes("PAYMENT_WRITE") ?? false;
+
+  // Design-system confirmation (§3.16) replacing the native confirm().
+  const { confirm, confirmElement } = useConfirm();
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams ? searchParams.get("search") || "" : "";
+
   const [activeTab, setActiveTab] = useState<"requests" | "bookings">("requests");
 
   // Tab 1: Payment Requests states
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
-  const [paymentsSearch, setPaymentsSearch] = useState("");
+  const [paymentsSearch, setPaymentsSearch] = useState(initialSearch);
+
+  useEffect(() => {
+    if (initialSearch) {
+      setPaymentsSearch(initialSearch);
+      setActiveTab("requests");
+    }
+  }, [initialSearch]);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [paymentsPage, setPaymentsPage] = useState(0);
   const [paymentsTotalPages, setPaymentsTotalPages] = useState(0);
+  const [paymentsTotalElements, setPaymentsTotalElements] = useState(0);
 
   // Tab 2: Confirmed Bookings states
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -67,6 +103,7 @@ export function DepositPaymentScreen() {
   const [bookingsSearch, setBookingsSearch] = useState("");
   const [bookingsPage, setBookingsPage] = useState(0);
   const [bookingsTotalPages, setBookingsTotalPages] = useState(0);
+  const [bookingsTotalElements, setBookingsTotalElements] = useState(0);
 
   // Modals and detail states
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
@@ -74,6 +111,12 @@ export function DepositPaymentScreen() {
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [selectedBookingForRequest, setSelectedBookingForRequest] = useState<Booking | null>(null);
   const [selectedBookingForDetails, setSelectedBookingForDetails] = useState<Booking | null>(null);
+
+  // Printable Receipt states
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [receiptBooking, setReceiptBooking] = useState<Booking | null>(null);
+  const [loadingReceiptBooking, setLoadingReceiptBooking] = useState(false);
+  const [printingPayment, setPrintingPayment] = useState<Payment | null>(null);
 
   // Action states
   const [submittingRequest, setSubmittingRequest] = useState(false);
@@ -123,6 +166,7 @@ export function DepositPaymentScreen() {
       if (res.success && res.data) {
         setPayments(res.data.content || []);
         setPaymentsTotalPages(res.data.totalPages || 0);
+        setPaymentsTotalElements(res.data.totalElements ?? (res.data.content?.length ?? 0));
       }
     } catch (err) {
       console.error(err);
@@ -160,6 +204,7 @@ export function DepositPaymentScreen() {
         );
         setBookings(filteredBookings);
         setBookingsTotalPages(res.data.totalPages || 0);
+        setBookingsTotalElements(res.data.totalElements ?? (res.data.content?.length ?? 0));
       }
     } catch (err) {
       console.error(err);
@@ -207,6 +252,26 @@ export function DepositPaymentScreen() {
       toast.error(msg);
     } finally {
       setSubmittingRequest(false);
+    }
+  };
+
+  // Open print modal and fetch booking details on demand
+  const handleOpenPrintModal = async (payment: Payment) => {
+    setPrintingPayment(payment);
+    setSelectedPayment(null);
+    setShowPrintModal(true);
+    setLoadingReceiptBooking(true);
+    setReceiptBooking(null);
+    try {
+      const res = await bookingConfirmationService.getById(payment.bookingId);
+      if (res.success && res.data) {
+        setReceiptBooking(res.data);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load booking details for receipt.");
+    } finally {
+      setLoadingReceiptBooking(false);
     }
   };
 
@@ -282,9 +347,21 @@ export function DepositPaymentScreen() {
     }
   };
 
-  // Cancel Payment Request (UC-21.5)
+  // Cancel Payment Request (UC-21.5).
+  //
+  // Destructive and irreversible for the customer's link, so it uses the
+  // design-system confirmation (§1.5 / §3.16) with `danger` severity rather
+  // than the native `confirm`, which could not convey either fact.
   const handleCancelRequest = async (paymentId: string) => {
-    if (!confirm("Are you sure you want to cancel this payment request? This will invalidate the QR code and checkout link.")) return;
+    const { ok } = await confirm({
+      title: "Cancel this payment request?",
+      description:
+        "The VietQR code and checkout link stop working immediately. The guest will need a new request to pay.",
+      severity: "danger",
+      confirmLabel: "Cancel request",
+      cancelLabel: "Keep it",
+    });
+    if (!ok) return;
 
     setActionLoading(true);
     try {
@@ -312,29 +389,126 @@ export function DepositPaymentScreen() {
   const getStatusBadge = (status: PaymentStatus) => {
     switch (status) {
       case "PAID":
-        return <Badge variant="success" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900 uppercase text-[9px] font-bold py-1 min-w-[90px] justify-center text-center">PAID</Badge>;
+        return <Badge variant="success" className="bg-emerald-55 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-450 dark:border-emerald-900 font-bold uppercase text-[9px] py-1 min-w-22.5 justify-center text-center">PAID</Badge>;
       case "PENDING":
-        return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-200 dark:border-amber-900 uppercase text-[9px] font-bold py-1 min-w-[90px] justify-center text-center">PENDING</Badge>;
+        return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-200 dark:border-amber-900 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">PENDING</Badge>;
       case "CANCELLED":
-        return <Badge variant="default" className="bg-slate-100 text-slate-800 dark:bg-zinc-800 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 uppercase text-[9px] font-bold py-1 min-w-[90px] justify-center text-center">CANCELLED</Badge>;
+        return <Badge variant="default" className="bg-slate-100 text-slate-800 dark:bg-zinc-800 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">CANCELLED</Badge>;
       case "FAILED":
-        return <Badge variant="danger" className="bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-200 dark:border-rose-900 uppercase text-[9px] font-bold py-1 min-w-[90px] justify-center text-center">FAILED</Badge>;
+        return <Badge variant="danger" className="bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-200 dark:border-rose-900 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">FAILED</Badge>;
       case "EXPIRED":
-        return <Badge variant="default" className="bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 uppercase text-[9px] font-bold py-1 min-w-[90px] justify-center text-center">EXPIRED</Badge>;
+        return <Badge variant="default" className="bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">EXPIRED</Badge>;
       default:
         return <Badge>{status}</Badge>;
     }
   };
 
+  /** Column set — Blueprint §10.11 transaction register. */
+  const paymentColumns: ColumnDef<Payment>[] = useMemo(() => [
+    {
+      id: "booking",
+      header: "Booking Reference",
+      sticky: "left",
+      cell: (p) => (
+        <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-bold text-primary">
+          <CreditCard className="size-3.5 shrink-0 text-muted-foreground" />
+          {p.bookingCode || "N/A"}
+        </span>
+      ),
+    },
+    {
+      id: "guest",
+      header: "Guest Name",
+      className: "max-w-37.5 truncate text-xs font-bold",
+      cell: (p) => <span title={p.customerName || "N/A"}>{p.customerName || "N/A"}</span>,
+    },
+    {
+      id: "type",
+      header: "Payment Type",
+      minWidth: "md",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (p) => (p.paymentType === "DEPOSIT" ? "Deposit Hold" : "Full Bill Settlement"),
+    },
+    {
+      id: "dueDate",
+      header: "Due Date",
+      minWidth: "lg",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (p) => p.dueDate || "N/A",
+    },
+    {
+      id: "status",
+      header: "Gateway Status",
+      cell: (p) => getStatusBadge(p.status),
+    },
+    {
+      id: "amount",
+      header: "Amount Paid",
+      numeric: true,
+      sticky: "right",
+      className: "font-bold",
+      cell: (p) => `${p.amount?.toLocaleString("vi-VN") ?? 0} ₫`,
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const paymentControls = useTableControls<Payment>("payments", paymentColumns);
+
+  /**
+   * Confirmed bookings that have no payment request yet (UC-21.1). Status is
+   * always CONFIRMED here — the query filters on it — so the pill is a constant
+   * label rather than a variable one.
+   */
+  const awaitingColumns: ColumnDef<Booking>[] = useMemo(() => [
+    {
+      id: "code",
+      header: "Booking Reference",
+      sticky: "left",
+      className: "whitespace-nowrap text-xs font-bold",
+      cell: (b) => b.bookingCode,
+    },
+    {
+      id: "customer",
+      header: "Customer Name",
+      className: "max-w-37.5 truncate text-xs font-bold",
+      cell: (b) => <span title={b.customerName}>{b.customerName}</span>,
+    },
+    {
+      id: "checkIn",
+      header: "Check In",
+      minWidth: "md",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (b) => b.checkInDate,
+    },
+    {
+      id: "checkOut",
+      header: "Check Out",
+      minWidth: "md",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (b) => b.checkOutDate,
+    },
+    {
+      id: "status",
+      header: "Booking Status",
+      cell: (b) => <StatusPill size="sm" domain="booking" value={b.status} />,
+    },
+    {
+      id: "total",
+      header: "Total Invoice",
+      numeric: true,
+      sticky: "right",
+      className: "font-bold",
+      cell: (b) => `${b.totalAmount?.toLocaleString("vi-VN") ?? 0} ₫`,
+    },
+  ], []);
+
+  const awaitingControls = useTableControls<Booking>("payments-awaiting", awaitingColumns);
+
   return (
     <div className="space-y-6 min-h-[101vh]" style={{ scrollbarGutter: "stable" }}>
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Deposit & Payment Management</h1>
-          <p className="text-xs text-slate-400 dark:text-zinc-400 mt-0.5">Generate payment requests, monitor transaction registers, and verify invoice clearances.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        {...PAGE_META.depositPayment}
+        actions={
           <Badge className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900 px-3 py-1 font-bold text-xs uppercase flex items-center gap-1.5 shadow-sm">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -342,8 +516,8 @@ export function DepositPaymentScreen() {
             </span>
             Direct Bank Integration (SePay) Active
           </Badge>
-        </div>
-      </div>
+        }
+      />
 
       {/* Tabs Menu */}
       <div className="flex border-b border-slate-200 dark:border-zinc-800 w-full mb-4">
@@ -356,15 +530,17 @@ export function DepositPaymentScreen() {
         >
           Payment Transactions List
         </button>
-        <button
-          onClick={() => { setActiveTab("bookings"); setBookingsPage(0); }}
-          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all ${activeTab === "bookings"
-            ? "border-primary text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold"
-            : "border-transparent text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-300"
-            }`}
-        >
-          Generate Requests (Pending Bookings)
-        </button>
+        {canWrite && userRole !== "FO" && (
+          <button
+            onClick={() => { setActiveTab("bookings"); setBookingsPage(0); }}
+            className={`px-5 py-3 text-xs font-bold border-b-2 transition-all ${activeTab === "bookings"
+              ? "border-primary text-blue-600 dark:border-blue-400 dark:text-blue-400 font-extrabold"
+              : "border-transparent text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-300"
+              }`}
+          >
+            Generate Requests (Pending Bookings)
+          </button>
+        )}
       </div>
 
       {/* Tab content 1: Payment list */}
@@ -426,99 +602,44 @@ export function DepositPaymentScreen() {
 
           {/* Table list */}
           <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden">
-            {loadingPayments ? (
-              <div className="py-12 text-center text-slate-400 dark:text-zinc-500 text-xs flex flex-col items-center justify-center gap-2">
-                <RefreshCw className="size-4 animate-spin text-blue-500" />
-                <span>Loading transaction logs from gateway...</span>
-              </div>
-            ) : (
-              <>
-                <Table className="w-full table-fixed min-w-[1100px]">
-                  <TableHeader className="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-100 dark:border-zinc-850">
-                    <TableRow hoverable={false}>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-left! whitespace-nowrap">Booking Reference</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[25%] text-left! whitespace-nowrap">Guest Name</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[20%] text-left! whitespace-nowrap">Payment Type</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[13%] text-center! whitespace-nowrap">Due Date</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[12%] text-center! whitespace-nowrap">Gateway Status</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-right! whitespace-nowrap">Amount Paid</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {payments.length > 0 ? (
-                      payments.map(p => (
-                        <TableRow
-                          key={p.paymentId}
-                          onClick={() => handleViewDetails(p.paymentId)}
-                          className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 border-b border-slate-100 dark:border-zinc-800 transition cursor-pointer select-none"
-                        >
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
-                            <span className="flex items-center gap-1.5 text-primary">
-                              <CreditCard className="size-3.5 text-slate-400 dark:text-zinc-550 shrink-0" />
-                              {p.bookingCode || "N/A"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-[150px]" title={p.customerName || "N/A"}>
-                            {p.customerName || "N/A"}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! text-slate-600! dark:text-zinc-400! text-left! whitespace-nowrap truncate">
-                            {p.paymentType === "DEPOSIT" ? "Deposit Hold" : "Full Bill Settlement"}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">
-                            {p.dueDate || "N/A"}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
-                            <div className="flex justify-center">
-                              {getStatusBadge(p.status)}
-                            </div>
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-right! whitespace-nowrap">
-                            <div>{p.amount?.toLocaleString('vi-VN')} ₫</div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow hoverable={false}>
-                        <TableCell colSpan={6} className="py-12 text-center text-slate-450 dark:text-zinc-500 text-xs">
-                          No payment transaction records match filters.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-
-                {/* Pagination */}
-                {paymentsTotalPages > 1 && (
-                  <div className="flex justify-between items-center bg-slate-50 dark:bg-zinc-800/40 px-4 py-3 border-t border-slate-100 dark:border-zinc-800">
-                    <span className="text-xs text-slate-550 dark:text-zinc-400 font-medium">Page {paymentsPage + 1} of {paymentsTotalPages}</span>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        disabled={paymentsPage === 0}
-                        onClick={() => setPaymentsPage(prev => Math.max(0, prev - 1))}
-                        className="px-3 border border-slate-200 dark:border-zinc-700 text-slate-650 dark:text-zinc-300 bg-white dark:bg-zinc-800"
-                      >
-                        Previous
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={paymentsPage + 1 >= paymentsTotalPages}
-                        onClick={() => setPaymentsPage(prev => prev + 1)}
-                        className="px-3 border border-slate-200 dark:border-zinc-700 text-slate-650 dark:text-zinc-300 bg-white dark:bg-zinc-800"
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
+            <DataTable
+              label="Payment transactions"
+              rows={payments}
+              columns={paymentControls.visibleColumns}
+              rowId={(p) => p.paymentId}
+              isLoading={loadingPayments}
+              density={paymentControls.density}
+              sortBy={paymentControls.sortBy}
+              sortDir={paymentControls.sortDir}
+              onSortChange={paymentControls.onSortChange}
+              onRowClick={(p) => handleViewDetails(p.paymentId)}
+              selectedIds={paymentControls.selectedIds}
+              onSelectionChange={paymentControls.setSelectedIds}
+              bulkActions={
+                <ExportMenu
+                  filename={`payments-selected-${new Date().toISOString().slice(0, 10)}`}
+                  headers={PAYMENT_EXPORT_HEADERS}
+                  rows={payments.filter((p) => paymentControls.selectedIds.has(p.paymentId)).map(paymentExportRow)}
+                />
+              }
+              emptyTitle="No payment records"
+              emptyMessage="Deposit and settlement requests appear here once raised against a booking."
+              footer={
+                <TablePagination
+                  page={paymentsPage}
+                  pageSize={PAYMENTS_PAGE_SIZE}
+                  totalElements={paymentsTotalElements}
+                  totalPages={paymentsTotalPages}
+                  onPageChange={setPaymentsPage}
+                />
+              }
+            />
           </div>
         </div>
       )}
 
       {/* Tab content 2: Confirmed Bookings waiting for payment request */}
-      {activeTab === "bookings" && (
+      {activeTab === "bookings" && canWrite && userRole !== "FO" && (
         <div className="space-y-4">
           {/* Filters Card */}
           <Card className="border border-slate-100 dark:border-zinc-800 shadow-sm bg-white dark:bg-zinc-900">
@@ -546,90 +667,29 @@ export function DepositPaymentScreen() {
           </Card>
 
           {/* Bookings Table */}
-          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden">
-            {loadingBookings ? (
-              <div className="py-12 text-center text-slate-400 dark:text-zinc-500 text-xs flex flex-col items-center justify-center gap-2">
-                <RefreshCw className="size-4 animate-spin text-blue-500" />
-                <span>Loading confirmed bookings registry...</span>
-              </div>
-            ) : (
-              <>
-                <Table className="w-full table-fixed min-w-[1100px]">
-                  <TableHeader className="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-100 dark:border-zinc-850">
-                    <TableRow hoverable={false}>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-left! whitespace-nowrap">Booking Reference</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[30%] text-left! whitespace-nowrap">Customer Name</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-center! whitespace-nowrap">Check In</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-center! whitespace-nowrap">Check Out</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[10%] text-center! whitespace-nowrap">Booking Status</TableHead>
-                      <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! dark:text-zinc-400! w-[15%] text-right! whitespace-nowrap">Total Invoice</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {bookings.length > 0 ? (
-                      bookings.map(b => (
-                        <TableRow
-                          key={b.bookingId}
-                          onClick={() => setSelectedBookingForDetails(b)}
-                          className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/30 border-b border-slate-100 dark:border-zinc-800 transition cursor-pointer select-none"
-                        >
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-left! whitespace-nowrap">
-                            {b.bookingCode}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-800! dark:text-zinc-200! text-left! whitespace-nowrap truncate max-w-[150px]" title={b.customerName}>
-                            {b.customerName}
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkInDate}</TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! text-slate-500! dark:text-zinc-400! text-center! whitespace-nowrap">{b.checkOutDate}</TableCell>
-                          <TableCell className="py-3.5! px-4! text-center! whitespace-nowrap">
-                            <div className="flex justify-center">
-                              <Badge variant="success" className="bg-emerald-55 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-450 dark:border-emerald-900 font-bold uppercase text-[9px] py-1 min-w-[90px] justify-center text-center">
-                                {b.status}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell className="py-3.5! px-4! text-xs! font-bold! text-slate-700! dark:text-zinc-300! text-right! whitespace-nowrap">
-                            {b.totalAmount?.toLocaleString('vi-VN')} ₫
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow hoverable={false}>
-                        <TableCell colSpan={6} className="py-12 text-center text-slate-450 dark:text-zinc-550 text-xs">
-                          No confirmed bookings waiting for payment link.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-
-                {/* Pagination */}
-                {bookingsTotalPages > 1 && (
-                  <div className="flex justify-between items-center bg-slate-50 dark:bg-zinc-800/40 px-4 py-3 border-t border-slate-100 dark:border-zinc-800">
-                    <span className="text-xs text-slate-550 dark:text-zinc-400 font-medium">Page {bookingsPage + 1} of {bookingsTotalPages}</span>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        disabled={bookingsPage === 0}
-                        onClick={() => setBookingsPage(prev => Math.max(0, prev - 1))}
-                        className="px-3 border border-slate-200 dark:border-zinc-700 text-slate-650 dark:text-zinc-300 bg-white dark:bg-zinc-800"
-                      >
-                        Previous
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={bookingsPage + 1 >= bookingsTotalPages}
-                        onClick={() => setBookingsPage(prev => prev + 1)}
-                        className="px-3 border border-slate-200 dark:border-zinc-700 text-slate-655 dark:text-zinc-300 bg-white dark:bg-zinc-800"
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+          <DataTable
+            label="Confirmed bookings awaiting a payment request"
+            rows={bookings}
+            columns={awaitingControls.visibleColumns}
+            rowId={(b) => b.bookingId}
+            isLoading={loadingBookings}
+            density={awaitingControls.density}
+            sortBy={awaitingControls.sortBy}
+            sortDir={awaitingControls.sortDir}
+            onSortChange={awaitingControls.onSortChange}
+            onRowClick={(b) => setSelectedBookingForDetails(b)}
+            emptyTitle="Nothing awaiting a payment link"
+            emptyMessage="Confirmed bookings without a payment request appear here."
+            footer={
+              <TablePagination
+                page={bookingsPage}
+                pageSize={PAYMENTS_PAGE_SIZE}
+                totalElements={bookingsTotalElements}
+                totalPages={bookingsTotalPages}
+                onPageChange={setBookingsPage}
+              />
+            }
+          />
         </div>
       )}
 
@@ -768,258 +828,103 @@ export function DepositPaymentScreen() {
         </div>
       )}
 
-      {/* Modal: View Payment Detail / Audit Control (UC-21.3, UC-21.4, UC-21.5) */}
-      {showDetailModal && selectedPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/60 backdrop-blur-sm transition-opacity">
-          <div className="relative w-full max-w-lg bg-white dark:bg-zinc-900 rounded-xl shadow-2xl border border-slate-100 dark:border-zinc-800 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center bg-slate-50 dark:bg-zinc-800/30 px-6 py-4 border-b border-slate-200 dark:border-zinc-800">
-              <div>
-                <h3 className="font-extrabold text-sm text-slate-800 dark:text-zinc-100">Audit Payment Log Record</h3>
-                <p className="text-[10px] text-slate-400 dark:text-zinc-500">Verifying secure checksum signatures and payment logs references.</p>
-              </div>
-              <button
-                onClick={() => { setShowDetailModal(false); }}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300 rounded p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 transition"
+      <PaymentDetailDrawer
+        payment={showDetailModal ? selectedPayment : null}
+        onOpenChange={(open) => !open && setShowDetailModal(false)}
+        onDownloadQr={handleDownloadQR}
+        onPrintReceipt={handleOpenPrintModal}
+        onCopyLink={copyToClipboard}
+        actions={
+          selectedPayment
+            ? [
+                {
+                  label: "Print receipt",
+                  icon: Printer,
+                  variant: "outline" as const,
+                  onClick: () => handleOpenPrintModal(selectedPayment),
+                },
+                // A settled or cancelled request accepts neither transition —
+                // the server refuses both, so they are absent (§12.13).
+                ...(selectedPayment.status === "PENDING" && !showConfirmPaidForm
+                  ? [
+                      ...(userRole !== "SALES"
+                        ? [
+                            {
+                              label: "Confirm paid",
+                              icon: CheckCircle2,
+                              variant: "success" as const,
+                              disabled: actionLoading,
+                              // BR-29: PAID needs a verification note, so this opens
+                              // the note form rather than firing the mutation.
+                              onClick: () => setShowConfirmPaidForm(true),
+                            },
+                          ]
+                        : []),
+                      ...(userRole !== "FO"
+                        ? [
+                            {
+                              label: "Cancel request",
+                              icon: X,
+                              variant: "danger" as const,
+                              disabled: actionLoading,
+                              onClick: () => handleCancelRequest(selectedPayment.paymentId),
+                            },
+                          ]
+                        : []),
+                    ]
+                  : []),
+              ]
+            : []
+        }
+      >
+        {showConfirmPaidForm && (
+          <div className="space-y-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <p className="flex items-center gap-1.5 text-[12px] font-semibold text-warning">
+              <AlertTriangle className="size-3.5 shrink-0" />
+              Manual payment confirmation
+            </p>
+            <div>
+              <label
+                htmlFor="verification-note"
+                className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
               >
-                <X className="size-4" />
-              </button>
+                Verification note / reference ID
+              </label>
+              <textarea
+                id="verification-note"
+                rows={2}
+                value={verificationNote}
+                onChange={(e) => {
+                  setVerificationNote(e.target.value);
+                  setVerificationNoteError("");
+                }}
+                placeholder="Cashier note, authorisation ID or transfer reference…"
+                aria-invalid={!!verificationNoteError}
+                aria-describedby={verificationNoteError ? "verification-note-error" : undefined}
+                className="w-full rounded-md border border-border bg-input px-3 py-2 text-[12.5px] text-foreground focus-ring"
+              />
+              {verificationNoteError && (
+                <p id="verification-note-error" className="mt-1 text-[11.5px] font-medium text-danger">
+                  {verificationNoteError}
+                </p>
+              )}
             </div>
-
-            <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
-              {/* Payment basic info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Payment ID</span>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-zinc-300 select-all">{selectedPayment.paymentId}</span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Booking Ref / Code</span>
-                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{selectedPayment.bookingCode || "N/A"}</span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Guest Account Name</span>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-zinc-300">{selectedPayment.customerName || "N/A"}</span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Payment Target type</span>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-zinc-300">{selectedPayment.paymentType}</span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Expected Due Date</span>
-                  <span className="text-xs font-semibold text-slate-600 dark:text-zinc-400 flex items-center gap-1">
-                    <Calendar className="size-3.5 text-slate-400 dark:text-zinc-500" />
-                    {selectedPayment.dueDate || "N/A"}
-                  </span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Cleared / Paid At</span>
-                  <span className="text-xs font-semibold text-slate-600 dark:text-zinc-400">
-                    {selectedPayment.paidAt ? new Date(selectedPayment.paidAt).toLocaleString('en-US') : "Pending clearing"}
-                  </span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Method channel</span>
-                  <span className="text-xs font-bold uppercase text-slate-600 dark:text-zinc-300 flex items-center gap-1">
-                    <Landmark className="size-3.5 text-slate-400 dark:text-zinc-500" />
-                    {selectedPayment.paymentMethod || "N/A"}
-                  </span>
-                </div>
-                <div>
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-550 uppercase tracking-wider">Gateway status</span>
-                  <span className="block mt-0.5">{getStatusBadge(selectedPayment.status)}</span>
-                </div>
-              </div>
-
-              {/* Amount block */}
-              <div className="bg-slate-50 dark:bg-zinc-800/40 border border-slate-100 dark:border-zinc-800 rounded-lg p-3 flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <Banknote className="size-5 text-slate-400 dark:text-zinc-500 shrink-0" />
-                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-400">Total Requested Amount</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-lg font-black text-slate-900 dark:text-zinc-100 block">
-                    {selectedPayment.amount?.toLocaleString('vi-VN')} ₫
-                  </span>
-                </div>
-              </div>
-
-              {/* Gateway Details */}
-              <div className="border-t border-slate-100 dark:border-zinc-800 pt-4 space-y-3">
-                <h4 className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">Gateway Connection Data</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500 dark:text-zinc-400 font-medium">Gateway Provider:</span>
-                    <span className="font-bold text-slate-700 dark:text-zinc-300">{selectedPayment.gatewayProvider || "SEPAY"}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-500 dark:text-zinc-400 font-medium">Transaction reference link ID:</span>
-                    <span className="font-semibold text-slate-700 dark:text-zinc-300 text-right max-w-[200px] truncate select-all">{selectedPayment.gatewayTransactionId || "N/A"}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* QR and Payment Link for Pending */}
-              {selectedPayment.status === "PENDING" && (
-                <div className="border-t border-slate-100 dark:border-zinc-800 pt-4 flex flex-col items-center gap-4">
-                  {/* VietQR for TRANSFER only */}
-                  {selectedPayment.paymentMethod === "TRANSFER" && selectedPayment.qrCodeUrl && (
-                    <div className="flex flex-col items-center gap-2 bg-slate-50 dark:bg-zinc-800/30 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 shadow-sm w-full max-w-[280px]">
-                      <span className="text-[10px] font-bold text-slate-450 dark:text-zinc-400 uppercase tracking-wider mb-1">Dynamic VietQR</span>
-                      <img
-                        src={selectedPayment.qrCodeUrl}
-                        alt="Napas VietQR Payment"
-                        className="size-52 object-contain rounded-lg border border-white shadow bg-white p-1"
-                      />
-                      <span className="text-[10px] text-slate-400 dark:text-zinc-550">Scan using any Banking App</span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDownloadQR(selectedPayment.qrCodeUrl!, selectedPayment.paymentId)}
-                        className="mt-1 w-full text-[10px] font-bold py-1.5 px-3 flex items-center justify-center gap-1 border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"
-                      >
-                        <Download className="size-3" />
-                        Download QR Image
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Payment link copy for TRANSFER or CARD */}
-                  {(selectedPayment.paymentMethod === "TRANSFER" || selectedPayment.paymentMethod === "CARD") && selectedPayment.notes && selectedPayment.notes.startsWith("http") && (
-                    <div className="w-full space-y-2">
-                      <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">Payment Link URL</span>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          readOnly
-                          value={selectedPayment.notes}
-                          className="flex-1 bg-slate-50 dark:bg-zinc-805 border border-slate-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-slate-600 dark:text-zinc-300 focus:outline-none select-all truncate"
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyToClipboard(selectedPayment.notes || "")}
-                          className="p-2 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700"
-                        >
-                          <Copy className="size-3.5 text-slate-500 dark:text-zinc-400" />
-                        </Button>
-                        <a
-                          href={selectedPayment.notes}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700 rounded-lg flex items-center justify-center"
-                        >
-                          <ExternalLink className="size-3.5 text-blue-500" />
-                        </a>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* CASH instruction alert */}
-                  {selectedPayment.paymentMethod === "CASH" && (
-                    <div className="w-full bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900 text-amber-800 dark:text-amber-300 rounded-lg p-3 flex gap-2 font-medium">
-                      <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-bold">Cash Payment Instruction</p>
-                        <p className="text-slate-650 dark:text-zinc-400 mt-0.5 text-[11px]">
-                          Please collect the cash amount of <strong>{selectedPayment.amount?.toLocaleString('vi-VN')} ₫</strong> directly from the guest at the front desk.
-                          After receiving, click <strong>Manual Confirm PAID</strong> below to settle this request.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Verification notes (if PAID) */}
-              {selectedPayment.status === "PAID" && selectedPayment.notes && (
-                <div className="border-t border-slate-100 dark:border-zinc-800 pt-4">
-                  <span className="block text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-1">Audit Verification References</span>
-                  <div className="bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-900 text-slate-700 dark:text-zinc-300 rounded-lg p-3 flex gap-2 font-semibold">
-                    <FileText className="size-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span>{selectedPayment.notes}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Action: Manual Confirm PAID Form Overlay */}
-              {showConfirmPaidForm && (
-                <div className="border-t border-amber-200 dark:border-amber-900 bg-amber-50/30 dark:bg-amber-950/10 rounded-xl p-4 space-y-3 border transition-all">
-                  <div className="flex gap-1.5 items-center text-xs font-bold text-amber-800 dark:text-amber-400">
-                    <AlertTriangle className="size-4 text-amber-600 shrink-0" />
-                    <span>Manual Override Confirmation hold</span>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1">Verification Note / Reference ID (CASH/TRANSFER)</label>
-                    <textarea
-                      placeholder="Enter verification code, cashier note, or authorization ID references..."
-                      rows={2}
-                      value={verificationNote}
-                      onChange={e => { setVerificationNote(e.target.value); setVerificationNoteError(""); }}
-                      className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg focus:outline-none focus:border-amber-500 transition text-slate-800 dark:text-zinc-100"
-                    />
-                    {verificationNoteError && (
-                      <p className="text-red-500 text-[10px] font-semibold mt-1">{verificationNoteError}</p>
-                    )}
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowConfirmPaidForm(false)}
-                      className="text-[10px] px-3 py-1 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200"
-                    >
-                      Cancel Override
-                    </Button>
-                    <Button
-                      variant="success"
-                      size="sm"
-                      onClick={handleConfirmPaidSubmit}
-                      className="text-[10px] px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold"
-                    >
-                      Verify & Mark PAID
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Action Buttons Row */}
-              <div className="flex flex-wrap justify-between items-center gap-2 border-t border-slate-100 dark:border-zinc-800 pt-4">
-                {selectedPayment.status === "PENDING" && !showConfirmPaidForm ? (
-                  <div className="flex gap-2 w-full justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowConfirmPaidForm(true)}
-                      className="text-xs font-bold text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900 hover:bg-amber-50 dark:hover:bg-amber-950/20"
-                    >
-                      Manual Confirm PAID
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => handleCancelRequest(selectedPayment.paymentId)}
-                      className="text-xs font-bold text-white bg-red-650 hover:bg-red-750"
-                    >
-                      Cancel Request
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex justify-end w-full">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowDetailModal(false)}
-                      className="text-xs font-semibold px-4 py-2 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-850 text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-750"
-                    >
-                      Close Audit Log
-                    </Button>
-                  </div>
-                )}
-              </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowConfirmPaidForm(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="success"
+                size="sm"
+                onClick={handleConfirmPaidSubmit}
+                isLoading={actionLoading}
+              >
+                Verify &amp; mark paid
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </PaymentDetailDrawer>
 
       {/* Modal: View Booking Detail (Pending Payment) */}
       {selectedBookingForDetails && (
@@ -1117,6 +1022,325 @@ export function DepositPaymentScreen() {
           </div>
         </div>
       )}
+
+      {/* Printable Receipt Modal Overlay */}
+      {showPrintModal && printingPayment && (
+        <PrintableReceiptModal
+          payment={printingPayment}
+          booking={receiptBooking}
+          loading={loadingReceiptBooking}
+          onClose={() => {
+            setShowPrintModal(false);
+            setPrintingPayment(null);
+          }}
+        />
+      )}
+      {confirmElement}
+    </div>
+  );
+}
+
+interface PrintableReceiptModalProps {
+  payment: Payment;
+  booking: Booking | null;
+  loading: boolean;
+  onClose: () => void;
+}
+
+function PrintableReceiptModal({
+  payment,
+  booking,
+  loading,
+  onClose
+}: PrintableReceiptModalProps) {
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const receiptId = `PAY-${payment.paymentId.substring(0, 8).toUpperCase()}`;
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex justify-center items-start overflow-y-auto p-4 sm:p-10 print-modal-overlay">
+      <style>{`
+        @media print {
+          @page {
+            size: portrait;
+            margin: 6mm 10mm 6mm 10mm;
+          }
+          body * {
+            visibility: hidden;
+            height: 0;
+            overflow: hidden;
+          }
+          .print-modal-overlay, .print-card, .print-card * {
+            visibility: visible;
+            height: auto !important;
+            overflow: visible !important;
+          }
+          .print-modal-overlay {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+          .print-card {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: white !important;
+            color: black !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            font-size: 10.5px !important;
+            line-height: 1.35 !important;
+          }
+          .print-card h2 {
+            font-size: 13px !important;
+            margin-top: 8px !important;
+            margin-bottom: 4px !important;
+          }
+          .print-card h4 {
+            font-size: 9px !important;
+            margin-top: 10px !important;
+            margin-bottom: 3px !important;
+          }
+          .print-card .border-t {
+            margin-top: 10px !important;
+            padding-top: 10px !important;
+          }
+          .print-card .grid {
+            gap: 6px !important;
+          }
+          .print-card table th, .print-card table td {
+            padding-top: 3px !important;
+            padding-bottom: 3px !important;
+          }
+          .print-card img.logo {
+            width: 32px !important;
+            height: 32px !important;
+          }
+          .print-card img.qr-code {
+            width: 135px !important;
+            height: 135px !important;
+          }
+          .no-print {
+            display: none !important;
+            height: 0 !important;
+            width: 0 !important;
+            overflow: hidden !important;
+          }
+        }
+      `}</style>
+
+      <div className="print-card bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 sm:p-8 max-w-2xl w-full mx-auto my-auto relative text-slate-800 flex flex-col gap-5">
+
+        {/* Print Actions */}
+        <div className="flex justify-between items-center no-print border-b border-slate-100 pb-4">
+          <h3 className="text-sm font-bold text-slate-700">Payment Form / Receipt Preview</h3>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              className="text-slate-700 border-slate-200 hover:bg-slate-50"
+            >
+              Close Preview
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handlePrint}
+              disabled={loading}
+              className="font-bold shadow-sm disabled:opacity-50"
+            >
+              <span className="flex items-center justify-center gap-1.5">
+                <Printer className="size-3.5 shrink-0" />
+                <span>Print / Save PDF</span>
+              </span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Brand Header with Logo */}
+        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <div className="flex items-center gap-3">
+            <img
+              src="/logo1.jpg"
+              alt="Leadora Logo"
+              className="logo h-10 w-10 object-cover rounded-lg border border-slate-100 print:border-slate-200"
+            />
+            <div className="flex flex-col text-left">
+              <span className="text-lg font-extrabold tracking-widest text-slate-900 leading-none">LEADORA</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-1">Sales & Workflow Management System</span>
+              <span className="text-[7.5px] text-slate-400 mt-0.5 print:text-black font-semibold">Contact: minhplnce180439@fpt.edu.vn | Hotline: +84 (0) 96 495 9652</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <h2 className="text-xs font-black text-slate-800 uppercase tracking-wide">
+              {payment.status === "PAID" ? "PAYMENT RECEIPT" : "PAYMENT REQUEST"}
+            </h2>
+            <span className="text-[9px] font-semibold text-slate-455 uppercase tracking-wider">System-Generated Invoice</span>
+          </div>
+        </div>
+
+        {/* Info Metadata Grid */}
+        <div className="grid grid-cols-2 gap-4 text-xs">
+          <div className="space-y-1">
+            <div>
+              <span className="text-slate-455 font-semibold block text-[10px]">Receipt ID:</span>
+              <span className="font-bold text-slate-800 select-all">{receiptId}</span>
+            </div>
+          </div>
+          <div className="space-y-1 text-right">
+            <div>
+              <span className="text-slate-455 font-semibold block text-[10px]">Date Created:</span>
+              <span className="font-medium text-slate-700">{new Date(payment.createdAt).toLocaleString("en-US")}</span>
+            </div>
+            {payment.status === "PAID" && payment.paidAt && (
+              <div>
+                <span className="text-slate-455 font-semibold block text-[10px]">Date Settled:</span>
+                <span className="font-bold text-emerald-600">{new Date(payment.paidAt).toLocaleString("en-US")}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Billing Section */}
+        <div className="border-t border-slate-100 pt-3 space-y-2">
+          <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Billing & Booking Details</h4>
+          <div className="bg-slate-50 border border-slate-150 rounded-xl p-3 grid grid-cols-2 gap-y-2 gap-x-4 text-xs text-slate-700">
+            <div>
+              <span className="text-slate-400 block text-[10px] font-semibold">Guest Name:</span>
+              <span className="font-bold text-slate-900">{payment.customerName || booking?.customerName || "Walk-in Guest"}</span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[10px] font-semibold">Booking Ref Code:</span>
+              <span className="font-bold text-slate-900 select-all">{payment.bookingCode}</span>
+            </div>
+            {booking && (
+              <>
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-semibold">Check-In Date:</span>
+                  <span className="font-medium">{booking.checkInDate}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-semibold">Check-Out Date:</span>
+                  <span className="font-medium">{booking.checkOutDate}</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Room Allocation Pricing Table */}
+        <div className="border-t border-slate-100 pt-3 space-y-1.5">
+          <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Billing Item Breakdown</h4>
+          <table className="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200 text-slate-400 font-bold text-[10px]">
+                <th className="py-1.5">Description / Room Info</th>
+                <th className="py-1.5 text-center w-16">Nights</th>
+                <th className="py-1.5 text-right w-24">Price (VND)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={3} className="py-3 text-center text-slate-400 italic">Loading details...</td>
+                </tr>
+              ) : booking?.details && booking.details.length > 0 ? (
+                booking.details.map((d) => (
+                  <tr key={d.bookingDetailId} className="border-b border-slate-100 text-slate-700">
+                    <td className="py-1.5 font-semibold">
+                      {d.productName} {d.roomNumber ? `(Room ${d.roomNumber})` : ""}
+                    </td>
+                    <td className="py-1.5 text-center">{d.nights}</td>
+                    <td className="py-1.5 text-right font-medium">{d.unitPrice?.toLocaleString()} ₫</td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="border-b border-slate-100 text-slate-700">
+                  <td className="py-1.5 font-semibold">
+                    {payment.paymentType === "DEPOSIT" ? "Security Room Deposit" : "Room Rental Fee"} for Ref #{payment.bookingCode}
+                  </td>
+                  <td className="py-1.5 text-center">—</td>
+                  <td className="py-1.5 text-right font-medium">{payment.amount?.toLocaleString()} ₫</td>
+                </tr>
+              )}
+
+              {/* Final calculations */}
+              <tr className="text-slate-900 border-t border-slate-200">
+                <td colSpan={2} className="py-2 text-right font-black text-xs uppercase">Total Due/Settled:</td>
+                <td className="py-2 text-right font-black text-sm text-blue-650">
+                  {payment.amount?.toLocaleString("vi-VN")} ₫
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Payment Section / QR / PAID Stamp */}
+        <div className="border-t border-slate-100 pt-3 w-full">
+          {payment.status === "PENDING" && payment.paymentMethod === "TRANSFER" && payment.qrCodeUrl ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full items-stretch">
+
+              {/* Left Column: QR Code Card */}
+              <div className="flex flex-col items-center justify-center gap-1 border border-slate-200 rounded-xl p-3 bg-slate-50 w-full print:bg-slate-50">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Dynamic Payment VietQR</span>
+                <img
+                  src={payment.qrCodeUrl}
+                  alt="Napas VietQR"
+                  className="qr-code size-40 object-contain rounded-lg bg-white p-1 border border-slate-150"
+                />
+                <span className="text-[8px] text-slate-450 text-center font-medium">Scan QR code using any Mobile Banking App</span>
+              </div>
+
+              {/* Right Column: Bank Details Table */}
+              <div className="text-[9px] text-slate-500 bg-slate-50 rounded-xl p-3 flex flex-col justify-center border border-slate-150 w-full">
+                <p className="font-bold text-slate-600 text-center uppercase tracking-wider text-[8px] border-b border-slate-200 pb-1 mb-2">Bank Transfer Info</p>
+                <div className="grid grid-cols-3 gap-y-1.5 text-left text-slate-700 print:text-black">
+                  <span className="font-semibold text-slate-450">Account Holder:</span>
+                  <span className="col-span-2 font-bold text-slate-700 print:text-black">TRINH MINH NGOC</span>
+                  <span className="font-semibold text-slate-455">Account Number:</span>
+                  <span className="col-span-2 font-bold text-slate-800 print:text-black select-all">22224102004</span>
+                  <span className="font-semibold text-slate-455">Receiving Bank:</span>
+                  <span className="col-span-2 font-medium text-slate-750 print:text-black leading-tight">MB Bank</span>
+                  <span className="font-semibold text-slate-450">Transfer Content:</span>
+                  <span className="col-span-2 font-bold text-blue-600 print:text-black select-all break-all leading-tight">
+                    LEADORAPAY{payment.paymentId}
+                  </span>
+                </div>
+              </div>
+
+            </div>
+          ) : payment.status === "PAID" ? (
+            <div className="flex flex-col items-center justify-center mx-auto border-2 border-dashed border-emerald-450 bg-emerald-50 rounded-xl p-4 w-full max-w-70 text-center gap-1 relative overflow-hidden">
+              <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">Transaction Cleared</span>
+              <span className="text-lg font-black text-emerald-800 uppercase tracking-wider">★ PAID ★</span>
+              <span className="text-[8px] text-emerald-600 font-medium">Receipt authorized by Auto-Settlement Gateway</span>
+
+              {/* Stamp visual accent */}
+              <div className="absolute -right-4 -bottom-4 w-12 h-12 rounded-full border-4 border-emerald-200/40 rotate-12 flex items-center justify-center text-[10px] font-black text-emerald-250/20">
+                OK
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Footer Note */}
+        <div className="border-t border-slate-100 pt-3 text-center text-[8px] text-slate-400 font-medium italic">
+          Thank you for choosing our services! For immediate support, please contact the hotel front desk. Powered by Leadora – Follow-up & Sales Workflow Management System.
+        </div>
+      </div>
     </div>
   );
 }

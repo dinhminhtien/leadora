@@ -17,16 +17,17 @@ import '../../features/booking/presentation/screens/booking_list_screen.dart';
 import '../../features/deal/presentation/screens/create_deal_screen.dart';
 import '../../features/deal/presentation/screens/deal_detail_screen.dart';
 import '../../features/deal/presentation/screens/deal_list_screen.dart';
-import '../../features/deal/presentation/screens/pipeline_screen.dart';
 import '../../features/payment/presentation/screens/generate_payment_screen.dart';
 import '../../features/payment/presentation/screens/payment_detail_screen.dart';
 import '../../features/payment/presentation/screens/payment_list_screen.dart';
 import '../../features/interaction/data/interaction_models.dart';
 import '../../features/interaction/presentation/screens/edit_interaction_screen.dart';
+import '../../features/handover/presentation/screens/handover_list_screen.dart';
 import '../../features/interaction/presentation/screens/interaction_detail_screen.dart';
 import '../../features/interaction/presentation/screens/interaction_timeline_screen.dart';
 import '../../features/interaction/presentation/screens/log_interaction_screen.dart';
 import '../../features/lead/presentation/screens/create_lead_screen.dart';
+import '../../features/lead/presentation/screens/edit_lead_screen.dart';
 import '../../features/lead/presentation/screens/lead_detail_screen.dart';
 import '../../features/lead/presentation/screens/lead_list_screen.dart';
 import '../../features/notification/presentation/screens/notification_list_screen.dart';
@@ -34,10 +35,15 @@ import '../../features/profile/data/profile_models.dart';
 import '../../features/profile/presentation/screens/change_password_screen.dart';
 import '../../features/profile/presentation/screens/edit_profile_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
+import '../../features/quotation/presentation/screens/quotation_form_screen.dart';
 import '../../features/quotation/presentation/screens/quotation_detail_screen.dart';
 import '../../features/quotation/presentation/screens/quotation_list_screen.dart';
+import '../../features/quotation/presentation/screens/quotation_pending_approvals_screen.dart';
+import '../../features/reminder/presentation/screens/reminder_form_screen.dart';
 import '../../features/reminder/presentation/screens/reminder_list_screen.dart';
 import '../../features/sla/presentation/screens/sla_list_screen.dart';
+import '../../features/feedback/presentation/screens/feedback_detail_screen.dart';
+import '../../features/feedback/presentation/screens/feedback_list_screen.dart';
 import '../../features/task/data/task_models.dart';
 import '../../features/task/presentation/screens/task_detail_screen.dart';
 import '../../features/task/presentation/screens/task_form_screen.dart';
@@ -100,11 +106,36 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: RouteNames.quotations,
         builder: (_, _) => const QuotationListScreen(),
       ),
+      // Registered BEFORE the `:id` route: otherwise "/quotations/new" matches the
+      // detail path with an id of literally "new" (the same trap noted for deals).
+      GoRoute(
+        path: Routes.quotationCreate,
+        name: RouteNames.quotationCreate,
+        builder: (_, state) => QuotationFormScreen(
+          mode: QuotationFormMode.create,
+          initialDealId: state.uri.queryParameters['dealId'],
+        ),
+      ),
+      // Also registered BEFORE the `:id` route — "pending-approvals" would otherwise
+      // be swallowed as a quotation id (same trap as quotationCreate above).
+      GoRoute(
+        path: Routes.quotationPendingApprovals,
+        name: RouteNames.quotationPendingApprovals,
+        builder: (_, _) => const QuotationPendingApprovalsScreen(),
+      ),
       GoRoute(
         path: Routes.quotationDetail,
         name: RouteNames.quotationDetail,
         builder: (_, state) =>
             QuotationDetailScreen(quotationId: state.pathParameters['id']!),
+        routes: [
+          GoRoute(
+            path: Routes.quotationReviseSub,
+            name: RouteNames.quotationRevise,
+            builder: (_, state) =>
+                ReviseQuotationLoader(quotationId: state.pathParameters['id']!),
+          ),
+        ],
       ),
       GoRoute(
         path: Routes.profile,
@@ -162,11 +193,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
-      // Sales pipeline — Kanban over the same /deals list the Deals tab uses.
+      // Handovers Sales submitted to the Front Office — read-only here. The arrival desk
+      // itself is a Front Office job and lives on the web app only, as does answering
+      // room requests: this app is for Sales.
       GoRoute(
-        path: Routes.pipeline,
-        name: RouteNames.pipeline,
-        builder: (_, _) => const PipelineScreen(),
+        path: Routes.handovers,
+        name: RouteNames.handovers,
+        builder: (_, _) => const HandoverListScreen(),
       ),
 
       // Browse entry points — reached from the Dashboard quick actions and
@@ -183,11 +216,42 @@ final routerProvider = Provider<GoRouter>((ref) {
             SlaListScreen(highlightId: state.uri.queryParameters['highlight']),
       ),
       GoRoute(
+        path: Routes.feedbacks,
+        name: RouteNames.feedbacks,
+        builder: (_, _) => const FeedbackListScreen(),
+        routes: [
+          GoRoute(
+            path: Routes.feedbackDetailSub,
+            name: RouteNames.feedbackDetail,
+            // By id, not by pushed object: this is reachable from a
+            // notification deep link where no list row exists.
+            builder: (_, state) =>
+                FeedbackDetailScreen(feedbackId: state.pathParameters['id']!),
+          ),
+        ],
+      ),
+      GoRoute(
         path: Routes.reminders,
         name: RouteNames.reminders,
         builder: (_, state) => ReminderListScreen(
           highlightId: state.uri.queryParameters['highlight'],
         ),
+        routes: [
+          // Declared with a distinct literal segment (`new`) from
+          // `edit/:id` below, so the two can never collide — same trap
+          // noted for deals/quotations.
+          GoRoute(
+            path: Routes.reminderCreateSub,
+            name: RouteNames.reminderCreate,
+            builder: (_, _) =>
+                const ReminderFormScreen(mode: ReminderFormMode.create),
+          ),
+          GoRoute(
+            path: Routes.reminderEditSub,
+            name: RouteNames.reminderEdit,
+            builder: (_, state) => ReminderEditGuard(extra: state.extra),
+          ),
+        ],
       ),
 
       // Customer profiles — full-screen browse (no dedicated tab), reached from
@@ -335,6 +399,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                     parentNavigatorKey: _rootNavigatorKey,
                     builder: (_, state) =>
                         LeadDetailScreen(leadId: state.pathParameters['id']!),
+                  ),
+                  GoRoute(
+                    path: Routes.leadEditSub,
+                    name: RouteNames.leadEdit,
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (_, state) =>
+                        EditLeadScreen(leadId: state.pathParameters['id']!),
                   ),
                 ],
               ),

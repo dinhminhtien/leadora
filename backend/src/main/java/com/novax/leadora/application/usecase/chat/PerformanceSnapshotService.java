@@ -6,6 +6,7 @@ import com.novax.leadora.application.usecase.chat.time.ChatClock;
 import com.novax.leadora.application.usecase.chat.time.ChatDateRange;
 import com.novax.leadora.application.usecase.reporting.GetSalesPerformanceReportUseCase;
 import com.novax.leadora.application.usecase.reporting.GetTaskPerformanceReportUseCase;
+import com.novax.leadora.application.usecase.reporting.SalesPerformanceFilter;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -80,7 +81,9 @@ public class PerformanceSnapshotService {
     private boolean appendSales(StringBuilder sb, LocalDate from, LocalDate to) {
         SalesPerformanceReportResponse r;
         try {
-            r = salesPerformance.execute(from, to);
+            // Period only: the segment and per-rep controls exist for the Reporting screen, and
+            // a chat question has no way to express them. period() says that in one call.
+            r = salesPerformance.execute(SalesPerformanceFilter.period(from, to));
         } catch (Exception ex) {
             log.warn("Sales performance unavailable for chat: {}", ex.getMessage());
             return false;
@@ -142,9 +145,15 @@ public class PerformanceSnapshotService {
                 .append(", completed ").append(r.getCompleted())
                 .append(", open ").append(r.getOpen())
                 .append(", cancelled ").append(r.getCancelled())
-                .append(", overdue ").append(r.getOverdue())
+                // Two different facts, and the report now keeps them apart: still running and
+                // already late, versus finished but finished late. Collapsing them back into
+                // one number here would undo that, and the second is what a manager asks
+                // about after the period has closed.
+                .append(", still open and past deadline ").append(r.getOpenOverdue())
+                .append(", finished late ").append(r.getResolvedLate())
                 .append(" (completion rate ").append(r.getCompletionRate())
-                .append("%, overdue rate ").append(r.getOverdueRate()).append("%)\n");
+                .append("%, overdue rate — share of still-open tasks — ")
+                .append(r.getOverdueRate()).append("%)\n");
 
         List<TaskPerformanceReportResponse.StaffRow> staff = r.getStaff();
         if (staff != null && !staff.isEmpty()) {
@@ -152,7 +161,8 @@ public class PerformanceSnapshotService {
             staff.stream().limit(MAX_ROWS).forEach(s -> sb.append("  - ").append(s.getName())
                     .append(": total ").append(s.getTotal())
                     .append(", completed ").append(s.getCompleted())
-                    .append(", overdue ").append(s.getOverdue())
+                    .append(", still open and past deadline ").append(s.getOpenOverdue())
+                    .append(", finished late ").append(s.getResolvedLate())
                     .append(" (completion rate ").append(s.getCompletionRate()).append("%)\n"));
         }
         return true;

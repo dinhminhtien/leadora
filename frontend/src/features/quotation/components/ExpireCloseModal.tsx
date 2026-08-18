@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/Badge";
 import type { Quotation } from "@/services/quotation_service";
 import { useCloseQuotation } from "@/features/quotation/hooks/use_quotations";
 import { Portal } from "@/components/ui/Portal";
+import { apiErrorMessage } from "@/services/api_error";
 
 
 interface ExpireCloseModalProps {
@@ -112,7 +113,7 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
       setSuccess(true);
       setTimeout(() => onClosed(quote.id, finalReason), 1200);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to close quotation. Please try again.";
+      const msg = apiErrorMessage(err);
       setApiError(msg);
     }
   };
@@ -122,9 +123,9 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
       <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl border border-slate-100">
+      <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl border border-slate-100 max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-slate-100">
+        <div className="shrink-0 flex items-start justify-between px-5 pt-5 pb-4 border-b border-slate-100 z-10 bg-white">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
               <Archive className="size-4 text-slate-600" />
@@ -153,7 +154,7 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
             </p>
           </div>
         ) : (
-          <div className="px-5 py-4 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
             {/* Quotation summary */}
             <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <div>
@@ -265,28 +266,30 @@ export function ExpireCloseModal({ quote, onClose, onClosed }: ExpireCloseModalP
                     <p className="text-[10px] font-semibold text-red-600">{apiError}</p>
                   </div>
                 )}
-
-                <div className="flex gap-2 pt-1">
-                  <Button
-                    variant="outline"
-                    className="flex-1 text-xs font-bold border-red-200 text-red-600 hover:bg-red-50"
-                    onClick={handleClose}
-                    isLoading={closeQuotation.isPending}
-                    leftIcon={<Archive className="size-3.5" />}
-                  >
-                    Confirm Close
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 text-xs border-slate-200 text-slate-600"
-                    onClick={onClose}
-                    disabled={closeQuotation.isPending}
-                  >
-                    Cancel
-                  </Button>
-                </div>
               </>
             )}
+          </div>
+        )}
+
+        {!success && (
+          <div className="shrink-0 mt-auto border-t border-slate-100 bg-white px-5 py-4 z-10 flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1 text-xs font-bold border-red-200 text-red-600 hover:bg-red-50"
+              onClick={handleClose}
+              isLoading={closeQuotation.isPending}
+              leftIcon={<Archive className="size-3.5" />}
+            >
+              Confirm Close
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1 text-xs border-slate-200 text-slate-600"
+              onClick={onClose}
+              disabled={closeQuotation.isPending}
+            >
+              Cancel
+            </Button>
           </div>
         )}
       </div>

@@ -1,15 +1,91 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Search, User, CheckCircle2, XCircle, Info, Calendar, Banknote, ArrowRight, Loader2, AlertCircle, RefreshCw } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { Search, User, XCircle, Info, Calendar, ArrowRight, Loader2, AlertCircle, RefreshCw, LogIn, LogOut } from "lucide-react";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { ExportMenu, useTableControls } from "@/components/ui/table-controls";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Badge } from "@/components/ui/Badge";
+import { StatusPill } from "@/components/ui/status-pill";
 import { reservationStatusService, type ReservationStatus } from "@/services/reservation_status_service";
+
+const RESERVATION_EXPORT_HEADERS = [
+  "Guest", "Reservation ref", "Room type", "Check-in", "Check-out", "Total (VND)", "Status",
+];
+
+function reservationExportRow(r: ReservationStatus): (string | number | null | undefined)[] {
+  return [r.guestName, r.reservationNo, r.roomType, r.checkInDate, r.checkOutDate, r.totalAmount, r.status];
+}
+import { ReservationDetailDrawer } from "@/features/reservation_status/components/ReservationDetailDrawer";
 import { toast } from "@/stores/toast_store";
+import { useAuthStore } from "@/stores/auth_store";
+import { getUserRole } from "@/shared/auth/access";
 
 export function ReservationStatusScreen() {
+  const { user } = useAuthStore();
+  const userRole = getUserRole(user);
+  const canWrite = user?.permissions?.includes("RESERVATION_WRITE") ?? false;
+
+  /** Column set — Blueprint §10.10 front-desk view. */
+  const reservationColumns: ColumnDef<ReservationStatus>[] = useMemo(() => [
+    {
+      id: "guest",
+      header: "Guest Name",
+      sticky: "left",
+      cell: (res) => (
+        <span className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+          <User className="size-3.5 text-muted-foreground" />
+          {res.guestName}
+        </span>
+      ),
+    },
+    {
+      id: "ref",
+      header: "Reservation Ref",
+      className: "text-xs font-bold",
+      cell: (res) => res.reservationNo,
+    },
+    {
+      id: "roomType",
+      header: "Room Type",
+      minWidth: "md",
+      className: "text-xs text-muted-foreground",
+      cell: (res) => res.roomType,
+    },
+    {
+      id: "stay",
+      header: "Check-in / Check-out",
+      minWidth: "lg",
+      cell: (res) => (
+        <span className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
+          <Calendar className="size-3" />
+          {res.checkInDate}
+          <ArrowRight className="size-3" />
+          {res.checkOutDate}
+        </span>
+      ),
+    },
+    {
+      id: "amount",
+      header: "Total Amount",
+      numeric: true,
+      className: "font-bold",
+      cell: (res) => `${res.totalAmount?.toLocaleString("vi-VN") ?? 0} ₫`,
+    },
+    {
+      id: "status",
+      header: "Occupancy Status",
+      // Canonical booking binding (Blueprint §2.7) — the hand-rolled ternary this
+      // replaced fell through to neutral grey for REJECTED and NO_SHOW.
+      cell: (res) => <StatusPill size="sm" domain="booking" value={res.status} />,
+    },
+  ], []);
+
+  const controls = useTableControls<ReservationStatus>("reservations", reservationColumns);
+
   const [reservations, setReservations] = useState<ReservationStatus[]>([]);
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -155,21 +231,19 @@ export function ReservationStatusScreen() {
 
   return (
     <div className="space-y-6" style={{ scrollbarGutter: "stable" }}>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Lodging & Rooms Status</h1>
-          <p className="text-xs text-slate-400">Track current room occupancy, check-in dates, and guest bookings</p>
-        </div>
-        <div className="flex items-center gap-3 self-start sm:self-auto">
-          <Button variant="outline" size="sm" onClick={fetchList} className="flex items-center gap-1.5 text-xs text-slate-600 bg-white h-9">
-            <RefreshCw className="size-3.5" />
-            Refresh
-          </Button>
-          <Badge variant="primary" className="text-xs h-9 px-3 flex items-center justify-center font-bold uppercase bg-blue-100 text-blue-800 rounded-lg">
-            PMS Live Sync
-          </Badge>
-        </div>
-      </div>
+      <PageHeader
+        {...PAGE_META.reservationStatus}
+        actions={
+          <>
+            <Button variant="secondary" onClick={fetchList} leftIcon={<RefreshCw className="size-4" />}>
+              Refresh
+            </Button>
+            <Badge variant="primary" className="text-xs h-9 px-3 flex items-center justify-center font-bold uppercase bg-blue-100 text-blue-800 rounded-lg">
+              PMS Live Sync
+            </Badge>
+          </>
+        }
+      />
 
       {error && (
         <div className="flex items-center gap-2 p-4 text-sm text-red-800 bg-red-50 rounded-xl border border-red-100">
@@ -243,346 +317,98 @@ export function ReservationStatusScreen() {
         </CardContent>
       </Card>
 
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="w-full overflow-x-auto">
-          <Table className="w-full table-fixed min-w-[1200px]">
-            <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
-              <TableRow hoverable={false}>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[18%] text-left! whitespace-nowrap">Guest Name</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[11%] text-center! whitespace-nowrap">Reservation Ref</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[13%] text-left! whitespace-nowrap">Room Type</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[17%] text-center! whitespace-nowrap">Check-in / Check-out</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[10%] text-center! whitespace-nowrap">Total Amount</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[11%] text-center! whitespace-nowrap">Occupancy Status</TableHead>
-                <TableHead className="px-4! py-3! font-semibold! text-xs! text-slate-500! w-[20%] text-center! whitespace-nowrap">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow hoverable={false}>
-                  <TableCell colSpan={7} className="py-12 text-center text-slate-400 text-xs">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <Loader2 className="size-6 text-blue-500 animate-spin" />
-                      <span>Loading reservations...</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : reservations.length > 0 ? (
-                reservations.map((res) => (
-                  <TableRow key={res.id} className="hover:bg-slate-50/70 border-b border-slate-100 transition">
-                    <TableCell className="py-3! px-4! text-xs! font-bold! text-slate-800! text-left! whitespace-nowrap">
-                      <span className="flex items-center gap-1.5">
-                        <User className="size-3.5 text-slate-400" />
-                        {res.guestName}
-                      </span>
-                    </TableCell>
-                    <TableCell className="py-3! px-4! text-xs! font-bold! text-slate-700! text-center! whitespace-nowrap">{res.reservationNo}</TableCell>
-                    <TableCell className="py-3! px-4! text-xs! text-slate-600! text-left! whitespace-nowrap">{res.roomType}</TableCell>
-                    <TableCell className="py-3! px-4! text-xs! text-slate-500! text-center! whitespace-nowrap">
-                      <span className="flex items-center justify-center gap-1">
-                        <Calendar className="size-3 text-slate-400" />
-                        {res.checkInDate}
-                        <ArrowRight className="size-3 text-slate-400" />
-                        {res.checkOutDate}
-                      </span>
-                    </TableCell>
-                    <TableCell className="py-3! px-4! text-xs! font-bold! text-slate-700! text-center! whitespace-nowrap">
-                      {res.totalAmount?.toLocaleString("vi-VN")} ₫
-                    </TableCell>
-                    <TableCell className="py-3! px-4! text-center! whitespace-nowrap">
-                      <div className="flex justify-center">
-                        <Badge
-                          variant={
-                            res.status === "CHECKED_IN"
-                              ? "success"
-                              : res.status === "CONFIRMED"
-                              ? "primary"
-                              : res.status === "CHECKED_OUT"
-                              ? "default"
-                              : res.status === "CANCELLED"
-                              ? "danger"
-                              : "default"
-                          }
-                          size="sm"
-                          className="font-bold text-[9px] uppercase min-w-[90px] justify-center text-center py-1"
-                        >
-                          {res.status}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell className="py-3! px-4! text-center! whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-1.5">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenDetail(res.id)}
-                        className="p-1 px-2.5 text-[10px] font-bold border-slate-200 text-slate-600 hover:bg-slate-50 h-7"
-                      >
-                        <Info className="size-3 mr-1" />
-                        Detail
-                      </Button>
+      <DataTable
+        label="Reservations"
+        rows={reservations}
+        columns={controls.visibleColumns}
+        rowId={(r) => r.id}
+        isLoading={loading}
+        density={controls.density}
+        sortBy={controls.sortBy}
+        sortDir={controls.sortDir}
+        onSortChange={controls.onSortChange}
+        onRowClick={(r) => handleOpenDetail(r.id)}
+        selectedIds={controls.selectedIds}
+        onSelectionChange={controls.setSelectedIds}
+        bulkActions={
+          <ExportMenu
+            filename={`reservations-selected-${new Date().toISOString().slice(0, 10)}`}
+            headers={RESERVATION_EXPORT_HEADERS}
+            rows={reservations.filter((r) => controls.selectedIds.has(r.id)).map(reservationExportRow)}
+          />
+        }
+        isFiltered={!!search || !!statusFilter}
+        emptyTitle="No reservations"
+        emptyMessage="Confirmed bookings appear here as arrivals approach."
+        footer={
+          <TablePagination
+            page={currentPage}
+            pageSize={pageSize}
+            totalElements={totalElements}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
+        }
+      />
 
-                      {actionLoading === res.id ? (
-                        <Button disabled size="sm" className="p-1 px-2.5 text-[10px] h-7">
-                          <Loader2 className="size-3 animate-spin mr-1" />
-                          Processing
-                        </Button>
-                      ) : (
-                        <>
-                          {res.status === "CONFIRMED" && (
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              onClick={() => handleStatusChange({ id: res.id, newStatus: "CHECKED_IN", reason: "Guest Checked In" })}
-                              className="p-1 px-2.5 text-[10px] font-bold bg-primary hover:bg-primary/90 text-white h-7"
-                            >
-                              Check In
-                            </Button>
-                          )}
-                          {res.status === "CHECKED_IN" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleStatusChange({ id: res.id, newStatus: "CHECKED_OUT", reason: "Guest Checked Out" })}
-                              className="p-1 px-2.5 text-[10px] font-bold border-slate-200 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200 h-7"
-                            >
-                              Check Out
-                            </Button>
-                          )}
-                          {res.status !== "CANCELLED" && res.status !== "CHECKED_OUT" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleOpenCancel(res.id)}
-                              className="p-1 px-2.5 text-[10px] font-bold border-slate-200 text-red-600 hover:bg-red-50 hover:border-red-200 h-7"
-                            >
-                              <XCircle className="size-3 mr-1" />
-                              Cancel
-                            </Button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow hoverable={false}>
-                <TableCell colSpan={7} className="py-8 text-center text-slate-400 text-xs">
-                  No reservations matched your query.
-                </TableCell>
-              </TableRow>
-            )}
-            </TableBody>
-          </Table>
-        </div>
-
-        {/* Pagination Section */}
-        {totalPages > 1 && (
-          <div className="flex justify-between items-center px-4 py-3 bg-slate-50 border-t border-slate-100 text-xs">
-            <span className="text-slate-500">
-              Showing page {currentPage + 1} of {totalPages} ({totalElements} elements)
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage === 0}
-                onClick={() => setCurrentPage(currentPage - 1)}
-                className="py-1 px-3 border-slate-200"
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage === totalPages - 1}
-                onClick={() => setCurrentPage(currentPage + 1)}
-                className="py-1 px-3 border-slate-200"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+      <ReservationDetailDrawer
+        reservation={showDetailModal ? detailData : null}
+        onOpenChange={(open) => !open && setShowDetailModal(false)}
+        actions={
+          detailData && canWrite && userRole !== "SALES"
+            ? [
+                // Check-in and check-out are sequential — the server accepts
+                // each from exactly one prior status (§12.13).
+                ...(detailData.status === "CONFIRMED"
+                  ? [
+                      {
+                        label: "Check in guest",
+                        icon: LogIn,
+                        variant: "primary" as const,
+                        onClick: () =>
+                          handleStatusChange({
+                            id: detailData.id,
+                            newStatus: "CHECKED_IN",
+                            reason: "Guest Checked In",
+                          }),
+                      },
+                    ]
+                  : []),
+                ...(detailData.status === "CHECKED_IN"
+                  ? [
+                      {
+                        label: "Check out guest",
+                        icon: LogOut,
+                        variant: "outline" as const,
+                        onClick: () =>
+                          handleStatusChange({
+                            id: detailData.id,
+                            newStatus: "CHECKED_OUT",
+                            reason: "Guest Checked Out",
+                          }),
+                      },
+                    ]
+                  : []),
+                ...(detailData.status !== "CANCELLED" && detailData.status !== "CHECKED_OUT"
+                  ? [
+                      {
+                        label: "Cancel reservation",
+                        icon: XCircle,
+                        variant: "danger" as const,
+                        onClick: () => handleOpenCancel(detailData.id),
+                      },
+                    ]
+                  : []),
+              ]
+            : []
+        }
+      >
+        {detailLoading && (
+          <p className="flex items-center gap-2 text-[12px] text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> Loading reservation…
+          </p>
         )}
-      </div>
-
-      {/* Detail Modal */}
-      {showDetailModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto transition-all">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center px-6 py-4 bg-slate-50 border-b border-slate-100">
-              <h2 className="font-bold text-slate-800 flex items-center gap-2">
-                <Info className="size-4 text-blue-500" />
-                Reservation Details
-              </h2>
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg transition"
-              >
-                &times;
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {detailLoading ? (
-                <div className="flex flex-col items-center justify-center py-12 gap-2">
-                  <Loader2 className="size-8 text-blue-500 animate-spin" />
-                  <span className="text-slate-500 text-xs">Loading detail data...</span>
-                </div>
-              ) : detailData ? (
-                <div className="space-y-6 text-xs text-slate-700">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="text-slate-400 mb-1">Reservation Code</div>
-                      <div className="font-bold text-slate-800 text-sm">{detailData.reservationNo}</div>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="text-slate-400 mb-1">Guest Name</div>
-                      <div className="font-bold text-slate-800 text-sm">{detailData.guestName}</div>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="text-slate-400 mb-1">Check-in / Check-out Dates</div>
-                      <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                        <Calendar className="size-3 text-slate-400" />
-                        {detailData.checkInDate} <ArrowRight className="size-3 text-slate-400" /> {detailData.checkOutDate}
-                      </div>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="text-slate-400 mb-1">Total Amount</div>
-                      <div className="font-bold text-blue-600 text-sm flex items-center">
-                        <Banknote className="size-3 text-blue-500 mr-1" />
-                        {detailData.totalAmount?.toLocaleString("vi-VN")} ₫
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="font-bold text-slate-800 text-sm">Status Information</div>
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant={
-                          detailData.status === "CHECKED_IN"
-                            ? "success"
-                            : detailData.status === "CONFIRMED"
-                            ? "primary"
-                            : detailData.status === "CHECKED_OUT"
-                            ? "default"
-                            : detailData.status === "CANCELLED"
-                            ? "danger"
-                            : "default"
-                        }
-                        size="sm"
-                        className="font-bold uppercase text-[9px] min-w-[90px] justify-center text-center py-1"
-                      >
-                        {detailData.status}
-                      </Badge>
-                      {detailData.rejectionReason && (
-                        <span className="text-red-500 font-semibold italic">Rejection Reason: {detailData.rejectionReason}</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {detailData.specialRequests && (
-                    <div className="space-y-1.5 p-3.5 bg-yellow-50/60 rounded-xl border border-yellow-100/60">
-                      <div className="font-bold text-yellow-800">Special Requests & Notes</div>
-                      <div className="text-slate-600 whitespace-pre-wrap">{detailData.specialRequests}</div>
-                    </div>
-                  )}
-
-                  {/* Room Allocation Items */}
-                  <div className="space-y-2">
-                    <div className="font-bold text-slate-800 text-sm">Room Types & Allocations</div>
-                    <div className="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-100">
-                            <th className="p-3 text-[10px] uppercase">Room Type</th>
-                            <th className="p-3 text-[10px] uppercase">Room No</th>
-                            <th className="p-3 text-[10px] uppercase">Qty</th>
-                            <th className="p-3 text-[10px] uppercase">Nights</th>
-                            <th className="p-3 text-[10px] uppercase">Price/Night</th>
-                            <th className="p-3 text-[10px] uppercase">Alloc. Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {detailData.details && detailData.details.length > 0 ? (
-                            detailData.details.map((det) => (
-                              <tr key={det.bookingDetailId} className="border-b border-slate-50 hover:bg-slate-50/50">
-                                <td className="p-3 font-semibold text-slate-800">{det.productName}</td>
-                                <td className="p-3 font-mono text-slate-600">{det.roomNumber || "Unassigned"}</td>
-                                <td className="p-3 text-slate-500">{det.quantity}</td>
-                                <td className="p-3 text-slate-500">{det.nights}</td>
-                                <td className="p-3 text-slate-600">{det.unitPrice?.toLocaleString("vi-VN")} ₫</td>
-                                <td className="p-3">
-                                  <Badge
-                                    variant={
-                                      det.inventoryStatus === "CHECKED_IN"
-                                        ? "success"
-                                        : det.inventoryStatus === "ALLOCATED"
-                                        ? "primary"
-                                        : det.inventoryStatus === "RELEASED"
-                                        ? "danger"
-                                        : "default"
-                                    }
-                                    size="sm"
-                                    className="font-bold text-[8px] uppercase min-w-[90px] justify-center text-center py-0.5"
-                                  >
-                                    {det.inventoryStatus}
-                                  </Badge>
-                                </td>
-                              </tr>
-                            ))
-                          ) : (
-                            <tr>
-                              <td colSpan={6} className="p-4 text-center text-slate-400">
-                                No details found for this reservation.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-12 text-slate-400">No data available.</div>
-              )}
-            </div>
-            
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-              {detailData && detailData.status === "CONFIRMED" && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleStatusChange({ id: detailData.id, newStatus: "CHECKED_IN", reason: "Guest Checked In" })}
-                  className="bg-primary hover:bg-primary/90 text-white font-bold"
-                >
-                  Check In Guest
-                </Button>
-              )}
-              {detailData && detailData.status === "CHECKED_IN" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleStatusChange({ id: detailData.id, newStatus: "CHECKED_OUT", reason: "Guest Checked Out" })}
-                  className="border-slate-200 text-emerald-600 hover:bg-emerald-50 font-bold"
-                >
-                  Check Out Guest
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowDetailModal(false)}
-                className="border-slate-200 text-slate-600 hover:bg-slate-50 font-bold"
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      </ReservationDetailDrawer>
 
       {/* Cancel Request Modal */}
       {showCancelModal && (

@@ -42,7 +42,7 @@ import java.util.UUID;
 public class ChatAggregateRepository {
 
     /** Marks the derived overdue-task row, which is a filter rather than a stored status. */
-    static final String OVERDUE_MARKER = "__OVERDUE__";
+    public static final String OVERDUE_MARKER = "__OVERDUE__";
 
     /**
      * The period predicate, applied to every branch on its own {@code created_at}.
@@ -139,8 +139,10 @@ public class ChatAggregateRepository {
               LEFT JOIN quotations sq  ON st.entity_type = 'QUOTATION' AND sq.quotation_id = st.entity_id
               LEFT JOIN bookings   sb  ON st.entity_type = 'BOOKING'   AND sb.booking_id   = st.entity_id
              WHERE (CAST(:scope AS uuid) IS NULL
-                    OR COALESCE(sl.assigned_user_id, stk.assigned_user_id,
-                                sq.created_by, sb.assigned_user_id) = CAST(:scope AS uuid))
+                    OR (st.entity_type = 'LEAD' AND sl.assigned_user_id = CAST(:scope AS uuid))
+                    OR (st.entity_type = 'TASK' AND stk.assigned_user_id = CAST(:scope AS uuid))
+                    OR (st.entity_type = 'QUOTATION' AND sq.created_by = CAST(:scope AS uuid))
+                    OR (st.entity_type = 'BOOKING' AND sb.assigned_user_id = CAST(:scope AS uuid)))
             """
             + dated("st.created_at")
             + """
@@ -159,9 +161,6 @@ public class ChatAggregateRepository {
               LEFT JOIN bookings   sb  ON st.entity_type = 'BOOKING'   AND sb.booking_id   = st.entity_id
             """;
 
-    private static final String SLA_OWNER =
-            "COALESCE(sl.assigned_user_id, stk.assigned_user_id, sq.created_by, sb.assigned_user_id)";
-
     /**
      * The unresolved SLA rows themselves, most urgent first.
      *
@@ -177,11 +176,11 @@ public class ChatAggregateRepository {
             + "  LEFT JOIN users ut ON ut.user_id = stk.assigned_user_id\n"
             + "  LEFT JOIN users uq ON uq.user_id = sq.created_by\n"
             + "  LEFT JOIN users ub ON ub.user_id = sb.assigned_user_id\n"
-            // Spaces around OR and the operator are explicit: a text block strips trailing
-            // whitespace off each line, so concatenating one here silently fused "OR" onto the
-            // next token ("ORCOALESCE") — invisible to a contains()-based unit test, caught only
-            // by running the statement.
-            + " WHERE (CAST(:scope AS uuid) IS NULL OR " + SLA_OWNER + " = CAST(:scope AS uuid))\n"
+            + " WHERE (CAST(:scope AS uuid) IS NULL OR \n"
+            + "        (st.entity_type = 'LEAD' AND sl.assigned_user_id = CAST(:scope AS uuid)) OR\n"
+            + "        (st.entity_type = 'TASK' AND stk.assigned_user_id = CAST(:scope AS uuid)) OR\n"
+            + "        (st.entity_type = 'QUOTATION' AND sq.created_by = CAST(:scope AS uuid)) OR\n"
+            + "        (st.entity_type = 'BOOKING' AND sb.assigned_user_id = CAST(:scope AS uuid)))\n"
             + "   AND st.status <> 'RESOLVED'\n"
             + dated("st.created_at")
             + " ORDER BY st.deadline_at ASC\n"
@@ -250,12 +249,12 @@ public class ChatAggregateRepository {
     }
 
     /** The statement, for the test that checks every area is represented in it. */
-    static String countAllSql() {
+    public static String countAllSql() {
         return COUNT_ALL;
     }
 
     /** The listing statement, for the test that checks its scoping mirrors the count branch. */
-    static String slaListingSql() {
+    public static String slaListingSql() {
         return SLA_LISTING;
     }
 }

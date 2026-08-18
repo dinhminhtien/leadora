@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -19,14 +19,26 @@ import {
   KeyRound,
   AlertTriangle,
   CheckCircle2,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 
 import { useMyProfile, useUpdateProfile, useChangePassword } from "@/features/profile/hooks/use_profile";
 import { useAuthStore } from "@/stores/auth_store";
 import { toast } from "@/stores/toast_store";
+import { getAvatarSource } from "@/shared/utils/avatar";
+import { createSupabaseBrowserClient } from "@/services/supabase/client";
+import { CropDialog } from "@/features/profile/components/CropDialog";
+import { resolveAccessToken } from "@/services/api_client";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
+import { useUiStore } from "@/stores/ui_store";
+import type { TableDensity } from "@/components/ui/data-table";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Badge } from "@/components/ui/Badge";
 
 // ── Validation schemas ────────────────────────────────────────────────────────
@@ -106,21 +118,7 @@ function formatRoleName(role: string | null | undefined): string {
   return map[role.toUpperCase()] ?? role;
 }
 
-function getStatusVariant(status: string): "success" | "warning" | "danger" {
-  if (status === "ACTIVE") return "success";
-  if (status === "INACTIVE") return "warning";
-  return "danger";
-}
 
-function getAvatarSource(avatarUrl: string | null | undefined, userId: string | null | undefined): string | null {
-  if (!avatarUrl) return null;
-  if (avatarUrl.startsWith("local-storage-avatar://") && userId) {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(`local_avatar_${userId}`) || null;
-    }
-  }
-  return avatarUrl;
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -129,6 +127,34 @@ export function ProfileScreen() {
   const updateProfileMutation = useUpdateProfile();
   const changePasswordMutation = useChangePassword();
   const { updateUserFields } = useAuthStore();
+  const { theme, setTheme } = useUiStore();
+
+  /**
+   * Default table density. Written to the same `leadora.table.*` namespace the
+   * list toolbars read, under a `__default` view key, so a preference set here
+   * applies to every list the user has not overridden individually.
+   */
+  const [defaultDensity, setDefaultDensityState] = useState<TableDensity>("comfortable");
+
+  // Read after mount — touching localStorage during render desynchronises the
+  // server and client passes and React throws away the markup.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("leadora.table.__default.density");
+      if (raw) setDefaultDensityState(JSON.parse(raw) as TableDensity);
+    } catch {
+      /* blocked or corrupt storage — the default stands */
+    }
+  }, []);
+
+  const setDefaultDensity = (d: TableDensity) => {
+    setDefaultDensityState(d);
+    try {
+      window.localStorage.setItem("leadora.table.__default.density", JSON.stringify(d));
+    } catch {
+      /* private mode — the choice still applies for this session */
+    }
+  };
 
   const [showCurrentPw, setShowCurrentPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
@@ -137,6 +163,9 @@ export function ProfileScreen() {
   const [shakeFields, setShakeFields] = useState(false);
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [isCropOpen, setIsCropOpen] = useState(false);
 
   const checkCapsLock = (e: React.KeyboardEvent) => {
     if (e.getModifierState) {
@@ -228,36 +257,89 @@ export function ProfileScreen() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 1024 * 1024) {
-      toast.error("Avatar image size must be under 1MB.");
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Avatar image size must be under 5MB.");
+      return;
+    }
+
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Only JPG, JPEG, PNG, and WEBP formats are allowed.");
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = async () => {
-      const base64Data = reader.result as string;
-      if (profile?.userId) {
-        localStorage.setItem(`local_avatar_${profile.userId}`, base64Data);
-        const placeholderUrl = `local-storage-avatar://${profile.userId}`;
-        
-        try {
-          await updateProfileMutation.mutateAsync({
-            fullName: profile.fullName,
-            phone: profile.phone,
-            avatarUrl: placeholderUrl,
-          });
-
-          updateUserFields({
-            avatarUrl: placeholderUrl,
-          });
-
-          toast.success("Avatar updated successfully.");
-        } catch (err) {
-          toast.error("Failed to update avatar image.");
-        }
-      }
+    reader.onload = () => {
+      setCropImageSrc(reader.result as string);
+      setIsCropOpen(true);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleCropComplete = async (blob: Blob) => {
+    if (!profile?.userId) return;
+
+    try {
+      const uuid = typeof window !== "undefined" && window.crypto?.randomUUID
+        ? window.crypto.randomUUID()
+        : Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+      const fileName = `${profile.userId}/${uuid}.jpg`;
+      const supabase = createSupabaseBrowserClient();
+
+      const token = await resolveAccessToken();
+      if (token) {
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: "dummy-refresh-token",
+        });
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatar")
+        .upload(fileName, blob, {
+          contentType: "image/jpeg",
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("avatar")
+        .getPublicUrl(fileName);
+
+      const oldAvatarUrl = profile.avatarUrl;
+
+      await updateProfileMutation.mutateAsync({
+        fullName: profile.fullName,
+        phone: profile.phone,
+        avatarUrl: publicUrl,
+      });
+
+      updateUserFields({
+        avatarUrl: publicUrl,
+      });
+
+      toast.success("Avatar updated successfully.");
+
+      // Clean up previous avatar if it exists in Supabase storage
+      if (oldAvatarUrl && oldAvatarUrl.includes("/storage/v1/object/public/avatar/")) {
+        const parts = oldAvatarUrl.split("/storage/v1/object/public/avatar/");
+        if (parts.length > 1) {
+          const oldPath = parts[1];
+          supabase.storage
+            .from("avatar")
+            .remove([oldPath])
+            .catch((err) => {
+              console.error("Failed to delete previous avatar:", err);
+            });
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to upload avatar image.");
+    }
   };
 
   // Avatar initials
@@ -306,13 +388,7 @@ export function ProfileScreen() {
         }
       `}</style>
       
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-slate-800">Profile Settings</h1>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Manage your account information and security settings
-        </p>
-      </div>
+      <PageHeader {...PAGE_META.profile} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
@@ -364,10 +440,10 @@ export function ProfileScreen() {
                   <Badge variant="primary" className="text-[9px] px-2 py-0.5 font-bold uppercase tracking-wider scale-95">
                     {formatRoleName(profile?.roleName)}
                   </Badge>
+                  {/* Canonical account-status binding (Blueprint §2.7) — the
+                      same pill the Identity & Access list renders. */}
                   {profile?.status && (
-                    <Badge variant={getStatusVariant(profile.status)} className="text-[9px] px-2 py-0.5 font-bold uppercase tracking-wider scale-95">
-                      {profile.status}
-                    </Badge>
+                    <StatusPill size="sm" domain="user" value={profile.status} />
                   )}
                 </div>
               </div>
@@ -679,8 +755,155 @@ export function ProfileScreen() {
             </CardContent>
           </Card>
 
+          {/* ── Preferences (§10.2) ─────────────────────────────────────────── */}
+          <Card className="shadow-md border border-zinc-200 dark:border-zinc-850">
+            <CardHeader>
+              <div>
+                <CardTitle>Preferences</CardTitle>
+                <CardDescription className="mt-1">
+                  How Leadora looks and behaves for you. Saved on this device.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-6 flex flex-col gap-5">
+              {/* Theme. Light/Dark only — the store persists a concrete choice
+                  rather than a "system" mode, so offering System here would be a
+                  control that silently does nothing. */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Appearance</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Switch between the light and dark palette.
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-muted p-0.5">
+                  {([
+                    { value: "light" as const, label: "Light", Icon: Sun },
+                    { value: "dark" as const, label: "Dark", Icon: Moon },
+                  ]).map(({ value, label, Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setTheme(value)}
+                      aria-pressed={theme === value}
+                      className={`inline-flex items-center gap-1.5 rounded px-2.5 h-7 text-[12.5px] font-medium transition-colors
+                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500
+                        ${theme === value
+                          ? "bg-surface text-foreground shadow-elev-1"
+                          : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      <Icon className="size-3.5" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="h-px bg-border" />
+
+              {/* Table density — the same setting the list toolbars write, shown
+                  here so it is discoverable without opening a table first. */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Default table density</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Applies to lists that you have not set individually.
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-muted p-0.5">
+                  {(["comfortable", "compact", "ultra"] as const).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setDefaultDensity(d)}
+                      aria-pressed={defaultDensity === d}
+                      className={`rounded px-2.5 h-7 text-[12.5px] font-medium capitalize transition-colors
+                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500
+                        ${defaultDensity === d
+                          ? "bg-surface text-foreground shadow-elev-1"
+                          : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="h-px bg-border" />
+
+              {/* Keyboard cheatsheet (§6.1) */}
+              <div>
+                <p className="text-xs font-semibold text-foreground">Keyboard shortcuts</p>
+                <p className="mt-0.5 mb-2.5 text-[11px] text-muted-foreground">
+                  Press <kbd className="rounded border border-border bg-muted px-1 font-mono text-[10px]">?</kbd> anywhere for the full reference.
+                </p>
+                <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                  {[
+                    ["⌘ K", "Command palette"],
+                    ["/", "Focus list search"],
+                    ["g then l", "Go to Leads"],
+                    ["g then t", "Go to Follow-up Tasks"],
+                    ["j / k", "Move row cursor"],
+                    ["Enter", "Open focused row"],
+                  ].map(([keys, what]) => (
+                    <div key={keys} className="flex items-center justify-between gap-3">
+                      <dt className="text-[11.5px] text-muted-foreground">{what}</dt>
+                      <dd>
+                        <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-foreground">
+                          {keys}
+                        </kbd>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ── Sessions (§10.2) ───────────────────────────────────────────── */}
+          <Card className="shadow-md border border-zinc-200 dark:border-zinc-850">
+            <CardHeader>
+              <div>
+                <CardTitle>Sessions</CardTitle>
+                <CardDescription className="mt-1">
+                  Where your account is currently signed in.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-6">
+              {/* Honest about the server model: one 24h token, no session
+                  registry to list or revoke. A fake "active devices" table here
+                  would imply a control the backend cannot honour. */}
+              <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/50 px-3.5 py-3">
+                <Monitor className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground">
+                    Single active session
+                  </p>
+                  <p className="mt-1 text-[11.5px] leading-[17px] text-muted-foreground">
+                    Leadora issues one access token per sign-in, valid for 24 hours.
+                    Signing in elsewhere does not end this session, and signing out
+                    revokes the token immediately. There is no per-device session
+                    list to manage.
+                  </p>
+                  {profile?.lastLoginAt && (
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Last sign-in: <span className="font-medium text-foreground">{formatDate(profile.lastLoginAt)}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
         </div>
       </div>
+      <CropDialog
+        isOpen={isCropOpen}
+        onClose={() => setIsCropOpen(false)}
+        imageSrc={cropImageSrc}
+        onCrop={handleCropComplete}
+      />
     </div>
   );
 }

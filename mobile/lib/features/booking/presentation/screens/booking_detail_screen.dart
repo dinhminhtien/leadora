@@ -10,9 +10,12 @@ import '../../../../shared/widgets/status_chip.dart';
 import '../../data/booking_models.dart';
 import '../providers/booking_providers.dart';
 
-/// Booking detail — stay window, room lines, totals and the request's audit
-/// trail. Read-only: `PUT /bookings/{id}/process` is a reservation-desk action
-/// with no mobile screen.
+/// Booking detail — stay window, room lines, totals and the request's audit trail.
+///
+/// Read-only: approving or rejecting a booking request is the Reservation team's call
+/// (`PUT /bookings/{id}/process`, which only their transition lane may use to reach
+/// CONFIRMED) and that work happens on the web app. This app is for Sales, who see the
+/// outcome here — including the rejection reason when there is one.
 class BookingDetailScreen extends ConsumerWidget {
   const BookingDetailScreen({super.key, required this.bookingId});
 
@@ -148,6 +151,7 @@ class BookingDetailScreen extends ConsumerWidget {
       ),
     );
   }
+
 }
 
 class _RoomLine extends StatelessWidget {
@@ -203,3 +207,6 @@ class _RoomLine extends StatelessWidget {
     );
   }
 }
+
+
+

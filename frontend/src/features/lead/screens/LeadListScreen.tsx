@@ -2,25 +2,46 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Search, Plus, X, Handshake, Users, TrendingUp, Percent,
+  Search, Plus, X, Handshake, Users, TrendingUp, UserX,
   Phone, Building2, User, ArrowUpRight, ChevronLeft, ChevronRight,
   Loader2, AlertCircle, AlertTriangle, SlidersHorizontal, CalendarDays, ArrowUpDown,
   ArrowUp, ArrowDown, ArrowDownWideNarrow, ChevronDown, ServerCrash,
   UserCheck, PenLine, UserCog,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { toast } from "@/stores/toast_store";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
-import { useLeads, useCreateLead } from "@/features/lead/hooks/use_leads";
+import { useLeads, useLeadStats, useCreateLead, useLeadDetail, useUpdateLead } from "@/features/lead/hooks/use_leads";
 import { useUsers } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import type { UserSummary } from "@/services/follow_up_task_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
-import type { LeadStatus, CreateLeadPayload } from "@/services/lead_service";
+import type { Lead, LeadStatus, CreateLeadPayload, UpdateLeadPayload } from "@/services/lead_service";
+import {
+  LeadEditDrawer, validateLeadForm, seedLeadForm, leadApiError, leadApiStatus,
+  type LeadEditErrors,
+} from "@/features/lead/components/LeadEditDrawer";
+import { InterestedServiceInput } from "@/features/lead/components/InterestedServiceInput";
 import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
+import { StatusPill } from "@/components/ui/status-pill";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { DensityMenu } from "@/components/ui/list-toolbar";
+import {
+  ColumnPicker,
+  ExportMenu,
+  RefreshButton,
+  useTableControls,
+} from "@/components/ui/table-controls";
+import { OwnerCell } from "@/components/ui/row-actions";
+import { LeadDetailDrawer } from "@/features/lead/components/LeadDetailDrawer";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -61,61 +82,26 @@ const TYPE_SEGMENTS: { value: string; label: string; icon?: React.ElementType }[
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
-type FormErrors = { fullName?: string; email?: string; phone?: string; companyName?: string };
+/**
+ * Create and edit are validated by the same function. This screen used to carry its own copy —
+ * a third one, after the detail screen's and the drawer's — and the three had already diverged on
+ * which fields they checked at all.
+ */
+type FormErrors = LeadEditErrors;
 
-// Name: letters (any language, incl. Vietnamese), spaces and the few punctuation
-// marks real names use (hyphen, apostrophe, period). Digits and other symbols are rejected.
-const NAME_ALLOWED = /^[\p{L}\s.'-]+$/u;
-
-function validateForm(f: CreateLeadPayload): FormErrors {
-  const err: FormErrors = {};
-  const name = f.fullName.trim();
-  if (!name) {
-    err.fullName = "Full name is required";
-  } else if (/\d/.test(name)) {
-    err.fullName = "Full name cannot contain numbers";
-  } else if (!NAME_ALLOWED.test(name)) {
-    err.fullName = "Full name cannot contain special characters";
-  }
-  if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) {
-    err.email = "Invalid email format (e.g. name@domain.com)";
-  }
-  if (f.phone) {
-    const digits = f.phone.replace(/\s/g, "");
-    if (/[^\d]/.test(digits)) {
-      err.phone = "Phone number can only contain digits (no letters or symbols)";
-    } else if (!/^\d{10,11}$/.test(digits)) {
-      err.phone = "Phone number must be 10–11 digits";
-    }
-  }
-  // Organization leads must name the company; individuals don't need one.
-  if (f.isCorporate && !f.companyName?.trim()) {
-    err.companyName = "Company name is required for an organization";
-  }
-  return err;
-}
+const validateForm = (f: CreateLeadPayload): FormErrors => validateLeadForm(f);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function Avatar({ name }: { name: string | null }) {
-  const initials = (name ?? "?").split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
-  const colors = ["bg-blue-100 text-blue-700", "bg-violet-100 text-violet-700", "bg-emerald-100 text-emerald-700", "bg-amber-100 text-amber-700"];
-  const color = colors[(name?.charCodeAt(0) ?? 0) % colors.length];
-  return (
-    <span className={`inline-flex items-center justify-center rounded-full font-bold size-7 text-[10px] ${color}`}>
-      {initials}
-    </span>
-  );
-}
-
+/**
+ * Lead status now renders through the canonical `StatusPill` (Blueprint §2.7).
+ *
+ * The local `STATUS_CONFIG` colours are kept only for the *filter dropdown
+ * labels* below; the pill itself no longer reads them, so `QUALIFIED` is the
+ * same green here as on the detail page, the pipeline card and the dashboard.
+ */
 function StatusBadge({ status }: { status: LeadStatus }) {
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.NEW;
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ring-1 ring-inset ${cfg.badge}`}>
-      <span className={`size-1.5 rounded-full ${cfg.dot}`} />
-      {cfg.label}
-    </span>
-  );
+  return <StatusPill size="sm" domain="lead" value={status} />;
 }
 
 function FieldError({ msg }: { msg?: string }) {
@@ -123,9 +109,16 @@ function FieldError({ msg }: { msg?: string }) {
   return <p className="mt-1 text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="size-3" />{msg}</p>;
 }
 
-// Missing/null information in the list is surfaced in red as "Unknown".
+/**
+ * A field the record simply does not carry.
+ *
+ * <p>It used to render a red italic "Unknown", which reads as an error the user has to fix — but
+ * most of these fields are optional by design (a walk-in lead with no email is a valid lead, not a
+ * broken one). A whole column of red text also drowns out the warnings that do mean something. A
+ * muted dash says "nothing here" without claiming anything is wrong.
+ */
 function Unknown() {
-  return <span className="text-rose-500 italic font-medium">Unknown</span>;
+  return <span className="text-slate-300" aria-label="No value">—</span>;
 }
 
 // Caps a value at a fixed pixel width and clips the overflow with a CSS ellipsis ("…"),
@@ -157,9 +150,11 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
   const [form, setForm] = useState<CreateLeadPayload>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [serverError, setServerError] = useState("");
-  // A duplicate (same email/phone) is shown as a warning with a link to the existing lead,
-  // not as a generic server error.
-  const [duplicate, setDuplicate] = useState<{ message: string; leadId?: string } | null>(null);
+  // A duplicate (same email/phone) is shown as a warning with a link to whatever it collided
+  // with, not as a generic server error. Two kinds collide: another LEAD, or — the case that used
+  // to pass silently — an existing CUSTOMER, i.e. a returning guest being typed in as new.
+  const [duplicate, setDuplicate] = useState<
+    { kind: "lead" | "customer"; message: string; id?: string } | null>(null);
   const createMutation = useCreateLead();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -177,10 +172,18 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
       onError: (err: any) => {
         const data = err?.response?.data;
         const status = err?.response?.status;
-        if (status === 409 || data?.errorCode === "DUPLICATE_LEAD") {
+        const code: string | undefined = data?.errorCode;
+        const isCustomerClash =
+          code === "DUPLICATE_CUSTOMER_EMAIL" || code === "DUPLICATE_CUSTOMER_PHONE";
+        // Match on the error CODE, never on the 409 alone. DataIntegrityViolation also answers
+        // 409, and its `details` is a log correlation id — treating that as a duplicate produced
+        // a "Possible duplicate lead" banner for a constraint failure, with a "View the existing
+        // lead" link pointing at /leads/<log-reference>, which is always Not Found.
+        if (code === "DUPLICATE_LEAD" || isCustomerClash) {
           setDuplicate({
-            message: data?.message || "A lead with these contact details already exists.",
-            leadId: data?.details || undefined,
+            kind: isCustomerClash ? "customer" : "lead",
+            message: data?.message || "A record with these contact details already exists.",
+            id: data?.details || undefined,
           });
         } else if (status >= 500) {
           setServerError("Server error — please contact your Admin.");
@@ -229,12 +232,22 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
             <div className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
               <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-500" />
               <div className="space-y-1">
-                <p className="font-semibold">Possible duplicate lead</p>
-                <p className="text-amber-700">{duplicate.message}</p>
-                {duplicate.leadId && (
-                  <Link href={`/leads/${duplicate.leadId}`}
+                <p className="font-semibold">
+                  {duplicate.kind === "customer" ? "Already a customer" : "Possible duplicate lead"}
+                </p>
+                <p className="text-amber-700">
+                  {duplicate.kind === "customer"
+                    ? `${duplicate.message} Open their profile to add a new deal instead of creating a second record.`
+                    : duplicate.message}
+                </p>
+                {duplicate.id && (
+                  <Link
+                    href={duplicate.kind === "customer"
+                      ? `/customer-profiles/${duplicate.id}`
+                      : ROUTE_PATHS.leadDetail(duplicate.id)}
                     className="inline-flex items-center gap-1 font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-950">
-                    View the existing lead <ArrowUpRight className="size-3" />
+                    {duplicate.kind === "customer" ? "Open the customer profile" : "View the existing lead"}
+                    <ArrowUpRight className="size-3" />
                   </Link>
                 )}
               </div>
@@ -243,7 +256,7 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-600">Full Name *</label>
-            <Input placeholder="e.g. John Smith" value={form.fullName}
+            <Input maxLength={40} placeholder="e.g. John Smith" value={form.fullName}
               onChange={e => field("fullName", e.target.value)}
               error={errors.fullName}
               className="py-1.5 text-xs" />
@@ -252,7 +265,7 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-600">Email</label>
-              <Input type="text" placeholder="example@gmail.com" value={form.email}
+              <Input type="text" maxLength={40} placeholder="example@gmail.com" value={form.email}
                 onChange={e => field("email", e.target.value)}
                 error={errors.email}
                 className="py-1.5 text-xs" />
@@ -276,10 +289,10 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
           {/* BR-05: required before a lead enters active follow-up. */}
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-600">Interested Service</label>
-            <Input placeholder="e.g. Wedding banquet, Conference, Rooms…"
+            <InterestedServiceInput
               value={form.interestedService ?? ""}
-              onChange={e => field("interestedService", e.target.value)}
-              className="py-1.5" />
+              onChange={v => field("interestedService", v)}
+              className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition" />
           </div>
 
           {/* Manager only: assign the new lead to a sales staff member.
@@ -358,199 +371,252 @@ function CreateLeadDrawer({ onClose, canAssign, users }: { onClose: () => void; 
   );
 }
 
-// Fixed column widths (sum = 100%). Combined with `table-fixed` these keep the
-// header and body columns aligned regardless of content length or which status
-// tab is active — the layout no longer reflows when switching tabs.
-const COL_WIDTHS = ["4%", "12%", "9%", "10%", "9%", "8%", "10%", "10%", "8%", "7%", "9%", "4%"];
-
-// Rows per page. The table always renders this many row slots (real rows + invisible
-// fillers) so its height — and therefore the pagination bar pinned below it — stays
-// fixed regardless of how many leads the current page actually holds.
+// Rows per page. Address, Created-by and the separate Created date are not
+// columns here: they are rarely what a rep scans for, they forced every cell
+// narrow enough to truncate, and all of them are one click away in the detail
+// drawer. Anything a user does want back is available from the column picker.
 const PAGE_SIZE = 10;
+
+// ── Unassigned-lead editor ────────────────────────────────────────────────────
+
+/**
+ * The edit slide-over for a lead this staff member created but does not own.
+ *
+ * <p>It has no Status control on purpose. An unassigned lead cannot change status — the server
+ * refuses it (BR-06) because follow-up only starts once a Manager has given the lead to someone —
+ * so offering a dropdown here would put a control on screen whose every option is rejected.
+ *
+ * <p>Loads the lead itself rather than reusing the row: the list row carries a summary, and saving
+ * a partial form would blank whatever the summary omits.
+ */
+function UnassignedLeadDrawer({ leadId, onClose }: { leadId: string; onClose: () => void }) {
+  const { data: resp, isLoading } = useLeadDetail(leadId);
+  const updateMutation = useUpdateLead(leadId);
+  const lead = resp?.data;
+
+  // The form is derived, not copied: the lead arrives one render after this mounts, and seeding it
+  // from an effect would set state during render and cascade. Edits are held separately and laid
+  // over the loaded values, so there is no window where the form exists but is empty.
+  const [draft, setDraft] = useState<Partial<UpdateLeadPayload>>({});
+  const [errors, setErrors] = useState<LeadEditErrors>({});
+  const [serverError, setServerError] = useState("");
+
+  const form: UpdateLeadPayload | null = lead ? { ...seedLeadForm(lead), ...draft } : null;
+
+  if (isLoading || !form) {
+    return (
+      <>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40" onClick={onClose} />
+        <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl border-l border-slate-200
+          flex items-center justify-center gap-2 text-slate-400 animate-in slide-in-from-right duration-300">
+          <Loader2 className="size-5 animate-spin" /> Loading lead…
+        </aside>
+      </>
+    );
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs = validateLeadForm(form);
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+    setErrors({});
+    setServerError("");
+    updateMutation.mutate(
+      {
+        ...form,
+        // Status is not editable here, so it is not sent — the server keeps whatever it has
+        // rather than being echoed a value this form never offered to change.
+        status: undefined,
+        assignedUserId: form.assignedUserId || undefined,
+      },
+      {
+        onSuccess: onClose,
+        onError: err => {
+          setServerError((leadApiStatus(err) ?? 0) >= 500
+            ? "Server error — please contact your Admin."
+            : leadApiError(err)?.message || "Update failed. Please try again.");
+        },
+      },
+    );
+  };
+
+  return (
+    <LeadEditDrawer
+      form={form}
+      errors={errors}
+      serverError={serverError}
+      saving={updateMutation.isPending}
+      subtitle="Update contact info"
+      notice={
+        <div className="flex items-start gap-2.5 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+          <AlertCircle className="size-4 shrink-0 mt-0.5 text-amber-500" />
+          <p>This lead hasn’t been assigned yet. You can edit its details; a Manager must
+            assign it to a sales rep before it can change status or be converted.</p>
+        </div>
+      }
+      onChange={patch => {
+        setDraft(d => ({ ...d, ...patch }));
+        setErrors(prev => {
+          const next = { ...prev };
+          for (const key of Object.keys(patch)) delete next[key as keyof LeadEditErrors];
+          return next;
+        });
+      }}
+      onSubmit={handleSubmit}
+      onClose={onClose}
+    />
+  );
+}
 
 // ── Lead Table ────────────────────────────────────────────────────────────────
 
-function LeadTable({
-  isLoading, isError, leads, totalPages, totalElements, page, onPageChange, onClearFilters, hasFilters, editMode,
+/**
+ * CSV shape for §9.9 export. Deliberately flat and unformatted — an export is
+ * consumed by a spreadsheet, so raw ISO dates and unstyled values are more
+ * useful there than the display strings the table shows.
+ */
+const LEAD_EXPORT_HEADERS = [
+  "Name", "Type", "Company", "Email", "Phone",
+  "Source", "Interested service", "Status", "Owner", "Created",
+];
+
+function leadExportRow(lead: Lead): (string | number | null | undefined)[] {
+  return [
+    lead.fullName,
+    lead.isCorporate ? "Organization" : "Individual",
+    lead.companyName ?? "",
+    lead.email ?? "",
+    lead.phone ?? "",
+    lead.source ?? "",
+    lead.interestedService ?? "",
+    STATUS_CONFIG[lead.status]?.label ?? lead.status,
+    lead.assignedUserName ?? "Unassigned",
+    lead.createdAt ?? "",
+  ];
+}
+
+/**
+ * Column set for the leads list — Blueprint §10.4.
+ *
+ * Built outside the table component so the toolbar's column picker and the table
+ * itself work from one definition; `useTableControls` filters this list down to
+ * what the user has left visible.
+ *
+ * `editMode` is staff looking at leads they created but do not own: editing is
+ * the only thing they can do with such a lead, so the name links into the edit
+ * drawer instead of the read-only detail drawer.
+ */
+function buildLeadColumns({
+  page,
+  rowNumbers,
+  editMode,
+  onEditLead,
 }: {
-  isLoading: boolean; isError: boolean;
-  leads: any[]; totalPages: number; totalElements: number;
-  page: number; onPageChange: (p: number) => void;
-  onClearFilters: () => void; hasFilters: boolean;
-  // When true (staff viewing "Created by me"), rows link to the edit-only screen.
+  page: number;
+  /** leadId → position on the current page, so the `#` column can be 1-based. */
+  rowNumbers: Map<string, number>;
   editMode: boolean;
-}) {
-  if (isLoading) return (
-    <div className="flex items-center justify-center py-20 gap-2 text-muted-foreground">
-      <Loader2 className="size-5 animate-spin" /> Loading…
-    </div>
-  );
+  onEditLead?: (leadId: string) => void;
+}): ColumnDef<Lead>[] {
+  // A plain function, not a component: a component declared during render gets a
+  // new identity each pass and would remount every cell on each keystroke in the
+  // filter box. The non-edit branch is a real <Link> so ctrl/middle-click still
+  // opens the lead in a new tab.
+  const rowOpen = (id: string, className: string, children: React.ReactNode) =>
+    editMode
+      ? <button type="button" onClick={() => onEditLead?.(id)} className={`${className} text-left w-full`}>{children}</button>
+      : <Link href={ROUTE_PATHS.leadDetail(id)} className={className}>{children}</Link>;
 
-  if (isError) return (
-    <div className="flex flex-col items-center justify-center py-20 gap-2 text-destructive">
-      <ServerCrash className="size-8 mb-1" />
-      <p className="text-sm font-semibold">Server error — please contact your Admin.</p>
-    </div>
-  );
-
-  if (leads.length === 0) return (
-    <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-      <Handshake className="size-10 mb-3 opacity-30" />
-      <p className="text-sm font-medium">No results found</p>
-      {hasFilters && (
-        <button onClick={onClearFilters} className="mt-2 text-xs text-primary hover:underline">
-          Clear filters
-        </button>
-      )}
-    </div>
-  );
-
-  const pageStart = Math.max(0, Math.min(page - 2, totalPages - 5));
-  const pageNumbers = Array.from({ length: Math.min(5, totalPages) }, (_, i) => pageStart + i);
-
-  // "Created by me" rows open the edit-only screen; everything else opens full detail.
-  const hrefFor = (id: string) => (editMode ? `/leads/${id}?mode=edit` : `/leads/${id}`);
-
-  return (
-    <>
-      <Table className="table-fixed">
-        <colgroup>
-          {COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
-        </colgroup>
-        <TableHeader className="bg-slate-50 border-b border-slate-100 text-slate-500">
-          <TableRow hoverable={false}>
-            {[
-              { label: "#", w: "w-10" },
-              { label: "Name / Contact", w: "" },
-              { label: "Type / Company", w: "" },
-              { label: "Phone", w: "" },
-              { label: "Address", w: "" },
-              { label: "Source", w: "" },
-              { label: "Owner", w: "" },
-              { label: "Created by", w: "" },
-              { label: "Status", w: "" },
-              { label: "SLA", w: "" },
-              { label: "Created", w: "" },
-              { label: "", w: "w-8" },
-            ].map((h, i) => (
-              <TableHead key={h.label || `col-${i}`} className={`py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap ${h.w}`}>
-                {h.label}
-              </TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {leads.map((lead, idx) => (
-            <TableRow key={lead.leadId}
-              className="group hover:bg-blue-50/40 transition-colors border-b border-slate-100">
-              <TableCell className="py-3 px-4 text-xs text-slate-400 font-mono border-b-0">
-                {page * PAGE_SIZE + idx + 1}
-              </TableCell>
-              <TableCell className="py-3 px-4 border-b-0">
-                <Link href={hrefFor(lead.leadId)}
-                  className="block group-hover:underline decoration-blue-300 underline-offset-2">
-                  <Truncate text={lead.fullName} width={130}
-                    className="font-semibold text-sm text-slate-800 group-hover:text-blue-600 transition-colors" />
-                </Link>
-                <div className="text-[11px] mt-0.5">
-                  {lead.email ? <Truncate text={lead.email} width={130} className="text-slate-400" /> : <Unknown />}
-                </div>
-              </TableCell>
-              <TableCell className="py-3 px-4 border-b-0">
-                <span className="flex items-center gap-1.5 text-xs text-slate-600" title={lead.isCorporate ? "Organization" : "Individual"}>
-                  {lead.isCorporate
-                    ? <Building2 className="size-3.5 text-slate-400 shrink-0" />
-                    : <User className="size-3.5 text-slate-400 shrink-0" />}
-                  {lead.isCorporate
-                    ? (lead.companyName ? lead.companyName : <Unknown />)
-                    : <span className="text-slate-400">Individual</span>}
-                </span>
-              </TableCell>
-              <TableCell className="py-3 px-4 border-b-0">
-                {lead.phone
-                  ? <a href={`tel:${lead.phone}`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-blue-600">
-                    <Phone className="size-3 text-slate-300 shrink-0" />{lead.phone}
-                  </a>
-                  : <span className="text-xs"><Unknown /></span>}
-              </TableCell>
-              <TableCell className="py-3 px-4 text-xs text-slate-500 border-b-0">
-                {lead.address ? <Truncate text={lead.address} width={120} /> : <Unknown />}
-              </TableCell>
-              <TableCell className="py-3 px-4 text-xs text-slate-500 whitespace-nowrap border-b-0">
-                {lead.source ?? <Unknown />}
-              </TableCell>
-              <TableCell className="py-3 px-4 border-b-0">
-                {lead.assignedUserName
-                  ? <div className="flex items-center gap-2"><Avatar name={lead.assignedUserName} /><Truncate text={lead.assignedUserName} width={90} className="text-xs text-slate-600" /></div>
-                  : <span className="text-xs text-slate-300 italic">Unassigned</span>}
-              </TableCell>
-              <TableCell className="py-3 px-4 border-b-0">
-                {lead.createdByName
-                  ? <div className="flex items-center gap-2"><Avatar name={lead.createdByName} /><Truncate text={lead.createdByName} width={90} className="text-xs text-slate-600" /></div>
-                  : <span className="text-xs text-slate-300 italic">—</span>}
-              </TableCell>
-              <TableCell className="py-3 px-4 border-b-0"><StatusBadge status={lead.status} /></TableCell>
-              <TableCell className="py-3 px-4 border-b-0">
-                <SlaStatusBadge entityId={lead.leadId} entityType="LEAD" />
-              </TableCell>
-              <TableCell className="py-3 px-4 text-xs text-slate-400 whitespace-nowrap border-b-0">
-                {lead.createdAt ? new Date(lead.createdAt).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
-              </TableCell>
-              <TableCell className="py-3 px-4 border-b-0">
-                <Link href={hrefFor(lead.leadId)}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity hover:text-blue-800">
-                  <ArrowUpRight className="size-3.5" />
-                </Link>
-              </TableCell>
-            </TableRow>
-          ))}
-          {/* Invisible filler rows pad the body to PAGE_SIZE so the table height — and the
-              pagination bar below — never shifts between a full page and a partial last page.
-              The hidden two-line content mirrors a real Name/Contact cell's height exactly. */}
-          {Array.from({ length: Math.max(0, PAGE_SIZE - leads.length) }).map((_, i) => (
-            <TableRow key={`filler-${i}`} hoverable={false} className="border-b border-slate-100">
-              <TableCell colSpan={COL_WIDTHS.length} className="py-3 px-4 border-b-0" aria-hidden="true">
-                <span className="invisible block text-sm font-semibold">.</span>
-                <span className="invisible block text-[11px] mt-0.5">.</span>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50/50">
-          <p className="text-xs text-slate-500">
-            Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong>
-            <span className="text-slate-400 ml-2">· {totalElements} results</span>
-          </p>
-          <div className="flex items-center gap-1">
-            <button onClick={() => onPageChange(Math.max(0, page - 1))} disabled={page === 0}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">
-              <ChevronLeft className="size-3.5" /> Prev
-            </button>
-            {pageNumbers.map(p => (
-              <button key={p} onClick={() => onPageChange(p)}
-                className={`size-7 text-xs font-semibold rounded-lg border transition
-                  ${p === page ? "bg-primary text-white border-primary shadow-sm" : "border-slate-200 text-slate-500 hover:bg-white"}`}>
-                {p + 1}
-              </button>
-            ))}
-            <button onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition">
-              Next <ChevronRight className="size-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  );
+  return [
+    {
+      id: "index",
+      header: "#",
+      width: "w-12",
+      className: "font-mono text-xs text-muted-foreground",
+      cell: (lead) => page * PAGE_SIZE + (rowNumbers.get(lead.leadId) ?? 0) + 1,
+    },
+    {
+      id: "lead",
+      header: "Lead",
+      sticky: "left",
+      // Name over the company/individual line — two fields in one column instead
+      // of a second column of mostly-blank cells.
+      cell: (lead) => (
+        <>
+          {rowOpen(lead.leadId, "block hover:underline decoration-blue-300 underline-offset-2",
+            <Truncate text={lead.fullName} width={130} className="font-semibold text-sm text-foreground" />)}
+          <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground"
+            title={lead.isCorporate ? "Organization" : "Individual"}>
+            {lead.isCorporate ? <Building2 className="size-3 shrink-0" /> : <User className="size-3 shrink-0" />}
+            {lead.isCorporate
+              ? (lead.companyName ? <Truncate text={lead.companyName} width={110} /> : <Unknown />)
+              : "Individual"}
+          </span>
+        </>
+      ),
+    },
+    {
+      id: "contact",
+      header: "Contact",
+      minWidth: "md",
+      // Email over phone — the two channels a rep actually acts on.
+      cell: (lead) => (
+        <>
+          {lead.email
+            ? <Truncate text={lead.email} width={170} className="text-xs text-foreground" />
+            : <span className="text-xs"><Unknown /></span>}
+          <span className="mt-0.5 block text-[11px] text-muted-foreground">{lead.phone ?? "—"}</span>
+        </>
+      ),
+    },
+    {
+      id: "source",
+      header: "Source",
+      minWidth: "lg",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (lead) => lead.source ?? <Unknown />,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (lead) => <StatusBadge status={lead.status} />,
+    },
+    {
+      id: "sla",
+      header: "SLA",
+      minWidth: "lg",
+      cell: (lead) => <SlaStatusBadge entityId={lead.leadId} entityType="LEAD" />,
+    },
+    {
+      id: "owner",
+      header: "Owner",
+      minWidth: "md",
+      cell: (lead) => <OwnerCell name={lead.assignedUserName} />,
+    },
+    {
+      id: "open",
+      header: "",
+      width: "w-10",
+      sticky: "right",
+      cell: (lead) =>
+        rowOpen(lead.leadId,
+          "inline-flex items-center gap-1 text-[11px] font-semibold text-primary transition-opacity hover:text-primary/80",
+          <ArrowUpRight className="size-3.5" />),
+    },
+  ];
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function LeadListScreen() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { highlightedId, setRowRef } = useHighlightRow("lead", "highlight");
+  // `/leads?lead=<id>` opens that lead's drawer straight away. Every link to a lead in the
+  // app points here — notifications, SLA escalations, task drawers, customer profiles — and
+  // the old `/leads/{id}` page redirects here too. There is no full-page lead detail.
+  const deepLinkId = searchParams.get("lead") || searchParams.get("highlight");
+
   const user = useAuthStore(s => s.user);
   const role = getUserRole(user);
   const isStaff = role === "SALES";
@@ -565,11 +631,22 @@ export function LeadListScreen() {
   const [dateTo, setDateTo] = useState("");
   // Staff-only owner view: "assigned" (default) vs "created" (leads I created).
   const [ownerView, setOwnerView] = useState<"assigned" | "created">("assigned");
-  const [sortOption, setSortOption] = useState("status_desc");
+  // Manager-only: the queue of leads nobody owns yet (BR-06 — nothing starts until one is
+  // assigned). Meaningless for a sales rep: an unassigned lead is, by definition, not theirs.
+  const [needsAssignment, setNeedsAssignment] = useState(false);
+  // Newest first. "Status" priority used to be the default, which is a judgement about what
+  // matters rather than a neutral starting point — and it put the same rows on page 1 no matter
+  // how the list had changed since the user last looked. Creation order is the one ordering the
+  // user can reason about without knowing the ranking rules.
+  const [sortOption, setSortOption] = useState("createdAt_desc");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [page,        setPage]        = useState(0);
   const [drawerOpen,  setDrawer]      = useState(false);
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  // The row the detail drawer is showing. Holding the record rather than an id
+  // lets the drawer paint immediately from the list data it already has.
+  const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const sortRef = useRef<HTMLDivElement>(null);
 
   // Block an inverted range (From later than To). Date inputs hold "YYYY-MM-DD",
@@ -601,7 +678,7 @@ export function LeadListScreen() {
     u => (u.roleName ?? "").toUpperCase() === "SALES",
   );
 
-  const { data: resp, isLoading, isError } = useLeads({
+  const { data: resp, isLoading, isError, isFetching, refetch } = useLeads({
     search: search || undefined,
     status: statusFilter || undefined,
     source: sourceFilter || undefined,
@@ -613,6 +690,7 @@ export function LeadListScreen() {
     dateTo:   !dateRangeInvalid ? (dateTo   || undefined) : undefined,
     // Owner view is a staff concept; managers/admins are unscoped server-side.
     scope: isStaff ? ownerView : undefined,
+    unassigned: canAssign && needsAssignment ? true : undefined,
     page,
     size: PAGE_SIZE,
   });
@@ -622,20 +700,83 @@ export function LeadListScreen() {
   const totalPages = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalPages : (pageData?.totalPages ?? 1);
   const totalElements = (pageData?.page && typeof pageData.page === "object") ? pageData.page.totalElements : (pageData?.totalElements ?? 0);
 
-  const qualified = leads.filter(l => l.status === "QUALIFIED").length;
-  const active = leads.filter(l => l.status !== "LOST" && l.status !== "CONVERTED").length;
-  const qualifyRate = `${((qualified / (leads.length || 1)) * 100).toFixed(1)}%`;
+  // ── Deep-linked lead ──────────────────────────────────────────────────────
+  // If the linked lead happens to be on the page in front of us, use that row and paint
+  // immediately; otherwise fetch it. A deep link usually arrives with the default filters,
+  // so the lead is often *not* in the current page — but checking first saves a request on
+  // the common case of clicking a name in this very table.
+  const rowForDeepLink = deepLinkId ? leads.find(l => l.leadId === deepLinkId) ?? null : null;
+  const { data: deepLinkResp, isError: deepLinkFailed } =
+    useLeadDetail(deepLinkId && !rowForDeepLink ? deepLinkId : undefined);
+
+  const clearDeepLink = useCallback(() => {
+    if (deepLinkId) router.replace(ROUTE_PATHS.leads, { scroll: false });
+  }, [deepLinkId, router]);
+
+  // A link to a lead that no longer exists, or that this rep is not allowed to see (403),
+  // used to land on a dedicated "Lead not found" / "Access Denied" page. That page is gone,
+  // so say it once and drop the parameter — otherwise the URL keeps promising a drawer that
+  // never opens, and a refresh retries the same dead id.
+  useEffect(() => {
+    if (!deepLinkFailed) return;
+    toast.error("That lead is unavailable — it may have been removed, or it belongs to another sales rep.");
+    clearDeepLink();
+  }, [deepLinkFailed, clearDeepLink]);
+
+  // Counted server-side over every lead matching the current filters. These used to be derived
+  // from `leads` — the ten rows of the current page — so they changed when the user paged or
+  // re-sorted even though the data had not. Same filters and same owner scope as the list below.
+  const { data: statsResp } = useLeadStats({
+    search: search || undefined,
+    status: statusFilter || undefined,
+    source: sourceFilter || undefined,
+    isCorporate: typeFilter === "" ? undefined : typeFilter === "corporate",
+    dateFrom: !dateRangeInvalid ? (dateFrom || undefined) : undefined,
+    dateTo:   !dateRangeInvalid ? (dateTo   || undefined) : undefined,
+    scope: isStaff ? ownerView : undefined,
+    unassigned: canAssign && needsAssignment ? true : undefined,
+  });
+  const stats = statsResp?.data;
+  // A dash, not "0.0%": with no leads there is nothing to measure, which is not the same as
+  // measuring zero conversions.
+  const pct = (v: number | null | undefined) => (v == null ? "—" : `${v.toFixed(1)}%`);
 
   // Type now has its own always-visible segmented toggle, so it is excluded from the advanced-filter badge.
-  const activeFilterCount = [statusFilter, sourceFilter, dateFrom, dateTo].filter(Boolean).length;
+  const activeFilterCount = [statusFilter, sourceFilter, dateFrom, dateTo].filter(Boolean).length
+    + (needsAssignment ? 1 : 0);
   const hasFilters = activeFilterCount > 0 || !!search;
 
   const clearAll = () => {
     setStatusFilter(""); setSourceFilter(""); setTypeFilter(""); setDateFrom(""); setDateTo("");
-    setSearchInput(""); setSearch(""); setPage(0);
+    setSearchInput(""); setSearch(""); setNeedsAssignment(false); setPage(0);
   };
 
   const currentSort = SORT_OPTIONS.find(o => o.value === sortOption) ?? SORT_OPTIONS[0];
+
+  // A row click wins over the URL: clicking row B while ?lead=A is still in the address
+  // bar must show B, not A. Both routes end at the same drawer.
+  const drawerLead: Lead | null = detailLead ?? rowForDeepLink ?? deepLinkResp?.data ?? null;
+
+  // ── Table presentation state (density, columns, sort, selection) ─────────
+  const rowNumbers = React.useMemo(
+    () => new Map(leads.map((l, i) => [l.leadId, i])),
+    [leads],
+  );
+
+  const leadColumns = React.useMemo(
+    () =>
+      buildLeadColumns({
+        page,
+        rowNumbers,
+        editMode: isStaff && ownerView === "created",
+        onEditLead: setEditingLeadId,
+      }),
+    [page, rowNumbers, isStaff, ownerView],
+  );
+
+  const controls = useTableControls<Lead>("leads", leadColumns, {
+    defaultSortBy: "lead",
+  });
 
   // ── Filter bar (reused in both normal + fullscreen) ──────────────────────
   const filterBar = (
@@ -650,7 +791,7 @@ export function LeadListScreen() {
               <X className="size-3" />
             </button>
           )}
-          <input type="text" placeholder="Search name, company, email…" value={searchInput}
+          <input type="text" placeholder="Search name, phone, email, company…" value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
             className="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:outline-none transition" />
         </div>
@@ -677,6 +818,23 @@ export function LeadListScreen() {
               );
             })}
           </div>
+        )}
+
+        {/* Manager only: the distribution queue. A toggle rather than a value in the Status
+            dropdown — "needs assigning" is orthogonal to where the lead sits in the pipeline, and
+            a Manager wants it combined with the other filters, not instead of them. */}
+        {canAssign && (
+          <button type="button"
+            onClick={() => { setNeedsAssignment(v => !v); resetPage(); }}
+            aria-pressed={needsAssignment}
+            title="Leads with no owner yet — assign them to a sales rep"
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition
+              ${needsAssignment
+                ? "bg-amber-50 border-amber-300 text-amber-800 shadow-sm"
+                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"}`}>
+            <UserCog className={`size-3.5 ${needsAssignment ? "text-amber-600" : "text-slate-400"}`} />
+            Assignment needed
+          </button>
         )}
 
         {/* Status */}
@@ -734,9 +892,23 @@ export function LeadListScreen() {
           )}
         </button>
 
-        {/* Right side: entry count + Individual/Organization segmented toggle */}
-        <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-slate-400 hidden lg:block">
+        {/* Right side: the §2.6 control cluster, entry count, and the
+            Individual/Organization segmented toggle */}
+        <div className="ml-auto flex items-center gap-2">
+          <RefreshButton onRefresh={() => refetch()} isRefreshing={isFetching} />
+          <ColumnPicker
+            columns={leadColumns}
+            hiddenIds={controls.hiddenColumnIds}
+            onChange={controls.setHiddenColumnIds}
+            requiredIds={["lead"]}
+          />
+          <ExportMenu
+            filename={`leads-${new Date().toISOString().slice(0, 10)}`}
+            headers={LEAD_EXPORT_HEADERS}
+            rows={leads.map(leadExportRow)}
+          />
+          <DensityMenu value={controls.density} onChange={controls.setDensity} />
+          <span className="text-xs text-slate-400 hidden xl:block">
             {isLoading ? "Loading…" : <>Showing <strong className="text-slate-700">{leads.length}</strong> of {totalElements}</>}
           </span>
           <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 border border-slate-200">
@@ -815,46 +987,62 @@ export function LeadListScreen() {
   return (
     <div className="space-y-6">
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Leads Register</h1>
-          <p className="text-xs text-slate-400">Track and convert potential customers into bookings</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="primary" size="sm" onClick={() => setDrawer(true)}
-            leftIcon={<Plus className="size-3.5" />}
-            className="bg-primary hover:bg-primary/90 font-semibold text-xs text-white">
+      <PageHeader
+        {...PAGE_META.leads}
+        actions={
+          <Button
+            variant="primary"
+            onClick={() => setDrawer(true)}
+            leftIcon={<Plus className="size-4" />}
+          >
             New Lead
           </Button>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Stats summary cards */}
+      {/* Stats summary cards.
+          Outcome first, then work in progress: converted and lost are what the pipeline actually
+          produced, and each carries its share of the total right beneath the count so the figure
+          and its weight are read together — which also keeps this to four columns. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
         <div className="border-r border-slate-100 last:border-0 pr-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1">
             <Handshake className="size-3 text-slate-400" /> Total Leads
           </p>
-          <p className="text-lg font-bold text-slate-800 mt-1">{totalElements} Leads</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">{stats?.total ?? totalElements} Leads</p>
         </div>
         <div className="border-r border-slate-100 last:border-0 px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1">
-            <Users className="size-3 text-slate-400" /> Active
+            <TrendingUp className="size-3 text-emerald-500" /> Converted
           </p>
-          <p className="text-lg font-bold text-slate-800 mt-1">{active}</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">
+            {stats?.converted ?? "—"}
+            <span className="ml-1.5 text-xs font-semibold text-emerald-600">
+              {pct(stats?.convertedRate)}
+            </span>
+          </p>
         </div>
         <div className="border-r border-slate-100 last:border-0 px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1">
-            <TrendingUp className="size-3 text-slate-400" /> Qualified
+            <UserX className="size-3 text-rose-400" /> Lost
           </p>
-          <p className="text-lg font-bold text-slate-800 mt-1">{qualified}</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">
+            {stats?.lost ?? "—"}
+            <span className="ml-1.5 text-xs font-semibold text-rose-500">
+              {pct(stats?.lostRate)}
+            </span>
+          </p>
         </div>
         <div className="px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1">
-            <Percent className="size-3 text-slate-400" /> Qualify Rate
+            <Users className="size-3 text-slate-400" /> Active
           </p>
-          <p className="text-lg font-bold text-slate-800 mt-1">{qualifyRate}</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">
+            {stats?.active ?? "—"}
+            <span className="ml-1.5 text-xs font-semibold text-slate-400">
+              {stats ? `${stats.qualified} qualified` : ""}
+            </span>
+          </p>
         </div>
       </div>
 
@@ -863,18 +1051,73 @@ export function LeadListScreen() {
         <CardContent>{filterBar}</CardContent>
       </Card>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        <LeadTable
-          isLoading={isLoading} isError={isError} leads={leads}
-          totalPages={totalPages} totalElements={totalElements}
-          page={page} onPageChange={setPage}
-          onClearFilters={clearAll} hasFilters={hasFilters}
-          editMode={isStaff && ownerView === "created"}
-        />
-      </div>
+      {/* Table — Blueprint §2.6 standard: density, sticky header, keyboard cursor,
+          selection with a contextual bulk bar, and one shared empty/error/skeleton. */}
+      <DataTable
+        label="Leads"
+        rows={leads}
+        columns={controls.visibleColumns}
+        rowId={(lead) => lead.leadId}
+        isLoading={isLoading}
+        error={isError ? new Error("Server error — please contact your Admin.") : undefined}
+        density={controls.density}
+        sortBy={controls.sortBy}
+        sortDir={controls.sortDir}
+        onSortChange={controls.onSortChange}
+        selectedIds={controls.selectedIds}
+        onSelectionChange={controls.setSelectedIds}
+        bulkActions={
+          <ExportMenu
+            filename={`leads-selected-${new Date().toISOString().slice(0, 10)}`}
+            headers={LEAD_EXPORT_HEADERS}
+            rows={leads.filter((l) => controls.selectedIds.has(l.leadId)).map(leadExportRow)}
+          />
+        }
+        highlightId={highlightedId}
+        rowRef={setRowRef}
+        onRowClick={(lead) =>
+          isStaff && ownerView === "created"
+            ? setEditingLeadId(lead.leadId)
+            : setDetailLead(lead)
+        }
+        isFiltered={hasFilters}
+        onClearFilters={clearAll}
+        emptyTitle="No leads yet"
+        emptyMessage="Capture your first enquiry and it will show up here."
+        emptyAction={{ label: "New Lead", onClick: () => setDrawer(true) }}
+        footer={
+          <TablePagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            totalElements={totalElements}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        }
+      />
 
       {drawerOpen && <CreateLeadDrawer onClose={() => setDrawer(false)} canAssign={canAssign} users={salesUsers} />}
+
+      {/* A lead this staff member created but does not own: edited in place, over the list.
+          Keyed by id so switching rows remounts the form rather than leaving the previous
+          lead's values behind. */}
+      {editingLeadId && (
+        <UnassignedLeadDrawer key={editingLeadId} leadId={editingLeadId}
+          onClose={() => setEditingLeadId(null)} />
+      )}
+
+      {/* Full lead detail — Overview / Edit / Activity, plus Convert and the status
+          ladder. This is the *only* place a lead opens; there is no second, full-page
+          copy of it any more. Keyed by id so switching rows resets the edit form. */}
+      <LeadDetailDrawer
+        key={drawerLead?.leadId ?? "none"}
+        lead={drawerLead}
+        onOpenChange={(open) => {
+          if (open) return;
+          setDetailLead(null);
+          clearDeepLink();
+        }}
+      />
     </div>
   );
 }

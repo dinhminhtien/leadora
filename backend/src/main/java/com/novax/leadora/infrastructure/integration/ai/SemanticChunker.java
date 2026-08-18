@@ -170,7 +170,7 @@ public class SemanticChunker {
      * wrapped line. Anything else (a heading, a bullet, a numbered clause, a table row, a blank
      * line) keeps its break, so genuine structure survives.
      */
-    static String unwrapLines(String text) {
+    public static String unwrapLines(String text) {
         String[] lines = text.split("\\R", -1);
         StringBuilder out = new StringBuilder(text.length());
         for (int i = 0; i < lines.length; i++) {

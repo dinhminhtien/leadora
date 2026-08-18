@@ -16,6 +16,8 @@
  * text uses ink tokens (never the series color), inline labels only when they fit.
  */
 import React from "react";
+import { Download, Printer } from "lucide-react";
+import { printReport } from "./export";
 
 export const VIZ = {
   // categorical / status marks (validated set)
@@ -37,8 +39,25 @@ export const VIZ = {
   surface: "#ffffff",
 } as const;
 
+/**
+ * Sequential ramp for a 0–100 score (UC-23.6): one hue, more-is-darker.
+ *
+ * <p>A score grid is a magnitude question, so it gets a sequential ramp rather than the categorical
+ * marks above — and the steps are spaced by perceptual lightness, not by eye: 0.080 / 0.096 / 0.156
+ * / 0.127 apart in OKLab L, monotonically decreasing. The two lightest steps sit under 3:1 against
+ * the page, which is exactly why every cell carries its number as a visible label instead of asking
+ * anyone to read a value off a shade.
+ */
+export const SCORE_RAMP = ["#e2ecfa", "#b8d4f4", "#86b6ef", "#3f86cd", "#1d5ea6"] as const;
+
+/** The ramp step for a 0–100 score. */
+export function scoreFill(score: number): string {
+  const band = Math.min(SCORE_RAMP.length - 1, Math.max(0, Math.floor(score / 20)));
+  return SCORE_RAMP[band];
+}
+
 /** Pick white or ink for a label sitting inside a colored fill, by the fill's luminance. */
-function textOnFill(hex: string): string {
+export function textOnFill(hex: string): string {
   const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
@@ -70,43 +89,137 @@ export function ReportDateRange({
   dateTo,
   setDateFrom,
   setDateTo,
+  invalid = false,
 }: {
   dateFrom: string;
   dateTo: string;
   setDateFrom: (v: string) => void;
   setDateTo: (v: string) => void;
+  /** True when "from" is later than "to" — the request is held back until it is fixed. */
+  invalid?: boolean;
 }) {
   const inputCls =
-    "w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:border-teal-400 focus:outline-none";
+    "w-full rounded-lg border bg-white px-3 py-1.5 text-xs text-slate-700 focus:outline-none";
+  const normalCls = `${inputCls} border-slate-200 focus:border-teal-400`;
+  const invalidCls = `${inputCls} border-rose-300 focus:border-rose-400`;
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-slate-100 bg-white p-3 shadow-sm sm:flex-row sm:items-end">
-      <div className="flex-1">
-        <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Date From</label>
-        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={inputCls} />
+    <div className="rounded-xl border border-slate-100 bg-white p-3 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="flex-1">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Date From</label>
+          <input
+            type="date"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className={invalid ? invalidCls : normalCls}
+          />
+        </div>
+        <div className="flex-1">
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Date To</label>
+          <input
+            type="date"
+            value={dateTo}
+            min={dateFrom || undefined}
+            onChange={(e) => setDateTo(e.target.value)}
+            className={invalid ? invalidCls : normalCls}
+          />
+        </div>
+        <p className="text-[11px] text-slate-400 sm:pb-2">Leave empty = all time</p>
       </div>
-      <div className="flex-1">
-        <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Date To</label>
-        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={inputCls} />
-      </div>
-      <p className="text-[11px] text-slate-400 sm:pb-2">Leave empty = all time</p>
+      {invalid && (
+        // Without this the inverted range simply returned nothing, which reads as "no activity in
+        // this period" — a different and much more misleading answer than "your filter is backwards".
+        <p className="mt-2 text-[11px] font-semibold text-rose-500">
+          The start date must not be after the end date.
+        </p>
+      )}
     </div>
   );
 }
 
+/* ── Export / print toolbar ─────────────────────────────────────────────────── */
+
+/**
+ * The Export CSV / Print pair every report tab carries.
+ *
+ * Marked `no-print` so the buttons do not appear in the printed sheet, and disabled while there is
+ * nothing loaded — exporting an empty report produces a file that looks like a real (empty) result.
+ */
+export function ReportActions({
+  onExport,
+  disabled = false,
+}: {
+  onExport: () => void;
+  disabled?: boolean;
+}) {
+  const btn =
+    "inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40";
+  return (
+    <div className="no-print flex items-center gap-2">
+      <button type="button" onClick={onExport} disabled={disabled} className={btn}>
+        <Download className="size-3.5" /> Export CSV
+      </button>
+      <button type="button" onClick={printReport} disabled={disabled} className={btn}>
+        <Printer className="size-3.5" /> Print
+      </button>
+    </div>
+  );
+}
+
+/** Title row with the period on the left and the export actions on the right. */
+export function ReportHeader({
+  title,
+  period,
+  onExport,
+  disabled,
+}: {
+  title: string;
+  period: string;
+  onExport: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 className="text-sm font-bold text-slate-700">{title}</h2>
+        <p className="text-[11px] text-slate-400">Period: {period}</p>
+      </div>
+      <ReportActions onExport={onExport} disabled={disabled} />
+    </div>
+  );
+}
+
+/* ── Methodology footnote ───────────────────────────────────────────────────── */
+
+/**
+ * A short note on how a figure was derived. Reports that make a claim ("bottleneck", "compliance")
+ * carry one so the reader can tell what the number does and does not cover.
+ */
+export function Note({ children }: { children: React.ReactNode }) {
+  return <p className="mt-1 text-[10px] leading-relaxed text-slate-400">{children}</p>;
+}
+
 /* ── Horizontal labeled bars (per-mark distribution — stages, statuses, types) ─ */
 
-export type HBarItem = { label: string; value: number; color: string; sub?: string };
+export type HBarItem = { label: string; value: number; color: string; sub?: string; target?: number };
 
 export function HBarList({ items }: { items: HBarItem[] }) {
+  const [hoveredIdx, setHoveredIdx] = React.useState<number | null>(null);
   const max = Math.max(1, ...items.map((i) => i.value));
   return (
-    <div className="space-y-2">
-      {items.map((it) => (
-        <div key={it.label} className="flex items-center gap-2 text-[11px]">
+    <div className="space-y-2 relative">
+      {items.map((it, idx) => (
+        <div
+          key={it.label}
+          className="group relative flex items-center gap-2 text-[11px] p-1 rounded-lg transition-colors hover:bg-slate-50/80"
+          onMouseEnter={() => setHoveredIdx(idx)}
+          onMouseLeave={() => setHoveredIdx(null)}
+        >
           <span className="w-28 shrink-0 truncate text-slate-600" title={it.label}>{it.label}</span>
-          <div className="h-3.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+          <div className="h-3.5 flex-1 overflow-hidden rounded-full bg-slate-100 relative">
             <div
-              className="h-full rounded-full transition-[width] duration-300"
+              className="h-full rounded-full transition-all duration-300 group-hover:brightness-95"
               style={{ width: `${(it.value / max) * 100}%`, background: it.color, minWidth: it.value > 0 ? 6 : 0 }}
             />
           </div>
@@ -114,6 +227,21 @@ export function HBarList({ items }: { items: HBarItem[] }) {
             {it.value}
             {it.sub ? <span className="ml-1 font-normal text-slate-400">{it.sub}</span> : null}
           </span>
+
+          {/* Interactive Hover Tooltip */}
+          {hoveredIdx === idx && (
+            <div className="absolute left-1/2 -top-10 z-30 pointer-events-none -translate-x-1/2 bg-slate-900/90 text-white text-[11px] px-3 py-1.5 rounded-lg shadow-xl border border-slate-700 animate-in fade-in duration-150 whitespace-nowrap">
+              <div className="font-bold text-slate-200">{it.label}: <span className="text-emerald-400">{it.value.toLocaleString("vi-VN")} {it.sub ?? ""}</span></div>
+              {it.target ? (
+                <div className="text-[10px] text-slate-300 mt-0.5 flex items-center gap-1">
+                  <span>Target: {it.target.toLocaleString("vi-VN")}</span>
+                  <span className="font-semibold text-sky-400">
+                    ({Math.round((it.value / it.target) * 100)}%)
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -205,30 +333,31 @@ export function SegmentBar({
   segments: Segment[];
   height?: number;
 }) {
+  const [hoveredSeg, setHoveredSeg] = React.useState<Segment | null>(null);
   const shown = segments.filter((s) => s.value > 0);
   const total = shown.reduce((a, s) => a + s.value, 0) || 1;
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 relative">
       {/* 2px surface gap between fills — the white gap does the separating, not a stroke. */}
       <div
-        className="flex w-full gap-0.5 overflow-hidden rounded-full"
+        className="flex w-full gap-0.5 overflow-hidden rounded-full relative"
         style={{ height, background: VIZ.surface }}
       >
         {shown.map((s) => {
           const widthPct = (s.value / total) * 100;
           // Only place the value inside the fill when it comfortably fits (~>9% width).
           const showInline = widthPct > 9;
-          // flex-grow (not width %) so the 2px gaps are subtracted from the track by flexbox
-          // instead of overflowing it and clipping the last segment.
           return (
             <div
               key={s.label}
-              className="flex h-full min-w-0 items-center justify-center text-[10px] font-bold tabular-nums"
+              className="flex h-full min-w-0 items-center justify-center text-[10px] font-bold tabular-nums cursor-pointer transition-opacity hover:opacity-90"
               style={{
                 flex: `${s.value} 1 0`,
                 background: s.color,
                 color: textOnFill(s.color),
               }}
+              onMouseEnter={() => setHoveredSeg(s)}
+              onMouseLeave={() => setHoveredSeg(null)}
               title={`${s.label}: ${s.value}`}
             >
               {showInline ? s.value : ""}
@@ -236,6 +365,13 @@ export function SegmentBar({
           );
         })}
       </div>
+
+      {/* Floating Hover Tooltip */}
+      {hoveredSeg && (
+        <div className="absolute left-1/2 -top-10 z-30 pointer-events-none -translate-x-1/2 bg-slate-900/90 text-white text-[11px] px-3 py-1.5 rounded-lg shadow-xl border border-slate-700 animate-in fade-in duration-150 whitespace-nowrap">
+          <div className="font-bold text-slate-200">{hoveredSeg.label}: <span className="text-emerald-400">{hoveredSeg.value.toLocaleString("vi-VN")}</span> <span className="text-slate-400">({Math.round((hoveredSeg.value / total) * 100)}%)</span></div>
+        </div>
+      )}
       {/* Legend is always present for ≥2 series — identity never rides color alone. */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
         {segments.map((s) => (
@@ -245,6 +381,78 @@ export function SegmentBar({
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ── Score cells & scale (UC-23.6 rep scorecard) ───────────────────────────── */
+
+/**
+ * One 0–100 score in a grid of them, shaded on the sequential ramp and always carrying its number.
+ *
+ * <p>A null score means the axis had nothing to measure, and it renders as an em dash on the plain
+ * surface rather than as the lightest step of the ramp: "not measured" and "measured badly" must not
+ * be the same picture, or a rep with no customer feedback looks like a rep customers disliked.
+ */
+export function ScoreCell({
+  score,
+  label,
+  hint,
+}: {
+  score?: number | null;
+  label: string;
+  hint?: string;
+}) {
+  if (score === null || score === undefined) {
+    return (
+      <td className="px-1 py-1">
+        <div
+          className="flex h-8 items-center justify-center rounded-md border border-dashed border-slate-200 text-[11px] text-slate-300"
+          title={`${label}: not measured in this period`}
+        >
+          —
+        </div>
+      </td>
+    );
+  }
+  const fill = scoreFill(score);
+  // A native title rather than the floating tooltip the other marks use: this cell lives inside the
+  // table's `overflow-x-auto` scroller, and a positioned tooltip is clipped by that box on the first
+  // and last rows. The exact value is already printed in the cell and the axis is named in the
+  // column header, so the hover layer is enrichment here, not the only way to read the mark.
+  return (
+    <td className="group px-1 py-1">
+      <div
+        className="flex h-8 items-center justify-center rounded-md text-[11px] font-bold tabular-nums transition-shadow group-hover:ring-2 group-hover:ring-slate-300"
+        style={{ background: fill, color: textOnFill(fill) }}
+        title={`${label}: ${score.toFixed(1)} / 100${hint ? ` — ${hint}` : ""}`}
+      >
+        {Math.round(score)}
+      </div>
+    </td>
+  );
+}
+
+/** The ramp's key. A shaded grid without one is a decoration. */
+export function ScoreScaleLegend() {
+  return (
+    <div className="flex items-center gap-2 text-[10px] text-slate-400">
+      <span>0</span>
+      <div className="flex overflow-hidden rounded">
+        {SCORE_RAMP.map((step, i) => (
+          <span
+            key={step}
+            className="h-2.5 w-6"
+            style={{ background: step }}
+            title={`${i * 20}–${i * 20 + 20}`}
+          />
+        ))}
+      </div>
+      <span>100</span>
+      <span className="ml-1 flex items-center gap-1">
+        <span className="inline-block h-2.5 w-6 rounded border border-dashed border-slate-200" />
+        not measured
+      </span>
     </div>
   );
 }

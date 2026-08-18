@@ -117,6 +117,11 @@ public class IntentClassifier {
             // " sla " is deliberately space-wrapped: normalize() pads the text, and a bare "sla"
             // is a substring of ordinary words ("translate", "slack") that would then pull an
             // irrelevant SLA listing into unrelated answers.
+            // Kept clear of BOOKINGS' "dat phong": asking whether a room is free is a
+            // different question from asking about a booking that already exists.
+            CrmArea.ROOM_AVAILABILITY, List.of("con phong", "phong trong", "room availability",
+                    "allotment", "han muc phong", "tinh trang phong", "phong con", "con trong",
+                    "so phong con", "kha dung"),
             CrmArea.SLA, List.of(" sla ", " sla?", "sla record", "ho so sla", "cam ket dich vu",
                     "vi pham cam ket", "breach", "tre han xu ly", "han xu ly"));
 

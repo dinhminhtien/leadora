@@ -6,6 +6,11 @@ import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.infrastructure.persistence.entity.*;
 import com.novax.leadora.infrastructure.persistence.entity.enums.*;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -21,6 +26,9 @@ public class AutoWinDealByPaymentUseCase {
     private final DealRepository dealRepository;
     private final SystemAuditLogService auditLogService;
     private final DealWorkflowResolver dealWorkflowResolver;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final RecordDealStageChangeService recordDealStageChangeService;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public void execute(PaymentEntity payment, UserEntity actor) {
@@ -74,9 +82,11 @@ public class AutoWinDealByPaymentUseCase {
 
         // 4. Perform transition
         DealStatus oldStatus = deal.getStatus();
-        deal.setStatus(DealStatus.WON);
+        DealPipelineStage oldStage = deal.getPipelineStage();
         deal.setPipelineStage(DealPipelineStage.CLOSED_WON);
         dealRepository.save(deal);
+        recordDealStageChangeService.record(deal, oldStage, DealPipelineStage.CLOSED_WON,
+                RecordDealStageChangeService.SOURCE_AUTO_WIN);
 
         log.info("[AUTO-WIN] Deal {} successfully transitioned to WON via Payment {}", deal.getDealId(), payment.getPaymentId());
 
@@ -85,5 +95,28 @@ public class AutoWinDealByPaymentUseCase {
                 "AUTO_CLOSED_WON", actor,
                 oldStatus != null ? oldStatus.name() : "OPEN", "WON",
                 "Auto-closed Won: Payment " + payment.getPaymentId() + " confirmed for Booking " + booking.getBookingCode());
+
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("paymentId", payment.getPaymentId().toString())
+                    .put("bookingId", booking.getBookingId().toString())
+                    .put("bookingCode", booking.getBookingCode())
+                    .put("previousStatus", oldStatus != null ? oldStatus.name() : "OPEN")
+                    .put("newStatus", "WON")
+                    // Stage fields too, not just status. This activity is a stage transition like
+                    // any other, and omitting them meant anything reading stage history out of
+                    // activity_log saw an auto-won deal stall at its second-to-last stage forever.
+                    .put("previousStage", oldStage != null ? oldStage.name() : null)
+                    .put("newStage", DealPipelineStage.CLOSED_WON.name());
+            activityLogPublisher.publish(
+                    ActivityLogType.DEAL_AUTO_WON,
+                    EntityType.DEAL,
+                    deal.getDealId(),
+                    "Deal auto-won via payment confirmation",
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish auto-won deal activity: {}", e.getMessage());
+        }
     }
 }

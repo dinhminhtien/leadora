@@ -6,8 +6,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -18,14 +16,14 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.novax.leadora.common.security.JwtAuthoritiesResolver;
 import com.novax.leadora.common.security.TokenBlacklistService;
-import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
-
-import java.util.Collection;
 import java.util.List;
+import com.novax.leadora.api.filter.MdcUserFilter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 
 import com.nimbusds.jwt.JWTParser;
 import com.nimbusds.jwt.SignedJWT;
@@ -36,9 +34,14 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import com.novax.leadora.infrastructure.security.audit.SecurityAuditLogger;
+
 @Configuration
 @EnableWebSecurity
-@org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
+@EnableMethodSecurity
 public class WebSecurityConfig {
 
     @Value("${SUPABASE_JWT_SECRET}")
@@ -47,11 +50,17 @@ public class WebSecurityConfig {
     @Value("${SUPABASE_URL}")
     private String supabaseUrl;
 
-    @Autowired @Lazy
-    private UserRepository userRepository;
+    @Autowired
+    @Lazy
+    private JwtAuthoritiesResolver jwtAuthoritiesResolver;
 
-    @Autowired @Lazy
+    @Autowired
+    @Lazy
     private TokenBlacklistService tokenBlacklistService;
+
+    @Autowired
+    @Lazy
+    private SecurityAuditLogger securityAuditLogger;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -60,14 +69,18 @@ public class WebSecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/", "/error", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/forgot-password",
-                                "/api/v1/auth/reset-password", "/api/v1/health", "/api/v1/feedback/public/**", "/api/v1/public/**")
+                        .requestMatchers("/", "/error", "/api/v1/auth/login", "/api/v1/auth/logout",
+                                "/api/v1/auth/forgot-password",
+                                "/api/v1/auth/reset-password", "/api/v1/health", "/api/v1/feedback/public/**",
+                                "/api/v1/public/**")
                         .permitAll()
                         .requestMatchers("/api/v1/auth/profile").authenticated()
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().permitAll())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+                        .authenticationEntryPoint(customAuthenticationEntryPoint())
+                        .accessDeniedHandler(customAccessDeniedHandler())
                         .bearerTokenResolver(request -> {
                             String path = request.getRequestURI();
                             if ("/".equals(path) || "/error".equals(path) || "/api/v1/health".equals(path)
@@ -89,7 +102,47 @@ public class WebSecurityConfig {
                             return null;
                         }));
 
+        http.addFilterAfter(new MdcUserFilter(), BearerTokenAuthenticationFilter.class);
+
         return http.build();
+    }
+
+    private AuthenticationEntryPoint customAuthenticationEntryPoint() {
+        return (request, response, authException) -> {
+            securityAuditLogger.logInvalidTokenAccess(request, authException);
+
+            String origin = request.getHeader("Origin");
+            if (origin != null && !origin.isBlank()) {
+                response.setHeader("Access-Control-Allow-Origin", origin);
+                response.setHeader("Access-Control-Allow-Credentials", "true");
+                response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+                response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, X-User-Id");
+            }
+
+            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"success\":false,\"errorCode\":\"UNAUTHORIZED\",\"message\":\""
+                    + authException.getMessage() + "\"}");
+        };
+    }
+
+    private AccessDeniedHandler customAccessDeniedHandler() {
+        return (request, response, accessDeniedException) -> {
+            securityAuditLogger.logAccessDenied(request, accessDeniedException);
+
+            String origin = request.getHeader("Origin");
+            if (origin != null && !origin.isBlank()) {
+                response.setHeader("Access-Control-Allow-Origin", origin);
+                response.setHeader("Access-Control-Allow-Credentials", "true");
+                response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+                response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, X-User-Id");
+            }
+
+            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_FORBIDDEN);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"success\":false,\"errorCode\":\"ACCESS_DENIED\",\"message\":\""
+                    + accessDeniedException.getMessage() + "\"}");
+        };
     }
 
     @Bean
@@ -147,27 +200,19 @@ public class WebSecurityConfig {
     }
 
     /**
-     * Extracts the application role from the users table using the email claim in the Supabase JWT.
-     * Supabase's built-in "role" claim always returns "authenticated", not the app role.
+     * Extracts the application role AND the role's effective permission codes from
+     * our own tables
+     * using the email claim in the Supabase JWT. Supabase's built-in "role" claim
+     * always returns
+     * "authenticated", not the app role.
+     *
+     * @see com.novax.leadora.common.security.JwtAuthoritiesResolver
      */
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
-            String email = jwt.getClaimAsString("email");
-            if (email == null || email.isBlank()) {
-                return List.of(new SimpleGrantedAuthority("ROLE_authenticated"));
-            }
-            Collection<GrantedAuthority> authorities = userRepository.findWithRoleByEmailIgnoreCase(email)
-                    .filter(u -> u.getRole() != null)
-                    .map(u -> {
-                        String roleName = u.getRole().getRoleName().toUpperCase();
-                        return (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + roleName);
-                    })
-                    .map(a -> (Collection<GrantedAuthority>) List.<GrantedAuthority>of(a))
-                    .orElse(List.of(new SimpleGrantedAuthority("ROLE_authenticated")));
-            return authorities;
-        });
+        converter.setJwtGrantedAuthoritiesConverter(
+                jwt -> jwtAuthoritiesResolver.resolve(jwt.getClaimAsString("email")));
         return converter;
     }
 
@@ -187,7 +232,9 @@ public class WebSecurityConfig {
         configuration.setAllowedOriginPatterns(List.of(
                 "http://localhost:*",
                 "http://127.0.0.1:*",
-                "https://*.vercel.app"));
+                "https://*.vercel.app",
+                "https://www.leadora.id.vn",
+                "https://leadora.id.vn"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-User-Id"));
         configuration.setExposedHeaders(List.of("Authorization"));

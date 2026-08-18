@@ -1,4 +1,4 @@
-import { apiClient, type ApiResponse } from "@/services/api_client";
+import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_client";
 
 export type QuotationStatus =
   | "draft"
@@ -11,7 +11,33 @@ export type QuotationStatus =
   | "converted"
   | "interested"
   | "accepted"
-  | "pending_revision";
+  | "pending_revision"
+  | "pending_customer_response"
+  | "accepted_by_customer"
+  | "booking_request"
+  | "reservation_pending"
+  | "reservation_rejected";
+
+export type RoomLine = {
+  /** The room's identity. Required on create/revise — allotment is keyed on the product. */
+  productId: string;
+  /** Display label only; the server rewrites it from the product it points at. */
+  roomType?: string;
+  numberOfRooms: number;
+  pricePerNight: number;
+};
+
+/**
+ * A room line as it comes back from the server. {@link RoomLine} is the request shape, where the
+ * product is required and the label is decorative; here it is the other way round — the label is
+ * always present, and productId may be missing on quotations created before the link existed.
+ */
+export type RoomLineDetail = Omit<RoomLine, "productId" | "roomType"> & {
+  productId?: string;
+  roomType: string;
+  nights?: number;
+  lineTotal?: number;
+};
 
 export type Quotation = {
   id: string;
@@ -25,12 +51,16 @@ export type Quotation = {
   customerId?: string;
   email?: string;
   phone?: string;
+  /** Summary string ("Deluxe Suite" or "Deluxe Suite +1 more") — see `roomLines` for the full breakdown. */
   roomType?: string;
+  /** Aggregate room count across all lines. */
   numberOfRooms?: number;
   checkInDate?: string;
   checkOutDate?: string;
   nights?: number;
+  /** Only set when the quotation has exactly one room line. */
   pricePerNight?: number;
+  roomLines?: RoomLineDetail[];
   paymentPolicy?: string;
   subtotal?: number;
   discountPercent?: number;
@@ -41,6 +71,7 @@ export type Quotation = {
   validUntil?: string;
   parentQuotationId?: string;
   changeReason?: string;
+  reservationDecision?: "APPROVED" | "REJECTED" | null;
 };
 
 export type CloseQuotationPayload = {
@@ -88,11 +119,9 @@ export type TrackCustomerResponsePayload = {
 };
 
 export type ReviseQuotationPayload = {
-  roomType: string;
+  roomLines: RoomLine[];
   checkInDate: string;
   checkOutDate: string;
-  numberOfRooms: number;
-  pricePerNight: number;
   discountPercent: number;
   paymentPolicy: string;
   validUntil: string;
@@ -104,11 +133,9 @@ export type ReviseQuotationPayload = {
 
 export type CreateQuotationPayload = {
   dealId: string;
-  roomType: string;
+  roomLines: RoomLine[];
   checkInDate: string;
   checkOutDate: string;
-  numberOfRooms: number;
-  pricePerNight: number;
   discountPercent: number;
   paymentPolicy: string;
   validUntil: string;
@@ -133,16 +160,64 @@ export type SendQuotationPayload = {
   personalMessage?: string;
 };
 
+/**
+ * Whether one action is currently available on a quotation, and the reason it is not.
+ *
+ * The reason is the backend's own sentence, produced by the very policy the write endpoint
+ * enforces — so a disabled button says exactly what an attempt would have said. Screens render
+ * `reason` verbatim rather than composing their own wording, which is what let the old UI offer
+ * "Convert to Booking" on every accepted quotation while the server also required a contract the
+ * customer had acknowledged.
+ */
+export type ActionEligibility = {
+  allowed: boolean;
+  /** Matches the `errorCode` the write endpoint would return. */
+  errorCode?: string;
+  /** Present only when `allowed` is false. */
+  reason?: string;
+  /** Dotted path of the input to correct, e.g. `customer.email`. */
+  field?: string;
+};
+
+export type QuotationEligibility = {
+  quotationId: string;
+  status: string;
+  /** Status and customer identity — what every delivery method needs. */
+  send: ActionEligibility;
+  sendByEmail: ActionEligibility;
+  sendByWhatsApp: ActionEligibility;
+  requestAvailability: ActionEligibility;
+  convert: ActionEligibility;
+};
+
+export type QuotationListParams = {
+  status?: string;
+  statuses?: string[];
+  search?: string;
+  page?: number;
+  size?: number;
+  sortBy?: string;
+  sortDir?: string;
+};
+
 const ENDPOINT = "/quotations";
 
 export const quotationService = {
-  async getList(): Promise<ApiResponse<Quotation[]>> {
-    const response = await apiClient.get<ApiResponse<Quotation[]>>(ENDPOINT);
+  async getList(params?: QuotationListParams): Promise<ApiResponse<PageResponse<Quotation>>> {
+    const response = await apiClient.get<ApiResponse<PageResponse<Quotation>>>(ENDPOINT, { params });
     return response.data;
   },
 
   async getById(id: string): Promise<ApiResponse<Quotation>> {
     const response = await apiClient.get<ApiResponse<Quotation>>(`${ENDPOINT}/${id}`);
+    return response.data;
+  },
+
+  /** What this quotation currently allows, and why it does not allow the rest. */
+  async getEligibility(id: string): Promise<ApiResponse<QuotationEligibility>> {
+    const response = await apiClient.get<ApiResponse<QuotationEligibility>>(
+      `${ENDPOINT}/${id}/eligibility`,
+    );
     return response.data;
   },
 
@@ -171,6 +246,11 @@ export const quotationService = {
     return response.data;
   },
 
+  async resend(id: string): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(`${ENDPOINT}/${id}/resend`);
+    return response.data;
+  },
+
   async revise(id: string, payload: ReviseQuotationPayload): Promise<ApiResponse<Quotation>> {
     const response = await apiClient.post<ApiResponse<Quotation>>(`${ENDPOINT}/${id}/revise`, payload);
     return response.data;
@@ -193,6 +273,41 @@ export const quotationService = {
 
   async expireOverdue(payload: ExpireOverduePayload): Promise<ApiResponse<ExpireOverdueResult>> {
     const response = await apiClient.post<ApiResponse<ExpireOverdueResult>>(`${ENDPOINT}/expire-overdue`, payload);
+    return response.data;
+  },
+
+  // Public Endpoints (Customer Portal)
+  async publicGetById(id: string, token: string): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.get<ApiResponse<Quotation>>(`/public/quotations/${id}?token=${token}`);
+    return response.data;
+  },
+
+  /**
+   * The customer accepts, in one call.
+   *
+   * Replaces `request-otp` + `confirm-otp`. Acceptance no longer routes through a code emailed to
+   * the customer: the link's token is the credential, and Report 1 requires no such verification
+   * anywhere in the quotation workflow. Rejection never had one, so the two are now symmetrical.
+   */
+  async publicAccept(id: string, token: string): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(
+      `/public/quotations/${id}/accept?token=${token}`,
+    );
+    return response.data;
+  },
+
+  async publicReject(id: string, token: string, reason: string): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(`/public/quotations/${id}/reject?token=${token}`, { reason });
+    return response.data;
+  },
+
+  async reservationApprove(id: string): Promise<ApiResponse<BookingResult>> {
+    const response = await apiClient.post<ApiResponse<BookingResult>>(`${ENDPOINT}/${id}/reservation-approve`);
+    return response.data;
+  },
+
+  async reservationReject(id: string, payload: { reason: string; note: string }): Promise<ApiResponse<Quotation>> {
+    const response = await apiClient.post<ApiResponse<Quotation>>(`${ENDPOINT}/${id}/reservation-reject`, payload);
     return response.data;
   },
 };

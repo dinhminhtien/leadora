@@ -1,27 +1,42 @@
 "use client";
 
-import React, { useMemo } from "react";
-import { useForm, type Resolver } from "react-hook-form";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useForm, useFieldArray, type Resolver, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, AlertCircle, CheckCircle2, Calculator, User, Mail, Phone } from "lucide-react";
+import { ArrowLeft, AlertCircle, CheckCircle2, Calculator, User, Mail, Phone, Plus, Trash2, BedDouble } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
-import { useCreateQuotation, useDealsForQuotation, type DealOption } from "@/features/quotation/hooks/use_quotations";
+import { DealSearchPicker } from "@/features/quotation/components/DealSearchPicker";
+import type { Deal } from "@/services/deal_service";
+import { useCreateQuotation, useQuotations } from "@/features/quotation/hooks/use_quotations";
+import { useQuery } from "@tanstack/react-query";
+import { productService } from "@/services/product_service";
+import { AllotmentHint } from "@/features/room_availability/components/AllotmentHint";
+
+const roomLineSchema = z.object({
+  // The room's identity. The label alone is not enough: room allotment is keyed on the
+  // product, so a line that only carries a name cannot be checked against the quota.
+  productId: z.string().min(1, "Select a room type"),
+  // Display label, sent for readability only — the server overwrites it from the product.
+  roomType: z.string().optional(),
+  numberOfRooms: z.coerce.number().min(1, "At least 1 room"),
+  pricePerNight: z.coerce.number().min(0.01, "Must be greater than 0"),
+});
 
 const schema = z
   .object({
     dealId: z.string().min(1, "Select a deal"),
-    roomType: z.string().min(1, "Select a room type"),
+    roomLines: z.array(roomLineSchema).min(1, "Add at least one room type"),
     checkInDate: z.string().min(1, "Required"),
     checkOutDate: z.string().min(1, "Required"),
-    numberOfRooms: z.coerce.number().min(1, "At least 1 room"),
-    pricePerNight: z.coerce.number().min(0.01, "Must be greater than 0"),
     discountPercent: z.coerce.number().min(0, "Cannot be negative").max(100, "Cannot exceed 100%"),
     paymentPolicy: z.string().min(1, "Select a payment policy"),
     validUntil: z.string().min(1, "Required"),
@@ -33,25 +48,29 @@ const schema = z
       !data.checkOutDate ||
       new Date(data.checkOutDate) > new Date(data.checkInDate),
     { message: "Check-out must be after check-in", path: ["checkOutDate"] }
+  )
+  .refine(
+    (data) => {
+      const types = data.roomLines.map((l) => l.productId).filter(Boolean);
+      return new Set(types).size === types.length;
+    },
+    { message: "Each room type can only be selected once — adjust the quantity instead", path: ["roomLines"] }
   );
 
 type FormValues = z.infer<typeof schema>;
 
-const ROOM_TYPES = [
-  "Deluxe Suite",
-  "Superior Room",
-  "Standard Queen",
-  "Executive Suite",
-  "Ocean View Room",
-  "Banquet Hall",
-  "Grand Ballroom Suite",
-];
+// Room types come from the product catalogue (see roomProducts below), not from a list in
+// this file. A hard-coded list used to sit here, which meant the dropdown could offer rooms
+// that do not exist as products — and those are exactly the lines the server cannot price,
+// check against allotment, or convert to a booking.
 
 const PAYMENT_POLICIES: { value: string; label: string }[] = [
   { value: "full_upfront", label: "Full Payment Upfront" },
   { value: "50_deposit", label: "50% Deposit on Booking" },
   { value: "pay_on_arrival", label: "Pay on Arrival" },
 ];
+
+const EMPTY_ROOM_LINE = { productId: "", roomType: "", numberOfRooms: 1, pricePerNight: 0 };
 
 function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
@@ -65,36 +84,152 @@ function FieldLabel({ children, required }: { children: React.ReactNode; require
 export function CreateQuotationScreen() {
   const router = useRouter();
   const createQuotation = useCreateQuotation();
-  const { data: deals = [], isLoading: dealsLoading } = useDealsForQuotation();
+  const { data: quotesResult } = useQuotations({ size: 100 });
+  const allQuotes = quotesResult?.content ?? [];
+
+  /** Room products from the product catalogue — used to auto-populate price when a Deal is selected
+   *  for the first time (no prior quotation exists to template from). */
+  const { data: roomProducts = [] } = useQuery({
+    queryKey: ["product-services", "ROOM"],
+    queryFn: () => productService.getList("ROOM"),
+    select: (res) => res.data ?? [],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  /**
+   * The picked deal, held alongside the form so the customer strip can render its
+   * contact details. `dealId` remains the single source of truth for validation and
+   * submission — this is display state only.
+   */
+  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
 
   const {
     register,
+    control,
     handleSubmit,
     watch,
+    reset,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema) as unknown as Resolver<FormValues>,
     defaultValues: {
-      numberOfRooms: 1,
-      pricePerNight: 0,
+      roomLines: [EMPTY_ROOM_LINE],
       discountPercent: 0,
     },
   });
 
-  const [dealId, checkInDate, checkOutDate, numberOfRooms, pricePerNight, discountPercent] = watch([
+  const { fields, append, remove } = useFieldArray({ control, name: "roomLines" });
+
+  const [dealId, checkInDate, checkOutDate, discountPercent] = watch([
     "dealId",
     "checkInDate",
     "checkOutDate",
-    "numberOfRooms",
-    "pricePerNight",
     "discountPercent",
   ]);
 
-  // Auto-fill customer info from selected deal
-  const selectedDeal: DealOption | undefined = useMemo(
-    () => deals.find((d) => d.id === dealId),
-    [deals, dealId]
-  );
+  const roomLines = useWatch({
+    control,
+    name: "roomLines",
+  });
+
+  /**
+   * A deal that already has an earlier quotation (any status) gets its stay/pricing
+   * fields seeded from the most recent one, so re-quoting the same lead is a tweak
+   * instead of a re-type — everything stays fully editable afterward. Guarded by a ref
+   * (not just `dealId`) so a background refetch of `allQuotes` while the same deal stays
+   * selected can't re-fire this and clobber what the rep already typed.
+   */
+  const templatedDealRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!dealId || dealId === templatedDealRef.current) return;
+    const history = allQuotes
+      .filter((q) => q.dealId === dealId)
+      .sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
+    if (history.length > 0) {
+      templatedDealRef.current = dealId;
+      const latest = history[0];
+      // Older quotations were stored without a product id, so fall back to matching the name
+      // against the catalogue. An unmatched line seeds blank rather than carrying a room type
+      // the server cannot resolve — better an obvious empty select than a silent failure on save.
+      const productIdForName = (name?: string) =>
+        roomProducts.find((p) => p.name.trim().toLowerCase() === (name ?? "").trim().toLowerCase())
+          ?.productId ?? "";
+
+      const seededRoomLines =
+        latest.roomLines && latest.roomLines.length > 0
+          ? latest.roomLines.map((l) => ({
+            productId: l.productId ?? productIdForName(l.roomType),
+            roomType: l.roomType,
+            numberOfRooms: l.numberOfRooms,
+            pricePerNight: l.pricePerNight,
+          }))
+          : [{
+            productId: productIdForName(latest.roomType),
+            roomType: latest.roomType ?? "",
+            numberOfRooms: latest.numberOfRooms ?? 1,
+            pricePerNight: latest.pricePerNight ?? 0,
+          }];
+      reset({
+        dealId,
+        roomLines: seededRoomLines,
+        checkInDate: latest.checkInDate ?? "",
+        checkOutDate: latest.checkOutDate ?? "",
+        discountPercent: Number(latest.discountPercent ?? 0),
+        paymentPolicy: latest.paymentPolicy ?? "",
+        validUntil: latest.validUntil ?? "",
+        notes: latest.notes ?? "",
+      });
+    } else if (selectedDeal && roomProducts.length > 0) {
+      templatedDealRef.current = dealId;
+      // Try to find a matching product by price or title/notes
+      let matchedProduct = roomProducts.find(
+        (p) => p.unitPrice === selectedDeal.value
+      );
+      if (!matchedProduct && selectedDeal.title) {
+        matchedProduct = roomProducts.find(
+          (p) => selectedDeal.title.toLowerCase().includes(p.name.toLowerCase())
+        );
+      }
+      if (!matchedProduct && selectedDeal.notes) {
+        matchedProduct = roomProducts.find(
+          (p) => (selectedDeal.notes ?? "").toLowerCase().includes(p.name.toLowerCase())
+        );
+      }
+
+      if (matchedProduct) {
+        reset({
+          dealId,
+          roomLines: [
+            {
+              productId: matchedProduct.productId,
+              roomType: matchedProduct.name,
+              numberOfRooms: 1,
+              pricePerNight: matchedProduct.unitPrice,
+            },
+          ],
+          checkInDate: "",
+          checkOutDate: "",
+          discountPercent: 0,
+          paymentPolicy: "",
+          validUntil: "",
+          notes: selectedDeal.notes || "",
+        });
+      } else {
+        // Fallback to empty default line
+        reset({
+          dealId,
+          roomLines: [{ roomType: "", numberOfRooms: 1, pricePerNight: 0 }],
+          checkInDate: "",
+          checkOutDate: "",
+          discountPercent: 0,
+          paymentPolicy: "",
+          validUntil: "",
+          notes: selectedDeal.notes || "",
+        });
+      }
+    }
+  }, [dealId, allQuotes, reset, selectedDeal, roomProducts]);
 
   const pricing = useMemo(() => {
     const inDate = checkInDate ? new Date(checkInDate) : null;
@@ -103,25 +238,28 @@ export function CreateQuotationScreen() {
       inDate && outDate && outDate > inDate
         ? Math.floor((outDate.getTime() - inDate.getTime()) / (1000 * 60 * 60 * 24))
         : 0;
-    const rooms = numberOfRooms || 0;
-    const price = pricePerNight || 0;
     const disc = discountPercent || 0;
-    const subtotal = price * nights * rooms;
+    const lines = (roomLines || []).map((line) => {
+      const rooms = Number(line?.numberOfRooms) || 0;
+      const price = Number(line?.pricePerNight) || 0;
+      const lineSubtotal = price * (nights || 1) * rooms;
+      return { ...line, rooms, price, lineSubtotal };
+    });
+    const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0);
+    const totalRooms = lines.reduce((sum, l) => sum + l.rooms, 0);
     const discountAmount = Math.round(subtotal * disc) / 100;
     const total = subtotal - discountAmount;
-    return { nights, subtotal, discountAmount, total };
-  }, [checkInDate, checkOutDate, numberOfRooms, pricePerNight, discountPercent]);
+    return { nights, lines, subtotal, totalRooms, discountAmount, total };
+  }, [checkInDate, checkOutDate, roomLines, discountPercent]);
 
   const requiresApproval = (discountPercent || 0) > 10;
 
   const onSubmit = async (data: FormValues) => {
     await createQuotation.mutateAsync({
       dealId: data.dealId,
-      roomType: data.roomType,
+      roomLines: data.roomLines,
       checkInDate: data.checkInDate,
       checkOutDate: data.checkOutDate,
-      numberOfRooms: data.numberOfRooms,
-      pricePerNight: data.pricePerNight,
       discountPercent: data.discountPercent,
       paymentPolicy: data.paymentPolicy,
       validUntil: data.validUntil,
@@ -147,7 +285,7 @@ export function CreateQuotationScreen() {
       <div>
         <h1 className="text-xl font-bold text-slate-800">Create Room Quotation</h1>
         <p className="text-xs text-slate-400">
-          Fill in the form to generate a new room price proposal. Discounts above 10% require Manager approval.
+          Fill in the form to generate a new room price proposal. Add multiple room types with their own quantity and rate. Discounts above 10% require Manager approval.
         </p>
       </div>
 
@@ -172,20 +310,24 @@ export function CreateQuotationScreen() {
               <CardContent className="space-y-4">
                 <div>
                   <FieldLabel required>Select Deal</FieldLabel>
-                  <Select
-                    {...register("dealId")}
+                  {/*
+                    Registered so the zod rule still owns validation, but rendered
+                    hidden: the visible control is the search picker below, which
+                    writes through `setValue`.
+                  */}
+                  <input type="hidden" {...register("dealId")} />
+                  <DealSearchPicker
+                    id="quotation-deal"
+                    value={selectedDeal}
+                    onChange={(deal) => {
+                      setSelectedDeal(deal);
+                      setValue("dealId", deal?.id ?? "", {
+                        shouldValidate: true,
+                        shouldDirty: true,
+                      });
+                    }}
                     error={errors.dealId?.message}
-                    disabled={dealsLoading}
-                  >
-                    <option value="">
-                      {dealsLoading ? "Loading deals..." : "-- Select a deal --"}
-                    </option>
-                    {deals.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.title}
-                      </option>
-                    ))}
-                  </Select>
+                  />
                 </div>
 
                 {/* Auto-filled customer info */}
@@ -208,23 +350,12 @@ export function CreateQuotationScreen() {
               </CardContent>
             </Card>
 
-            {/* Section 2: Room Booking Details */}
+            {/* Section 2: Stay Dates */}
             <Card className="border-slate-100 shadow-sm bg-white">
               <CardHeader>
-                <CardTitle className="text-sm font-bold text-slate-700">Room Booking Details</CardTitle>
+                <CardTitle className="text-sm font-bold text-slate-700">Stay Dates</CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <FieldLabel required>Room Type</FieldLabel>
-                  <Select {...register("roomType")} error={errors.roomType?.message}>
-                    <option value="">-- Select room type --</option>
-                    {ROOM_TYPES.map((rt) => (
-                      <option key={rt} value={rt}>
-                        {rt}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
                 <div>
                   <FieldLabel required>Check-In Date</FieldLabel>
                   <Input
@@ -243,46 +374,133 @@ export function CreateQuotationScreen() {
                     error={errors.checkOutDate?.message}
                   />
                 </div>
-                <div>
-                  <FieldLabel required>Number of Rooms</FieldLabel>
-                  <Input
-                    {...register("numberOfRooms")}
-                    type="number"
-                    min={1}
-                    placeholder="1"
-                    error={errors.numberOfRooms?.message}
-                  />
-                </div>
-                <div className="flex items-end">
-                  {pricing.nights > 0 && (
-                    <span className="text-xs text-slate-500 font-semibold pb-2">
+                {pricing.nights > 0 && (
+                  <div className="sm:col-span-2">
+                    <span className="text-xs text-slate-500 font-semibold">
                       Duration:{" "}
                       <strong className="text-slate-800">
                         {pricing.nights} night{pricing.nights !== 1 ? "s" : ""}
                       </strong>
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            {/* Section 3: Pricing */}
+            {/* Section 3: Room Types — one row per room type, each with its own quantity and rate */}
             <Card className="border-slate-100 shadow-sm bg-white">
               <CardHeader>
-                <CardTitle className="text-sm font-bold text-slate-700">Pricing & Discount</CardTitle>
+                <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                  <BedDouble className="size-4 text-blue-500" />
+                  Room Types
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {errors.roomLines?.root?.message && (
+                  <p className="text-[10px] text-red-500 font-semibold flex items-center gap-1">
+                    <AlertCircle className="size-3" />
+                    {errors.roomLines.root.message}
+                  </p>
+                )}
+                {errors.roomLines?.message && (
+                  <p className="text-[10px] text-red-500 font-semibold flex items-center gap-1">
+                    <AlertCircle className="size-3" />
+                    {errors.roomLines.message}
+                  </p>
+                )}
+                {fields.map((field, index) => (
+                  <div
+                    key={field.id}
+                    className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-3 items-start rounded-lg border border-slate-100 bg-slate-50/50 p-3"
+                  >
+                    <div>
+                      <FieldLabel required>Room Type</FieldLabel>
+                      <Select
+                        {...register(`roomLines.${index}.productId` as const, {
+                          onChange: (e) => {
+                            const matched = roomProducts.find((p) => p.productId === e.target.value);
+                            // Keep the label in step with the product so the two can never
+                            // describe different rooms.
+                            setValue(`roomLines.${index}.roomType`, matched ? matched.name : "", {
+                              shouldDirty: true,
+                            });
+                            setValue(`roomLines.${index}.pricePerNight`, matched ? matched.unitPrice : 0, {
+                              shouldValidate: true,
+                              shouldDirty: true,
+                            });
+                          },
+                        })}
+                        error={errors.roomLines?.[index]?.productId?.message}
+                      >
+                        <option value="">-- Select room type --</option>
+                        {roomProducts.map((product) => (
+                          <option key={product.productId} value={product.productId}>
+                            {product.name}
+                          </option>
+                        ))}
+                      </Select>
+                      <AllotmentHint
+                        productId={roomLines?.[index]?.productId}
+                        checkIn={checkInDate}
+                        checkOut={checkOutDate}
+                        quantity={Number(roomLines?.[index]?.numberOfRooms) || 1}
+                      />
+                    </div>
+                    <div className="w-full sm:w-28">
+                      <FieldLabel required>Quantity</FieldLabel>
+                      <Input
+                        {...register(`roomLines.${index}.numberOfRooms` as const)}
+                        type="number"
+                        min={1}
+                        placeholder="1"
+                        error={errors.roomLines?.[index]?.numberOfRooms?.message}
+                      />
+                    </div>
+                    <div className="w-full sm:w-36">
+                      <FieldLabel required>Price / Night (VND)</FieldLabel>
+                      <Input
+                        {...register(`roomLines.${index}.pricePerNight` as const)}
+                        type="text"
+                        inputMode="numeric"
+                        numericOnly
+                        readOnly
+                        className="bg-slate-100/80 cursor-not-allowed font-medium text-slate-500"
+                        placeholder="0"
+                        error={errors.roomLines?.[index]?.pricePerNight?.message}
+                      />
+                    </div>
+                    <div className="flex items-end pb-0.5">
+                      <button
+                        type="button"
+                        onClick={() => remove(index)}
+                        disabled={fields.length === 1}
+                        className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                        title="Remove room type"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => append(EMPTY_ROOM_LINE)}
+                  leftIcon={<Plus className="size-3.5" />}
+                  className="text-xs font-bold border-slate-200 text-slate-600"
+                >
+                  Add Room Type
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Section 4: Discount */}
+            <Card className="border-slate-100 shadow-sm bg-white">
+              <CardHeader>
+                <CardTitle className="text-sm font-bold text-slate-700">Discount</CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <FieldLabel required>Price Per Night / Unit (VND)</FieldLabel>
-                  <Input
-                    {...register("pricePerNight")}
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    placeholder="0.00"
-                    error={errors.pricePerNight?.message}
-                  />
-                </div>
                 <div>
                   <FieldLabel>Discount (%)</FieldLabel>
                   <Input
@@ -304,7 +522,7 @@ export function CreateQuotationScreen() {
               </CardContent>
             </Card>
 
-            {/* Section 4: Policy */}
+            {/* Section 5: Policy */}
             <Card className="border-slate-100 shadow-sm bg-white">
               <CardHeader>
                 <CardTitle className="text-sm font-bold text-slate-700">Payment Policy & Validity</CardTitle>
@@ -359,15 +577,27 @@ export function CreateQuotationScreen() {
                     <span className="font-semibold text-slate-700">{pricing.nights}</span>
                   </div>
                   <div className="flex justify-between text-slate-500">
-                    <span>Rooms</span>
-                    <span className="font-semibold text-slate-700">{numberOfRooms || 0}</span>
+                    <span>Total Rooms</span>
+                    <span className="font-semibold text-slate-700">{pricing.totalRooms}</span>
                   </div>
-                  <div className="flex justify-between text-slate-500">
-                    <span>Rate/Night</span>
-                    <span className="font-semibold text-slate-700">
-                      {(pricePerNight || 0).toLocaleString("vi-VN")} ₫
-                    </span>
-                  </div>
+
+                  {pricing.lines.some((l) => l.roomType) && (
+                    <div className="space-y-1 border-t border-slate-100 pt-2">
+                      {pricing.lines
+                        .filter((l) => l.roomType)
+                        .map((l, i) => (
+                          <div key={i} className="flex justify-between text-slate-500">
+                            <span className="truncate pr-2">
+                              {l.roomType} × {l.rooms}
+                            </span>
+                            <span className="font-semibold text-slate-700 shrink-0">
+                              {l.lineSubtotal.toLocaleString("vi-VN")} ₫
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+
                   <div className="border-t border-slate-100 pt-2 flex justify-between text-slate-600">
                     <span>Subtotal</span>
                     <span className="font-bold">{pricing.subtotal.toLocaleString("vi-VN")} ₫</span>

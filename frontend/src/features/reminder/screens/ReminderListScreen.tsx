@@ -2,16 +2,21 @@
 
 import React, { useState, useMemo } from "react";
 import {
-  Bell, Clock, AlertTriangle, Plus, Filter,
+  Bell, Clock, AlertTriangle, Plus, Filter, Search,
   FileSpreadsheet, Calendar, LayoutList, ChevronLeft, ChevronRight,
-  Users, Building2, CreditCard,
+  Users, Building2, CreditCard, ChevronUp, ChevronDown, ArrowUpDown, Pencil,
 } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { DataTable, type ColumnDef } from "@/components/ui/data-table";
+import { ExportMenu, useTableControls } from "@/components/ui/table-controls";
+import { OwnerCell } from "@/components/ui/row-actions";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Badge } from "@/components/ui/Badge";
 import { CreateReminderModal } from "@/features/reminder/components/CreateReminderModal";
 import { UpdateReminderModal } from "@/features/reminder/components/UpdateReminderModal";
+import { ReminderDetailDrawer } from "@/features/reminder/components/ReminderDetailDrawer";
 import { useReminders } from "@/features/reminder/hooks/use_reminders";
 import { useUsers } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import { useAuthStore } from "@/stores/auth_store";
@@ -28,6 +33,17 @@ const STATUS_VARIANT: Record<ReminderStatus, "danger" | "warning" | "success" | 
   PENDING: "warning", OVERDUE: "danger", DONE: "success", CANCELLED: "default",
 };
 
+const REMINDER_EXPORT_HEADERS = [
+  "Title", "Description", "Due", "Priority", "Status", "Linked to", "Assigned to", "Created by",
+];
+
+function reminderExportRow(r: Reminder): (string | number | null | undefined)[] {
+  return [
+    r.title, r.description ?? "", r.remindAt, r.priority, r.status,
+    r.relatedEntity, r.assignedUserName ?? "", r.createdByName ?? "",
+  ];
+}
+
 const ENTITY_ICON: Record<string, React.ReactNode> = {
   QUOTATION: <FileSpreadsheet className="size-3 text-blue-400" />,
   LEAD:      <Users className="size-3 text-emerald-400" />,
@@ -36,6 +52,8 @@ const ENTITY_ICON: Record<string, React.ReactNode> = {
 };
 
 const PRIORITY_ORDER: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+// "Active" = still needs attention (pending or overdue); "Done" = past, no more action needed.
+const DONE_REMINDER_STATUSES: ReminderStatus[] = ["DONE", "CANCELLED"];
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTHS   = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const PAD      = (n: number) => String(n).padStart(2, "0");
@@ -69,11 +87,13 @@ function matchesDateFilter(r: Reminder, dateFilter: string, calDay: string | nul
   return true;
 }
 
-function applySort(list: Reminder[], sortBy: string): Reminder[] {
+function applySort(list: Reminder[], sortField: "due" | "priority", sortDir: "asc" | "desc"): Reminder[] {
+  const dirMul = sortDir === "asc" ? 1 : -1;
   return [...list].sort((a, b) => {
-    if (sortBy === "date-desc") return new Date(b.remindAt).getTime() - new Date(a.remindAt).getTime();
-    if (sortBy === "priority")  return (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1);
-    return new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime();
+    if (sortField === "priority") {
+      return ((PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1)) * dirMul;
+    }
+    return (new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime()) * dirMul;
   });
 }
 
@@ -202,6 +222,10 @@ export function ReminderListScreen() {
   const queryUserId = isManager ? (filterUserId || undefined) : user?.id;
   const fetchAll    = isManager && !filterUserId;
 
+  // Search — keyword match on title / description, applied client-side (see `displayed`)
+  // so it doesn't shrink `allReminders`, which the stats below depend on staying unfiltered.
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Only enable query once auth is resolved (user object is available)
   const authReady = !isAuthLoading && !!user;
   const { data: allReminders = [], isLoading } = useReminders(
@@ -212,11 +236,26 @@ export function ReminderListScreen() {
   const { data: usersRes } = useUsers();
   const teamUsers = usersRes?.data ?? [];
 
+  // Tabs — Active (still needs attention) vs Completed (past, no action needed)
+  const [listTab, setListTab] = useState<"active" | "done">("active");
+
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [dateFilter, setDateFilter]     = useState<string>("");
   const [entityFilter, setEntityFilter] = useState<string>("");
-  const [sortBy, setSortBy]             = useState<string>("date-asc");
+
+  // Column sort — Due / Priority, toggled by clicking the table header.
+  const [sortField, setSortField] = useState<"due" | "priority">("due");
+  const [sortDir, setSortDir]     = useState<"asc" | "desc">("asc");
+
+  const handleSort = (field: "due" | "priority") => {
+    if (sortField === field) {
+      setSortDir(prev => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
 
   // View & calendar
   const [viewMode, setViewMode]       = useState<"list" | "calendar">("list");
@@ -224,29 +263,155 @@ export function ReminderListScreen() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [updateTarget, setUpdateTarget] = useState<Reminder | null>(null);
+  // Row click opens the shared detail surface; Edit from there opens the modal
+  // below, so the existing update flow is preserved rather than replaced.
+  const [detailReminder, setDetailReminder] = useState<Reminder | null>(null);
+
+  const isDoneReminder = (r: Reminder) => DONE_REMINDER_STATUSES.includes(r.status);
+
+  /**
+   * Column set — Blueprint §10.16.
+   *
+   * The leading flag column is intentionally header-less: it carries a single
+   * overdue warning glyph, and a header over one icon adds noise without
+   * telling the reader anything the icon does not.
+   */
+  const reminderColumns: ColumnDef<Reminder>[] = useMemo(() => [
+    {
+      id: "flag",
+      header: "",
+      width: "w-8",
+      cell: (r) =>
+        isOverdue(r) || r.status === "OVERDUE" ? (
+          <AlertTriangle className="size-3.5 text-danger" aria-label="Overdue" />
+        ) : null,
+    },
+    {
+      id: "title",
+      header: "Title",
+      sticky: "left",
+      cell: (r) => (
+        <>
+          <div className="max-w-[220px] truncate text-xs font-bold text-foreground">{r.title}</div>
+          {r.description && (
+            <div className="mt-0.5 max-w-[220px] truncate text-[10px] text-muted-foreground">
+              {r.description}
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "due",
+      header: "Due",
+      sortable: true,
+      cell: (r) => {
+        const overdue = isOverdue(r) || r.status === "OVERDUE";
+        return (
+          <span className={`flex items-center gap-1 whitespace-nowrap text-xs font-semibold ${overdue ? "text-danger" : "text-muted-foreground"}`}>
+            <Clock className="size-3 shrink-0" />
+            {formatRemindAt(r.remindAt)}
+          </span>
+        );
+      },
+    },
+    {
+      id: "priority",
+      header: "Priority",
+      sortable: true,
+      cell: (r) => (
+        <Badge variant={PRIORITY_VARIANT[r.priority] ?? "default"} size="sm" className="text-[9px] font-bold uppercase">
+          {r.priority}
+        </Badge>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (r) => {
+        const overdue = isOverdue(r) || r.status === "OVERDUE";
+        return (
+          <Badge
+            variant={overdue ? "danger" : STATUS_VARIANT[r.status] ?? "default"}
+            size="sm"
+            className="text-[9px] font-bold uppercase"
+          >
+            {overdue && r.status !== "OVERDUE" ? "OVERDUE" : r.status}
+          </Badge>
+        );
+      },
+    },
+    {
+      id: "linkedTo",
+      header: "Linked To",
+      minWidth: "md",
+      cell: (r) => (
+        <span className="flex items-center gap-1 whitespace-nowrap text-[10px] font-semibold text-muted-foreground">
+          {ENTITY_ICON[r.relatedEntity] ?? <Bell className="size-3" />}
+          {r.relatedEntity}
+        </span>
+      ),
+    },
+    {
+      id: "assigned",
+      header: "Assigned",
+      minWidth: "lg",
+      cell: (r) => (
+        <>
+          <OwnerCell name={r.assignedUserName} />
+          {r.createdByName && r.createdByName !== r.assignedUserName && (
+            <div className="mt-0.5 text-[9px] text-muted-foreground">by {r.createdByName}</div>
+          )}
+        </>
+      ),
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const controls = useTableControls<Reminder>("reminders", reminderColumns, {
+    defaultSortBy: "due",
+  });
 
   // Stats (from full unfiltered data)
   const pendingCount = allReminders.filter(r => r.status === "PENDING" && !isOverdue(r)).length;
   const overdueCount = allReminders.filter(r => isOverdue(r) || r.status === "OVERDUE").length;
-  const doneCount    = allReminders.filter(r => r.status === "DONE").length;
+  const doneCount    = allReminders.filter(r => isDoneReminder(r)).length;
+  const activeCount  = allReminders.filter(r => !isDoneReminder(r)).length;
 
-  // Apply client-side filters + sort
+  const handleTabChange = (tab: "active" | "done") => {
+    setListTab(tab);
+    setStatusFilter("");
+  };
+
+  const goToStatus = (status: string, tab: "active" | "done") => {
+    setListTab(tab);
+    setStatusFilter(status);
+  };
+
+  // Apply tab + client-side filters + sort
   const displayed = useMemo(() => {
-    let list = allReminders.filter(r => {
+    let list = allReminders.filter(r => (listTab === "done" ? isDoneReminder(r) : !isDoneReminder(r)));
+    list = list.filter(r => {
       if (statusFilter === "OVERDUE") return isOverdue(r) || r.status === "OVERDUE";
       if (statusFilter)               return r.status === statusFilter;
       return true;
     });
     if (entityFilter) list = list.filter(r => r.relatedEntity === entityFilter);
     list = list.filter(r => matchesDateFilter(r, dateFilter, calendarDay));
-    return applySort(list, sortBy);
-  }, [allReminders, statusFilter, entityFilter, dateFilter, calendarDay, sortBy]);
+    if (searchQuery.trim()) {
+      const keyword = searchQuery.trim().toLowerCase();
+      list = list.filter(r =>
+        r.title.toLowerCase().includes(keyword) ||
+        (r.description ?? "").toLowerCase().includes(keyword));
+    }
+    return applySort(list, sortField, sortDir);
+  }, [allReminders, listTab, statusFilter, entityFilter, dateFilter, calendarDay, searchQuery, sortField, sortDir]);
 
-  const hasFilters = !!(statusFilter || dateFilter || entityFilter || calendarDay || filterUserId);
+  const hasFilters = !!(statusFilter || dateFilter || entityFilter || calendarDay || filterUserId || searchQuery);
 
   const clearFilters = () => {
     setStatusFilter(""); setDateFilter(""); setEntityFilter("");
-    setCalendarDay(null); setFilterUserId("");
+    setCalendarDay(null); setFilterUserId(""); setSearchQuery("");
   };
 
   const handleCalendarDayClick = (dateStr: string) => {
@@ -258,15 +423,15 @@ export function ReminderListScreen() {
   return (
     <div className="space-y-6">
 
-      {/* Header */}
-      <div className="flex justify-between items-start gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Reminders</h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {isManager ? "All team follow-up reminders" : "Your follow-up reminders"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
+      <PageHeader
+        {...PAGE_META.reminders}
+        subtitle={
+          isManager
+            ? "Time-based nudges across the whole team, so no follow-up slips past its due date."
+            : PAGE_META.reminders.subtitle
+        }
+        actions={
+          <div className="flex items-center gap-2 shrink-0">
           {/* List / Calendar toggle */}
           <div className="flex rounded-lg border border-slate-200 overflow-hidden">
             <button
@@ -300,15 +465,16 @@ export function ReminderListScreen() {
           >
             New Reminder
           </Button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: "Pending",  count: pendingCount, color: "text-amber-600",   bg: "bg-amber-50 border-amber-100",     onClick: () => setStatusFilter("PENDING") },
-          { label: "Overdue",  count: overdueCount, color: "text-red-600",     bg: "bg-red-50 border-red-100",         onClick: () => setStatusFilter("OVERDUE") },
-          { label: "Done",     count: doneCount,    color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-100", onClick: () => setStatusFilter("DONE") },
+          { label: "Pending",  count: pendingCount, color: "text-amber-600",   bg: "bg-amber-50 border-amber-100",     onClick: () => goToStatus("PENDING", "active") },
+          { label: "Overdue",  count: overdueCount, color: "text-red-600",     bg: "bg-red-50 border-red-100",         onClick: () => goToStatus("OVERDUE", "active") },
+          { label: "Done",     count: doneCount,    color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-100", onClick: () => goToStatus("DONE", "done") },
         ].map(({ label, count, color, bg, onClick }) => (
           <button
             key={label}
@@ -321,16 +487,71 @@ export function ReminderListScreen() {
         ))}
       </div>
 
+      {/* Active / Completed tabs */}
+      <div className="flex items-center gap-1 border-b border-slate-200">
+        <button
+          type="button"
+          onClick={() => handleTabChange("active")}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
+            listTab === "active"
+              ? "border-primary text-blue-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Active
+          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+            listTab === "active" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"
+          }`}>
+            {activeCount}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleTabChange("done")}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
+            listTab === "done"
+              ? "border-slate-600 text-slate-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Completed
+          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+            listTab === "done" ? "bg-slate-200 text-slate-600" : "bg-slate-100 text-slate-400"
+          }`}>
+            {doneCount}
+          </span>
+        </button>
+      </div>
+
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search title or description..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="rounded-lg border border-slate-200 bg-white pl-8 pr-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-400 transition w-56"
+          />
+        </div>
+
         <Filter className="size-3.5 text-slate-400 shrink-0" />
 
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
           className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-400 transition">
           <option value="">All statuses</option>
-          <option value="PENDING">Pending</option>
-          <option value="OVERDUE">Overdue</option>
-          <option value="DONE">Done</option>
+          {listTab === "active" ? (
+            <>
+              <option value="PENDING">Pending</option>
+              <option value="OVERDUE">Overdue</option>
+            </>
+          ) : (
+            <>
+              <option value="DONE">Done</option>
+              <option value="CANCELLED">Cancelled</option>
+            </>
+          )}
         </select>
 
         <select value={dateFilter} onChange={e => { setDateFilter(e.target.value); setCalendarDay(null); }}
@@ -348,13 +569,6 @@ export function ReminderListScreen() {
           <option value="LEAD">Lead</option>
           <option value="BOOKING">Booking</option>
           <option value="DEPOSIT">Deposit</option>
-        </select>
-
-        <select value={sortBy} onChange={e => setSortBy(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-400 transition">
-          <option value="date-asc">Due: Soonest first</option>
-          <option value="date-desc">Due: Latest first</option>
-          <option value="priority">Priority: High first</option>
         </select>
 
         {/* Manager-only: filter by team member */}
@@ -397,116 +611,65 @@ export function ReminderListScreen() {
 
       {/* List view */}
       {viewMode === "list" && (
-        <Card className="border-slate-100 shadow-sm bg-white overflow-hidden">
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader className="bg-slate-50 border-b border-slate-100">
-                <TableRow hoverable={false}>
-                  <TableHead className="font-semibold text-xs text-slate-500 w-6" />
-                  <TableHead className="font-semibold text-xs text-slate-500">Title</TableHead>
-                  <TableHead className="font-semibold text-xs text-slate-500">Due</TableHead>
-                  <TableHead className="font-semibold text-xs text-slate-500">Priority</TableHead>
-                  <TableHead className="font-semibold text-xs text-slate-500">Status</TableHead>
-                  <TableHead className="font-semibold text-xs text-slate-500">Linked To</TableHead>
-                  <TableHead className="font-semibold text-xs text-slate-500">Assigned</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading || isAuthLoading ? (
-                  <TableRow hoverable={false}>
-                    <TableCell colSpan={7} className="py-10 text-center text-xs text-slate-400">
-                      Loading reminders…
-                    </TableCell>
-                  </TableRow>
-                ) : displayed.length === 0 ? (
-                  <TableRow hoverable={false}>
-                    <TableCell colSpan={7} className="py-14 text-center">
-                      <div className="flex flex-col items-center gap-2">
-                        <Bell className="size-9 text-slate-200" />
-                        <p className="text-sm font-bold text-slate-500">No reminders found</p>
-                        <p className="text-[10px] text-slate-400">
-                          {hasFilters
-                            ? <button onClick={clearFilters} className="text-blue-500 hover:underline">Clear filters to see all reminders</button>
-                            : <button onClick={() => setShowCreate(true)} className="text-blue-500 hover:underline">Create your first reminder</button>
-                          }
-                        </p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  displayed.map(r => {
-                    const overdue = isOverdue(r) || r.status === "OVERDUE";
-                    return (
-                      <TableRow
-                        key={r.reminderId}
-                        ref={setRowRef(r.reminderId)}
-                        onClick={() => setUpdateTarget(r)}
-                        className={`border-b border-slate-100 transition cursor-pointer ${
-                          highlightedId === r.reminderId ? "bg-amber-50 ring-2 ring-inset ring-amber-400" :
-                          overdue          ? "bg-red-50/30 hover:bg-red-50/50" :
-                          r.status === "DONE" ? "opacity-55 bg-slate-50/40" :
-                          "hover:bg-slate-50/60"
-                        }`}
-                      >
-                        <TableCell className="py-3 pl-4 pr-0">
-                          {overdue && <AlertTriangle className="size-3.5 text-red-400" />}
-                        </TableCell>
-
-                        <TableCell className="py-3 px-4">
-                          <div className="text-xs font-bold text-slate-800 max-w-[220px] truncate">{r.title}</div>
-                          {r.description && (
-                            <div className="text-[10px] text-slate-400 mt-0.5 max-w-[220px] truncate">{r.description}</div>
-                          )}
-                        </TableCell>
-
-                        <TableCell className="py-3 px-4 whitespace-nowrap">
-                          <span className={`flex items-center gap-1 text-xs font-semibold ${overdue ? "text-red-600" : "text-slate-500"}`}>
-                            <Clock className="size-3 shrink-0" />
-                            {formatRemindAt(r.remindAt)}
-                          </span>
-                        </TableCell>
-
-                        <TableCell className="py-3 px-4">
-                          <Badge variant={PRIORITY_VARIANT[r.priority] ?? "default"} size="sm" className="text-[9px] font-bold uppercase">
-                            {r.priority}
-                          </Badge>
-                        </TableCell>
-
-                        <TableCell className="py-3 px-4">
-                          <Badge
-                            variant={overdue ? "danger" : STATUS_VARIANT[r.status] ?? "default"}
-                            size="sm"
-                            className="text-[9px] font-bold uppercase"
-                          >
-                            {overdue && r.status !== "OVERDUE" ? "OVERDUE" : r.status}
-                          </Badge>
-                        </TableCell>
-
-                        <TableCell className="py-3 px-4">
-                          <span className="flex items-center gap-1 text-[10px] text-slate-500 font-semibold whitespace-nowrap">
-                            {ENTITY_ICON[r.relatedEntity] ?? <Bell className="size-3 text-slate-400" />}
-                            {r.relatedEntity}
-                          </span>
-                        </TableCell>
-
-                        <TableCell className="py-3 px-4">
-                          <div className="text-xs text-slate-600 font-semibold">{r.assignedUserName ?? "—"}</div>
-                          {r.createdByName && r.createdByName !== r.assignedUserName && (
-                            <div className="text-[9px] text-slate-400">by {r.createdByName}</div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <DataTable
+          label="Reminders"
+          rows={displayed}
+          columns={controls.visibleColumns}
+          rowId={(r) => r.reminderId}
+          isLoading={isLoading || isAuthLoading}
+          density={controls.density}
+          sortBy={sortField ?? undefined}
+          sortDir={sortDir}
+          onSortChange={(columnId, dir) => {
+            // Only Due and Priority have comparators.
+            if (columnId === "due" || columnId === "priority") {
+              setSortField(columnId);
+              setSortDir(dir);
+            }
+          }}
+          highlightId={highlightedId}
+          rowRef={setRowRef}
+          onRowClick={(r) => setDetailReminder(r)}
+          selectedIds={controls.selectedIds}
+          onSelectionChange={controls.setSelectedIds}
+          bulkActions={
+            <ExportMenu
+              filename={`reminders-selected-${new Date().toISOString().slice(0, 10)}`}
+              headers={REMINDER_EXPORT_HEADERS}
+              rows={displayed.filter((r) => controls.selectedIds.has(r.reminderId)).map(reminderExportRow)}
+            />
+          }
+          isFiltered={hasFilters}
+          onClearFilters={clearFilters}
+          emptyTitle="No reminders found"
+          emptyMessage="Reminders you set on a lead, deal or booking show up here."
+          emptyAction={{ label: "New Reminder", onClick: () => setShowCreate(true) }}
+        />
       )}
 
       {showCreate && <CreateReminderModal onClose={() => setShowCreate(false)} />}
       {updateTarget && <UpdateReminderModal reminder={updateTarget} onClose={() => setUpdateTarget(null)} />}
+
+      {/* Shared detail surface — same behaviour as every other module. */}
+      <ReminderDetailDrawer
+        reminder={detailReminder}
+        onOpenChange={(open) => !open && setDetailReminder(null)}
+        actions={
+          detailReminder && !["DONE", "CANCELLED"].includes((detailReminder.status ?? "").toUpperCase())
+            ? [
+                {
+                  label: "Edit",
+                  icon: Pencil,
+                  onClick: () => {
+                    const target = detailReminder;
+                    setDetailReminder(null);
+                    setUpdateTarget(target);
+                  },
+                },
+              ]
+            : []
+        }
+      />
     </div>
   );
 }

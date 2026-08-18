@@ -13,6 +13,8 @@ export type UserAccount = {
   roleName: string | null;
   status: UserStatus;
   avatarUrl: string | null;
+  /** UC-6.1 "last login activity" — null until the account has signed in once. */
+  lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -71,13 +73,22 @@ export type Role = {
   description: string | null;
   userCount: number;
   permissions: Permission[];
+  /**
+   * Whether an Admin may grant/revoke this role's permissions (UC-6.4) — true for Staff and
+   * Manager only. Decided by the server so the screen never hard-codes role names.
+   */
+  configurable: boolean;
+  /**
+   * Permission codes this role has a real function behind (server-side `RolePermissionScope`).
+   * A module outside this list is shown as "not part of this job" rather than as an empty toggle:
+   * granting it would save a row no endpoint honours, so offering the toggle described an
+   * authorization model the application does not implement.
+   */
+  applicablePermissionCodes: string[];
+  /** The set the role ships with — what the Reset control restores into the draft. */
+  defaultPermissionCodes: string[];
 };
 
-export type CreateRolePayload = {
-  roleName: string;
-  description?: string;
-  permissionIds?: number[];
-};
 
 // ── Services ──────────────────────────────────────────────────────────────────
 
@@ -94,6 +105,17 @@ export const userService = {
   },
 
   // Flat, non-paged summary list for assignee dropdowns — open to all authenticated roles.
+  /**
+   * @param role optional role filter, resolved server-side. Ask for the team you need rather than
+   *   downloading the whole staff directory and filtering it here.
+   */
+  async getSummariesByRole(role: string): Promise<ApiResponse<UserSummary[]>> {
+    const { data } = await apiClient.get<ApiResponse<UserSummary[]>>(USERS, {
+      params: { role },
+    });
+    return data;
+  },
+
   async getSummaries(): Promise<ApiResponse<UserSummary[]>> {
     const { data } = await apiClient.get<ApiResponse<UserSummary[]>>(USERS);
     return data;
@@ -125,11 +147,6 @@ export const roleService = {
     return data;
   },
 
-  // UC-6.4 alt-flow A3 — create role
-  async create(payload: CreateRolePayload): Promise<ApiResponse<Role>> {
-    const { data } = await apiClient.post<ApiResponse<Role>>(ROLES, payload);
-    return data;
-  },
 
   // UC-6.4 — replace a role's permission set
   async setPermissions(roleId: number, permissionIds: number[]): Promise<ApiResponse<Role>> {

@@ -1,11 +1,16 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
+import 'package:uuid/uuid.dart';
+import 'crop_screen.dart';
 
 import '../../../../core/network/api_exception.dart';
-import '../../../../core/storage/local_avatar_store.dart';
 import '../../../../core/theme/app_dimens.dart';
+import '../../../../core/storage/token_store.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
 import '../../data/profile_models.dart';
@@ -47,8 +52,17 @@ class EditProfileLoader extends ConsumerWidget {
 
 /// UC-5 — Edit own profile. Field set and rules mirror the web Profile
 /// Information card: full name (required, ≤255), phone (optional, ≤15),
-/// read-only email, and a device-local avatar upload (≤1 MB) that stores the
-/// same `local-storage-avatar://` placeholder the web writes.
+/// read-only email, and an avatar upload.
+///
+/// The avatar goes to the shared Supabase Storage bucket `avatar`, under
+/// `{userId}/{uuid}.jpg`, and only the resulting public URL is persisted — the image
+/// itself never enters Postgres. The previous object is deleted once the new URL is
+/// saved, so the bucket does not accumulate orphans. Identical to the web flow, so the
+/// same picture follows the user across devices and is visible to colleagues.
+///
+/// This replaced a device-local scheme that base64'd the image into SharedPreferences
+/// behind a `local-storage-avatar://<userId>` placeholder. `AppAvatar` still resolves
+/// that scheme for rows whose `avatarUrl` was written before the change.
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key, required this.profile});
 
@@ -80,47 +94,208 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   }
 
   Future<void> _pickAvatar() async {
-    if (_pickingAvatar) return; // image_picker throws if opened twice
+    if (_pickingAvatar) return;
     _pickingAvatar = true;
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('Take Photo'),
+              onTap: () => Navigator.of(context).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Choose From Gallery'),
+              onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.close_rounded),
+              title: const Text('Cancel'),
+              onTap: () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    _pickingAvatar = false;
+    if (source == null || !mounted) return;
+
     final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
     try {
       final picked = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 85,
+        source: source,
       );
       if (picked == null || !mounted) return;
-      final bytes = await picked.readAsBytes();
-      if (bytes.lengthInBytes > 1024 * 1024) {
+
+      final file = File(picked.path);
+      final length = await file.length();
+      if (length > 5 * 1024 * 1024) {
         messenger.showSnackBar(
-          const SnackBar(content: Text('Avatar image size must be under 1MB.')),
+          const SnackBar(content: Text('Avatar image size must be under 5MB.')),
         );
         return;
       }
-      await ref
-          .read(localAvatarStoreProvider)
-          .save(widget.profile.userId, bytes);
-      ref.invalidate(localAvatarBytesProvider(widget.profile.userId));
-      if (!mounted) return;
-      setState(
-        () =>
-            _avatarUrl = LocalAvatarStore.placeholderFor(widget.profile.userId),
+
+      final Uint8List? croppedBytes = await navigator.push<Uint8List?>(
+        MaterialPageRoute(
+          builder: (context) => CropScreen(imageFile: file),
+        ),
       );
-    } catch (_) {
+
+      if (croppedBytes == null || !mounted) return;
+
+      setState(() => _submitting = true);
+
+      final supabaseClient = supabase.Supabase.instance.client;
+      final token = ref.read(tokenStoreProvider).accessTokenSync;
+      if (token != null) {
+        final sessionJson = '''
+        {
+          "access_token": "$token",
+          "refresh_token": "dummy-refresh-token",
+          "expires_in": 86400,
+          "token_type": "bearer",
+          "user": {
+            "id": "${widget.profile.userId}",
+            "email": "${widget.profile.email}"
+          }
+        }
+        ''';
+        await supabaseClient.auth.recoverSession(sessionJson);
+      }
+
+      final fileName = '${widget.profile.userId}/${const Uuid().v4()}.jpg';
+
+      await supabaseClient.storage.from('avatar').uploadBinary(
+        fileName,
+        croppedBytes,
+        fileOptions: const supabase.FileOptions(
+          contentType: 'image/jpeg',
+          cacheControl: '3600',
+          upsert: true,
+        ),
+      );
+
+      final publicUrl = supabaseClient.storage.from('avatar').getPublicUrl(fileName);
+      final oldAvatarUrl = _avatarUrl;
+
+      await ref.read(profileRepositoryProvider).updateMyProfile(
+        UpdateProfilePayload(
+          fullName: _fullName.text,
+          phone: _phone.text,
+          avatarUrl: publicUrl,
+        ),
+      );
+
+      ref.invalidate(myProfileProvider);
+      ref.read(authControllerProvider.notifier).updateUserFields(
+        name: _fullName.text.trim(),
+        avatarUrl: publicUrl,
+      );
+
+      setState(() {
+        _avatarUrl = publicUrl;
+      });
+
       messenger.showSnackBar(
-        const SnackBar(content: Text('Could not open the image picker.')),
+        const SnackBar(content: Text('Avatar updated successfully.')),
+      );
+
+      if (oldAvatarUrl != null && oldAvatarUrl.contains('/storage/v1/object/public/avatar/')) {
+        final parts = oldAvatarUrl.split('/storage/v1/object/public/avatar/');
+        if (parts.length > 1) {
+          final oldPath = parts[1];
+          try {
+            await supabaseClient.storage.from('avatar').remove([oldPath]);
+          } catch (err) {
+            debugPrint('Failed to delete previous avatar: $err');
+          }
+        }
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Failed to update avatar: $e')),
       );
     } finally {
-      _pickingAvatar = false;
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
     }
   }
 
   Future<void> _removeAvatar() async {
-    await ref.read(localAvatarStoreProvider).remove(widget.profile.userId);
-    ref.invalidate(localAvatarBytesProvider(widget.profile.userId));
-    if (!mounted) return;
-    setState(() => _avatarUrl = null);
+    setState(() => _submitting = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final oldAvatarUrl = _avatarUrl;
+
+      await ref.read(profileRepositoryProvider).updateMyProfile(
+        UpdateProfilePayload(
+          fullName: _fullName.text,
+          phone: _phone.text,
+          avatarUrl: null,
+        ),
+      );
+
+      ref.invalidate(myProfileProvider);
+      ref.read(authControllerProvider.notifier).updateUserFields(
+        name: _fullName.text.trim(),
+        avatarUrl: null,
+        clearAvatar: true,
+      );
+
+      setState(() {
+        _avatarUrl = null;
+      });
+
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Avatar removed successfully.')),
+      );
+
+      if (oldAvatarUrl != null && oldAvatarUrl.contains('/storage/v1/object/public/avatar/')) {
+        final parts = oldAvatarUrl.split('/storage/v1/object/public/avatar/');
+        if (parts.length > 1) {
+          final oldPath = parts[1];
+          final supabaseClient = supabase.Supabase.instance.client;
+          final token = ref.read(tokenStoreProvider).accessTokenSync;
+          if (token != null) {
+            final sessionJson = '''
+            {
+              "access_token": "$token",
+              "refresh_token": "dummy-refresh-token",
+              "expires_in": 86400,
+              "token_type": "bearer",
+              "user": {
+                "id": "${widget.profile.userId}",
+                "email": "${widget.profile.email}"
+              }
+            }
+            ''';
+            await supabaseClient.auth.recoverSession(sessionJson);
+          }
+          try {
+            await supabaseClient.storage.from('avatar').remove([oldPath]);
+          } catch (err) {
+            debugPrint('Failed to delete previous avatar: $err');
+          }
+        }
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Failed to remove avatar: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
   }
 
   Future<void> _submit() async {
@@ -181,12 +356,15 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             Center(
               child: Stack(
                 children: [
-                  AppAvatar(
-                    name: _fullName.text.isEmpty
-                        ? widget.profile.fullName
-                        : _fullName.text,
-                    radius: 52,
-                    imageUrl: _avatarUrl,
+                  GestureDetector(
+                    onTap: _submitting ? null : _pickAvatar,
+                    child: AppAvatar(
+                      name: _fullName.text.isEmpty
+                          ? widget.profile.fullName
+                          : _fullName.text,
+                      radius: 52,
+                      imageUrl: _avatarUrl,
+                    ),
                   ),
                   Positioned(
                     right: 0,

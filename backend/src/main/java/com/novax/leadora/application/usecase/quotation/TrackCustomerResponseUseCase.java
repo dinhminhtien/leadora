@@ -14,6 +14,11 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.QuotationStatus
 import com.novax.leadora.infrastructure.persistence.repository.NotificationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationCustomerResponseRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -33,6 +38,9 @@ public class TrackCustomerResponseUseCase {
     private final CurrentUserProvider currentUserProvider;
     private final QuotationAccessPolicy quotationAccessPolicy;
     private final SystemAuditLogService systemAuditLogService;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
+    private final com.novax.leadora.application.usecase.contract.GenerateContractUseCase generateContractUseCase;
 
     @Transactional
     public QuotationResponse execute(UUID quotationId, TrackCustomerResponseRequest request) {
@@ -74,6 +82,11 @@ public class TrackCustomerResponseUseCase {
         QuotationEntity saved = quotationRepository.save(quotation);
 
         UserEntity actor = currentUserProvider.resolve(null);
+
+        if (newStatus == QuotationStatus.ACCEPTED) {
+            generateContractUseCase.execute(saved, actor);
+        }
+
         String actorRole = actor.getRole() != null ? actor.getRole().getRoleName() : null;
 
         // POST-2 + BR-37: Log customer response for audit
@@ -91,6 +104,25 @@ public class TrackCustomerResponseUseCase {
 
         systemAuditLogService.log("QUOTATION", "QUOTATION", quotationId, "CUSTOMER_RESPONSE", actor,
                 previousStatus, newStatus.name(), request.getCustomerResponse());
+
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("customerResponse", request.getCustomerResponse())
+                    .put("previousStatus", previousStatus)
+                    .put("newStatus", newStatus.name());
+            if (request.getLostReason() != null) {
+                payload.put("lostReason", request.getLostReason());
+            }
+            activityLogPublisher.publish(
+                    ActivityLogType.QUOTATION_UPDATED,
+                    EntityType.QUOTATION,
+                    saved.getQuotationId(),
+                    "Quotation customer response: " + request.getCustomerResponse(),
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish customer response activity: {}", e.getMessage());
+        }
 
         // UC-15.1: notify the quotation owner of the customer's decision
         if (saved.getCreatedBy() != null) {

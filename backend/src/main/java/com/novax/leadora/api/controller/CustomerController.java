@@ -27,7 +27,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/customers")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+@PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('CUSTOMER_VIEW')")
 public class CustomerController {
 
     private final SearchCustomersUseCase searchCustomersUseCase;
@@ -79,6 +79,7 @@ public class CustomerController {
 
     /** Create a new customer profile. */
     @PostMapping
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('CUSTOMER_WRITE')")
     public ResponseEntity<ApiResponse<CustomerResponse>> createCustomer(
             @Valid @RequestBody CreateCustomerRequest request
     ) {
@@ -96,6 +97,7 @@ public class CustomerController {
 
     /** Update an existing customer profile. */
     @PutMapping("/{customerId}")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('CUSTOMER_WRITE')")
     public ResponseEntity<ApiResponse<CustomerResponse>> updateCustomer(
             @PathVariable UUID customerId,
             @Valid @RequestBody UpdateCustomerRequest request

@@ -13,6 +13,12 @@ import com.novax.leadora.infrastructure.persistence.repository.NotificationRepos
 import com.novax.leadora.infrastructure.persistence.repository.QuotationDetailRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
+import com.novax.leadora.application.usecase.sla.StartSlaTrackingUseCase;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -38,6 +44,9 @@ public class SubmitQuotationUseCase {
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
     private final QuotationAccessPolicy quotationAccessPolicy;
+    private final StartSlaTrackingUseCase startSlaTrackingUseCase;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public QuotationResponse execute(UUID id, SubmitQuotationRequest request) {
@@ -78,6 +87,29 @@ public class SubmitQuotationUseCase {
 
         QuotationEntity saved = quotationRepository.save(quotation);
 
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("discountPercent", discountPct.toString())
+                    .put("newStatus", newStatus.name());
+            activityLogPublisher.publish(
+                    ActivityLogType.QUOTATION_SUBMITTED,
+                    EntityType.QUOTATION,
+                    saved.getQuotationId(),
+                    "Quotation submitted",
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish quotation submission activity: {}", e.getMessage());
+        }
+
+        if (newStatus == QuotationStatus.APPROVED) {
+            try {
+                startSlaTrackingUseCase.execute("QUOTATION_SENT", "QUOTATION", saved.getQuotationId());
+            } catch (Exception e) {
+                log.warn("SLA tracking failed for quotation {}: {}", saved.getQuotationId(), e.getMessage());
+            }
+        }
+
         // BR-21/BR-34: alert Sales Managers so a discount >10% quotation doesn't sit
         // unnoticed in the pending-approvals queue
         if (newStatus == QuotationStatus.PENDING_APPROVAL) {
@@ -100,12 +132,7 @@ public class SubmitQuotationUseCase {
 
         List<QuotationDetailEntity> details =
                 quotationDetailRepository.findByQuotation_QuotationId(saved.getQuotationId());
-        QuotationDetailEntity detail = details.isEmpty() ? null : details.get(0);
 
-        int nights = detail != null ? detail.getNights() : 0;
-        int numberOfRooms = detail != null ? detail.getQuantity() : 0;
-        BigDecimal pricePerNight = detail != null ? detail.getUnitPrice() : BigDecimal.ZERO;
-
-        return QuotationResponse.fromWithDetail(saved, nights, numberOfRooms, pricePerNight);
+        return QuotationResponse.fromWithDetails(saved, details);
     }
 }

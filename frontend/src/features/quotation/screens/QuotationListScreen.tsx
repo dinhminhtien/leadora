@@ -1,31 +1,63 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ListFilter, Bell } from "lucide-react";
+import { FileSpreadsheet, Search, CheckCircle2, Calendar, Plus, Send, GitBranch, MessageSquare, Sparkles, Building2, Archive, TimerOff, ChevronDown, ChevronUp, ListFilter, ArrowDownWideNarrow, Bell, BedDouble, X } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { StatusPill } from "@/components/ui/status-pill";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
+import { DensityMenu } from "@/components/ui/list-toolbar";
+import {
+  ColumnPicker,
+  ExportMenu,
+  RefreshButton,
+  useTableControls,
+} from "@/components/ui/table-controls";
+
+/** Sortable fields the local comparator implements. */
+type SortField = "total" | "validUntil";
+/** What the sort picker offers. `priority` is the server-side "whose move is it" ranking. */
+type SortMode = SortField | "priority";
+
+const QUOTATION_EXPORT_HEADERS = [
+  "Quote no", "Client", "Deal", "Amount (VND)", "Valid until", "Status",
+];
+
+function quotationExportRow(q: Quotation): (string | number | null | undefined)[] {
+  return [q.quoteNo, q.contactName, q.dealName, q.amount, q.expiryDate, q.status];
+}
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { SendQuotationModal } from "@/features/quotation/components/SendQuotationModal";
+import { QuotationDetailDrawer } from "@/features/quotation/components/QuotationDetailDrawer";
 import { RecordResponseModal } from "@/features/quotation/components/RecordResponseModal";
 import { ConvertToBookingModal } from "@/features/quotation/components/ConvertToBookingModal";
 import { ExpireCloseModal } from "@/features/quotation/components/ExpireCloseModal";
 import { SlaStatusBadge } from "@/features/sla/components/SlaStatusBadge";
 import { CreateReminderModal } from "@/features/reminder/components/CreateReminderModal";
 import { QuotationActionMenu, type QuotationMenuAction } from "@/features/quotation/components/QuotationActionMenu";
+import { RoomConfirmationPanel } from "@/features/room_request/components/RoomConfirmationPanel";
 import type { Quotation } from "@/services/quotation_service";
 export type { Quotation } from "@/services/quotation_service";
 import { useQuotations, useExpireOverdue, useSubmitQuotation } from "@/features/quotation/hooks/use_quotations";
 import { useAuthStore } from "@/stores/auth_store";
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
+import { pageMeta } from "@/services/api_client";
 
+// "rejected" stays active, not done — Revise is still the primary action on it
+// (see getPrimaryAction below), so filing it under "Done" alongside truly terminal
+// statuses would hide a quotation the staff still needs to act on.
 const ACTIVE_STATUSES: Quotation["status"][] = [
-  "draft", "pending_approval", "approved", "sent", "accepted", "interested", "pending_revision",
+  "draft", "pending_approval", "approved", "sent", "accepted", "interested",
+  "pending_revision", "rejected", "pending_customer_response",
+  "reservation_pending", "reservation_rejected"
 ];
-const DONE_STATUSES: Quotation["status"][] = ["converted", "closed", "expired", "rejected"];
+const DONE_STATUSES: Quotation["status"][] = ["converted", "closed", "expired", "accepted_by_customer", "booking_request"];
 
 type ClosureLog = {
   id: string;
@@ -40,7 +72,51 @@ type ClosureLog = {
 };
 
 export function QuotationListScreen() {
-  const { data: serverQuotes = [], isLoading } = useQuotations();
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  // `null` means the priority ordering, which is the default and is computed server-side.
+  const [sortField, setSortField] = useState<"total" | "validUntil" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState<"active" | "done">("active");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+
+  const params = useMemo(() => {
+    const backendStatuses = (activeTab === "active" ? ACTIVE_STATUSES : DONE_STATUSES).map(s => s.toUpperCase());
+    const backendStatus = statusFilter ? statusFilter.toUpperCase() : undefined;
+    return {
+      page: currentPage - 1,
+      size: pageSize,
+      search: search || undefined,
+      status: backendStatus,
+      statuses: backendStatuses,
+      // "priority" is not a column — the backend ranks by whose move it is and ignores sortDir.
+      sortBy: sortField === "total" ? "totalAmount" : (sortField ?? "priority"),
+      sortDir: sortDir,
+    };
+  }, [activeTab, statusFilter, search, currentPage, sortField, sortDir]);
+
+  const { data: pageResult, isLoading, isFetching, refetch } = useQuotations(params);
+
+  // Keep parallel counts queries with size: 1 to fetch counts efficiently
+  const { data: activePageResult } = useQuotations({
+    statuses: ACTIVE_STATUSES.map(s => s.toUpperCase()),
+    page: 0,
+    size: 1
+  });
+  const { data: donePageResult } = useQuotations({
+    statuses: DONE_STATUSES.map(s => s.toUpperCase()),
+    page: 0,
+    size: 1
+  });
+
+  const activeCount = useMemo(() => pageMeta(activePageResult).totalElements, [activePageResult]);
+  const doneCount = useMemo(() => pageMeta(donePageResult).totalElements, [donePageResult]);
+
+  const serverQuotes = useMemo(() => pageResult?.content ?? [], [pageResult]);
+  const meta = useMemo(() => pageMeta(pageResult), [pageResult]);
+
   const { user } = useAuthStore();
   const router = useRouter();
   const { highlightedId, setRowRef } = useHighlightRow();
@@ -48,6 +124,7 @@ export function QuotationListScreen() {
   const submitQuotation = useSubmitQuotation();
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [localStatusMap, setLocalStatusMap] = useState<Record<string, Quotation["status"]>>({});
+  
   const quotes = useMemo(
     () => serverQuotes.map(q => ({
       ...q,
@@ -55,39 +132,218 @@ export function QuotationListScreen() {
     })),
     [serverQuotes, localStatusMap]
   );
+
   const [closureLogs, setClosureLogs] = useState<ClosureLog[]>([]);
-  const [search, setSearch] = useState("");
   const [sendTarget, setSendTarget] = useState<Quotation | null>(null);
+  const [detailTarget, setDetailTarget] = useState<Quotation | null>(null);
   const [responseTarget, setResponseTarget] = useState<Quotation | null>(null);
   const [convertTarget, setConvertTarget] = useState<Quotation | null>(null);
   const [closeTarget, setCloseTarget] = useState<Quotation | null>(null);
   const [autoExpireResult, setAutoExpireResult] = useState<number | null>(null);
   const [showClosureLog, setShowClosureLog] = useState(false);
   const [reminderTarget, setReminderTarget] = useState<Quotation | null>(null);
-  const [activeTab, setActiveTab] = useState<"active" | "done">("active");
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [roomTarget, setRoomTarget] = useState<Quotation | null>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+
+  const filterPills = useMemo(() => {
+    if (activeTab === "active") {
+      return [
+        { value: "", label: "All" },
+        { value: "draft", label: "Draft" },
+        { value: "pending_approval", label: "Pending Approval" },
+        { value: "approved", label: "Approved" },
+        { value: "sent", label: "Sent" },
+        { value: "accepted", label: "Accepted" },
+        { value: "rejected", label: "Rejected" },
+        { value: "reservation_pending", label: "Awaiting Reservation" },
+      ];
+    } else {
+      return [
+        { value: "", label: "All" },
+        { value: "converted", label: "Converted" },
+        { value: "booking_request", label: "Booking Requested" },
+        { value: "closed", label: "Closed" },
+        { value: "expired", label: "Expired" },
+      ];
+    }
+  }, [activeTab]);
+
+  const handleSort = (field: SortField, dir: "asc" | "desc") => {
+    setSortField(field);
+    setSortDir(dir);
+    setCurrentPage(1);
+  };
+
+  /** The sort picker. "priority" maps back to `null`, the server-ranked default. */
+  const handleSortChange = (mode: SortMode) => {
+    setSortField(mode === "priority" ? null : mode);
+    // Soonest expiry and highest value each have one useful direction; nobody wants the
+    // quotation expiring furthest away, or the cheapest, at the top of the list.
+    setSortDir(mode === "total" ? "desc" : "asc");
+    setCurrentPage(1);
+  };
 
   const handleTabChange = (tab: "active" | "done") => {
     setActiveTab(tab);
     setStatusFilter("");
+    setCurrentPage(1);
   };
 
-  const activeCount = useMemo(() => quotes.filter((q) => ACTIVE_STATUSES.includes(q.status)).length, [quotes]);
-  const doneCount = useMemo(() => quotes.filter((q) => DONE_STATUSES.includes(q.status)).length, [quotes]);
+  // Reset to page 1 whenever the filtered set changes shape
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter]);
 
-  const filteredQuotes = useMemo(() => {
-    const tabStatuses = activeTab === "active" ? ACTIVE_STATUSES : DONE_STATUSES;
-    return quotes.filter((q) => {
-      const matchesTab = tabStatuses.includes(q.status);
-      const matchesStatus = !statusFilter || q.status === statusFilter;
-      const matchesSearch =
-        q.quoteNo.toLowerCase().includes(search.toLowerCase()) ||
-        q.contactName.toLowerCase().includes(search.toLowerCase()) ||
-        q.dealName.toLowerCase().includes(search.toLowerCase());
-      return matchesTab && matchesStatus && matchesSearch;
-    });
-  }, [quotes, search, activeTab, statusFilter]);
+  /**
+   * Column set — Blueprint §10.7.
+   *
+   * `total` and `validUntil` are the only sortable columns because they are the
+   * only two the local comparator implements; marking the rest sortable would
+   * render an affordance that does nothing when clicked.
+   */
+  const quotationColumns: ColumnDef<Quotation>[] = useMemo(() => [
+    {
+      id: "quoteNo",
+      header: "Quote Reference",
+      sticky: "left",
+      cell: (q) => (
+        <span className="flex items-center gap-1.5 text-xs font-bold text-primary">
+          <FileSpreadsheet className="size-3.5 text-muted-foreground" />
+          {q.quoteNo}
+        </span>
+      ),
+    },
+    {
+      id: "client",
+      header: "Client Name",
+      className: "text-xs font-semibold",
+      cell: (q) => q.contactName,
+    },
+    {
+      id: "deal",
+      header: "Linked Deal",
+      minWidth: "lg",
+      className: "text-xs text-muted-foreground",
+      cell: (q) => (
+        <span className="max-w-[180px] truncate block text-xs text-muted-foreground" title={q.dealName}>
+          {q.dealName}
+        </span>
+      ),
+    },
+    {
+      id: "rooms",
+      header: "Rooms",
+      minWidth: "md",
+      cell: (q) => {
+        if (q.roomLines && q.roomLines.length > 0) {
+          const mainLine = q.roomLines[0];
+          const extraCount = q.roomLines.length - 1;
+          const allBreakdown = q.roomLines.map((l) => `${l.roomType} × ${l.numberOfRooms}`).join(", ");
+          return (
+            <div
+              className="flex items-center gap-1.5 text-xs max-w-[220px] overflow-hidden whitespace-nowrap"
+              title={allBreakdown}
+            >
+              <span className="font-medium text-foreground truncate min-w-0">
+                {mainLine.roomType} × {mainLine.numberOfRooms}
+              </span>
+              {extraCount > 0 && (
+                <span className="shrink-0 rounded-md bg-brand-500/10 px-1.5 py-0.5 text-[10px] font-bold text-brand-600 dark:bg-brand-500/20 dark:text-brand-400 cursor-help">
+                  +{extraCount} more
+                </span>
+              )}
+            </div>
+          );
+        }
+        return (
+          <span
+            className="text-xs text-muted-foreground truncate max-w-[200px] block"
+            title={q.roomType ? `${q.roomType} (${q.numberOfRooms ?? 1})` : "—"}
+          >
+            {q.roomType ? `${q.roomType} (${q.numberOfRooms ?? 1})` : "—"}
+          </span>
+        );
+      },
+    },
+    {
+      id: "total",
+      header: "Total",
+      numeric: true,
+      sortable: true,
+      className: "font-bold",
+      cell: (q) => `${q.amount.toLocaleString("vi-VN")} ₫`,
+    },
+    {
+      id: "validUntil",
+      header: "Valid Until",
+      sortable: true,
+      minWidth: "lg",
+      cell: (q) => (
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Calendar className="size-3" />
+          {q.expiryDate}
+        </span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      // Canonical quotation binding (Blueprint §2.7): danger is reserved for
+      // REJECTED — an expired quote is inert, not a failure.
+      cell: (q) => <StatusPill size="sm" domain="quotation" value={q.status} />,
+    },
+    {
+      id: "sla",
+      header: "SLA",
+      minWidth: "xl",
+      cell: (q) => <SlaStatusBadge entityId={q.id} entityType="QUOTATION" />,
+    },
+    {
+      id: "actions",
+      header: "",
+      sticky: "right",
+      cell: (q) => {
+        const primary = getPrimaryAction(q);
+        return (
+          <div
+            className="flex items-center justify-end gap-1.5"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {primary && (
+              <Button
+                variant={primary.tone === "danger" ? "danger" : "primary"}
+                size="xs"
+                isLoading={primary.key === "submit" && submittingId === q.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  primary.onClick();
+                }}
+                leftIcon={<primary.Icon className="size-3" />}
+                className="whitespace-nowrap"
+              >
+                {primary.label}
+              </Button>
+            )}
+            <QuotationActionMenu
+              actions={getMenuActions(q)}
+              isOpen={openActionMenuId === q.id}
+              onToggle={() => setOpenActionMenuId((cur) => (cur === q.id ? null : q.id))}
+              onClose={() => setOpenActionMenuId(null)}
+            />
+          </div>
+        );
+      },
+    },
+    // Cells close over handlers and per-row state that change every render;
+    // rebuilding the column list each pass is correct and cheap for 8 columns.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [submittingId, openActionMenuId]);
+
+  const controls = useTableControls<Quotation>("quotations", quotationColumns, {
+    defaultSortBy: "validUntil",
+  });
 
   const handleSent = (_quotationId: string) => {
     setLocalStatusMap(prev => ({ ...prev, [_quotationId]: "sent" }));
@@ -182,11 +438,11 @@ export function QuotationListScreen() {
   };
 
   const statusBadgeVariant = (status: Quotation["status"]) => {
-    if (status === "accepted" || status === "approved" || status === "converted") return "success";
+    if (status === "accepted" || status === "approved" || status === "converted" || status === "booking_request") return "success";
     if (status === "sent") return "primary";
-    if (status === "expired" || status === "rejected" || status === "closed") return "danger";
+    if (status === "expired" || status === "rejected" || status === "closed" || status === "reservation_rejected") return "danger";
     if (status === "pending_approval") return "warning";
-    if (status === "pending_revision" || status === "interested") return "info";
+    if (status === "pending_revision" || status === "interested" || status === "reservation_pending") return "info";
     return "default";
   };
 
@@ -196,6 +452,9 @@ export function QuotationListScreen() {
     if (status === "interested") return "Interested";
     if (status === "converted") return "Converted";
     if (status === "closed") return "Closed";
+    if (status === "reservation_pending") return "Awaiting Reservation";
+    if (status === "reservation_rejected") return "Reservation Rejected";
+    if (status === "booking_request") return "Booking Requested";
     return status;
   };
 
@@ -211,6 +470,7 @@ export function QuotationListScreen() {
       case "accepted":
         return { key: "convert", label: "Convert to Booking", Icon: Building2, onClick: () => setConvertTarget(q), tone: "primary" };
       case "rejected":
+      case "reservation_rejected":
       case "pending_revision":
         return { key: "revise", label: "Revise", Icon: GitBranch, onClick: () => router.push(ROUTE_PATHS.quotationRevise(q.id)), tone: "primary" };
       case "draft":
@@ -226,11 +486,16 @@ export function QuotationListScreen() {
     const actions: QuotationMenuAction[] = [];
     // Revise is already the primary action for rejected/pending_revision — only
     // list it here for statuses where it's a secondary option.
-    if (["sent", "draft", "interested"].includes(q.status)) {
+    if (["sent", "draft", "interested", "pending_customer_response"].includes(q.status)) {
       actions.push({ key: "revise", label: "Revise", Icon: GitBranch, onClick: () => router.push(ROUTE_PATHS.quotationRevise(q.id)) });
     }
-    if (!["converted", "expired", "closed"].includes(q.status)) {
+    if (!["converted", "expired", "closed", "accepted_by_customer", "booking_request"].includes(q.status)) {
       actions.push({ key: "close", label: "Close", Icon: Archive, onClick: () => setCloseTarget(q), tone: "danger" });
+    }
+    // Sending and converting are both gated on a confirmed room, so let the rep ask as
+    // early as they like rather than only from inside those modals.
+    if (!["converted", "expired", "closed", "accepted_by_customer", "booking_request"].includes(q.status)) {
+      actions.push({ key: "rooms", label: "Room Availability", Icon: BedDouble, onClick: () => setRoomTarget(q) });
     }
     actions.push({ key: "remind", label: "Add Reminder", Icon: Bell, onClick: () => setReminderTarget(q) });
     return actions;
@@ -238,31 +503,26 @@ export function QuotationListScreen() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-start gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Quotes &amp; Price Proposals</h1>
-          <p className="text-xs text-slate-400">
-            Generate, customize, and issue lodging room block or banquet buffet quotations
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={runAutoExpire}
-            isLoading={expireOverdue.isPending}
-            leftIcon={<TimerOff className="size-3.5" />}
-            className="text-xs border-slate-200 text-slate-600 hover:bg-slate-50"
-          >
-            Auto-Expire Overdue
-          </Button>
-          <Link href={ROUTE_PATHS.quotationCreate}>
-            <Button variant="primary" size="sm" leftIcon={<Plus className="size-3.5" />} className="text-xs font-bold">
-              New Quotation
+      <PageHeader
+        {...PAGE_META.quotations}
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              onClick={runAutoExpire}
+              isLoading={expireOverdue.isPending}
+              leftIcon={<TimerOff className="size-4" />}
+            >
+              Auto-Expire Overdue
             </Button>
-          </Link>
-        </div>
-      </div>
+            <Link href={ROUTE_PATHS.quotationCreate}>
+              <Button variant="primary" leftIcon={<Plus className="size-4" />}>
+                New Quotation
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
       {/* Auto-expire result banner */}
       {autoExpireResult !== null && (
@@ -315,7 +575,41 @@ export function QuotationListScreen() {
       </div>
 
       <Card className="border-slate-100 shadow-sm bg-white rounded-t-none">
-        <CardContent className="py-3 px-4">
+        <CardContent className="py-3 px-4 space-y-2.5">
+          {/* One click per status, so a rep can jump straight to "everything I have to send"
+              without going through a dropdown. The set follows the tab, because the two tabs
+              hold disjoint statuses. */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <ListFilter className="size-3.5 text-slate-400 shrink-0" />
+            <button
+              type="button"
+              onClick={() => setStatusFilter("")}
+              aria-pressed={statusFilter === ""}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                statusFilter === ""
+                  ? "border-primary bg-blue-50 text-blue-700"
+                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              All
+            </button>
+            {(activeTab === "active" ? ACTIVE_STATUSES : DONE_STATUSES).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter(statusFilter === s ? "" : s)}
+                aria-pressed={statusFilter === s}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                  statusFilter === s
+                    ? "border-primary bg-blue-50 text-blue-700"
+                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                }`}
+              >
+                {statusLabel(s)}
+              </button>
+            ))}
+          </div>
+
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative w-full md:w-72">
               <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
@@ -327,20 +621,24 @@ export function QuotationListScreen() {
                 className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
               />
             </div>
-            <div className="flex items-center gap-1.5 text-slate-400">
-              <ListFilter className="size-3.5" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="py-1.5 pl-2 pr-6 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700 focus:outline-none focus:border-blue-500 focus:bg-white transition appearance-none"
-              >
-                <option value="">All Status</option>
-                {(activeTab === "active" ? ACTIVE_STATUSES : DONE_STATUSES).map((s) => (
-                  <option key={s} value={s}>
-                    {statusLabel(s)}
-                  </option>
-                ))}
-              </select>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {filterPills.map((pill) => {
+                const isActive = statusFilter === pill.value;
+                return (
+                  <button
+                    key={pill.value}
+                    type="button"
+                    onClick={() => setStatusFilter(pill.value)}
+                    className={`px-3 py-1 rounded-full text-[11px] font-semibold border transition-all duration-150 cursor-pointer ${
+                      isActive
+                        ? "bg-primary text-white border-primary shadow-xs"
+                        : "bg-slate-50 dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-700 dark:hover:text-zinc-200"
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                );
+              })}
             </div>
             {(search || statusFilter) && (
               <button
@@ -351,106 +649,79 @@ export function QuotationListScreen() {
                 Clear filters
               </button>
             )}
+
+            {/* §2.6 control cluster */}
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+              <RefreshButton onRefresh={() => refetch()} isRefreshing={isFetching} />
+              <ColumnPicker
+                columns={quotationColumns}
+                hiddenIds={controls.hiddenColumnIds}
+                onChange={controls.setHiddenColumnIds}
+                requiredIds={["quoteNo", "actions"]}
+              />
+              <ExportMenu
+                filename={`quotations-${new Date().toISOString().slice(0, 10)}`}
+                headers={QUOTATION_EXPORT_HEADERS}
+                rows={quotes.map(quotationExportRow)}
+              />
+              <DensityMenu value={controls.density} onChange={controls.setDensity} />
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-        <Table>
-          <TableHeader className="bg-slate-50 border-b border-slate-100">
-            <TableRow hoverable={false}>
-              <TableHead className="font-semibold text-xs text-slate-500">Quote Reference</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Client Name</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Linked Deal</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Total</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Valid Until</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">Status</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500">SLA</TableHead>
-              <TableHead className="font-semibold text-xs text-slate-500 text-center">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow hoverable={false}>
-                <TableCell colSpan={8} className="py-8 text-center text-slate-400 text-xs">
-                  Loading quotations...
-                </TableCell>
-              </TableRow>
-            ) : filteredQuotes.length > 0 ? (
-              filteredQuotes.map((q) => (
-                <TableRow
-                  key={q.id}
-                  ref={setRowRef(q.id)}
-                  className={`border-b border-slate-100 transition ${
-                    highlightedId === q.id ? "bg-amber-50 ring-2 ring-inset ring-amber-400" :
-                    DONE_STATUSES.includes(q.status) ? "opacity-60 hover:opacity-100 bg-slate-50/40 hover:bg-slate-50/80" :
-                    "hover:bg-slate-50/70"
-                  }`}
-                >
-                  <TableCell className="py-3 px-4 text-xs font-bold text-blue-600">
-                    <span className="flex items-center gap-1.5">
-                      <FileSpreadsheet className="size-3.5 text-slate-400" />
-                      {q.quoteNo}
-                    </span>
-                  </TableCell>
-                  <TableCell className="py-3 px-4 text-xs font-bold text-slate-700">{q.contactName}</TableCell>
-                  <TableCell className="py-3 px-4 text-xs text-slate-600 font-semibold">{q.dealName}</TableCell>
-                  <TableCell className="py-3 px-4 text-xs font-black text-slate-800">
-                    {q.amount.toLocaleString('vi-VN')} ₫
-                  </TableCell>
-                  <TableCell className="py-3 px-4 text-xs text-slate-500 font-semibold">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="size-3 text-slate-400" />
-                      {q.expiryDate}
-                    </span>
-                  </TableCell>
-                  <TableCell className="py-3 px-4">
-                    <Badge variant={statusBadgeVariant(q.status)} size="sm" className="font-bold text-[9px] uppercase">
-                      {statusLabel(q.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="py-3 px-4">
-                    <SlaStatusBadge entityId={q.id} entityType="QUOTATION" />
-                  </TableCell>
-                  <TableCell className="py-3 px-4">
-                    <div className="flex justify-center items-center gap-1.5">
-                      {(() => {
-                        const primary = getPrimaryAction(q);
-                        return primary ? (
-                          <Button
-                            variant={primary.tone === "danger" ? "danger" : "primary"}
-                            size="sm"
-                            isLoading={primary.key === "submit" && submittingId === q.id}
-                            onClick={primary.onClick}
-                            leftIcon={<primary.Icon className="size-3" />}
-                            className="px-2.5 py-1 text-[10px] font-bold whitespace-nowrap"
-                          >
-                            {primary.label}
-                          </Button>
-                        ) : null;
-                      })()}
-                      <QuotationActionMenu
-                        actions={getMenuActions(q)}
-                        isOpen={openActionMenuId === q.id}
-                        onToggle={() => setOpenActionMenuId((cur) => (cur === q.id ? null : q.id))}
-                        onClose={() => setOpenActionMenuId(null)}
-                      />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow hoverable={false}>
-                <TableCell colSpan={8} className="py-8 text-center text-slate-400 text-xs">
-                  {activeTab === "active"
-                    ? (search || statusFilter ? "No quotations match your filters." : "No active quotations found.")
-                    : (search || statusFilter ? "No quotations match your filters." : "No completed quotations found.")}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        label="Quotations"
+        rows={quotes}
+        columns={controls.visibleColumns}
+        rowId={(q) => q.id}
+        isLoading={isLoading}
+        density={controls.density}
+        sortBy={sortField ?? undefined}
+        sortDir={sortDir}
+        onSortChange={(columnId, dir) => {
+          // Only Total and Valid Until have a comparator; the rest of the header
+          // stays inert rather than offering a sort that does nothing.
+          if (columnId === "total" || columnId === "validUntil") {
+            handleSort(columnId, dir);
+          }
+        }}
+        highlightId={highlightedId}
+        rowRef={setRowRef}
+        onRowClick={(q) => setDetailTarget(q)}
+        selectedIds={controls.selectedIds}
+        onSelectionChange={controls.setSelectedIds}
+        bulkActions={
+          <ExportMenu
+            filename={`quotations-selected-${new Date().toISOString().slice(0, 10)}`}
+            headers={QUOTATION_EXPORT_HEADERS}
+            rows={quotes.filter((q) => controls.selectedIds.has(q.id)).map(quotationExportRow)}
+          />
+        }
+        isFiltered={!!search || !!statusFilter}
+        onClearFilters={() => { setSearch(""); setStatusFilter(""); }}
+        emptyTitle={activeTab === "active" ? "No active quotations" : "No completed quotations"}
+        emptyMessage="Quotations you create from a deal will appear here."
+        footer={
+          <TablePagination
+            page={currentPage - 1}
+            pageSize={pageSize}
+            totalElements={meta.totalElements}
+            totalPages={meta.totalPages}
+            onPageChange={(p) => setCurrentPage(p + 1)}
+          />
+        }
+      />
+
+      {/* Itemized Multi-Room Detailed View Drawer */}
+      <QuotationDetailDrawer
+        quote={detailTarget}
+        onClose={() => setDetailTarget(null)}
+        onSend={(q) => setSendTarget(q)}
+        onConvertToBooking={(q) => setConvertTarget(q)}
+        onRevise={(q) => router.push(ROUTE_PATHS.quotationRevise(q.id))}
+        showResendButton={true}
+      />
 
       {/* UC-14.4: Send Quotation Modal */}
       {sendTarget && (
@@ -495,6 +766,32 @@ export function QuotationListScreen() {
           defaultRelatedId={reminderTarget.id}
           onClose={() => setReminderTarget(null)}
         />
+      )}
+
+      {/* Ask the Reservation team about rooms, from any live status — Send and Convert are
+          both gated on their answer, so waiting until those modals open is too late. */}
+      {roomTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-800">Room Availability</h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {roomTarget.quoteNo} · {roomTarget.roomType ?? "—"} ·{" "}
+                  {roomTarget.checkInDate ?? "—"} → {roomTarget.checkOutDate ?? "—"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRoomTarget(null)}
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <RoomConfirmationPanel quote={roomTarget} />
+          </div>
+        </div>
       )}
 
       {/* UC-14.8: Closure & Expiry Audit Log */}

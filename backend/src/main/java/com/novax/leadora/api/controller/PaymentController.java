@@ -22,7 +22,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/payments")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN', 'FRONT_OFFICE')")
+@PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN', 'FRONT_OFFICE', 'FO', 'MANAGER') and @access.can('PAYMENT_VIEW')")
 public class PaymentController {
 
     private final GeneratePaymentRequestUseCase generatePaymentRequestUseCase;
@@ -34,7 +34,7 @@ public class PaymentController {
 
     /** UC-21.1 — Generate Payment Request. */
     @PostMapping
-    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN', 'MANAGER') and @access.can('PAYMENT_WRITE')")
     public ResponseEntity<ApiResponse<PaymentResponse>> generate(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @Valid @RequestBody GeneratePaymentRequest request
@@ -68,6 +68,7 @@ public class PaymentController {
 
     /** UC-21.4 — Update Payment Status. */
     @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('FRONT_OFFICE', 'FO', 'RESERVATION', 'MANAGER', 'ADMIN') and @access.can('PAYMENT_WRITE')")
     public ResponseEntity<ApiResponse<PaymentResponse>> updateStatus(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @PathVariable UUID id,
@@ -80,7 +81,7 @@ public class PaymentController {
 
     /** UC-21.5 — Cancel Payment Request. */
     @PatchMapping("/{id}/cancel")
-    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES', 'RESERVATION', 'ADMIN', 'MANAGER') and @access.can('PAYMENT_WRITE')")
     public ResponseEntity<ApiResponse<PaymentResponse>> cancel(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @PathVariable UUID id

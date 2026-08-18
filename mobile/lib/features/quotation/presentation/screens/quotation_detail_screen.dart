@@ -12,11 +12,19 @@ import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared/widgets/status_chip.dart';
 import '../../../auth/presentation/providers/auth_controller.dart';
 import '../../../interaction/presentation/widgets/interaction_summary_card.dart';
+import '../../../room_request/presentation/widgets/room_confirmation_card.dart';
 import '../../data/quotation_models.dart';
 import '../../data/quotation_repository.dart';
 import '../providers/quotation_providers.dart';
+import '../widgets/quotation_action_sheets.dart';
 
-/// View Quotation Status + UC-14.6 Track Customer Response.
+/// View Quotation Status plus the full write flow the web app has: UC-14.2 Submit,
+/// UC-14.4 Send, UC-14.6 Track Customer Response, UC-14.7 Convert to booking and
+/// UC-14.8 Close.
+///
+/// [RoomConfirmationCard] sits above the actions as one condition on the quotation, not a
+/// gate: the rep can see whether the Reservation team confirmed the rooms and ask them from
+/// here, but Send and Convert stay available either way.
 class QuotationDetailScreen extends ConsumerWidget {
   const QuotationDetailScreen({super.key, required this.quotationId});
 
@@ -150,21 +158,249 @@ class QuotationDetailScreen extends ConsumerWidget {
                   linkedName: quotation.contactName,
                 ),
               ],
+              // Rooms gate Send and Convert, so the state is shown before those buttons.
+              // Hidden on statuses where neither action is reachable any more.
+              if (_needsRoomConfirmation(quotation.status)) ...[
+                const SizedBox(height: 12),
+                RoomConfirmationCard(
+                  quotationId: quotation.id,
+                  roomType: quotation.roomType,
+                  checkInDate: quotation.checkInDate,
+                  checkOutDate: quotation.checkOutDate,
+                ),
+              ],
               const SizedBox(height: 20),
-              if (quotation.status.canTrackCustomerResponse)
+              // UC-14.2 — a DRAFT has to be submitted before it can go anywhere. The
+              // backend decides from the discount whether that lands on APPROVED or
+              // PENDING_APPROVAL, so this button does not promise either outcome.
+              if (quotation.status == QuotationStatus.draft)
                 FilledButton.icon(
-                  onPressed: () => _showResponseSheet(context, ref, quotation),
-                  icon: const Icon(Icons.reply_rounded),
-                  label: const Text('Track customer response'),
+                  onPressed: () => _submitForApproval(context, ref, quotation),
+                  icon: const Icon(Icons.send_outlined),
+                  label: const Text('Submit quotation'),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(50),
                   ),
                 ),
+              // UC-14.4 — only APPROVED can be sent (backend enforces it too).
+              if (quotation.status == QuotationStatus.approved) ...[
+                const SizedBox(height: AppSpacing.sm),
+                FilledButton.icon(
+                  onPressed: () => _send(context, ref, quotation),
+                  icon: const Icon(Icons.mail_outline_rounded),
+                  label: const Text('Send to customer'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                  ),
+                ),
+              ],
+              // UC-14.6 — what the customer said. Labelled the same as the web row action,
+              // which says "Update Response" once one is already on record.
+              if (quotation.status.canTrackCustomerResponse) ...[
+                const SizedBox(height: AppSpacing.sm),
+                FilledButton.icon(
+                  onPressed: () => _showResponseSheet(context, ref, quotation),
+                  icon: const Icon(Icons.reply_rounded),
+                  label: Text(
+                    quotation.status == QuotationStatus.interested
+                        ? 'Update response'
+                        : 'Record response',
+                  ),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                  ),
+                ),
+              ],
+              // UC-14.7 — only an ACCEPTED quotation becomes a booking.
+              if (quotation.status == QuotationStatus.accepted) ...[
+                const SizedBox(height: AppSpacing.sm),
+                FilledButton.icon(
+                  onPressed: () => _convert(context, ref, quotation),
+                  icon: const Icon(Icons.event_available_outlined),
+                  label: const Text('Convert to booking'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                  ),
+                ),
+              ],
+              // UC-14.5 — a new version. Primary route out of REJECTED / PENDING_REVISION,
+              // and available while the quotation is still open so a rep can re-price after
+              // the customer pushes back. Matches the web action matrix.
+              if (_canRevise(quotation.status)) ...[
+                const SizedBox(height: AppSpacing.sm),
+                _reviseButton(context, quotation),
+              ],
+              // UC-14.8 — closing is only meaningful while the quotation is still live.
+              if (_canClose(quotation.status)) ...[
+                const SizedBox(height: AppSpacing.sm),
+                OutlinedButton.icon(
+                  onPressed: () => _close(context, ref, quotation),
+                  icon: const Icon(Icons.archive_outlined),
+                  label: const Text('Close quotation'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// Statuses from which Send or Convert is still reachable, so the room state matters.
+  static bool _needsRoomConfirmation(QuotationStatus status) => const {
+    QuotationStatus.draft,
+    QuotationStatus.pendingApproval,
+    QuotationStatus.approved,
+    QuotationStatus.sent,
+    QuotationStatus.interested,
+    QuotationStatus.accepted,
+    QuotationStatus.pendingRevision,
+  }.contains(status);
+
+  /// Terminal statuses cannot be closed again (the backend rejects it).
+  static bool _canClose(QuotationStatus status) => !const {
+    QuotationStatus.converted,
+    QuotationStatus.closed,
+    QuotationStatus.expired,
+  }.contains(status);
+
+  /// Mirrors `ReviseQuotationUseCase.REVISABLE_STATUSES` exactly: DRAFT, SENT,
+  /// INTERESTED, REJECTED, PENDING_REVISION. APPROVED and ACCEPTED are deliberately
+  /// absent — revising either backend-side throws `QUOTATION_NOT_REVISABLE` (409), and
+  /// PENDING_APPROVAL is excluded too: a manager is looking at that version right now.
+  static bool _canRevise(QuotationStatus status) => const {
+    QuotationStatus.draft,
+    QuotationStatus.sent,
+    QuotationStatus.interested,
+    QuotationStatus.rejected,
+    QuotationStatus.pendingRevision,
+  }.contains(status);
+
+  /// Revising is the primary way out of a rejection, and a secondary option otherwise —
+  /// styled to match, the same split the web row actions make.
+  Widget _reviseButton(BuildContext context, Quotation quotation) {
+    final isPrimaryRoute =
+        quotation.status == QuotationStatus.rejected ||
+        quotation.status == QuotationStatus.pendingRevision;
+    void onPressed() => context.push(Routes.quotationRevisePath(quotation.id));
+    const icon = Icon(Icons.call_split_rounded);
+    const label = Text('Revise quotation');
+    const style = ButtonStyle(
+      minimumSize: WidgetStatePropertyAll(Size.fromHeight(50)),
+    );
+
+    return isPrimaryRoute
+        ? FilledButton.icon(
+            onPressed: onPressed,
+            icon: icon,
+            label: label,
+            style: style,
+          )
+        : OutlinedButton.icon(
+            onPressed: onPressed,
+            icon: icon,
+            label: label,
+            style: style,
+          );
+  }
+
+  /// UC-14.4 — send to the customer. Any error the backend returns (e.g. the
+  /// quotation is no longer APPROVED) is surfaced verbatim.
+  Future<void> _send(BuildContext context, WidgetRef ref, Quotation quotation) async {
+    final payload = await showSendQuotationSheet(context, quotation);
+    if (payload == null || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(quotationActionsProvider).send(quotation.id, payload);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Quotation sent to the customer')),
+      );
+    } on AppException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// UC-14.7 — ACCEPTED quotation becomes a PENDING booking awaiting Reservation.
+  Future<void> _convert(BuildContext context, WidgetRef ref, Quotation quotation) async {
+    final payload = await showConvertToBookingSheet(context, quotation);
+    if (payload == null || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final booking = await ref
+          .read(quotationActionsProvider)
+          .convertToBooking(quotation.id, payload);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Booking ${booking.bookingCode} created, awaiting confirmation'),
+        ),
+      );
+    } on AppException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// UC-14.8 — close a quotation that will not proceed.
+  Future<void> _close(BuildContext context, WidgetRef ref, Quotation quotation) async {
+    final payload = await showCloseQuotationSheet(context);
+    if (payload == null || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(quotationActionsProvider).close(quotation.id, payload);
+      messenger.showSnackBar(const SnackBar(content: Text('Quotation closed')));
+    } on AppException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// UC-14.2 — submit a DRAFT. Confirms first because the discount decides whether this
+  /// goes straight to APPROVED or waits on a manager, and the rep should know which.
+  Future<void> _submitForApproval(
+    BuildContext context,
+    WidgetRef ref,
+    Quotation quotation,
+  ) async {
+    final overThreshold = (quotation.discountPercent ?? 0) > 10;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Submit quotation?'),
+        content: Text(
+          overThreshold
+              ? 'The discount is above 10%, so this goes to a manager for approval '
+                    'before it can be sent.'
+              : 'The discount is within your authority, so this will be approved '
+                    'immediately and can then be sent.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final updated = await ref.read(quotationActionsProvider).submit(quotation.id);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Quotation is now ${updated.status.wire.replaceAll("_", " ")}')),
+      );
+    } on AppException catch (e) {
+      // NO_MANAGER_AVAILABLE lands here when approval is needed but no manager exists.
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   Future<void> _showResponseSheet(

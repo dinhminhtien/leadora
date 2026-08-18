@@ -34,6 +34,16 @@ export const operationalHandoverService = {
     return response.data;
   },
 
+  /**
+   * Booking ids that already have a handover — answered by the server rather than derived from the
+   * paged list. The list is owner-scoped, so deriving it here silently missed colleagues' handovers
+   * and offered their bookings for a second handover.
+   */
+  async getBookingIdsWithHandover() {
+    const response = await apiClient.get<ApiResponse<string[]>>(`${ENDPOINT}/booking-ids`);
+    return response.data;
+  },
+
   async getById(id: string) {
     const response = await apiClient.get<ApiResponse<ArrivalHandover>>(
       `${ENDPOINT}/${id}`,

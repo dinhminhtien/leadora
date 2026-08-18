@@ -7,6 +7,12 @@ import com.novax.leadora.application.usecase.chat.dto.StatusBucket;
 import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.application.usecase.chat.time.ChatClock;
 import com.novax.leadora.application.usecase.chat.time.ChatDateRange;
+import com.novax.leadora.application.usecase.inventory.NightAvailability;
+import com.novax.leadora.application.usecase.inventory.RoomAvailabilityService;
+import com.novax.leadora.infrastructure.persistence.entity.ProductServiceEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ProductCategory;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ProductStatus;
+import com.novax.leadora.infrastructure.persistence.repository.ProductServiceRepository;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.TaskEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
@@ -30,11 +36,14 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.text.Normalizer;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.UUID;
@@ -103,12 +112,22 @@ public class CrmSnapshotService {
     private final PaymentRepository paymentRepository;
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
+    private final ProductServiceRepository productServiceRepository;
+    private final RoomAvailabilityService roomAvailabilityService;
 
     /**
      * Roles allowed to see ALL CRM records via chat. Any other role is scoped to their own assigned
      * records. Optionally widened by {@code AI_CHAT_TOP_PRIVILEGE} (dev escape hatch).
      */
     private static final Set<String> FULL_SCOPE_ROLES = Set.of("MANAGER", "ADMIN");
+
+    /** Fixed forward window for allotment. Deliberately not derived from the question. */
+    private static final int AVAILABILITY_LOOKAHEAD_NIGHTS = 14;
+
+    /** Dates named per room type before the rest are summarised away. */
+    private static final int MAX_AVAILABILITY_DATES = 4;
+
+    private static final DateTimeFormatter DAY_MONTH = DateTimeFormatter.ofPattern("dd/MM");
 
     @Value("${AI_CHAT_TOP_PRIVILEGE:false}")
     private boolean topPrivilege;
@@ -236,6 +255,9 @@ public class CrmSnapshotService {
                 case PAYMENTS -> appendPayments(sb, counts, scopeUserId, detail, from, to);
                 case CUSTOMERS -> appendCustomers(sb, counts, scopeUserId, detail, from, to);
                 case SLA -> appendSla(sb, counts, scopeUserId, detail, from, to);
+                // Reference data owned by the hotel, not per-user rows: it carries no period of
+                // its own and builds its figures from a forward window, so no date bounds here.
+                case ROOM_AVAILABILITY -> appendRoomAvailability(sb, detail);
             };
             // Guidance is only worth giving for what was actually asked about: an empty payments
             // area is not interesting when the question was about leads.
@@ -266,6 +288,108 @@ public class CrmSnapshotService {
         return "Period: " + range.label() + " — every count, total and listing below covers ONLY "
                 + "records whose creation date falls in " + range.from() + " .. " + range.to()
                 + " (inclusive). These are NOT all-time figures. State the period in your answer.\n";
+    }
+
+    /**
+     * How much of the hotel's allocation is left over the next couple of weeks.
+     *
+     * <p><b>Only when the question asks for it.</b> Unlike the other areas this has no per-user
+     * rows and no cheap count, so there is nothing worth carrying on every turn.
+     *
+     * <p><b>Summarised, never listed night by night.</b> Allotment is commercially sensitive to
+     * the hotel — it is the block they released to one channel — and a forward calendar dumped
+     * into a chat transcript is the easiest way for it to leave the building. A short window and
+     * one line per room type answers "is there a Deluxe free next week?" without ever making
+     * "list the next six months" a question this has an answer to. The window is fixed here, not
+     * taken from the question, so no phrasing can widen it.
+     *
+     * <p>The caveat in the header is not decoration. These are rooms allocated <em>to us</em>;
+     * running out means our block is spent, not that the hotel is full, and an assistant that
+     * blurs the two would have reps turning away business the hotel could service.
+     */
+    private long appendRoomAvailability(StringBuilder sb, boolean detail) {
+        if (!detail) {
+            return 0;
+        }
+        List<ProductServiceEntity> rooms = productServiceRepository.findByCategory(ProductCategory.ROOM)
+                .stream()
+                .filter(p -> p.getStatus() == ProductStatus.ACTIVE)
+                .toList();
+        if (rooms.isEmpty()) {
+            return 0;
+        }
+
+        LocalDate from = LocalDate.now();
+        LocalDate toExclusive = from.plusDays(AVAILABILITY_LOOKAHEAD_NIGHTS);
+        Map<UUID, List<NightAvailability>> byRoom =
+                roomAvailabilityService.nights(rooms, from, toExclusive);
+
+        sb.append("Room availability (rooms the hotel allocated to us to sell over the next ")
+                .append(AVAILABILITY_LOOKAHEAD_NIGHTS)
+                .append(" nights - NOT the hotel's own vacancy. \"None left\" means our allocation is")
+                .append(" spent; the Reservation team can often obtain more):\n");
+
+        for (ProductServiceEntity room : rooms) {
+            List<NightAvailability> nights = byRoom.getOrDefault(room.getProductId(), List.of());
+            int open = 0;
+            List<String> soldOut = new ArrayList<>();
+            List<String> closed = new ArrayList<>();
+            int unpublished = 0;
+            boolean stale = false;
+
+            for (NightAvailability night : nights) {
+                if (night.closed()) {
+                    closed.add(DAY_MONTH.format(night.date()));
+                } else if (!night.published()) {
+                    unpublished++;
+                } else {
+                    stale |= night.stale();
+                    if (night.available() != null && night.available() > 0) {
+                        open++;
+                    } else {
+                        soldOut.add(DAY_MONTH.format(night.date()));
+                    }
+                }
+            }
+
+            // Denominator is the nights we actually have an answer for, not the whole window.
+            // Counting unpublished and closed nights against it reported "free on 3 of the next
+            // 14" for a room type whose quota simply had not been published yet — reading as
+            // scarcity, which is precisely the confusion the rest of this method exists to
+            // prevent. Those nights are reported separately below, in their own words.
+            int answered = open + soldOut.size();
+            sb.append("  - ").append(room.getName())
+                    .append(": rooms free on ").append(open)
+                    .append(" of ").append(answered)
+                    .append(answered == 1 ? " night" : " nights").append(" with published allocation");
+            if (!soldOut.isEmpty()) {
+                sb.append("; none left ").append(String.join(", ", capped(soldOut)));
+            }
+            if (!closed.isEmpty()) {
+                sb.append("; hotel not selling ").append(String.join(", ", capped(closed)));
+            }
+            if (unpublished > 0) {
+                // Said explicitly because the model would otherwise read a missing number as a
+                // zero, and report an unpublished fortnight as a sold-out one.
+                sb.append("; ").append(unpublished)
+                        .append(" night(s) have no allocation published yet (not the same as sold out)");
+            }
+            if (stale) {
+                sb.append("; figures not reconciled with the hotel recently");
+            }
+            sb.append("\n");
+        }
+        return rooms.size();
+    }
+
+    /** Keeps a date list to a readable handful rather than spelling out a fortnight. */
+    private static List<String> capped(List<String> dates) {
+        if (dates.size() <= MAX_AVAILABILITY_DATES) {
+            return dates;
+        }
+        List<String> shown = new ArrayList<>(dates.subList(0, MAX_AVAILABILITY_DATES));
+        shown.add("+" + (dates.size() - MAX_AVAILABILITY_DATES) + " more");
+        return shown;
     }
 
     // ── Per-area sections ─────────────────────────────────────────────────────
@@ -590,6 +714,7 @@ public class CrmSnapshotService {
             case SLA -> sb.append(", of which breached: ")
                     .append(companyWide.count(CrmArea.SLA, SlaStatus.BREACHED.name()))
                     .append("\nYou may offer the team's breached or active SLA records.\n");
+            case ROOM_AVAILABILITY -> sb.append("\nYou may offer the team's room availability.\n");
         }
     }
 

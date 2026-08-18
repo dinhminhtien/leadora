@@ -9,10 +9,15 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import com.novax.leadora.application.listener.WorkflowSyncEntityListener;
+
 @Entity
 @Table(name = "quotations", indexes = {
-    @Index(name = "idx_quotations_created_at", columnList = "created_at")
+    @Index(name = "idx_quotations_created_at", columnList = "created_at"),
+    @Index(name = "idx_quotations_created_by_status", columnList = "created_by, status, created_at DESC"),
+    @Index(name = "idx_quotations_deal_id_status", columnList = "deal_id, status")
 })
+@EntityListeners(WorkflowSyncEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor

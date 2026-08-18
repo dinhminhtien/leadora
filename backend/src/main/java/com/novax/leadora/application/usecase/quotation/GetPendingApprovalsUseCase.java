@@ -18,7 +18,10 @@ public class GetPendingApprovalsUseCase {
 
     @Transactional(readOnly = true)
     public List<QuotationResponse> execute() {
-        return quotationRepository.findByStatus(QuotationStatus.PENDING_APPROVAL)
+        return quotationRepository.findByStatus(
+                        QuotationStatus.PENDING_APPROVAL,
+                        org.springframework.data.domain.PageRequest.of(0, 100, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+                )
                 .stream()
                 .map(QuotationResponse::from)
                 .collect(Collectors.toList());

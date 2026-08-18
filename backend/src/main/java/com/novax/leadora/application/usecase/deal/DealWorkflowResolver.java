@@ -24,15 +24,18 @@ public class DealWorkflowResolver {
             QuotationStatus.CONVERTED,
             QuotationStatus.PENDING_REVISION,
             QuotationStatus.ACCEPTED,
-            QuotationStatus.INTERESTED
-    );
+            QuotationStatus.INTERESTED,
+            QuotationStatus.PENDING_CUSTOMER_RESPONSE,
+            QuotationStatus.ACCEPTED_BY_CUSTOMER,
+            QuotationStatus.BOOKING_REQUEST,
+            QuotationStatus.RESERVATION_PENDING,
+            QuotationStatus.RESERVATION_REJECTED);
 
     private static final Set<BookingStatus> ACTIVE_BOOKING_STATUSES = Set.of(
             BookingStatus.PENDING,
             BookingStatus.CONFIRMED,
             BookingStatus.CHECKED_IN,
-            BookingStatus.CHECKED_OUT
-    );
+            BookingStatus.CHECKED_OUT);
 
     public Optional<QuotationEntity> resolveActiveQuotation(UUID dealId) {
         if (dealId == null) {
@@ -116,6 +119,22 @@ public class DealWorkflowResolver {
         if (activeBookingOpt.isEmpty()) {
             return false;
         }
-        return paymentRepository.existsByBooking_BookingIdAndStatus(activeBookingOpt.get().getBookingId(), PaymentStatus.PAID);
+        return paymentRepository.existsByBooking_BookingIdAndStatus(activeBookingOpt.get().getBookingId(),
+                PaymentStatus.PAID);
+    }
+
+    public int getStageOrder(DealPipelineStage stage) {
+        if (stage == null) {
+            return 0;
+        }
+        return switch (stage) {
+            case INQUIRY -> 0;
+            case QUALIFICATION -> 1;
+            case QUOTATION_SENT -> 2;
+            case NEGOTIATION -> 3;
+            case PENDING_CONFIRMATION -> 4;
+            case BOOKING_CONFIRMED -> 5;
+            case CLOSED_WON, CLOSED_LOST -> 6;
+        };
     }
 }

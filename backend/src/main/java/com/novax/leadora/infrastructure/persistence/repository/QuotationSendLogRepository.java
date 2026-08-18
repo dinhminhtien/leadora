@@ -8,4 +8,5 @@ import java.util.UUID;
 
 @Repository
 public interface QuotationSendLogRepository extends JpaRepository<QuotationSendLogEntity, UUID> {
+    java.util.List<QuotationSendLogEntity> findByQuotation_QuotationIdOrderByCreatedAtDesc(UUID quotationId);
 }

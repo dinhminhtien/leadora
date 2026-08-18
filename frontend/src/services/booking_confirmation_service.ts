@@ -24,37 +24,11 @@ export type Booking = {
   checkOutDate: string;
   status: "PENDING" | "CONFIRMED" | "CHECKED_IN" | "CHECKED_OUT" | "CANCELLED" | "NO_SHOW" | "REJECTED";
   specialRequests?: string;
-  rejectionReason?: string;
+  statusReason?: string;
   totalAmount: number;
   details?: BookingDetail[];
   createdAt: string;
   updatedAt: string;
-};
-
-export type CreateBookingPayload = {
-  quotationId: string;
-  customerId: string;
-  assignedUserId?: string;
-  checkInDate: string;
-  checkOutDate: string;
-  specialRequests?: string;
-  details: {
-    productId: string;
-    roomNumber?: string;
-    quantity: number;
-    unitPrice: number;
-    nights: number;
-  }[];
-};
-
-export type RoomAvailability = {
-  productId: string;
-  name: string;
-  category: "ROOM" | "EVENT_SPACE" | "SERVICE";
-  unitPrice: number;
-  unit?: string;
-  totalBooked: number;
-  isAvailable: boolean;
 };
 
 const ENDPOINT = "/bookings";
@@ -82,26 +56,18 @@ export const bookingConfirmationService = {
     return response.data;
   },
 
-  async submitRequest(payload: CreateBookingPayload) {
-    const response = await apiClient.post<ApiResponse<Booking>>(
-      ENDPOINT,
-      payload,
-    );
-    return response.data;
-  },
-
-  async processRequest(id: string, payload: { status: "CONFIRMED" | "REJECTED"; rejectionReason?: string }) {
+  /**
+   * Bookings are created only by converting a quotation
+   * (`quotationService.convert`), never here. `POST /bookings` and
+   * `GET /bookings/check-availability` are gone from the API: the first duplicated the
+   * conversion without its contract and room checks and double-counted allotment, the second
+   * reported committed rooms under an "availability" name. See `room_availability_service` for
+   * what the hotel has allocated, and `room_request_service` for anything it cannot settle.
+   */
+  async processRequest(id: string, payload: { status: "CONFIRMED" | "REJECTED"; statusReason?: string }) {
     const response = await apiClient.put<ApiResponse<Booking>>(
       `${ENDPOINT}/${id}/process`,
       payload,
-    );
-    return response.data;
-  },
-
-  async checkAvailability(params: { checkInDate: string; checkOutDate: string; productId?: string }) {
-    const response = await apiClient.get<ApiResponse<RoomAvailability[]>>(
-      `${ENDPOINT}/check-availability`,
-      { params },
     );
     return response.data;
   },

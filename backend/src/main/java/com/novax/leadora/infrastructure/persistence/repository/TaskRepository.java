@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.novax.leadora.infrastructure.persistence.repository.projection.StaffTaskPerformanceProjection;
+
 @Repository
 public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpecificationExecutor<TaskEntity> {
 
@@ -46,18 +48,10 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
                         @Param("rangeStart") OffsetDateTime rangeStart,
                         @Param("rangeEnd") OffsetDateTime rangeEnd);
 
-        // ── Performance report query (eliminates N+1 and filters at DB level) ──
-        @EntityGraph(attributePaths = { "assignedUser" })
-        @Query("""
-                        SELECT t FROM TaskEntity t
-                        WHERE (:assignedUserId IS NULL OR t.assignedUser.userId = :assignedUserId)
-                          AND t.createdAt >= :startDate
-                          AND t.createdAt <= :endDate
-                        """)
-        List<TaskEntity> findForPerformanceReport(
-                        @Param("assignedUserId") UUID assignedUserId,
-                        @Param("startDate") OffsetDateTime startDate,
-                        @Param("endDate") OffsetDateTime endDate);
+        // UC-23.2's aggregates moved to TaskPerformanceRepository: the four queries that used to
+        // live here were folded into one statement carrying the owner as a grouping column, so the
+        // per-staff rows are the headline rows before they are summed rather than a parallel
+        // calculation that could disagree with them.
 
         // ── Lightweight association lookups (no eager load required) ──────────
 
@@ -103,4 +97,19 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
                         @Param("from") OffsetDateTime from,
                         @Param("to") OffsetDateTime to,
                         Pageable pageable);
+
+        @Query("SELECT t.taskId FROM TaskEntity t WHERE t.assignedUser.userId = :userId")
+        List<UUID> findTaskIdsByAssignedUser_UserId(@Param("userId") UUID userId);
+
+        @Query("SELECT t.assignedUser.userId as staffId, " +
+               "SUM(CASE WHEN t.status = 'COMPLETED' AND t.completedAt IS NOT NULL AND t.completedAt >= :startDate AND t.completedAt <= :endDate THEN 1 ELSE 0 END) as completedTasks, " +
+               "SUM(CASE WHEN t.status = 'COMPLETED' AND t.completedAt IS NOT NULL AND t.completedAt >= :startDate AND t.completedAt <= :endDate AND (t.endAt IS NULL OR t.completedAt <= t.endAt) THEN 1 ELSE 0 END) as onTimeTasks, " +
+               "SUM(CASE WHEN t.status = 'OPEN' AND t.endAt IS NOT NULL AND t.endAt < CURRENT_TIMESTAMP THEN 1 ELSE 0 END) as overdueTasks " +
+               "FROM TaskEntity t " +
+               "WHERE t.assignedUser.userId IN :staffIds " +
+               "GROUP BY t.assignedUser.userId")
+        List<StaffTaskPerformanceProjection> aggregateTaskPerformance(
+                @Param("startDate") OffsetDateTime startDate, 
+                @Param("endDate") OffsetDateTime endDate,
+                @Param("staffIds") List<UUID> staffIds);
 }

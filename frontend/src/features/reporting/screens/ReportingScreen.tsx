@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { FileText, Download, Printer, AlertCircle, CheckCircle2, ClipboardList, Loader2, TrendingUp, GitBranch, ReceiptText, ShieldCheck } from "lucide-react";
+import { FileText, Download, Printer, AlertCircle, CheckCircle2, ClipboardList, Loader2, TrendingUp, GitBranch, ReceiptText, ShieldCheck, Gauge } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -13,6 +15,7 @@ import { useQuotationsForReport, useSaveReportLog } from "@/features/reporting/h
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
 import { SalesPerformanceTab } from "@/features/reporting/components/SalesPerformanceTab";
+import { RepScorecardTab } from "@/features/reporting/components/RepScorecardTab";
 import { TaskPerformanceTab } from "@/features/reporting/components/TaskPerformanceTab";
 import { PipelineProgressionTab } from "@/features/reporting/components/PipelineProgressionTab";
 import { QuotationOutcomeTab } from "@/features/reporting/components/QuotationOutcomeTab";
@@ -333,6 +336,7 @@ function DiscountReportTab() {
 
 type Tab =
   | "sales-performance"
+  | "rep-scorecard"
   | "pipeline-progression"
   | "quotation-outcome"
   | "sla-compliance"
@@ -349,29 +353,32 @@ export function ReportingScreen() {
   // Land on the first report the role can see: managers → Sales Performance, staff → Task Performance.
   const [activeTab, setActiveTab] = useState<Tab>(isManagerScope ? "sales-performance" : "task-performance");
 
+  // Sales Staff hold REPORTING_VIEW purely so UC-23.2 works for them; the report itself is scoped
+  // to their own tasks server-side. Everything else on this screen is a team-wide view whose
+  // endpoints only accept MANAGER/ADMIN, so showing those tabs would just render a failed request.
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     ...(isManagerScope
       ? ([
           { key: "sales-performance", label: "Sales Performance", icon: <TrendingUp className="size-3.5" /> },
+          { key: "rep-scorecard", label: "Rep Scorecard", icon: <Gauge className="size-3.5" /> },
           { key: "pipeline-progression", label: "Pipeline Progression", icon: <GitBranch className="size-3.5" /> },
           { key: "quotation-outcome", label: "Quotation Outcome", icon: <ReceiptText className="size-3.5" /> },
           { key: "sla-compliance", label: "SLA Compliance", icon: <ShieldCheck className="size-3.5" /> },
         ] as { key: Tab; label: string; icon: React.ReactNode }[])
       : []),
     { key: "task-performance", label: "Task Performance", icon: <ClipboardList className="size-3.5" /> },
-    { key: "discount-report", label: "Discount Reports", icon: <FileText className="size-3.5" /> },
+    ...(isManagerScope
+      ? ([{ key: "discount-report", label: "Discount Reports", icon: <FileText className="size-3.5" /> }] as {
+          key: Tab;
+          label: string;
+          icon: React.ReactNode;
+        }[])
+      : []),
   ];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Advanced Reporting & Analytics</h1>
-          <p className="text-xs text-slate-400">
-            Deep-dive insights into hotel sales pipeline performance and discount approvals
-          </p>
-        </div>
-      </div>
+      <PageHeader {...PAGE_META.reporting} />
 
       {/* Tab switcher */}
       <div className="flex border-b border-slate-200 gap-1">
@@ -391,11 +398,12 @@ export function ReportingScreen() {
       </div>
 
       {activeTab === "sales-performance" && <SalesPerformanceTab />}
+      {activeTab === "rep-scorecard" && isManagerScope && <RepScorecardTab />}
       {activeTab === "pipeline-progression" && <PipelineProgressionTab />}
       {activeTab === "quotation-outcome" && <QuotationOutcomeTab />}
       {activeTab === "sla-compliance" && <SlaComplianceTab />}
       {activeTab === "task-performance" && <TaskPerformanceTab />}
-      {activeTab === "discount-report" && <DiscountReportTab />}
+      {activeTab === "discount-report" && isManagerScope && <DiscountReportTab />}
     </div>
   );
 }

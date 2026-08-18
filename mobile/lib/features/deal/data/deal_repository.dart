@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/api_paths.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/network_providers.dart';
+import '../../../core/network/pagination_response.dart';
 import 'deal_models.dart';
 
 /// All deal API calls needed by the mobile app. Thin, typed wrapper over
@@ -30,6 +31,33 @@ class DealRepository {
       decode: (data) => (data as List<dynamic>)
           .map((e) => Deal.fromJson(e as Map<String, dynamic>))
           .toList(growable: false),
+      cancelToken: cancelToken,
+    );
+  }
+
+  /// The deals a new quotation can be raised against (UC-14.1) — paged, and searched
+  /// server-side.
+  ///
+  /// Eligibility is decided by the backend, not here, and it is one condition: the deal is
+  /// still **active**. Won and lost deals are closed and never come back.
+  ///
+  /// The quotation form used to list every deal via [getDeals] and offer all of them,
+  /// including closed ones the rep could not actually quote. **Do not filter the result
+  /// client-side** — mirroring the rule here is how the two clients drifted apart before.
+  Future<PaginationResponse<Deal>> getQuotableDeals({
+    String? search,
+    int page = 0,
+    int size = 20,
+    CancelToken? cancelToken,
+  }) {
+    return _client.getPaged<Deal>(
+      ApiPaths.dealsQuotable,
+      query: {
+        if (search != null && search.isNotEmpty) 'search': search,
+        'page': page,
+        'size': size,
+      },
+      decodeItem: (item) => Deal.fromJson(item as Map<String, dynamic>),
       cancelToken: cancelToken,
     );
   }
@@ -68,6 +96,16 @@ class DealRepository {
       ApiPaths.dealStatus(dealId),
       data: {'status': status.wire},
       decode: (data) => Deal.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  /// Where the deal stands in the Sales lifecycle. Read-only: the backend derives it
+  /// from the quotation → booking → payment chain, nothing here writes to the deal.
+  Future<DealWorkflowSummary> getWorkflowSummary(String dealId) {
+    return _client.get<DealWorkflowSummary>(
+      ApiPaths.dealWorkflow(dealId),
+      decode: (data) =>
+          DealWorkflowSummary.fromJson(data as Map<String, dynamic>),
     );
   }
 }

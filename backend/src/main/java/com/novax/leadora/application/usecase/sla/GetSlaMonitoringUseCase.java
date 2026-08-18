@@ -54,8 +54,20 @@ public class GetSlaMonitoringUseCase {
                 ? currentUser.getRole().getRoleName().trim().toUpperCase() : "";
         if (SCOPED_ROLES.contains(role)) {
             UUID uid = currentUser.getUserId();
+            List<UUID> myLeadIds = leadRepository.findLeadIdsByAssignedUser_UserId(uid);
+            List<UUID> myQuotationIds = quotationRepository.findQuotationIdsByAssignedUser_UserId(uid);
+            List<UUID> myTaskIds = taskRepository.findTaskIdsByAssignedUser_UserId(uid);
+
             records = records.stream()
-                    .filter(t -> uid.equals(resolveOwnerId(t)))
+                    .filter(t -> {
+                        if (t.getEntityId() == null) return false;
+                        return switch (t.getEntityType()) {
+                            case "LEAD" -> myLeadIds.contains(t.getEntityId());
+                            case "QUOTATION" -> myQuotationIds.contains(t.getEntityId());
+                            case "TASK" -> myTaskIds.contains(t.getEntityId());
+                            default -> false;
+                        };
+                    })
                     .toList();
         }
 
@@ -70,29 +82,6 @@ public class GetSlaMonitoringUseCase {
                         .comparingInt((SlaMonitoringResponse r) -> displayStatusOrder(r.getDisplayStatus()))
                         .thenComparing(r -> r.getDeadlineAt()))
                 .toList();
-    }
-
-    /** Resolves the sales rep who owns a tracking record's underlying entity, or null. */
-    private UUID resolveOwnerId(SlaTrackingEntity tracking) {
-        if (tracking.getEntityId() == null) return null;
-        try {
-            return switch (tracking.getEntityType()) {
-                case "LEAD" -> leadRepository.findById(tracking.getEntityId())
-                        .map(l -> l.getAssignedUser() != null ? l.getAssignedUser().getUserId() : null)
-                        .orElse(null);
-                case "QUOTATION" -> quotationRepository.findById(tracking.getEntityId())
-                        .map(q -> q.getCreatedBy() != null ? q.getCreatedBy().getUserId() : null)
-                        .orElse(null);
-                case "TASK" -> taskRepository.findById(tracking.getEntityId())
-                        .map(t -> t.getAssignedUser() != null ? t.getAssignedUser().getUserId() : null)
-                        .orElse(null);
-                // PAYMENT/HANDOVER are Reservation/Front Office concerns, not a sales rep's own
-                // work — excluded from the scoped (Sales) view rather than guessed at.
-                default -> null;
-            };
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private int displayStatusOrder(String status) {

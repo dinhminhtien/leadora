@@ -35,13 +35,14 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:secret}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:5}
-      minimum-idle: 1
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:10}
+      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE:5}
       connection-timeout: 30000
       idle-timeout: 300000
       max-lifetime: 1800000
 
   jpa:
+    open-in-view: false
     hibernate:
       ddl-auto: ${SPRING_JPA_DDL_AUTO:validate}
     show-sql: ${SPRING_JPA_SHOW_SQL:false}
@@ -55,19 +56,6 @@ spring:
         # pgbouncer compatibility — must explicitly set dialect when disabling JDBC metadata access
         boot:
           allow_jdbc_metadata_access: false
-
-  mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:${SPRING_MAIL_USERNAME:leadora.novax@gmail.com}}
-    password: ${MAIL_PASSWORD:${SPRING_MAIL_PASSWORD:}}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
 
   data:
     redis:
@@ -175,47 +163,12 @@ ai:
       # embedding calls. Set AI_SEMANTIC_CHUNKING=false to fall back to cheap token splitting.
       enabled: ${AI_SEMANTIC_CHUNKING:true}
 
-    # Vision OCR: read the text INSIDE images (scanned pages, charts, screenshots) with the same
-    # Gemini chat model. Tika only extracts a document's text layer, so image-only files otherwise
-    # ingest to 0 chunks and vanish. ON by default (ALL_IMAGES) now that Vertex AI (billed) carries
-    # the quota; the max-images cap, size filter and de-dup still bound the per-document spend.
-    #   mode: OFF (no OCR) | SCANNED_ONLY (only text-poor docs) | ALL_IMAGES (default, every image)
-    # Set AI_VISION_OCR_MODE=OFF or SCANNED_ONLY to spend less; AI_VISION_OCR_MODEL=gemini-2.5-pro
-    # for markedly better reading of dense scans.
-    vision-ocr:
-      mode: ${AI_VISION_OCR_MODE:ALL_IMAGES}
-      # Below this many characters of extracted text, SCANNED_ONLY treats the document as scanned.
-      scanned-text-threshold: ${AI_VISION_OCR_SCANNED_THRESHOLD:200}
-      # Max images sent to the vision model per document — the primary guard on quota/cost.
-      max-images: ${AI_VISION_OCR_MAX_IMAGES:20}
-      # Model for OCR only. Blank = reuse the chat model (gemini-2.5-flash). Set gemini-2.5-pro for
-      # markedly better reading of dense scans / complex tables / figures, at higher quota cost.
-      model: ${AI_VISION_OCR_MODEL:}
-      # Which embedded images are worth a vision call. Judged by AREA, not shortest side: a policy
-      # pasted into a Word file as one wide, short screenshot (e.g. 632x100) is real content, but a
-      # shortest-side rule reads it as an icon and drops it — the document then ingests to 0 chunks
-      # and the upload is rejected as "no extractable text". Raise min-area to spend less on logos.
-      image-filter:
-        min-side-px: ${AI_VISION_OCR_MIN_SIDE:40}
-        min-area-px: ${AI_VISION_OCR_MIN_AREA:16000}
-        # Applied instead of the above when the document has (almost) no text layer: there the
-        # images ARE the document, so only physically unreadable ones are dropped.
-        lenient-min-side-px: ${AI_VISION_OCR_LENIENT_MIN_SIDE:16}
-      # Page rendering: for a PDF page whose text layer is sparse (scanned or drawn as vector
-      # graphics — charts/diagrams/complex tables), render the WHOLE page and OCR it, instead of only
-      # lifting embedded raster images (which cannot see vector content). Text-rich pages are left to
-      # Tika so clean text is not re-OCR'd into near-duplicate chunks.
-      page-render:
-        enabled: ${AI_VISION_OCR_PAGE_RENDER:true}
-        text-threshold: ${AI_VISION_OCR_PAGE_RENDER_THRESHOLD:100}
-        dpi: ${AI_VISION_OCR_PAGE_RENDER_DPI:200}
-
-    # Retrieval tuning for the RAG context fed to the chat model.
-    retrieval:
-      # Chunks returned per query — higher grounds the answer in more context.
-      top-k: ${AI_RAG_TOP_K:6}
-      # Minimum cosine similarity (0..1) to count a chunk as relevant — lower favours recall.
-      similarity-threshold: ${AI_RAG_SIMILARITY_THRESHOLD:0.4}
+# SLA deadline calculation (BR-32/BR-42) — applies uniformly to every SLA rule.
+sla:
+  business-hours:
+    start: ${SLA_BUSINESS_HOURS_START:8}
+    end: ${SLA_BUSINESS_HOURS_END:18}
+    days: ${SLA_BUSINESS_DAYS:MON,TUE,WED,THU,FRI}
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
@@ -226,9 +179,63 @@ app:
     provider: ${APP_BANK_PROVIDER:sepay}
     api-token: ${APP_BANK_API_TOKEN:dummy-token}
     api-url: ${APP_BANK_API_URL:https://my.sepay.vn/plus/api/transactions}
+  deal:
+    probability:
+      inquiry: ${DEAL_PROBABILITY_INQUIRY:10}
+      qualification: ${DEAL_PROBABILITY_QUALIFICATION:30}
+      quotation-sent: ${DEAL_PROBABILITY_QUOTATION_SENT:50}
+      negotiation: ${DEAL_PROBABILITY_NEGOTIATION:70}
+      pending-confirmation: ${DEAL_PROBABILITY_PENDING_CONFIRMATION:80}
+      booking-confirmed: ${DEAL_PROBABILITY_BOOKING_CONFIRMED:90}
 
 # Supabase environment fallbacks (prevents startup crash if environment variables are not set)
 SUPABASE_URL: ${SUPABASE_URL}
 SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
 
+# Resend API Configuration for production email infrastructure
+resend:
+  api-key: ${RESEND_API_KEY:}
+  default-from: ${RESEND_FROM_EMAIL:noreply@leadora.id.vn}
+  base-url: ${RESEND_BASE_URL:https://api.resend.com}
+  timeout: ${RESEND_TIMEOUT:10s}
 
+# Contract module configuration
+contract:
+  otp-expiry-seconds: ${CONTRACT_OTP_EXPIRY_SECONDS:900}   # 15 minutes
+  storage:
+    bucket: ${CONTRACT_STORAGE_BUCKET:contract_files}
+    supabase-url: ${SUPABASE_URL}
+    service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
+  portal-base-url: ${CONTRACT_PORTAL_BASE_URL:${app.frontend-url}}
+# ABSA Engine Configuration
+absa:
+  engine:
+    url: ${ABSA_ENGINE_URL:https://timano4--leadora-absa-engine-fastapi-app.modal.run}
+
+
+
+
+# ── UC-23.1 / UC-23.6 reporting ──────────────────────────────────────────────
+# The zone day boundaries are cut in. Stored timestamps are timestamptz, so "31 July" is ambiguous
+# until a zone is named; resolving it in UTC for a UTC+7 business drops every record created before
+# 07:00 local into the previous day.
+leadora:
+  reporting:
+    zone: ${LEADORA_REPORTING_ZONE:Asia/Ho_Chi_Minh}
+  # UC-23.6 rep scorecard. These are the numbers people are judged against — they live here, in the
+  # open, precisely because they are judgement calls and not measurements. Set the targets to the
+  # real quota before anyone reads a score as meaningful.
+  scoring:
+    min-sample: ${SCORING_MIN_SAMPLE:5}          # below this many settled outcomes → lowConfidence
+    shrinkage: ${SCORING_SHRINKAGE:5}            # phantom average events blended into every rate
+    min-active-days: ${SCORING_MIN_ACTIVE_DAYS:10}
+    forecast-tolerance-days: ${SCORING_FORECAST_TOLERANCE_DAYS:7}
+    weights:
+      outcome: ${SCORING_WEIGHT_OUTCOME:30}
+      efficiency: ${SCORING_WEIGHT_EFFICIENCY:25}
+      velocity: ${SCORING_WEIGHT_VELOCITY:15}
+      discipline: ${SCORING_WEIGHT_DISCIPLINE:20}
+      quality: ${SCORING_WEIGHT_QUALITY:10}
+    targets:
+      revenue-per-month: ${SCORING_TARGET_REVENUE_PER_MONTH:200000000}
+      deals-won-per-month: ${SCORING_TARGET_DEALS_WON_PER_MONTH:5}

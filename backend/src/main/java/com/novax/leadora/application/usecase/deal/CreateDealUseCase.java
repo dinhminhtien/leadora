@@ -8,17 +8,22 @@ import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
+import com.novax.leadora.infrastructure.persistence.entity.enums.ActivityLogType;
+import com.novax.leadora.infrastructure.persistence.entity.enums.EntityType;
 import com.novax.leadora.common.exception.BusinessException;
 import org.springframework.http.HttpStatus;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CreateDealUseCase {
@@ -29,6 +34,9 @@ public class CreateDealUseCase {
     private final DealMapper dealMapper;
     private final DealValidation dealValidation;
     private final CurrentUserProvider currentUserProvider;
+    private final ActivityLogPublisher activityLogPublisher;
+    private final RecordDealStageChangeService recordDealStageChangeService;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public DealResponse execute(DealRequest request) {
@@ -61,7 +69,7 @@ public class CreateDealUseCase {
                 .expectedRevenue(request.getValue())
                 .expectedCloseDate(request.getExpectedClose())
                 .build();
-        dealValidation.validateStageTransition(DealPipelineStage.PROSPECTING, initialStage, tempDeal, request);
+        dealValidation.validateStageTransition(DealPipelineStage.INQUIRY, initialStage, tempDeal, request);
 
         DealEntity deal = DealEntity.builder()
                 .dealName(request.getTitle())
@@ -76,6 +84,34 @@ public class CreateDealUseCase {
                 .build();
 
         DealEntity savedDeal = dealRepository.save(deal);
+        // Opening row of the deal's journey: from_stage null means "entered the pipeline here".
+        // Without it, time spent in the very first stage would be unmeasurable.
+        recordDealStageChangeService.record(savedDeal, null, savedDeal.getPipelineStage(),
+                RecordDealStageChangeService.SOURCE_CREATED);
+
+        // Publish Activity Log event
+        try {
+            ObjectNode payload = objectMapper.createObjectNode()
+                    .put("dealName", savedDeal.getDealName())
+                    .put("stage", savedDeal.getPipelineStage().name())
+                    .put("status", savedDeal.getStatus().name());
+            if (savedDeal.getExpectedRevenue() != null) {
+                payload.put("expectedRevenue", savedDeal.getExpectedRevenue());
+            }
+            if (savedDeal.getCustomer() != null) {
+                payload.put("customerId", savedDeal.getCustomer().getCustomerId().toString());
+            }
+            activityLogPublisher.publish(
+                    ActivityLogType.DEAL_CREATED,
+                    EntityType.DEAL,
+                    savedDeal.getDealId(),
+                    "Deal created: " + savedDeal.getDealName(),
+                    payload
+            );
+        } catch (Exception e) {
+            log.warn("Failed to publish deal creation activity: {}", e.getMessage());
+        }
+
         return dealMapper.mapToResponse(savedDeal);
     }
 

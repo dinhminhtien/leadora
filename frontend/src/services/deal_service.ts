@@ -1,4 +1,4 @@
-import { apiClient, type ApiResponse } from "@/services/api_client";
+import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_client";
 import type { ListQuery } from "@/shared/types/api";
 
 export interface Deal {
@@ -9,7 +9,7 @@ export interface Deal {
   phone?: string;
   value: number;
   probability: number;
-  stage: "Inquiry" | "Site Visit" | "Proposal" | "Negotiation" | "Contract" | "Confirmed";
+  stage: "Inquiry" | "Qualification" | "Proposal" | "Negotiation" | "Contract" | "Confirmed";
   owner: string;
   ownerEmail?: string;
   status: "active" | "won" | "lost";
@@ -51,6 +51,23 @@ export const dealService = {
     return response.data;
   },
 
+  /**
+   * `GET /deals/quotable` — the deals a new quotation can be raised against (UC-14.1),
+   * paged and searched server-side.
+   *
+   * Eligibility is one condition, applied by `DealSpecification.quotable`: the deal is
+   * still **active**. WON and LOST deals are closed and never returned. The same owner
+   * scoping `getList` gets still applies. Do not re-filter the result here — duplicating a
+   * server rule in the browser is how the two drift apart.
+   */
+  async getQuotable(params?: ListQuery) {
+    const response = await apiClient.get<ApiResponse<PageResponse<Deal>>>(
+      `${ENDPOINT}/quotable`,
+      { params },
+    );
+    return response.data;
+  },
+
   async getPipeline(params?: ListQuery) {
     const response = await apiClient.get<ApiResponse<PipelineDealCardResponse[]>>(`${ENDPOINT}/pipeline`, {
       params,
@@ -80,5 +97,13 @@ export const dealService = {
     );
     return response.data;
   },
+
+  async syncPipeline(id: string) {
+    const response = await apiClient.post<ApiResponse<Deal>>(
+      `${ENDPOINT}/${id}/sync-pipeline`
+    );
+    return response.data;
+  },
 };
+
 

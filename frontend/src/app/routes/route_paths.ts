@@ -9,11 +9,18 @@ export const ROUTE_PATHS = {
   dashboardAdmin: "/dashboard/admin",
   identityAccess: "/identity-access",
   customerFeedback: "/customer-feedback",
+  sentimentAnalytics: "/analytics/sentiment",
   leads: "/leads",
-  leadDetail: (id: string) => `/leads/${id}`,
+  // A lead opens in the drawer over the list — there is no full-page detail any
+  // more. `/leads/{id}` still redirects here for links already in the wild, but
+  // new links should skip that hop and point straight at the list.
+  leadDetail: (id: string) => `/leads?lead=${encodeURIComponent(id)}`,
   customerProfiles: "/customer-profiles",
   followUpTasks: "/follow-up-tasks",
   manageFollowUpTasks: "/manage-follow-up-tasks",
+  // Blueprint §10.15 — the calendar is a first-class surface, not only the
+  // Tasks module's calendar view. Reads the existing task/reminder/booking APIs.
+  calendar: "/calendar",
   salesPipeline: "/sales-pipeline",
   deals: "/deals",
   interactionTimeline: "/interaction-timeline",
@@ -28,6 +35,8 @@ export const ROUTE_PATHS = {
   reminders: "/reminders",
   sla: "/sla",
   bookingConfirmation: "/booking-confirmation",
+  roomRequests: "/room-requests",
+  roomAvailability: "/room-availability",
   reservationStatus: "/reservation-status",
   operationalHandover: "/operational-handover",
   depositPayment: "/deposit-payment",
@@ -35,4 +44,8 @@ export const ROUTE_PATHS = {
   reporting: "/reporting",
   aiAssistant: "/ai-assistant",
   profile: "/profile",
+  activityLogs: "/activity-logs",
+  contracts: "/dashboard/contracts",
+  contractDetail: (id: string) => `/dashboard/contracts/${id}`,
+  publicContractPortal: (id: string, token: string) => `/portal/contracts/${id}?token=${token}`,
 } as const;

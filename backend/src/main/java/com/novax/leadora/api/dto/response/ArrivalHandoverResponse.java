@@ -36,6 +36,29 @@ public class ArrivalHandoverResponse {
     private String customerPhone;
     private LocalDate checkInDate;   // arrival date
     private LocalDate checkOutDate;
+    /**
+     * BookingStatus (UC-22.1 step 3, BR-44).
+     *
+     * <p>This used to be justified by "a detail view can still be reached by a deep link from an
+     * older notification". That is not true: a HANDOVER notification routes to
+     * {@code /front-office-handover?highlight=<id>}, and the highlight only rings a row that is
+     * already in the list — the drawer opens on a row click alone. A handover the list filters out
+     * is therefore unreachable from the UI, and the arrival endpoints refuse it anyway.
+     *
+     * <p>What the field is actually for, on each side:
+     * <ul>
+     *   <li><b>Operational screens</b> — {@code forOperations} does not filter on booking status, so
+     *       Sales and Reservation legitimately see handovers whose booking has been cancelled or
+     *       checked out, and need this to tell them apart.</li>
+     *   <li><b>Arrival screens</b> — always CONFIRMED or CHECKED_IN on a fresh read, because
+     *       {@code GetArrivalHandoverDetailUseCase} 404s anything else. It still matters for the
+     *       cached copy: React Query keeps the last successful payload when a refetch fails, so the
+     *       drawer can be showing a booking that has since died, and {@code isBookingActive} reads
+     *       this field to keep the readiness form disabled rather than let the user submit into a
+     *       422.</li>
+     * </ul>
+     */
+    private String bookingStatus;
 
     // Room / service information
     private String roomSummary;              // compact line for the list view
@@ -49,6 +72,11 @@ public class ArrivalHandoverResponse {
 
     // Payment / deposit status reference (UC-22.2)
     private String paymentReference;
+
+    // Assignment (UC-22.1 step 4 — the list must show the responsible Front Office Staff)
+    private UUID assignedFoUserId;
+    /** Resolved separately: {@code assigned_fo_user_id} is a scalar column, not a JPA relation. */
+    private String assignedFoName;
 
     // Lifecycle
     private String status;            // HandoverStatus: SUBMITTED | ACKNOWLEDGED | READY
@@ -78,8 +106,15 @@ public class ArrivalHandoverResponse {
 
     /** List row: base + a compact room/service summary. */
     public static ArrivalHandoverResponse fromList(OpHandoverEntity h, List<BookingDetailEntity> details) {
+        return fromList(h, details, null);
+    }
+
+    /** List row for the Front Office desk, which also names the responsible FO staff. */
+    public static ArrivalHandoverResponse fromList(OpHandoverEntity h, List<BookingDetailEntity> details,
+                                                   String assignedFoName) {
         return baseBuilder(h)
                 .roomSummary(buildRoomSummary(details))
+                .assignedFoName(assignedFoName)
                 .build();
     }
 
@@ -87,10 +122,19 @@ public class ArrivalHandoverResponse {
     public static ArrivalHandoverResponse fromDetail(OpHandoverEntity h,
                                                      List<BookingDetailEntity> details,
                                                      List<PaymentEntity> payments) {
+        return fromDetail(h, details, payments, null);
+    }
+
+    /** Detail for the Front Office desk, which also names the responsible FO staff. */
+    public static ArrivalHandoverResponse fromDetail(OpHandoverEntity h,
+                                                     List<BookingDetailEntity> details,
+                                                     List<PaymentEntity> payments,
+                                                     String assignedFoName) {
         return baseBuilder(h)
                 .roomSummary(buildRoomSummary(details))
                 .rooms(buildRooms(details))
                 .paymentReference(buildPaymentReference(payments))
+                .assignedFoName(assignedFoName)
                 .build();
     }
 
@@ -107,6 +151,9 @@ public class ArrivalHandoverResponse {
                 .customerPhone(customer != null ? customer.getPhone() : null)
                 .checkInDate(booking != null ? booking.getCheckInDate() : null)
                 .checkOutDate(booking != null ? booking.getCheckOutDate() : null)
+                .bookingStatus(booking != null && booking.getStatus() != null
+                        ? booking.getStatus().name() : null)
+                .assignedFoUserId(h.getAssignedFoUserId())
                 .specialRequests(h.getSpecialRequests())
                 .roomPreferences(h.getRoomPreferences())
                 .vipNotes(h.getVipNotes())

@@ -24,7 +24,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/interaction-timeline")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+@PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('INTERACTION_VIEW')")
 public class InteractionTimelineController {
 
     private final GetInteractionTimelineListUseCase getListUseCase;
@@ -54,6 +54,7 @@ public class InteractionTimelineController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('INTERACTION_WRITE')")
     public ResponseEntity<ApiResponse<InteractionTimelineResponse>> create(
             @Valid @RequestBody CreateInteractionTimelineRequest request) {
         InteractionTimelineResponse created = createUseCase.execute(request);
@@ -62,6 +63,7 @@ public class InteractionTimelineController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('INTERACTION_WRITE')")
     public ResponseEntity<ApiResponse<InteractionTimelineResponse>> update(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateInteractionTimelineRequest request) {

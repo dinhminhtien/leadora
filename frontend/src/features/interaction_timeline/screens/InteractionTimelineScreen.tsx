@@ -22,6 +22,9 @@ import {
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAGE_META } from "@/app/routes/page_meta";
+import { timelineEventIcon } from "@/components/ui/timeline";
 import {
   interactionTimelineService,
   type InteractionTimelineEntry,
@@ -37,6 +40,24 @@ import { leadService } from "@/services/lead_service";
 import { customerProfileService } from "@/services/customer_profile_service";
 import { dealService } from "@/services/deal_service";
 import { toast } from "@/stores/toast_store";
+
+/**
+ * Interaction type picker options.
+ *
+ * Declared once and shared by the create and edit forms — the same four-entry
+ * array was previously written out twice in this file, so a change to one
+ * (adding a type, retoning an icon) silently left the other behind.
+ *
+ * Icons come from the canonical timeline registry, which is what guarantees a
+ * "Call" logged here shows the same glyph when it later appears in a history
+ * feed (§9.8).
+ */
+const INTERACTION_TYPE_OPTIONS = [
+  { id: "call", label: "Call", icon: timelineEventIcon("call"), color: "text-success border-success/30 bg-success/8", ringColor: "ring-success/60" },
+  { id: "email", label: "Email", icon: timelineEventIcon("email"), color: "text-primary border-primary/30 bg-primary/8", ringColor: "ring-primary/60" },
+  { id: "meeting", label: "Meeting", icon: timelineEventIcon("meeting"), color: "text-info border-info/30 bg-info/8", ringColor: "ring-info/60" },
+  { id: "note", label: "Note", icon: timelineEventIcon("note"), color: "text-warning border-warning/30 bg-warning/8", ringColor: "ring-warning/60" },
+] as const;
 
 export function InteractionTimelineScreen() {
   const [interactions, setInteractions] = useState<InteractionTimelineEntry[]>([]);
@@ -186,12 +207,14 @@ export function InteractionTimelineScreen() {
             setSearchResults(res.data || []);
           }
         } else if (searchEntityType === "deal") {
-          const res = await dealService.getList();
+          // `GET /deals` accepts `?search=` and matches deal name, customer name and
+          // company name server-side. This used to download every visible deal and
+          // substring-match the title in the browser — one full-table read per
+          // keystroke, and it could not find a deal by its customer.
+          const res = await dealService.getList({ search: searchQuery });
           if (res && res.success && res.data) {
-            const filtered = res.data.filter((d: any) =>
-              d.title?.toLowerCase().includes(searchQuery.toLowerCase())
-            );
-            setSearchResults(filtered.slice(0, 8));
+            // The endpoint returns a plain array and ignores `size`, so cap here.
+            setSearchResults(res.data.slice(0, 8));
           }
         }
       } catch (err) {
@@ -345,24 +368,19 @@ export function InteractionTimelineScreen() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <MessageSquare className="size-5 text-[#185FA5]" />
-            Interaction History
-          </h1>
-          <p className="text-[10px] text-muted-foreground mt-0.5">Chronological feed of guest communications, emails, and call touchpoints</p>
-        </div>
-        <Button
-          id="btn-log-interaction"
-          variant="primary"
-          size="sm"
-          onClick={handleOpenCreateDrawer}
-          leftIcon={<Plus className="size-4" />}
-        >
-          Log Interaction
-        </Button>
-      </div>
+      <PageHeader
+        {...PAGE_META.interactionTimeline}
+        actions={
+          <Button
+            id="btn-log-interaction"
+            variant="primary"
+            onClick={handleOpenCreateDrawer}
+            leftIcon={<Plus className="size-4" />}
+          >
+            Log Interaction
+          </Button>
+        }
+      />
 
       <Card className="border-slate-100 shadow-sm bg-white">
         <CardContent className="py-3 px-4 flex flex-col md:flex-row items-center gap-3">
@@ -538,12 +556,7 @@ export function InteractionTimelineScreen() {
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-slate-600 block">Interaction Type *</label>
                     <div className="grid grid-cols-4 gap-2">
-                      {[
-                        { id: "call", label: "Call", icon: Phone, color: "text-green-700 border-green-200 bg-green-50/50", ringColor: "ring-green-400" },
-                        { id: "email", label: "Email", icon: Mail, color: "text-blue-700 border-blue-200 bg-blue-50/50", ringColor: "ring-blue-400" },
-                        { id: "meeting", label: "Meeting", icon: Calendar, color: "text-purple-700 border-purple-200 bg-purple-50/50", ringColor: "ring-purple-400" },
-                        { id: "note", label: "Note", icon: FileText, color: "text-amber-700 border-amber-200 bg-amber-50/50", ringColor: "ring-amber-400" }
-                      ].map(option => {
+                      {INTERACTION_TYPE_OPTIONS.map(option => {
                         const Icon = option.icon;
                         const isSelected = formType === option.id;
                         return (
@@ -816,12 +829,7 @@ export function InteractionTimelineScreen() {
                     <div className="space-y-2">
                       <label className="text-xs font-semibold text-slate-600 block">Interaction Type *</label>
                       <div className="grid grid-cols-4 gap-2">
-                        {[
-                          { id: "call", label: "Call", icon: Phone, color: "text-green-700 border-green-200 bg-green-50/50", ringColor: "ring-green-400" },
-                          { id: "email", label: "Email", icon: Mail, color: "text-blue-700 border-blue-200 bg-blue-50/50", ringColor: "ring-blue-400" },
-                          { id: "meeting", label: "Meeting", icon: Calendar, color: "text-purple-700 border-purple-200 bg-purple-50/50", ringColor: "ring-purple-400" },
-                          { id: "note", label: "Note", icon: FileText, color: "text-amber-700 border-amber-200 bg-amber-50/50", ringColor: "ring-amber-400" }
-                        ].map(option => {
+                        {INTERACTION_TYPE_OPTIONS.map(option => {
                           const Icon = option.icon;
                           const isSelected = editType === option.id;
                           return (

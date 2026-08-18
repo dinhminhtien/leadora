@@ -54,11 +54,6 @@ class MoreScreen extends ConsumerWidget {
             child: Column(
               children: [
                 _MoreTile(
-                  icon: Icons.view_kanban_outlined,
-                  label: 'Pipeline',
-                  onTap: () => context.pushNamed(RouteNames.pipeline),
-                ),
-                _MoreTile(
                   icon: Icons.request_quote_outlined,
                   label: 'Quotations',
                   onTap: () => context.pushNamed(RouteNames.quotations),
@@ -89,6 +84,13 @@ class MoreScreen extends ConsumerWidget {
                   label: 'Payments',
                   onTap: () => context.pushNamed(RouteNames.payments),
                 ),
+                // What Sales handed to the Front Office. Read-only: preparing the arrival
+                // is a Front Office job and lives on the web app.
+                _MoreTile(
+                  icon: Icons.assignment_turned_in_outlined,
+                  label: 'Handovers',
+                  onTap: () => context.pushNamed(RouteNames.handovers),
+                ),
               ],
             ),
           ),
@@ -114,6 +116,13 @@ class MoreScreen extends ConsumerWidget {
                   icon: Icons.timer_outlined,
                   label: 'SLA monitoring',
                   onTap: () => context.pushNamed(RouteNames.sla),
+                ),
+                // Guest feedback (UC-25). Read-only for Sales; Manager/Admin
+                // also get the review-status transition on the detail screen.
+                _MoreTile(
+                  icon: Icons.reviews_outlined,
+                  label: 'Guest feedback',
+                  onTap: () => context.pushNamed(RouteNames.feedbacks),
                 ),
               ],
             ),

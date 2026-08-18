@@ -22,6 +22,11 @@ class ApiPaths {
   // --- Reporting / dashboard (ReportingController) ---
   static const String dashboardSummary = '/reporting/dashboard-summary';
 
+  /// UC-14.2 Generate Reports — audit log for the quotation discount report a rep
+  /// generates from the quotation list (filtering is client-side; this just records
+  /// that it happened). Open to SALES/MANAGER/ADMIN on the backend.
+  static const String reportingLogs = '/reporting/logs';
+
   // --- Users (UserController) — flat assignee directory ---
   static const String users = '/users';
 
@@ -29,6 +34,7 @@ class ApiPaths {
   static const String leads = '/leads';
   static String leadById(String id) => '/leads/$id';
   static String leadConvert(String id) => '/leads/$id/convert';
+  static String leadLinkCustomer(String id) => '/leads/$id/link-customer';
 
   // --- Follow-up tasks (TaskController) ---
   static const String tasks = '/tasks';
@@ -46,6 +52,9 @@ class ApiPaths {
   static String notificationById(String id) => '/notifications/$id';
   static String notificationRead(String id) => '/notifications/$id/read';
   static const String notificationsMarkAllRead = '/notifications/mark-all-read';
+
+  // --- FCM Device Tokens (DeviceTokenController) ---
+  static const String deviceTokens = '/device-tokens';
 
   // --- Customers (CustomerController) ---
   static const String customers = '/customers';
@@ -67,14 +76,53 @@ class ApiPaths {
   static String quotationTrackResponse(String id) =>
       '/quotations/$id/track-response';
 
+  /// Write flows the web app has and mobile is reaching parity with. All are POST
+  /// (QuotationController), all SALES/MANAGER except process-approval (MANAGER only).
+  static String quotationSubmit(String id) => '/quotations/$id/submit';
+  static String quotationRevise(String id) => '/quotations/$id/revise';
+  static String quotationSend(String id) => '/quotations/$id/send';
+  static String quotationConvert(String id) => '/quotations/$id/convert';
+  static String quotationClose(String id) => '/quotations/$id/close';
+  static const String quotationPendingApprovals = '/quotations/pending-approvals';
+  static String quotationProcessApproval(String id) => '/quotations/$id/process-approval';
+
+  // --- Room availability requests (RoomRequestController) ---
+  // This CRM owns no room inventory: the Reservation team answers from the hotel's real PMS,
+  // and their answer is what authorises a booking conversion.
+  //
+  // Read-only from here. Requests are raised by the workflow when the customer accepts their
+  // quotation, so there is no create path and no withdraw path — Sales asking by hand as well
+  // meant one quotation could put two questions in the Reservation inbox by two routes.
+  static String roomRequestsByQuotation(String quotationId) =>
+      '/room-requests/by-quotation/$quotationId';
+
   // --- Deals (DealController) ---
   static const String deals = '/deals';
+
+  /// Deals a new quotation can be raised against (UC-14.1). Unlike [deals] this one
+  /// *is* a Spring `Page` and takes `?search=&page=&size=`; the eligibility rules
+  /// (open deal, linked customer) are applied server-side by
+  /// `DealSpecification.quotable`, so the client must not re-filter the result.
+  static const String dealsQuotable = '/deals/quotable';
+
   static String dealById(String id) => '/deals/$id';
   static String dealStatus(String id) => '/deals/$id/status';
+
+  /// Where the deal stands in the Sales lifecycle: active quotation, active
+  /// booking and payment state, resolved server-side.
+  static String dealWorkflow(String id) => '/deals/$id/workflow';
 
   // --- Bookings (BookingController) ---
   static const String bookings = '/bookings';
   static String bookingById(String id) => '/bookings/$id';
+
+
+  // --- Operational handover (OperationalHandoverController) ---
+  // Sales/Reservation hand a confirmed booking to the Front Office. Read is open to FO
+  // too; create/update is SALES/RESERVATION/MANAGER/ADMIN.
+  static const String operationalHandovers = '/operational-handovers';
+  static String operationalHandoverById(String id) => '/operational-handovers/$id';
+
 
   // --- Payments (PaymentController) ---
   static const String payments = '/payments';
@@ -84,8 +132,25 @@ class ApiPaths {
 
   // --- SLA (SlaController) ---
   static const String slaMonitoring = '/sla/monitoring';
+  static String slaTrackingResolve(String trackingId) =>
+      '/sla/tracking/$trackingId/resolve';
 
   // --- Reminders (ReminderController) ---
   static const String reminders = '/reminders';
+  static String reminderById(String id) => '/reminders/$id';
   static String reminderDismiss(String id) => '/reminders/$id/dismiss';
+  static String reminderEscalate(String id) => '/reminders/$id/escalate';
+
+  // Guest feedback (UC-25). The `/public/**` submit + validate endpoints are
+  // deliberately absent: those are the guest's browser flow, not a staff device's.
+  static const String feedbacks = '/feedbacks';
+  static String feedbackById(String id) => '/feedbacks/$id';
+  static String feedbackReviewStatus(String id) =>
+      '/feedbacks/$id/review-status';
+
+  // --- Product & service catalogue (ProductServiceController) ---
+  // Read-only here: the lead form offers the hotel's real services as
+  // suggestions so `leads.interested_service` stops collecting four spellings
+  // of the same thing. Open to SALES and MANAGER.
+  static const String productServices = '/product-services';
 }

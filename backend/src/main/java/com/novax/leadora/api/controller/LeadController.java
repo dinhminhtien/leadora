@@ -2,13 +2,19 @@ package com.novax.leadora.api.controller;
 
 import com.novax.leadora.api.dto.request.ConvertLeadRequest;
 import com.novax.leadora.api.dto.request.CreateLeadRequest;
+import com.novax.leadora.api.dto.request.LinkLeadToCustomerRequest;
+import com.novax.leadora.api.dto.request.ReopenLeadRequest;
 import com.novax.leadora.api.dto.request.UpdateLeadRequest;
 import com.novax.leadora.api.dto.response.ConvertLeadResponse;
 import com.novax.leadora.api.dto.response.LeadResponse;
+import com.novax.leadora.api.dto.response.LeadStatsResponse;
 import com.novax.leadora.application.usecase.lead.ConvertLeadUseCase;
 import com.novax.leadora.application.usecase.lead.CreateLeadUseCase;
 import com.novax.leadora.application.usecase.lead.GetLeadDetailUseCase;
 import com.novax.leadora.application.usecase.lead.GetLeadListUseCase;
+import com.novax.leadora.application.usecase.lead.GetLeadStatsUseCase;
+import com.novax.leadora.application.usecase.lead.LinkLeadToCustomerUseCase;
+import com.novax.leadora.application.usecase.lead.ReopenLeadUseCase;
 import com.novax.leadora.application.usecase.lead.UpdateLeadUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -24,17 +30,21 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/v1/leads")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SALES','MANAGER')")
+@PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('LEAD_VIEW')")
 public class LeadController {
 
     private final CreateLeadUseCase createLeadUseCase;
     private final GetLeadListUseCase getLeadListUseCase;
+    private final GetLeadStatsUseCase getLeadStatsUseCase;
     private final GetLeadDetailUseCase getLeadDetailUseCase;
     private final UpdateLeadUseCase updateLeadUseCase;
     private final ConvertLeadUseCase convertLeadUseCase;
+    private final LinkLeadToCustomerUseCase linkLeadToCustomerUseCase;
+    private final ReopenLeadUseCase reopenLeadUseCase;
 
     /** UC-8.1 — Create Lead */
     @PostMapping
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('LEAD_WRITE')")
     public ResponseEntity<ApiResponse<LeadResponse>> createLead(@Valid @RequestBody CreateLeadRequest request) {
         LeadResponse lead = createLeadUseCase.execute(request);
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -53,11 +63,34 @@ public class LeadController {
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir,
             @RequestParam(defaultValue = "assigned") String scope,
+            @RequestParam(required = false) Boolean unassigned,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
-        Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, isCorporate, dateFrom, dateTo, sortBy, sortDir, scope, page, size);
+        Page<LeadResponse> leads = getLeadListUseCase.execute(search, status, source, isCorporate,
+                dateFrom, dateTo, sortBy, sortDir, scope, unassigned, page, size);
         return ResponseEntity.ok(ApiResponse.success(leads));
+    }
+
+    /**
+     * UC-8.2 — counts for the summary tiles, over the same filters and the same owner scope as
+     * {@link #getLeads}. Separate from the list because the list is paged and these are not:
+     * the client cannot add up what it never received.
+     */
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<LeadStatsResponse>> getLeadStats(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String source,
+            @RequestParam(required = false) Boolean isCorporate,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(defaultValue = "assigned") String scope,
+            @RequestParam(required = false) Boolean unassigned
+    ) {
+        LeadStatsResponse stats = getLeadStatsUseCase.execute(
+                search, status, source, isCorporate, dateFrom, dateTo, scope, unassigned);
+        return ResponseEntity.ok(ApiResponse.success(stats));
     }
 
     /** UC-8.3 — View Lead Detail */
@@ -69,6 +102,7 @@ public class LeadController {
 
     /** UC-8.4 — Update Lead */
     @PutMapping("/{leadId}")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('LEAD_WRITE')")
     public ResponseEntity<ApiResponse<LeadResponse>> updateLead(
             @PathVariable UUID leadId,
             @Valid @RequestBody UpdateLeadRequest request
@@ -77,13 +111,47 @@ public class LeadController {
         return ResponseEntity.ok(ApiResponse.success(lead, "Lead updated successfully"));
     }
 
+    /**
+     * UC-8.4 — put a lead closed as LOST back into the pipeline (as NEW).
+     *
+     * <p>Manager-only, and narrower than the class-level rule on purpose: {@code LOST} is the one
+     * status the ordinary update path refuses to move, because reopening rewrites a recorded
+     * outcome rather than correcting a field. {@code ReopenLeadUseCase} re-checks the same gate —
+     * the annotation guards the route, the use case guards the operation.
+     */
+    @PostMapping("/{leadId}/reopen")
+    @PreAuthorize("hasRole('MANAGER') and @access.can('LEAD_WRITE')")
+    public ResponseEntity<ApiResponse<LeadResponse>> reopenLead(
+            @PathVariable UUID leadId,
+            @Valid @RequestBody ReopenLeadRequest request
+    ) {
+        LeadResponse lead = reopenLeadUseCase.execute(leadId, request);
+        return ResponseEntity.ok(ApiResponse.success(lead, "Lead reopened successfully"));
+    }
+
     /** UC-8.5 — Convert Lead to Customer */
     @PostMapping("/{leadId}/convert")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('LEAD_WRITE')")
     public ResponseEntity<ApiResponse<ConvertLeadResponse>> convertLead(
             @PathVariable UUID leadId,
             @Valid @RequestBody ConvertLeadRequest request
     ) {
         ConvertLeadResponse response = convertLeadUseCase.execute(leadId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "Lead converted to customer successfully"));
+    }
+
+    /**
+     * UC-8.5 exception E6 — the lead turned out to be an existing customer, so it is attached to
+     * that profile rather than creating a duplicate one. Reached from the 409 that
+     * {@link #convertLead} returns, which carries the matching customer's id.
+     */
+    @PostMapping("/{leadId}/link-customer")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('LEAD_WRITE')")
+    public ResponseEntity<ApiResponse<ConvertLeadResponse>> linkLeadToCustomer(
+            @PathVariable UUID leadId,
+            @Valid @RequestBody LinkLeadToCustomerRequest request
+    ) {
+        ConvertLeadResponse response = linkLeadToCustomerUseCase.execute(leadId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "Lead linked to the existing customer profile"));
     }
 }

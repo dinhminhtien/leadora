@@ -1,15 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { quotationService, type CreateQuotationPayload, type SubmitQuotationPayload, type SendQuotationPayload, type ReviseQuotationPayload, type TrackCustomerResponsePayload, type ConvertToBookingPayload, type CloseQuotationPayload, type ExpireOverduePayload } from "@/services/quotation_service";
-import { dealService } from "@/services/deal_service";
+import { quotationService, type CreateQuotationPayload, type SubmitQuotationPayload, type SendQuotationPayload, type ReviseQuotationPayload, type TrackCustomerResponsePayload, type ConvertToBookingPayload, type CloseQuotationPayload, type ExpireOverduePayload, type QuotationListParams } from "@/services/quotation_service";
 
 // Quotation list
-export function useQuotations() {
+export function useQuotations(params?: QuotationListParams) {
   return useQuery({
-    queryKey: ["quotations"],
-    queryFn: () => quotationService.getList(),
-    select: (res) => res.data ?? [],
+    queryKey: ["quotations", params],
+    queryFn: () => quotationService.getList(params),
+    select: (res) => res.data,
   });
 }
 
@@ -42,6 +41,17 @@ export function useSendQuotation() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: SendQuotationPayload }) =>
       quotationService.send(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    },
+  });
+}
+
+// Resend quotation email (only if previous email hasn't been opened)
+export function useResendQuotationEmail() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => quotationService.resend(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["quotations"] });
     },
@@ -95,6 +105,26 @@ export function useTrackCustomerResponse() {
   });
 }
 
+/**
+ * Which actions this quotation currently allows, and the reason for the rest.
+ *
+ * Screens use it to disable a button *with* its explanation instead of letting the user find
+ * out by clicking. Not a substitute for the server's checks — the write endpoints run the same
+ * policy again — so a stale answer costs a clearer error, never a wrong outcome.
+ *
+ * Kept unstale rather than cached long: room confirmation, the contract's state and the
+ * quotation's own status all move underneath it while a modal is open.
+ */
+export function useQuotationEligibility(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["quotation-eligibility", id],
+    queryFn: () => quotationService.getEligibility(id as string),
+    select: (res) => res.data,
+    enabled: !!id && enabled,
+    staleTime: 0,
+  });
+}
+
 // Get single quotation by ID (UC-14.5 pre-populate revision form)
 export function useQuotationById(id: string) {
   return useQuery({
@@ -117,24 +147,65 @@ export function useReviseQuotation() {
   });
 }
 
-// Deal option shape returned by GET /api/v1/deals
-export type DealOption = {
-  id: string;
-  title: string;
-  contactName: string;
-  email: string;
-  phone: string;
-};
-
-// Fetch deals for the quotation deal selector
-export function useDealsForQuotation() {
+/**
+ * Deals eligible for a new quotation are no longer assembled here.
+ *
+ * This used to fetch **every** deal the user could see and filter it in the browser so a
+ * `<select>` could be populated with the survivors. That cost a full-table read on every
+ * visit to the form, it did not scale past a few dozen deals, and mobile never applied
+ * the same filter, so the two clients disagreed about what was quotable.
+ *
+ * Eligibility now lives in `DealSpecification.quotable` behind `GET /deals/quotable`,
+ * which is paged and searched server-side. It is one condition: the deal is still
+ * **active** — won and lost deals are closed and never returned. Note there is
+ * deliberately no expected-close-date condition; a deal that slipped its date is usually
+ * the one most in need of a quotation, so the date orders the results (soonest first)
+ * instead of filtering them.
+ *
+ * Consume it through `DealSearchPicker`, which owns the debounce, paging and caching.
+ *
+ * @see {@link file://../components/DealSearchPicker.tsx}
+ */
+export function usePublicQuotation(id: string, token: string) {
   return useQuery({
-    queryKey: ["deals-for-quotation"],
-    queryFn: async () => {
-      const res = await dealService.getList();
-      const items = (res.data as unknown as DealOption[]) ?? [];
-      return items;
+    queryKey: ["public-quotation", id, token],
+    queryFn: () => quotationService.publicGetById(id, token),
+    select: (res) => res.data,
+    enabled: !!id && !!token,
+  });
+}
+
+export function usePublicAcceptQuotation() {
+  return useMutation({
+    mutationFn: ({ id, token }: { id: string; token: string }) =>
+      quotationService.publicAccept(id, token),
+  });
+}
+
+export function usePublicRejectQuotation() {
+  return useMutation({
+    mutationFn: ({ id, token, reason }: { id: string; token: string; reason: string }) =>
+      quotationService.publicReject(id, token, reason),
+  });
+}
+
+export function useReservationApprove() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => quotationService.reservationApprove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
     },
-    staleTime: 60_000,
+  });
+}
+
+export function useReservationReject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: { reason: string; note: string } }) =>
+      quotationService.reservationReject(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    },
   });
 }
