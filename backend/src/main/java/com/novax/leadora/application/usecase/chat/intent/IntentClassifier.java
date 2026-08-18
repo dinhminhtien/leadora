@@ -101,29 +101,40 @@ public class IntentClassifier {
 
     // Which subject area each vocabulary belongs to. Drives how much detail the snapshot carries:
     // every area contributes its counts, but only the areas named here get a row-by-row listing.
-    private static final Map<CrmArea, List<String>> AREA_KEYWORDS = Map.of(
-            CrmArea.LEADS, List.of("lead", "khach hang tiem nang", "tiem nang", "prospect"),
-            CrmArea.DEALS, List.of("deal", "co hoi", "giao dich", "thuong vu", "opportunity",
-                    "pipeline", "doanh so", "doanh thu", "revenue", "chot", "won", "lost"),
-            CrmArea.TASKS, List.of("task", "cong viec", "nhiem vu", "viec can lam", "lich hen",
-                    "cuoc hen", "appointment", "qua han", "overdue", "deadline", "han chot"),
-            CrmArea.QUOTATIONS, List.of("bao gia", "quotation", "quote", "bang gia", "chao gia"),
-            CrmArea.BOOKINGS, List.of("booking", "dat phong", "dat cho", "don dat phong",
-                    "check in", "checkin", "check out", "checkout", "luu tru"),
-            CrmArea.PAYMENTS, List.of("thanh toan", "payment", "hoa don", "invoice", "tien coc",
-                    "dat coc", "deposit", "cong no", "da tra", "chua tra"),
-            CrmArea.CUSTOMERS, List.of("khach hang", "customer", "client", "khach le", "khach doan",
-                    "khach cu", "lien he", "contact"),
+    // Map.ofEntries rather than Map.of: the latter caps at ten pairs, and the areas had already
+    // reached that cap, so the next one added would have failed to compile for a reason that has
+    // nothing to do with the areas themselves.
+    private static final Map<CrmArea, List<String>> AREA_KEYWORDS = Map.ofEntries(
+            Map.entry(CrmArea.LEADS, List.of("lead", "khach hang tiem nang", "tiem nang", "prospect")),
+            Map.entry(CrmArea.DEALS, List.of("deal", "co hoi", "giao dich", "thuong vu", "opportunity",
+                    "pipeline", "doanh so", "doanh thu", "revenue", "chot", "won", "lost")),
+            Map.entry(CrmArea.TASKS, List.of("task", "cong viec", "nhiem vu", "viec can lam", "lich hen",
+                    "cuoc hen", "appointment", "qua han", "overdue", "deadline", "han chot")),
+            Map.entry(CrmArea.QUOTATIONS, List.of("bao gia", "quotation", "quote", "bang gia", "chao gia")),
+            Map.entry(CrmArea.BOOKINGS, List.of("booking", "dat phong", "dat cho", "don dat phong",
+                    "check in", "checkin", "check out", "checkout", "luu tru")),
+            Map.entry(CrmArea.PAYMENTS, List.of("thanh toan", "payment", "hoa don", "invoice", "tien coc",
+                    "dat coc", "deposit", "cong no", "da tra", "chua tra")),
+            Map.entry(CrmArea.CUSTOMERS, List.of("khach hang", "customer", "client", "khach le", "khach doan",
+                    "khach cu", "lien he", "contact")),
             // " sla " is deliberately space-wrapped: normalize() pads the text, and a bare "sla"
             // is a substring of ordinary words ("translate", "slack") that would then pull an
             // irrelevant SLA listing into unrelated answers.
             // Kept clear of BOOKINGS' "dat phong": asking whether a room is free is a
             // different question from asking about a booking that already exists.
-            CrmArea.ROOM_AVAILABILITY, List.of("con phong", "phong trong", "room availability",
+            Map.entry(CrmArea.ROOM_AVAILABILITY, List.of("con phong", "phong trong", "room availability",
                     "allotment", "han muc phong", "tinh trang phong", "phong con", "con trong",
-                    "so phong con", "kha dung"),
-            CrmArea.SLA, List.of(" sla ", " sla?", "sla record", "ho so sla", "cam ket dich vu",
-                    "vi pham cam ket", "breach", "tre han xu ly", "han xu ly"));
+                    "so phong con", "kha dung")),
+            // No bare "danh gia": it is the ordinary Vietnamese word for assessing anything, and
+            // "danh gia nhan vien" is a performance question, not a customer's survey answer.
+            // Every phrase here names the customer, the survey, or a sentiment the customer
+            // expressed, so a question about judging staff does not drag in the feedback listing.
+            Map.entry(CrmArea.FEEDBACK, List.of("feedback", "phan hoi", "danh gia cua khach",
+                    "khach danh gia", "y kien khach", "khao sat", "hai long", "khong hai long",
+                    "csat", "phan nan", "khieu nai", "sao cua khach", "muc do hai long",
+                    "customer satisfaction", "complaint")),
+            Map.entry(CrmArea.SLA, List.of(" sla ", " sla?", "sla record", "ho so sla", "cam ket dich vu",
+                    "vi pham cam ket", "breach", "tre han xu ly", "han xu ly")));
 
     /**
      * Subject areas named by this message alone, empty when it names none.

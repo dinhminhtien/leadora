@@ -43,11 +43,15 @@ class ChatAggregateRepositoryTest {
      * wrong answer against a real database.
      */
     @Test
-    @DisplayName("every branch is filtered on its own created_at, on both bounds")
+    @DisplayName("every branch is filtered on its own date column, on both bounds")
     void everyBranchIsDated() {
         String sql = ChatAggregateRepository.countAllSql();
+        // Feedback is the one branch not dated on created_at: a row exists from the moment the
+        // survey link is issued and holds an answer only once the customer sends one, so
+        // submitted_at is when the thing being counted happened.
         for (String column : new String[]{"l.created_at", "d.created_at", "t.created_at",
-                "q.created_at", "b.created_at", "p.created_at", "c.created_at", "st.created_at"}) {
+                "q.created_at", "b.created_at", "p.created_at", "c.created_at", "st.created_at",
+                "f.submitted_at"}) {
             assertThat(sql).as("lower bound on %s in:%n%s", column, sql)
                     .contains("AND " + column + " >= :from");
             assertThat(sql).as("upper bound on %s in:%n%s", column, sql)
@@ -95,10 +99,36 @@ class ChatAggregateRepositoryTest {
         long branches = sql.lines().filter(l -> l.stripLeading().startsWith("SELECT")).count();
         long scopeChecks = sql.lines().filter(l -> l.contains("CAST(:scope AS uuid) IS NULL")).count();
 
-        assertThat(branches).isEqualTo(9); // eight areas plus the derived overdue-task row
+        // Eight record areas, plus the two derived rows (overdue tasks, low-rated feedback), plus
+        // the feedback branch itself.
+        assertThat(branches).isEqualTo(11);
         assertThat(scopeChecks)
                 .as("BR-36: a branch without the scope predicate would return everyone's rows")
                 .isEqualTo(branches);
+    }
+
+    /**
+     * Feedback is scoped through the rep it is about, not through an {@code assigned_user_id}.
+     *
+     * <p>Asserted by name because it is the one area whose owner column is different, and a
+     * copy-paste of a neighbouring branch would compile, run, and quietly show every rep their
+     * colleagues' ratings.
+     */
+    @Test
+    @DisplayName("feedback is scoped by the rep it is about")
+    void feedbackIsScopedByItsSubject() {
+        assertThat(ChatAggregateRepository.countAllSql())
+                .contains("f.sales_staff_id = CAST(:scope AS uuid)")
+                .contains("f.submitted_at IS NOT NULL");
+    }
+
+    /** Derived like overdue tasks: nothing stores "the customer was unhappy". */
+    @Test
+    @DisplayName("low customer ratings are derived, not read from a stored status")
+    void lowRatingIsDerived() {
+        assertThat(ChatAggregateRepository.countAllSql())
+                .contains(ChatAggregateRepository.LOW_RATING_MARKER)
+                .contains("f.rating <= 2");
     }
 
     @Test

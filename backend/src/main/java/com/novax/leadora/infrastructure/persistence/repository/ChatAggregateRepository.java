@@ -45,6 +45,16 @@ public class ChatAggregateRepository {
     public static final String OVERDUE_MARKER = "__OVERDUE__";
 
     /**
+     * Marks the derived low-rating feedback row: a customer score of 2 or less.
+     *
+     * <p>Derived like the overdue one, and for the same reason — nothing stores "this went badly".
+     * It is worth a branch of its own because "are there unhappy customers?" is the question
+     * actually asked, and answering it from a review-status breakdown would mean reading a
+     * workflow state (has somebody looked at it) as if it were a sentiment.
+     */
+    public static final String LOW_RATING_MARKER = "__LOW_RATING__";
+
+    /**
      * The period predicate, applied to every branch on its own {@code created_at}.
      *
      * <p>Both bounds are always supplied — {@code ChatDateRange} substitutes far-past and
@@ -52,11 +62,18 @@ public class ChatAggregateRepository {
      * That is not only shorter: a guarded bound cannot use the index, because the planner has to
      * evaluate the {@code OR} per row. Two plain comparisons stay sargable.
      *
-     * <p><b>One column, deliberately.</b> Every area is filtered on when the record was created,
-     * never on an area-specific date ({@code paid_at}, {@code check_in_date}, {@code end_at}). Those
-     * would each answer a different question — "paid this month" is not "created this month" — and
+     * <p><b>One column per area, and for eight of them it is {@code created_at}.</b> None is
+     * filtered on an area-specific date ({@code paid_at}, {@code check_in_date}, {@code end_at}):
+     * those each answer a different question — "paid this month" is not "created this month" — and
      * mixing them inside one snapshot would produce a set of numbers that cannot be added up or
      * compared. The reference block states the rule so the assistant can say which it is.
+     *
+     * <p><b>Feedback is the one exception, and it is not an inconsistency.</b> A feedback row is
+     * created when the survey link is issued, which is an act of ours, and carries no answer at
+     * all until the customer sends one — {@code submitted_at} is when the thing being counted
+     * happened. Counting on {@code created_at} would report links we sent, presented as opinions
+     * we received, and would move a customer's reply into the month we happened to ask. The
+     * section labels its own column so the two windows are never read as the same window.
      */
     private static String dated(String column) {
         return "   AND " + column + " >= :from\n"
@@ -147,6 +164,25 @@ public class ChatAggregateRepository {
             + dated("st.created_at")
             + """
              GROUP BY st.status
+            UNION ALL
+            SELECT 'FEEDBACK', f.review_status, COUNT(*), AVG(f.rating)
+              FROM sales_feedbacks f
+             WHERE (CAST(:scope AS uuid) IS NULL OR f.sales_staff_id = CAST(:scope AS uuid))
+               AND f.submitted_at IS NOT NULL
+            """
+            + dated("f.submitted_at")
+            + """
+             GROUP BY f.review_status
+            UNION ALL
+            SELECT 'FEEDBACK', '__LOW_RATING__', COUNT(*), NULL
+              FROM sales_feedbacks f
+             WHERE (CAST(:scope AS uuid) IS NULL OR f.sales_staff_id = CAST(:scope AS uuid))
+               AND f.submitted_at IS NOT NULL
+               AND f.rating IS NOT NULL
+               AND f.rating <= 2
+            """
+            + dated("f.submitted_at")
+            + """
             """;
 
     /**
@@ -208,6 +244,7 @@ public class ChatAggregateRepository {
 
         Map<CrmArea, List<StatusBucket>> byArea = new EnumMap<>(CrmArea.class);
         long[] overdue = {0};
+        long[] lowRated = {0};
 
         jdbc.query(COUNT_ALL, params, rs -> {
             CrmArea area = CrmArea.valueOf(rs.getString("area"));
@@ -217,11 +254,15 @@ public class ChatAggregateRepository {
                 overdue[0] = count;
                 return;
             }
+            if (LOW_RATING_MARKER.equals(status)) {
+                lowRated[0] = count;
+                return;
+            }
             byArea.computeIfAbsent(area, a -> new ArrayList<>())
                     .add(new StatusBucket(status, count, rs.getBigDecimal("amount")));
         });
 
-        return new ChatCounts(byArea, overdue[0]);
+        return new ChatCounts(byArea, overdue[0], lowRated[0]);
     }
 
     /**

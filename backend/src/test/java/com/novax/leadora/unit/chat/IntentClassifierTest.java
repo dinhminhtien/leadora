@@ -271,9 +271,28 @@ class IntentClassifierTest {
                 "'task nào quá hạn',                   TASKS",
                 "'deal nào vi phạm cam kết dịch vụ',   SLA",
                 "'còn bao nhiêu SLA chưa xử lý',       SLA",
+                "'có phản hồi nào của khách chưa',     FEEDBACK",
+                "'khách hàng có hài lòng không',       FEEDBACK",
+                "'xem các khiếu nại gần đây',          FEEDBACK",
+                "'đánh giá của khách tháng này',       FEEDBACK",
         })
         void detectsTheAreaAsked(String message, CrmArea expected) {
             assertThat(IntentClassifier.detectAreas(message)).contains(expected);
+        }
+
+        /**
+         * "đánh giá" is the ordinary Vietnamese word for assessing anything, so matching it bare
+         * would turn every question about judging a colleague's performance into a customer-survey
+         * question — and answer it with a listing of what customers said, which is a different
+         * subject and a different scope. Only phrases naming the customer or the survey count.
+         */
+        @ParameterizedTest(name = "{0} is not a customer-feedback question")
+        @ValueSource(strings = {
+                "đánh giá hiệu suất nhân viên tháng này",
+                "đánh giá tình hình kinh doanh quý này",
+        })
+        void doesNotTreatStaffAppraisalAsCustomerFeedback(String message) {
+            assertThat(IntentClassifier.detectAreas(message)).doesNotContain(CrmArea.FEEDBACK);
         }
 
         /**

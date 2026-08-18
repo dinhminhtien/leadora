@@ -73,6 +73,7 @@ class ChatQueryExecutionIT {
     @Autowired private BookingRepository bookings;
     @Autowired private PaymentRepository payments;
     @Autowired private CustomerRepository customers;
+    @Autowired private SalesFeedbackRepository feedback;
 
     /** The bounds production uses: an open-ended side resolves to a sentinel, never to null. */
     private final ZoneId zone = ZoneId.of("Asia/Ho_Chi_Minh");
@@ -93,6 +94,7 @@ class ChatQueryExecutionIT {
             bookings.findRecentForChat(null, from, to, PAGE);
             payments.findRecentForChat(null, from, to, PAGE);
             customers.findRecentForChat(null, from, to, PAGE);
+            feedback.findRecentForChat(null, from, to, PAGE);
             deals.statsPerAssignee(from, to);
             leads.countPerAssignee(from, to, PAGE);
         }).doesNotThrowAnyException();
@@ -114,6 +116,7 @@ class ChatQueryExecutionIT {
             bookings.findRecentForChat(null, start, end, PAGE);
             payments.findRecentForChat(null, start, end, PAGE);
             customers.findRecentForChat(null, start, end, PAGE);
+            feedback.findRecentForChat(null, start, end, PAGE);
             deals.statsPerAssignee(start, end);
             leads.countPerAssignee(start, end, PAGE);
         }).doesNotThrowAnyException();

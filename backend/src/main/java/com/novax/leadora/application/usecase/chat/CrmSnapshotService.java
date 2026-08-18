@@ -25,6 +25,7 @@ import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
 import com.novax.leadora.infrastructure.persistence.repository.PaymentRepository;
 import com.novax.leadora.infrastructure.persistence.repository.QuotationRepository;
+import com.novax.leadora.infrastructure.persistence.repository.SalesFeedbackRepository;
 import com.novax.leadora.infrastructure.persistence.repository.TaskRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -84,7 +86,17 @@ public class CrmSnapshotService {
     private static final int MAX_PAYMENTS = 8;
     private static final int MAX_CUSTOMERS = 10;
     private static final int MAX_SLA = 10;
+    private static final int MAX_FEEDBACK = 8;
     private static final int MAX_REPS = 20;
+
+    /**
+     * How much of a customer's comment reaches the model.
+     *
+     * <p>Long enough to carry a complaint, short enough that a single comment cannot crowd out
+     * the rest of the snapshot — and, since this is the one field an outsider writes, short
+     * enough that nothing elaborate fits inside it.
+     */
+    private static final int MAX_COMMENT_CHARS = 200;
 
     /** How many staff members to name when suggesting whose records to ask about instead. */
     private static final int MAX_SUGGESTED_REPS = 6;
@@ -114,6 +126,7 @@ public class CrmSnapshotService {
     private final UserRepository userRepository;
     private final ProductServiceRepository productServiceRepository;
     private final RoomAvailabilityService roomAvailabilityService;
+    private final SalesFeedbackRepository feedbackRepository;
 
     /**
      * Roles allowed to see ALL CRM records via chat. Any other role is scoped to their own assigned
@@ -258,6 +271,7 @@ public class CrmSnapshotService {
                 // Reference data owned by the hotel, not per-user rows: it carries no period of
                 // its own and builds its figures from a forward window, so no date bounds here.
                 case ROOM_AVAILABILITY -> appendRoomAvailability(sb, detail);
+                case FEEDBACK -> appendFeedback(sb, counts, scopeUserId, detail, from, to);
             };
             // Guidance is only worth giving for what was actually asked about: an empty payments
             // area is not interesting when the question was about leads.
@@ -623,6 +637,98 @@ public class CrmSnapshotService {
     }
 
     /**
+     * What customers said about the service, and how much of it nobody has looked at yet.
+     *
+     * <p><b>Counted on {@code submitted_at}, unlike every other area.</b> The row is created when
+     * the survey link goes out; it holds an opinion only once the customer answers. The section
+     * says so in its own header rather than relying on the shared {@code Period:} line, which
+     * speaks about creation dates.
+     *
+     * <p><b>Scope, and how it relates to {@code FEEDBACK_VIEW}.</b> The Feedback screen and the
+     * sentiment dashboard require that permission, which SALES does not hold; the chat section
+     * does not check it, because the scope predicate has already narrowed the rows to feedback
+     * <em>about the asking rep</em>. What a rep can read here is their own results and nothing
+     * else — the same reasoning that gave SALES {@code REPORTING_VIEW} for their own task
+     * performance. Team-wide feedback still needs {@link #canSeeAllData}, since that is the scope
+     * the permission actually guards. If the business wants even a rep's own ratings gated, this
+     * section is the single place to add the check.
+     *
+     * <p><b>Three different notions of "bad" are kept apart.</b> {@code review_status} is a
+     * workflow state (has a human triaged it), the rating is the customer's own score, and the
+     * ABSA sentiment columns are a model's reading of the comment. Presenting a PENDING count as
+     * dissatisfaction, which a breakdown alone invites, would report our backlog as their
+     * unhappiness. The low-rating figure is therefore given its own line, derived in SQL.
+     */
+    private long appendFeedback(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail,
+                                OffsetDateTime from, OffsetDateTime to) {
+        long total = counts.total(CrmArea.FEEDBACK);
+        sb.append("Customer feedback (submitted answers only, counted by SUBMISSION date, not "
+                        + "creation date): total ").append(total)
+                .append(", scored 2 or less by the customer ").append(counts.lowRatedFeedback())
+                .append(averageRating(counts.of(CrmArea.FEEDBACK)))
+                .append(statusBreakdown(counts.of(CrmArea.FEEDBACK)))
+                .append(" (PENDING/REVIEWED/DISMISSED is OUR triage state, NOT the customer's "
+                        + "opinion)\n");
+
+        if (detail && total > 0) {
+            sb.append(listingHeader("Feedback, newest submission first",
+                    Math.min(total, MAX_FEEDBACK), total, CrmArea.FEEDBACK));
+            feedbackRepository.findRecentForChat(scope, from, to, page(MAX_FEEDBACK)).forEach(f ->
+                    sb.append("  - rating ").append(f.getRating() != null ? f.getRating() : "-")
+                            .append("/5 | attitude ").append(score(f.getRatingAttitude()))
+                            .append(", speed ").append(score(f.getRatingSpeed()))
+                            .append(", accuracy ").append(score(f.getRatingAccuracy()))
+                            .append(" | ").append(f.getReviewStatus())
+                            .append(" | customer: ")
+                            .append(f.getCustomer() != null ? f.getCustomer().getFullName() : "-")
+                            .append(" | about staff: ").append(assigneeLabel(f.getSalesStaff()))
+                            .append(" | submitted: ").append(ts(f.getSubmittedAt()))
+                            .append(" | customer wrote: ").append(quotedComment(f.getComment()))
+                            .append("\n"));
+        }
+        return total;
+    }
+
+    /** Weighted mean of the per-status averages, so it is the mean over rows, not over statuses. */
+    private static String averageRating(List<StatusBucket> buckets) {
+        long rated = buckets.stream().filter(b -> b.amount() != null).mapToLong(b -> b.count()).sum();
+        if (rated == 0) {
+            return "";
+        }
+        BigDecimal weighted = buckets.stream()
+                .filter(b -> b.amount() != null)
+                .map(b -> b.amount().multiply(BigDecimal.valueOf(b.count())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return ", average rating " + weighted.divide(BigDecimal.valueOf(rated), 1, RoundingMode.HALF_UP)
+                + "/5 over " + rated + " scored";
+    }
+
+    /**
+     * A customer's words, made safe to sit inside the reference block.
+     *
+     * <p>This is the only text in the whole snapshot written by somebody outside the company: a
+     * customer needs no account to submit feedback, only the token in their survey link. Two
+     * things follow. Newlines are stripped because the block is line-structured — a comment
+     * containing {@code == Company knowledge base ==} would otherwise forge a section header and
+     * have the model read whatever came next as retrieved company data. And it is quoted and
+     * labelled as the customer's words, so an instruction written into the box reads as a quote
+     * rather than as something addressed to the assistant.
+     *
+     * <p>The delimiters around the whole reference block do the heavier lifting (see
+     * {@code ChatLlmService}); this keeps a single field from breaking the structure inside them.
+     */
+    private static String quotedComment(String comment) {
+        if (!StringUtils.hasText(comment)) {
+            return "(no comment)";
+        }
+        String flattened = comment.replaceAll("[\\p{Cntrl}\\p{Zl}\\p{Zp}]+", " ").trim();
+        if (flattened.length() > MAX_COMMENT_CHARS) {
+            flattened = flattened.substring(0, MAX_COMMENT_CHARS) + "...(truncated)";
+        }
+        return "\"" + flattened.replace("\"", "'") + "\"";
+    }
+
+    /**
      * Explains an empty result and supplies the facts the assistant may turn into follow-up
      * suggestions (system prompt rule 3c). Without this the model can only report "no data", or —
      * worse — invent plausible-looking colleagues to suggest.
@@ -715,6 +821,11 @@ public class CrmSnapshotService {
                     .append(companyWide.count(CrmArea.SLA, SlaStatus.BREACHED.name()))
                     .append("\nYou may offer the team's breached or active SLA records.\n");
             case ROOM_AVAILABILITY -> sb.append("\nYou may offer the team's room availability.\n");
+            case FEEDBACK -> sb.append(", of which scored 2 or less: ")
+                    .append(companyWide.lowRatedFeedback())
+                    .append("\nYou may offer the team's customer feedback. Do NOT read an empty "
+                            + "personal result as customers being satisfied with this user: it "
+                            + "means none of their customers answered a survey in this period.\n");
         }
     }
 
@@ -811,6 +922,16 @@ public class CrmSnapshotService {
 
     private static String dash(String s) {
         return (s == null || s.isBlank()) ? "-" : s;
+    }
+
+    /**
+     * A per-aspect customer score, or a dash when they left that one blank.
+     *
+     * <p>Rendered as "n/a" rather than 0: the aspect ratings are optional on the feedback form,
+     * and a zero would be read as the worst possible score instead of no answer.
+     */
+    private static String score(Short value) {
+        return value == null ? "n/a" : value.toString();
     }
 
     /**
