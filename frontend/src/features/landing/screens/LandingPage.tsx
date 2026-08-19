@@ -14,6 +14,7 @@ import {
   Handshake,
   ChartNoAxesCombined,
   CalendarCheck,
+  Download,
   Gauge,
   FileText,
   Star,
@@ -122,6 +123,11 @@ export function LandingPage() {
                 Watch Demo
               </Button>
             </Link>
+            <a href="https://github.com/dinhminhtien/leadora/releases/download/mobile-v1.0.0/app-release.apk" target="_blank" rel="noopener noreferrer">
+              <Button variant="ghost" size="lg" className="rounded-xl px-7 py-3 border border-border bg-white/40 dark:bg-zinc-900/40 backdrop-blur-xs" leftIcon={<Download className="size-4 text-zinc-700 dark:text-zinc-300" />}>
+                APK Download
+              </Button>
+            </a>
           </div>
 
           {/* Brand Logo Ticker (Big Tech Credibility) */}

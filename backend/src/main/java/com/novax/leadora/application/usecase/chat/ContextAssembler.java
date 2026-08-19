@@ -38,7 +38,7 @@ import java.util.concurrent.TimeUnit;
 public class ContextAssembler {
 
     /** Beyond this, an answer grounded in partial context beats a spinner. */
-    private static final int GATHER_TIMEOUT_SECONDS = 6;
+    private static final int GATHER_TIMEOUT_SECONDS = 4;
 
     private final CrmSnapshotService crmSnapshotService;
     private final PerformanceSnapshotService performanceSnapshotService;

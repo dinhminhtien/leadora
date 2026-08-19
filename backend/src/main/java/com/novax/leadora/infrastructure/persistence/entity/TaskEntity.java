@@ -11,7 +11,11 @@ import java.util.UUID;
 @Entity
 @Table(name = "tasks", indexes = {
     @Index(name = "idx_tasks_created_at", columnList = "created_at"),
-    @Index(name = "idx_tasks_assigned_user_id", columnList = "assigned_user_id")
+    @Index(name = "idx_tasks_assigned_user_id", columnList = "assigned_user_id"),
+    @Index(name = "idx_tasks_start_at", columnList = "start_at"),
+    @Index(name = "idx_tasks_end_at", columnList = "end_at"),
+    @Index(name = "idx_tasks_assigned_status_end", columnList = "assigned_user_id, status, end_at"),
+    @Index(name = "idx_tasks_status_end", columnList = "status, end_at")
 })
 @Getter
 @Setter

@@ -211,7 +211,7 @@ public class GetDashboardSummaryUseCase {
         // than a one-row "leaderboard" of themselves, and never other people's activity counts.
         // Counted with a GROUP BY instead of streaming every interaction row ever recorded.
         List<LeaderboardEntry> leaderboard = unscoped
-                ? interactTimelineRepository.countActionsPerUser(PageRequest.of(0, 5)).stream()
+                ? interactTimelineRepository.findTopUserActivity(PageRequest.of(0, 5)).stream()
                         .map(row -> LeaderboardEntry.builder()
                                 .name((String) row[0])
                                 .actionCount(((Number) row[1]).longValue())

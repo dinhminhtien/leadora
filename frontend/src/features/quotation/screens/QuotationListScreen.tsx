@@ -124,7 +124,7 @@ export function QuotationListScreen() {
   const submitQuotation = useSubmitQuotation();
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [localStatusMap, setLocalStatusMap] = useState<Record<string, Quotation["status"]>>({});
-  
+
   const quotes = useMemo(
     () => serverQuotes.map(q => ({
       ...q,
@@ -144,29 +144,6 @@ export function QuotationListScreen() {
   const [reminderTarget, setReminderTarget] = useState<Quotation | null>(null);
   const [roomTarget, setRoomTarget] = useState<Quotation | null>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
-
-  const filterPills = useMemo(() => {
-    if (activeTab === "active") {
-      return [
-        { value: "", label: "All" },
-        { value: "draft", label: "Draft" },
-        { value: "pending_approval", label: "Pending Approval" },
-        { value: "approved", label: "Approved" },
-        { value: "sent", label: "Sent" },
-        { value: "accepted", label: "Accepted" },
-        { value: "rejected", label: "Rejected" },
-        { value: "reservation_pending", label: "Awaiting Reservation" },
-      ];
-    } else {
-      return [
-        { value: "", label: "All" },
-        { value: "converted", label: "Converted" },
-        { value: "booking_request", label: "Booking Requested" },
-        { value: "closed", label: "Closed" },
-        { value: "expired", label: "Expired" },
-      ];
-    }
-  }, [activeTab]);
 
   const handleSort = (field: SortField, dir: "asc" | "desc") => {
     setSortField(field);
@@ -225,7 +202,7 @@ export function QuotationListScreen() {
       minWidth: "lg",
       className: "text-xs text-muted-foreground",
       cell: (q) => (
-        <span className="max-w-[180px] truncate block text-xs text-muted-foreground" title={q.dealName}>
+        <span className="max-w-45 truncate block text-xs text-muted-foreground" title={q.dealName}>
           {q.dealName}
         </span>
       ),
@@ -241,7 +218,7 @@ export function QuotationListScreen() {
           const allBreakdown = q.roomLines.map((l) => `${l.roomType} × ${l.numberOfRooms}`).join(", ");
           return (
             <div
-              className="flex items-center gap-1.5 text-xs max-w-[220px] overflow-hidden whitespace-nowrap"
+              className="flex items-center gap-1.5 text-xs max-w-55 overflow-hidden whitespace-nowrap"
               title={allBreakdown}
             >
               <span className="font-medium text-foreground truncate min-w-0">
@@ -257,7 +234,7 @@ export function QuotationListScreen() {
         }
         return (
           <span
-            className="text-xs text-muted-foreground truncate max-w-[200px] block"
+            className="text-xs text-muted-foreground truncate max-w-50 block"
             title={q.roomType ? `${q.roomType} (${q.numberOfRooms ?? 1})` : "—"}
           >
             {q.roomType ? `${q.roomType} (${q.numberOfRooms ?? 1})` : "—"}
@@ -447,15 +424,25 @@ export function QuotationListScreen() {
   };
 
   const statusLabel = (status: Quotation["status"]) => {
-    if (status === "pending_approval") return "Pending Approval";
-    if (status === "pending_revision") return "Needs Revision";
-    if (status === "interested") return "Interested";
-    if (status === "converted") return "Converted";
-    if (status === "closed") return "Closed";
-    if (status === "reservation_pending") return "Awaiting Reservation";
-    if (status === "reservation_rejected") return "Reservation Rejected";
-    if (status === "booking_request") return "Booking Requested";
-    return status;
+    const labelMap: Record<Quotation["status"], string> = {
+      draft: "Draft",
+      pending_approval: "Pending Approval",
+      approved: "Approved",
+      sent: "Sent",
+      accepted: "Accepted",
+      interested: "Interested",
+      pending_revision: "Needs Revision",
+      rejected: "Rejected",
+      pending_customer_response: "Waiting Customer Response",
+      reservation_pending: "Waiting Reservation",
+      reservation_rejected: "Reservation Rejected",
+      converted: "Converted",
+      closed: "Closed",
+      expired: "Expired",
+      accepted_by_customer: "Accepted By Customer",
+      booking_request: "Booking Requested",
+    };
+    return labelMap[status] || status;
   };
 
   // One clear primary action per row (the single next step) plus an overflow
@@ -526,11 +513,10 @@ export function QuotationListScreen() {
 
       {/* Auto-expire result banner */}
       {autoExpireResult !== null && (
-        <div className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border ${
-          autoExpireResult > 0
-            ? "bg-amber-50 border-amber-200 text-amber-700"
-            : "bg-slate-50 border-slate-200 text-slate-500"
-        }`}>
+        <div className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border ${autoExpireResult > 0
+          ? "bg-amber-50 border-amber-200 text-amber-700"
+          : "bg-slate-50 border-slate-200 text-slate-500"
+          }`}>
           <TimerOff className="size-3.5 shrink-0" />
           {autoExpireResult > 0
             ? `${autoExpireResult} overdue quotation${autoExpireResult !== 1 ? "s" : ""} marked as Expired. Linked reminders resolved.`
@@ -543,32 +529,28 @@ export function QuotationListScreen() {
         <button
           type="button"
           onClick={() => handleTabChange("active")}
-          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
-            activeTab === "active"
-              ? "border-primary text-blue-700"
-              : "border-transparent text-slate-500 hover:text-slate-700"
-          }`}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${activeTab === "active"
+            ? "border-primary text-blue-700"
+            : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
         >
           In Progress
-          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-            activeTab === "active" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"
-          }`}>
+          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${activeTab === "active" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"
+            }`}>
             {activeCount}
           </span>
         </button>
         <button
           type="button"
           onClick={() => handleTabChange("done")}
-          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${
-            activeTab === "done"
-              ? "border-slate-600 text-slate-700"
-              : "border-transparent text-slate-500 hover:text-slate-700"
-          }`}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition -mb-px ${activeTab === "done"
+            ? "border-slate-600 text-slate-700"
+            : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
         >
           Completed
-          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-            activeTab === "done" ? "bg-slate-200 text-slate-600" : "bg-slate-100 text-slate-400"
-          }`}>
+          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${activeTab === "done" ? "bg-slate-200 text-slate-600" : "bg-slate-100 text-slate-400"
+            }`}>
             {doneCount}
           </span>
         </button>
@@ -585,11 +567,10 @@ export function QuotationListScreen() {
               type="button"
               onClick={() => setStatusFilter("")}
               aria-pressed={statusFilter === ""}
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
-                statusFilter === ""
-                  ? "border-primary bg-blue-50 text-blue-700"
-                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-              }`}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${statusFilter === ""
+                ? "border-primary bg-blue-50 text-blue-700"
+                : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                }`}
             >
               All
             </button>
@@ -599,11 +580,10 @@ export function QuotationListScreen() {
                 type="button"
                 onClick={() => setStatusFilter(statusFilter === s ? "" : s)}
                 aria-pressed={statusFilter === s}
-                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
-                  statusFilter === s
-                    ? "border-primary bg-blue-50 text-blue-700"
-                    : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
-                }`}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${statusFilter === s
+                  ? "border-primary bg-blue-50 text-blue-700"
+                  : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
+                  }`}
               >
                 {statusLabel(s)}
               </button>
@@ -620,25 +600,6 @@ export function QuotationListScreen() {
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
               />
-            </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {filterPills.map((pill) => {
-                const isActive = statusFilter === pill.value;
-                return (
-                  <button
-                    key={pill.value}
-                    type="button"
-                    onClick={() => setStatusFilter(pill.value)}
-                    className={`px-3 py-1 rounded-full text-[11px] font-semibold border transition-all duration-150 cursor-pointer ${
-                      isActive
-                        ? "bg-primary text-white border-primary shadow-xs"
-                        : "bg-slate-50 dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-700 dark:hover:text-zinc-200"
-                    }`}
-                  >
-                    {pill.label}
-                  </button>
-                );
-              })}
             </div>
             {(search || statusFilter) && (
               <button
@@ -850,7 +811,7 @@ export function QuotationListScreen() {
                       <TableCell className="py-2 text-xs text-slate-500 capitalize">{log.previousStatus.replace("_", " ")}</TableCell>
                       <TableCell className="py-2 text-xs text-slate-500">{log.closedAt}</TableCell>
                       <TableCell className="py-2 text-xs text-slate-500">{log.closedBy}</TableCell>
-                      <TableCell className="py-2 text-xs text-slate-400 max-w-[160px] truncate">{log.reason}</TableCell>
+                      <TableCell className="py-2 text-xs text-slate-400 max-w-40 truncate">{log.reason}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -3,8 +3,8 @@ package com.novax.leadora.infrastructure.persistence.repository;
 import com.novax.leadora.infrastructure.persistence.entity.InteractTimelineEntity;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -32,11 +32,10 @@ public interface InteractTimelineRepository
      */
     @Query("""
             SELECT u.fullName, COUNT(i)
-            FROM InteractTimelineEntity i
-            JOIN i.user u
+            FROM InteractTimelineEntity i JOIN i.user u
             WHERE u.fullName IS NOT NULL
             GROUP BY u.fullName
             ORDER BY COUNT(i) DESC
             """)
-    List<Object[]> countActionsPerUser(Pageable pageable);
+    List<Object[]> findTopUserActivity(Pageable pageable);
 }

@@ -56,6 +56,7 @@ class ConfigureRolePermissionsScopeTest {
     @Mock private UserRepository userRepository;
     @Mock private SystemAuditLogService systemAuditLogService;
     @Mock private CurrentUserProvider currentUserProvider;
+    @Mock private com.novax.leadora.common.security.JwtAuthoritiesResolver jwtAuthoritiesResolver;
 
     private ConfigureRolePermissionsUseCase useCase;
 
@@ -114,7 +115,7 @@ class ConfigureRolePermissionsScopeTest {
         useCase = new ConfigureRolePermissionsUseCase(
                 roleRepository, permissionRepository, rolePermissionRepository, userRepository,
                 new PermissionDependencyResolver(permissionRepository),
-                systemAuditLogService, currentUserProvider);
+                systemAuditLogService, currentUserProvider, jwtAuthoritiesResolver);
     }
 
     private void givenRole(String roleName) {

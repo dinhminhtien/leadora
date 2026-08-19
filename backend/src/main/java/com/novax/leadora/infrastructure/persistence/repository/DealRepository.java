@@ -3,6 +3,9 @@ package com.novax.leadora.infrastructure.persistence.repository;
 import com.novax.leadora.application.usecase.chat.dto.RepDealStat;
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -21,6 +24,18 @@ import com.novax.leadora.infrastructure.persistence.repository.projection.StaffD
 
 @Repository
 public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpecificationExecutor<DealEntity> {
+
+    @Override
+    @EntityGraph(attributePaths = {"customer", "assignedUser", "createdBy"})
+    List<DealEntity> findAll(Specification<DealEntity> spec, Sort sort);
+
+    @Override
+    @EntityGraph(attributePaths = {"customer", "assignedUser", "createdBy"})
+    Page<DealEntity> findAll(Specification<DealEntity> spec, Pageable pageable);
+
+    @Override
+    @EntityGraph(attributePaths = {"customer", "assignedUser", "createdBy"})
+    List<DealEntity> findAll(Specification<DealEntity> spec);
     
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT d FROM DealEntity d WHERE d.dealId = :id")

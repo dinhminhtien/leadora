@@ -68,7 +68,7 @@ class ReportingQueryExecutionIT {
     @DisplayName("the leaderboard aggregate runs and is capped in SQL")
     void leaderboardAggregateExecutes() {
         assertThatCode(() -> {
-            List<Object[]> rows = interactTimelineRepository.countActionsPerUser(PageRequest.of(0, 5));
+            List<Object[]> rows = interactTimelineRepository.findTopUserActivity(PageRequest.of(0, 5));
             assertThat(rows.size()).isLessThanOrEqualTo(5);
         }).doesNotThrowAnyException();
     }

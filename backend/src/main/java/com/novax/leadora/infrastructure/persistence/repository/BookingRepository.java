@@ -34,8 +34,10 @@ public interface BookingRepository extends JpaRepository<BookingEntity, UUID>, J
 
     boolean existsByQuotation_Deal_DealIdAndStatus(UUID dealId, BookingStatus status);
 
+    @EntityGraph(attributePaths = {"customer", "assignedUser", "quotation"})
     List<BookingEntity> findByQuotation_QuotationId(UUID quotationId);
 
+    @EntityGraph(attributePaths = {"customer", "assignedUser", "quotation"})
     List<BookingEntity> findByQuotation_QuotationIdIn(List<UUID> quotationIds);
 
     @EntityGraph(attributePaths = {"customer", "assignedUser", "quotation"})

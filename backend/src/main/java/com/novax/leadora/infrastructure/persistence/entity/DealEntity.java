@@ -13,7 +13,10 @@ import java.util.UUID;
 @Table(name = "deals", indexes = {
     @Index(name = "idx_deals_created_at", columnList = "created_at"),
     @Index(name = "idx_deals_closed_at", columnList = "closed_at"),
-    @Index(name = "idx_deals_assigned_user_id", columnList = "assigned_user_id")
+    @Index(name = "idx_deals_assigned_user_id", columnList = "assigned_user_id"),
+    @Index(name = "idx_deals_assigned_status_created", columnList = "assigned_user_id, status, created_at"),
+    @Index(name = "idx_deals_customer_id", columnList = "customer_id"),
+    @Index(name = "idx_deals_pipeline_stage_status", columnList = "pipeline_stage, status")
 })
 @Getter
 @Setter

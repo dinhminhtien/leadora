@@ -78,10 +78,13 @@ public class CacheConfig implements CachingConfigurer {
         // falls back to the 10-minute default, which is not what a reporting screen wants.
         Map<String, RedisCacheConfiguration> customConfigs = new HashMap<>();
         // The dashboard was the one cache missing from this list, so it fell through to the
-        // 10-minute default the comment above warns about - while the web client polls it
-        // every 8 seconds and shows the result as live. Thirty seconds keeps the polling
-        // cheap without a manager watching a figure they have already changed.
+        // 10-minute default the comment above warns about. Thirty seconds rather than the three
+        // minutes dev landed independently: the client sets staleTime 30s and polls every 8s, so
+        // a three-minute server cache answers every one of those polls with the same payload and
+        // defeats the freshness the client is asking for. Worth a second opinion in review - the
+        // trade is query load against how stale a manager's own edit may look.
         customConfigs.put("dashboard-summary", defaultConfig.entryTtl(Duration.ofSeconds(30)));
+        customConfigs.put("sla-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
         customConfigs.put("sales-performance-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
         customConfigs.put("pipeline-progression-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
         customConfigs.put("quotation-outcome-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
@@ -98,6 +101,7 @@ public class CacheConfig implements CachingConfigurer {
         customConfigs.put("task-performance-report", defaultConfig.entryTtl(Duration.ofMinutes(1)));
         customConfigs.put("product-catalogue", defaultConfig.entryTtl(Duration.ofMinutes(30)));
         customConfigs.put("room-allotment-nights", defaultConfig.entryTtl(Duration.ofSeconds(60)));
+        customConfigs.put("rag-context", defaultConfig.entryTtl(Duration.ofHours(1)));
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaultConfig)

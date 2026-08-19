@@ -15,7 +15,9 @@ import com.novax.leadora.application.listener.WorkflowSyncEntityListener;
 @Table(name = "quotations", indexes = {
     @Index(name = "idx_quotations_created_at", columnList = "created_at"),
     @Index(name = "idx_quotations_created_by_status", columnList = "created_by, status, created_at DESC"),
-    @Index(name = "idx_quotations_deal_id_status", columnList = "deal_id, status")
+    @Index(name = "idx_quotations_deal_id_status", columnList = "deal_id, status"),
+    @Index(name = "idx_quotations_customer_id", columnList = "customer_id"),
+    @Index(name = "idx_quotations_status_valid_until", columnList = "status, valid_until")
 })
 @EntityListeners(WorkflowSyncEntityListener.class)
 @Getter

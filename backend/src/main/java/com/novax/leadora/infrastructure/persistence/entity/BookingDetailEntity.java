@@ -7,7 +7,9 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
-@Table(name = "booking_details")
+@Table(name = "booking_details", indexes = {
+    @Index(name = "idx_booking_details_booking_id", columnList = "booking_id")
+})
 @Getter
 @Setter
 @NoArgsConstructor

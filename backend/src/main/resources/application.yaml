@@ -9,6 +9,10 @@ spring:
   application:
     name: leadora
 
+  threads:
+    virtual:
+      enabled: true
+
   main:
     allow-bean-definition-overriding: true
 
@@ -35,11 +39,12 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:secret}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:10}
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:15}
       minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE:5}
       connection-timeout: 30000
       idle-timeout: 300000
       max-lifetime: 1800000
+      leak-detection-threshold: ${SPRING_DATASOURCE_HIKARI_LEAK_DETECTION_THRESHOLD:0}
 
   jpa:
     open-in-view: false
@@ -50,7 +55,11 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+        default_batch_fetch_size: 50
+        order_inserts: true
+        order_updates: true
         jdbc:
+          batch_size: 50
           lob:
             non_contextual_creation: true
         # pgbouncer compatibility — must explicitly set dialect when disabling JDBC metadata access
@@ -60,6 +69,17 @@ spring:
   data:
     redis:
       url: ${REDIS_URL:redis://localhost:6379}
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+          max-wait: 2000ms
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
 
   cache:
     type: ${SPRING_CACHE_TYPE:simple}
@@ -211,6 +231,9 @@ contract:
 absa:
   engine:
     url: ${ABSA_ENGINE_URL:https://timano4--leadora-absa-engine-fastapi-app.modal.run}
+    connect-timeout: ${ABSA_ENGINE_CONNECT_TIMEOUT:20000}
+    read-timeout: ${ABSA_ENGINE_READ_TIMEOUT:30000}
+
 
 
 

@@ -19,11 +19,24 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Sort;
 
 @Repository
 public interface LeadRepository
                 extends JpaRepository<LeadEntity, UUID>,
                 JpaSpecificationExecutor<LeadEntity> {
+
+        @Override
+        @EntityGraph(attributePaths = { "assignedUser", "createdBy", "customer" })
+        Page<LeadEntity> findAll(Specification<LeadEntity> spec, Pageable pageable);
+
+        @Override
+        @EntityGraph(attributePaths = { "assignedUser", "createdBy", "customer" })
+        List<LeadEntity> findAll(Specification<LeadEntity> spec, Sort sort);
+
+        @Override
+        @EntityGraph(attributePaths = { "assignedUser", "createdBy", "customer" })
+        List<LeadEntity> findAll(Specification<LeadEntity> spec);
 
         // ── Single-entity fetch with associations ─────────────────────────────────
 

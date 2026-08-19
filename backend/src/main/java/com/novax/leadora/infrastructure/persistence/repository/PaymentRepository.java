@@ -28,7 +28,10 @@ public interface PaymentRepository extends JpaRepository<PaymentEntity, UUID>, J
     @EntityGraph(attributePaths = {"booking", "booking.customer", "createdBy"})
     org.springframework.data.domain.Page<PaymentEntity> findAll(org.springframework.data.jpa.domain.Specification<PaymentEntity> spec, org.springframework.data.domain.Pageable pageable);
 
+    @EntityGraph(attributePaths = {"booking", "booking.customer"})
     List<PaymentEntity> findByBooking_BookingId(UUID bookingId);
+
+    @EntityGraph(attributePaths = {"booking", "booking.customer"})
     List<PaymentEntity> findByBooking_BookingIdIn(List<UUID> bookingIds);
     boolean existsByBooking_BookingIdAndStatus(UUID bookingId, PaymentStatus status);
     List<PaymentEntity> findByStatus(PaymentStatus status);

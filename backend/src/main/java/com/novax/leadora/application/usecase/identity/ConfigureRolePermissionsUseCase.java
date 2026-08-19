@@ -45,6 +45,7 @@ public class ConfigureRolePermissionsUseCase {
     private final PermissionDependencyResolver permissionDependencyResolver;
     private final SystemAuditLogService systemAuditLogService;
     private final CurrentUserProvider currentUserProvider;
+    private final com.novax.leadora.common.security.JwtAuthoritiesResolver jwtAuthoritiesResolver;
 
     @Transactional
     public RoleResponse execute(Integer roleId, UpdateRolePermissionsRequest request) {
@@ -126,6 +127,8 @@ public class ConfigureRolePermissionsUseCase {
                 currentUserProvider.resolveQuietly(),
                 codesOf(currentIds), codesOf(desired),
                 "role=" + role.getRoleName() + " (id=" + roleId + "), affectedUsers=" + userCount);
+
+        jwtAuthoritiesResolver.invalidateAll();
 
         return RoleResponse.from(role, permissions, userCount);
     }

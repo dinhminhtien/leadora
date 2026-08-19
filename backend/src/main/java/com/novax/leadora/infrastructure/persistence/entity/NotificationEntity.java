@@ -9,7 +9,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "notifications")
+@Table(name = "notifications", indexes = {
+    @Index(name = "idx_notifications_related", columnList = "related_entity, related_id")
+})
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
