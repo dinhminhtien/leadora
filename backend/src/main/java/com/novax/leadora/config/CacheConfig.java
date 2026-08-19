@@ -77,6 +77,11 @@ public class CacheConfig implements CachingConfigurer {
         // honest move is to keep it small. Every report cache is listed — one left out silently
         // falls back to the 10-minute default, which is not what a reporting screen wants.
         Map<String, RedisCacheConfiguration> customConfigs = new HashMap<>();
+        // The dashboard was the one cache missing from this list, so it fell through to the
+        // 10-minute default the comment above warns about - while the web client polls it
+        // every 8 seconds and shows the result as live. Thirty seconds keeps the polling
+        // cheap without a manager watching a figure they have already changed.
+        customConfigs.put("dashboard-summary", defaultConfig.entryTtl(Duration.ofSeconds(30)));
         customConfigs.put("sales-performance-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
         customConfigs.put("pipeline-progression-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
         customConfigs.put("quotation-outcome-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
