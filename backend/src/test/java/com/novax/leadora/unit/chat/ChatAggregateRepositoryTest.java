@@ -50,8 +50,8 @@ class ChatAggregateRepositoryTest {
         // survey link is issued and holds an answer only once the customer sends one, so
         // submitted_at is when the thing being counted happened.
         for (String column : new String[]{"l.created_at", "d.created_at", "t.created_at",
-                "q.created_at", "b.created_at", "p.created_at", "c.created_at", "st.created_at",
-                "f.submitted_at"}) {
+                "q.created_at", "ct.created_at", "b.created_at", "p.created_at", "c.created_at",
+                "st.created_at", "f.submitted_at"}) {
             assertThat(sql).as("lower bound on %s in:%n%s", column, sql)
                     .contains("AND " + column + " >= :from");
             assertThat(sql).as("upper bound on %s in:%n%s", column, sql)
@@ -99,9 +99,9 @@ class ChatAggregateRepositoryTest {
         long branches = sql.lines().filter(l -> l.stripLeading().startsWith("SELECT")).count();
         long scopeChecks = sql.lines().filter(l -> l.contains("CAST(:scope AS uuid) IS NULL")).count();
 
-        // Eight record areas, plus the two derived rows (overdue tasks, low-rated feedback), plus
+        // Nine record areas, plus the two derived rows (overdue tasks, low-rated feedback), plus
         // the feedback branch itself.
-        assertThat(branches).isEqualTo(11);
+        assertThat(branches).isEqualTo(12);
         assertThat(scopeChecks)
                 .as("BR-36: a branch without the scope predicate would return everyone's rows")
                 .isEqualTo(branches);
@@ -141,13 +141,15 @@ class ChatAggregateRepositoryTest {
     }
 
     @Test
-    @DisplayName("quotations and payments are scoped through their parent record")
+    @DisplayName("quotations, contracts and payments are scoped through their parent record")
     void inheritedScopingIsPresent() {
         String sql = ChatAggregateRepository.countAllSql();
-        // Neither table has an assignee column; both parents are NOT NULL so the join drops nothing.
+        // None of the three has an assignee column; every parent is NOT NULL so no join drops rows.
         assertThat(sql).contains("JOIN deals qd ON qd.deal_id = q.deal_id");
+        assertThat(sql).contains("JOIN deals cd ON cd.deal_id = ct.deal_id");
         assertThat(sql).contains("JOIN bookings pb ON pb.booking_id = p.booking_id");
         assertThat(sql).contains("qd.assigned_user_id");
+        assertThat(sql).contains("cd.assigned_user_id");
         assertThat(sql).contains("pb.assigned_user_id");
     }
 

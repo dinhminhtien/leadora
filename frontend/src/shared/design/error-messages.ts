@@ -108,6 +108,13 @@ const ERROR_COPY: Record<string, ErrorCopy> = {
     message:
       "Use at least one lowercase letter, one uppercase letter, one digit and one symbol.",
   },
+  // Split from WEAK_PASSWORD because the two failures need different advice: adding a symbol
+  // does not fix a four-character password, and the complexity wording sent users looking for
+  // the wrong problem.
+  PASSWORD_TOO_SHORT: {
+    title: "Password too short",
+    message: "Use at least 6 characters.",
+  },
 
   // ── Leads ─────────────────────────────────────────────────────────────────
   DUPLICATE_LEAD: {

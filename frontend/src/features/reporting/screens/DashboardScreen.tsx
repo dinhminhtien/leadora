@@ -260,11 +260,19 @@ export function DashboardScreen() {
         />
         <KpiCard
           label="SLA compliance"
-          value={`${(summary?.slaComplianceRatePct ?? 0).toFixed(1)}%`}
+          value={
+            summary?.slaComplianceRatePct != null
+              ? `${summary.slaComplianceRatePct.toFixed(1)}%`
+              : "—"
+          }
           hint="Target 90%"
           icon={Clock}
           tone={
-            (summary?.slaComplianceRatePct ?? 0) >= 90 ? "success" : "warning"
+            summary?.slaComplianceRatePct == null
+              ? undefined
+              : summary.slaComplianceRatePct >= 90
+                ? "success"
+                : "warning"
           }
           href={ROUTE_PATHS.sla}
         />
@@ -552,33 +560,46 @@ export function DashboardScreen() {
               <div className="p-3 bg-muted/50 border border-border/40 rounded-xl flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground">Avg response speed</p>
-                  <p className="text-base font-bold text-foreground mt-0.5">{summary?.avgResponseHours ?? 1.4} hours</p>
+                  <p className="text-base font-bold text-foreground mt-0.5">
+                    {summary?.avgResponseHours != null
+                      ? `${summary.avgResponseHours} hours`
+                      : "—"}
+                  </p>
                 </div>
-                <Badge variant="success" className="font-semibold">
-                  Excellent
-                </Badge>
               </div>
 
               <div className="p-3 bg-muted/50 border border-border/40 rounded-xl flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground">Avg Deal Size</p>
                   <p className="text-base font-bold text-foreground mt-0.5">
-                    {summary?.avgDealSize ? Number(summary.avgDealSize).toLocaleString("vi-VN") : "18.400"} ₫
+                    {summary?.avgDealSize != null
+                      ? `${Number(summary.avgDealSize).toLocaleString("vi-VN")} ₫`
+                      : "—"}
                   </p>
                 </div>
-                <Badge variant="primary" className="font-semibold">
-                  +{summary?.avgDealSizeGrowthPct ?? 8}% MoM
-                </Badge>
+                {summary?.avgDealSizeGrowthPct != null && (
+                  <Badge
+                    variant={summary.avgDealSizeGrowthPct >= 0 ? "primary" : "warning"}
+                    className="font-semibold"
+                  >
+                    {summary.avgDealSizeGrowthPct >= 0 ? "+" : ""}
+                    {summary.avgDealSizeGrowthPct}% MoM
+                  </Badge>
+                )}
               </div>
 
               <div className="p-3 bg-muted/50 border border-border/40 rounded-xl flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground">Win Rate</p>
-                  <p className="text-base font-bold text-foreground mt-0.5">{summary?.winRatePct ?? 38.4}%</p>
+                  <p className="text-base font-bold text-foreground mt-0.5">
+                    {summary?.winRatePct != null ? `${summary.winRatePct}%` : "—"}
+                  </p>
                 </div>
-                <Badge variant="success" className="font-semibold">
-                  {summary?.winRateBenchmarkLabel ?? "Top 10%"}
-                </Badge>
+                {summary?.winRateBenchmarkLabel && (
+                  <Badge variant="success" className="font-semibold">
+                    {summary.winRateBenchmarkLabel}
+                  </Badge>
+                )}
               </div>
 
               <div className="pt-2 border-t border-border mt-4">

@@ -77,7 +77,13 @@ public class CacheConfig implements CachingConfigurer {
         // honest move is to keep it small. Every report cache is listed — one left out silently
         // falls back to the 10-minute default, which is not what a reporting screen wants.
         Map<String, RedisCacheConfiguration> customConfigs = new HashMap<>();
-        customConfigs.put("dashboard-summary", defaultConfig.entryTtl(Duration.ofMinutes(3)));
+        // The dashboard was the one cache missing from this list, so it fell through to the
+        // 10-minute default the comment above warns about. Thirty seconds rather than the three
+        // minutes dev landed independently: the client sets staleTime 30s and polls every 8s, so
+        // a three-minute server cache answers every one of those polls with the same payload and
+        // defeats the freshness the client is asking for. Worth a second opinion in review - the
+        // trade is query load against how stale a manager's own edit may look.
+        customConfigs.put("dashboard-summary", defaultConfig.entryTtl(Duration.ofSeconds(30)));
         customConfigs.put("sla-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
         customConfigs.put("sales-performance-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
         customConfigs.put("pipeline-progression-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));

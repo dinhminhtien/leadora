@@ -252,7 +252,10 @@ function UserFormDrawer({
     if (phone) {
       const digits = phone.replace(/\s/g, "");
       if (/[^\d]/.test(digits)) e.phone = "Phone number can only contain digits (no letters or symbols)";
-      else if (!/^\d{8,15}$/.test(digits)) e.phone = "Phone must be 8–15 digits";
+      // 10–11, matching LeadFieldLimits.PHONE_PATTERN on the server and the "09xxxxxxxx"
+      // placeholder above. 8–15 was wider than either, so a 9-digit number passed here and
+      // came back a 400 from the API with the form showing no error of its own.
+      else if (!/^\d{10,11}$/.test(digits)) e.phone = "Phone number must be 10 or 11 digits";
     }
     if (roleId === "") e.roleId = "Role is required";
     return e;

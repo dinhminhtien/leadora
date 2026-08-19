@@ -1,15 +1,14 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
 import com.novax.leadora.infrastructure.persistence.entity.InteractTimelineEntity;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.UUID;
-
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.Query;
 
 @Repository
 public interface InteractTimelineRepository
@@ -20,6 +19,17 @@ public interface InteractTimelineRepository
 
     List<InteractTimelineEntity> findByDeal_DealIdOrderByOccurredAtDesc(UUID dealId);
 
+    /**
+     * Logged actions per staff member, busiest first - the dashboard's activity leaderboard.
+     *
+     * <p>Counted in the database rather than by streaming {@code findAll()} into a map, which is
+     * what the dashboard did: it pulled every interaction row the company had ever recorded into
+     * the heap on each cache miss, to display five names.
+     *
+     * <p>Callers must still decide whether the leaderboard may be shown at all - it names
+     * colleagues, so it is a Manager/Admin view. There is deliberately no scoped variant: a
+     * leaderboard of one person is not a leaderboard.
+     */
     @Query("""
             SELECT u.fullName, COUNT(i)
             FROM InteractTimelineEntity i JOIN i.user u

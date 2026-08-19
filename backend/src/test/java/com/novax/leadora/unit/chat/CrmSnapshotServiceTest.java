@@ -75,6 +75,7 @@ class CrmSnapshotServiceTest {
     @Mock private DealRepository dealRepository;
     @Mock private TaskRepository taskRepository;
     @Mock private QuotationRepository quotationRepository;
+    @Mock private com.novax.leadora.infrastructure.persistence.repository.ContractRepository contractRepository;
     @Mock private BookingRepository bookingRepository;
     @Mock private PaymentRepository paymentRepository;
     @Mock private CustomerRepository customerRepository;
@@ -89,8 +90,8 @@ class CrmSnapshotServiceTest {
     @BeforeEach
     void setUp() {
         service = new CrmSnapshotService(chatAggregateRepository, leadRepository, dealRepository,
-                taskRepository, quotationRepository, bookingRepository, paymentRepository,
-                customerRepository, userRepository, productServiceRepository,
+                taskRepository, quotationRepository, contractRepository, bookingRepository,
+                paymentRepository, customerRepository, userRepository, productServiceRepository,
                 roomAvailabilityService, feedbackRepository, clock);
         when(clock.zone()).thenReturn(ZoneId.of("Asia/Ho_Chi_Minh"));
         when(clock.now()).thenReturn(OffsetDateTime.now());
@@ -107,6 +108,7 @@ class CrmSnapshotServiceTest {
         // the existing expectations about the snapshot text unchanged.
         when(productServiceRepository.findByCategory(any())).thenReturn(List.of());
         when(feedbackRepository.findRecentForChat(any(), any(), any(), any())).thenReturn(List.of());
+        when(contractRepository.findRecentForChat(any(), any(), any(), any())).thenReturn(List.of());
     }
 
     // ── fixtures ──────────────────────────────────────────────────────────────

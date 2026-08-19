@@ -51,7 +51,7 @@ public class ChangePasswordUseCase {
                     HttpStatus.UNPROCESSABLE_ENTITY);
         }
 
-        validatePasswordComplexity(request.getNewPassword());
+        PasswordPolicy.validate(request.getNewPassword());
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
@@ -66,21 +66,5 @@ public class ChangePasswordUseCase {
                 .entityId(user.getUserId())
                 .summary(user.getFullName() + " (" + user.getEmail() + ") changed their password.")
                 .build());
-    }
-
-    /** Mirrors the policy enforced in CreateUserUseCase / UpdateUserUseCase. */
-    private void validatePasswordComplexity(String password) {
-        boolean hasUppercase = password.chars().anyMatch(Character::isUpperCase);
-        boolean hasLowercase = password.chars().anyMatch(Character::isLowerCase);
-        boolean hasDigit = password.chars().anyMatch(Character::isDigit);
-        boolean hasSymbol = password.chars()
-                .anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
-
-        if (!hasUppercase || !hasLowercase || !hasDigit || !hasSymbol) {
-            throw new BusinessException(
-                    "WEAK_PASSWORD",
-                    "Password must contain at least one lowercase letter, one uppercase letter, one digit, and one symbol.",
-                    HttpStatus.UNPROCESSABLE_ENTITY);
-        }
     }
 }

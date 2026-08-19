@@ -23,9 +23,10 @@ public class UpdateUserRequest {
     private String email;
 
     /**
-     * Blank/null = keep current password. When present it must be ≥ 8 chars — that length check
-     * lives in {@code UpdateUserUseCase} (not as {@code @Size(min=8)}) so an empty string sent by
-     * the form means "unchanged" instead of failing bean validation.
+     * Blank/null = keep current password. When present it must satisfy {@code PasswordPolicy}
+     * (≥ 6 chars, with an uppercase, a lowercase, a digit and a symbol) — that check runs in
+     * the use case rather than as {@code @Size} here, so an empty string sent by the form means
+     * "unchanged" instead of failing bean validation.
      */
     @Size(max = 100)
     private String password;
