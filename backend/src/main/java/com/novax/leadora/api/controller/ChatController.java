@@ -31,9 +31,12 @@ import org.springframework.security.access.prepost.PreAuthorize;
 /**
  * Internal Sales Role-Based Chat Assistant.
  *
- * <p>The acting user is resolved from the {@code X-User-Id} header (temporary, until login/RBAC
- * is finished). For now every authenticated actor has top scope — they can ask anything within
- * the business domain; mutation and off-topic requests are refused by the guardrail (BR-35).
+ * <p>The acting user is resolved from the verified JWT by {@code CurrentUserProvider}; the
+ * {@code X-User-Id} header is honoured only under the {@code dev} profile, for local API testing.
+ *
+ * <p>Scope is enforced, not assumed: {@code CrmSnapshotService} returns every record only to
+ * MANAGER/ADMIN and narrows anyone else to their own (BR-36), while mutation and off-topic
+ * requests are refused before the model is called at all (BR-35).
  */
 @RestController
 @RequestMapping("/api/v1/chat")

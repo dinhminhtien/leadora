@@ -51,7 +51,8 @@ public class ConfigureRolePermissionsUseCase {
         RoleEntity role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
 
-        // Only the two permission-driven job roles can be reconfigured. Admin is
+        // Only the permission-driven job roles can be reconfigured - SALES, MANAGER, FO and
+        // RESERVATION, per RbacRoles.CONFIGURABLE. Admin is
         // refused with its
         // own message because the reason differs: it is not "unsupported", it already
         // holds
