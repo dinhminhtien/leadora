@@ -34,8 +34,8 @@ import java.util.UUID;
  *
  * <p>Scoping (BR-36) is a single {@code :scope} parameter, null meaning "every record". Quotations,
  * payments and SLA records carry no assignee of their own and are reached through the deal, booking
- * or deal they belong to; every one of those parent columns is NOT NULL, so the joins cannot drop
- * rows.
+ * or deal they belong to, and contracts through their deal; every one of those parent columns is
+ * NOT NULL, so the joins cannot drop rows.
  */
 @Repository
 @RequiredArgsConstructor
@@ -123,6 +123,15 @@ public class ChatAggregateRepository {
             + dated("q.created_at")
             + """
              GROUP BY q.status
+            UNION ALL
+            SELECT 'CONTRACTS', ct.status, COUNT(*), COALESCE(SUM(ct.total_contract_value), 0)
+              FROM contracts ct
+              JOIN deals cd ON cd.deal_id = ct.deal_id
+             WHERE (CAST(:scope AS uuid) IS NULL OR cd.assigned_user_id = CAST(:scope AS uuid))
+            """
+            + dated("ct.created_at")
+            + """
+             GROUP BY ct.status
             UNION ALL
             SELECT 'BOOKINGS', b.status, COUNT(*), COALESCE(SUM(b.total_amount), 0)
               FROM bookings b

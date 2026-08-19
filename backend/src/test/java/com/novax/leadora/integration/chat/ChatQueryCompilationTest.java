@@ -73,6 +73,9 @@ class ChatQueryCompilationTest {
     @Autowired
     private SalesFeedbackRepository feedbackRepository;
 
+    @Autowired
+    private ContractRepository contractRepository;
+
     @Test
     @DisplayName("every declared query compiles, including the chat snapshot projections")
     void declaredQueriesCompile() {

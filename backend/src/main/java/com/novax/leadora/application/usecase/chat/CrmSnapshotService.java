@@ -20,6 +20,7 @@ import com.novax.leadora.infrastructure.persistence.entity.enums.SlaStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.TaskStatus;
 import com.novax.leadora.infrastructure.persistence.repository.BookingRepository;
 import com.novax.leadora.infrastructure.persistence.repository.ChatAggregateRepository;
+import com.novax.leadora.infrastructure.persistence.repository.ContractRepository;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
 import com.novax.leadora.infrastructure.persistence.repository.DealRepository;
 import com.novax.leadora.infrastructure.persistence.repository.LeadRepository;
@@ -82,6 +83,7 @@ public class CrmSnapshotService {
     private static final int MAX_DEALS = 10;
     private static final int MAX_TASKS = 10;
     private static final int MAX_QUOTATIONS = 10;
+    private static final int MAX_CONTRACTS = 10;
     private static final int MAX_BOOKINGS = 10;
     private static final int MAX_PAYMENTS = 8;
     private static final int MAX_CUSTOMERS = 10;
@@ -120,6 +122,7 @@ public class CrmSnapshotService {
     private final DealRepository dealRepository;
     private final TaskRepository taskRepository;
     private final QuotationRepository quotationRepository;
+    private final ContractRepository contractRepository;
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
     private final CustomerRepository customerRepository;
@@ -264,6 +267,7 @@ public class CrmSnapshotService {
                 case DEALS -> appendDeals(sb, counts, scopeUserId, detail, from, to);
                 case TASKS -> appendTasks(sb, counts, scopeUserId, detail, now, from, to);
                 case QUOTATIONS -> appendQuotations(sb, counts, scopeUserId, detail, from, to);
+                case CONTRACTS -> appendContracts(sb, counts, scopeUserId, detail, from, to);
                 case BOOKINGS -> appendBookings(sb, counts, scopeUserId, detail, from, to);
                 case PAYMENTS -> appendPayments(sb, counts, scopeUserId, detail, from, to);
                 case CUSTOMERS -> appendCustomers(sb, counts, scopeUserId, detail, from, to);
@@ -524,6 +528,53 @@ public class CrmSnapshotService {
                             .append(" | stay ").append(q.getCheckInDate())
                             .append(" -> ").append(q.getCheckOutDate())
                             .append(" | valid until ").append(q.getValidUntil()).append("\n"));
+        }
+        return total;
+    }
+
+    /**
+     * Signed commercial agreements - the step after a quotation is accepted.
+     *
+     * <p><b>Why the count and the value are both reported.</b> A contract is the first record in
+     * the pipeline that states a committed amount rather than an expected one, so "how much have
+     * we actually contracted this month?" is a question only this area can answer; a deal's
+     * expected revenue is a forecast and a quotation is an offer that may never be signed.
+     *
+     * <p><b>Status is not a synonym for money in the bank.</b> DRAFT and SENT are not commitments,
+     * ACKNOWLEDGED means the customer confirmed through the portal link, ACTIVE is the one in
+     * force, and SUPERSEDED is a version replaced by a later one - counting a superseded contract
+     * alongside the version that replaced it would double the same booking's value. The breakdown
+     * therefore carries every status with its own total, so the assistant states which it means
+     * rather than presenting one number as "the" contract value.
+     *
+     * <p>Scoped through the deal, exactly like quotations: the table has no assignee column.
+     */
+    private long appendContracts(StringBuilder sb, ChatCounts counts, UUID scope, boolean detail,
+                                 OffsetDateTime from, OffsetDateTime to) {
+        long total = counts.total(CrmArea.CONTRACTS);
+        sb.append("Contracts: total ").append(total)
+                .append(valueBreakdown(counts.of(CrmArea.CONTRACTS)))
+                .append(" (DRAFT/SENT are not yet commitments; ACKNOWLEDGED means the customer "
+                        + "confirmed it; SUPERSEDED was replaced by a later version, so do NOT add "
+                        + "its value to the version that replaced it)\n");
+
+        if (detail && total > 0) {
+            sb.append(listingHeader("Contract details, newest first",
+                    Math.min(total, MAX_CONTRACTS), total, CrmArea.CONTRACTS));
+            contractRepository.findRecentForChat(scope, from, to, page(MAX_CONTRACTS)).forEach(c ->
+                    sb.append("  - \"").append(c.getContractCode())
+                            .append("\" v").append(c.getVersion())
+                            .append(" | ").append(c.getStatus())
+                            .append(" | customer: ")
+                            .append(c.getCustomer() != null ? c.getCustomer().getFullName() : "-")
+                            .append(" | deal: ")
+                            .append(c.getDeal() != null ? c.getDeal().getDealName() : "-")
+                            .append(" | value ").append(c.getTotalContractValue())
+                            .append(" | valid until ").append(c.getValidUntil())
+                            .append(" | sent ").append(ts(c.getSentAt()))
+                            .append(" | acknowledged ").append(ts(c.getAcknowledgedAt()))
+                            .append(" | created: ").append(ts(c.getCreatedAt()))
+                            .append("\n"));
         }
         return total;
     }
@@ -814,6 +865,7 @@ public class CrmSnapshotService {
             case TASKS -> sb.append(", of which overdue: ").append(companyWide.overdueTasks())
                     .append("\nYou may offer the team's overdue tasks.\n");
             case QUOTATIONS -> sb.append("\nYou may offer the team's quotations.\n");
+            case CONTRACTS -> sb.append("\nYou may offer the team's contracts.\n");
             case BOOKINGS -> sb.append("\nYou may offer the team's bookings.\n");
             case PAYMENTS -> sb.append("\nYou may offer the team's payments.\n");
             case CUSTOMERS -> sb.append("\nYou may offer the team's customers.\n");
@@ -852,6 +904,8 @@ public class CrmSnapshotService {
         sb.append("Tasks: total ").append(counts.total(CrmArea.TASKS))
                 .append(", overdue ").append(counts.overdueTasks()).append("\n");
         sb.append("Quotations: total ").append(counts.total(CrmArea.QUOTATIONS)).append("\n");
+        sb.append("Contracts: total ").append(counts.total(CrmArea.CONTRACTS))
+                .append(valueBreakdown(counts.of(CrmArea.CONTRACTS))).append("\n");
         sb.append("Bookings: total ").append(counts.total(CrmArea.BOOKINGS)).append("\n");
         sb.append("Customers: total ").append(counts.total(CrmArea.CUSTOMERS)).append("\n");
         sb.append("SLA records: total ").append(counts.total(CrmArea.SLA))
@@ -876,14 +930,36 @@ public class CrmSnapshotService {
     private static String listingHeader(String noun, long shown, long total, CrmArea area) {
         StringBuilder h = new StringBuilder(noun)
                 .append(" (showing ").append(shown).append(" of ").append(total);
-        if (total > shown) {
+        boolean partial = total > shown;
+        if (partial) {
             h.append("; TRUNCATED - the remaining ").append(total - shown)
                     .append(" are only on the screen below");
         }
         h.append(") | full list: ").append(area.screenLabel())
                 .append(" screen at ").append(area.screenPath()).append("\n");
+        if (partial) {
+            h.append(NO_INVENTION_WARNING);
+        }
         return h.toString();
     }
+
+    /**
+     * Said next to the rows, not only in the system prompt, because that is where it was
+     * ignored.
+     *
+     * <p>Asked to list the six ACTIVE contracts, the model correctly took the count from the
+     * GROUP BY totals, found only four ACTIVE rows in the newest-ten listing, and invented
+     * the other two - complete with plausible codes and amounts copied off neighbouring
+     * rows. The general "a listing is never a filtered set" rule sits hundreds of lines up
+     * in the system prompt; a caveat printed immediately above the data it applies to is
+     * read in the same breath as the data. Only emitted for a truncated listing: when every
+     * row is present, filtering it is exact and the warning would be noise on every turn.
+     */
+    private static final String NO_INVENTION_WARNING =
+            "    NOT A FILTERED LIST - these are the newest rows only. If the question asks "
+            + "for a subset (a status, a person, a date), take the COUNT from the totals line "
+            + "above and show ONLY the rows printed here that match it, saying the rest are "
+            + "on the screen. NEVER write a code, name or figure that is not printed above.\n";
 
     private static Pageable page(int size) {
         return PageRequest.of(0, size);

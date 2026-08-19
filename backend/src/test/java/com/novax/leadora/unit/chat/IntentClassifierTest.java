@@ -275,6 +275,9 @@ class IntentClassifierTest {
                 "'khách hàng có hài lòng không',       FEEDBACK",
                 "'xem các khiếu nại gần đây',          FEEDBACK",
                 "'đánh giá của khách tháng này',       FEEDBACK",
+                "'có bao nhiêu hợp đồng đã ký',        CONTRACTS",
+                "'how many contracts are active',      CONTRACTS",
+                "'tổng giá trị hợp đồng tháng này',    CONTRACTS",
         })
         void detectsTheAreaAsked(String message, CrmArea expected) {
             assertThat(IntentClassifier.detectAreas(message)).contains(expected);

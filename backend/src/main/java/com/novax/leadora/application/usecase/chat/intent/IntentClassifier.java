@@ -88,7 +88,7 @@ public class IntentClassifier {
 
     private static final List<String> CRM_OBJECTS = List.of(
             "lead", "khach hang tiem nang", "khach hang", "khach", "client", "deal", "co hoi",
-            "co hoi ban hang", "giao dich", "thuong vu", "opportunity", "hop dong",
+            "co hoi ban hang", "giao dich", "thuong vu", "opportunity", "hop dong", "contract",
             "task", "cong viec", "nhiem vu", "viec can lam", "cong viec can lam",
             "lich hen", "cuoc hen", "appointment",
             "bao gia", "quotation", "quote", "booking", "dat phong", "dat cho", "don dat phong",
@@ -134,7 +134,9 @@ public class IntentClassifier {
                     "csat", "phan nan", "khieu nai", "sao cua khach", "muc do hai long",
                     "customer satisfaction", "complaint")),
             Map.entry(CrmArea.SLA, List.of(" sla ", " sla?", "sla record", "ho so sla", "cam ket dich vu",
-                    "vi pham cam ket", "breach", "tre han xu ly", "han xu ly")));
+                    "vi pham cam ket", "breach", "tre han xu ly", "han xu ly")),
+            Map.entry(CrmArea.CONTRACTS, List.of("hop dong", "contract", "phu luc", "ky ket",
+                    "da ky", "hieu luc", "thanh ly", "gia tri hop dong", "so hop dong")));
 
     /**
      * Subject areas named by this message alone, empty when it names none.
@@ -186,6 +188,7 @@ public class IntentClassifier {
     private static final List<String> BUSINESS_KEYWORDS = List.of(
             // CRM objects are business keywords too
             "lead", "khach", "client", "deal", "co hoi", "giao dich", "opportunity", "hop dong",
+            "contract", "phu luc", "da ky", "ky ket",
             "task", "cong viec", "nhiem vu", "lich hen", "bao gia", "quotation", "quote",
             "booking", "dat phong", "dat cho", "thanh toan", "payment", "hoa don", "tien coc",
             "deposit", "feedback", "phan hoi", "danh gia", "handover", "ban giao", "reminder",

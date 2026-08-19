@@ -39,7 +39,12 @@ public enum CrmArea {
     // Counted per user through sales_staff_id, but filtered on submitted_at rather than
     // created_at: the row is created when the survey link goes out and only becomes a
     // customer's answer when they send it, so "feedback this month" means the second date.
-    FEEDBACK("Feedback", "/customer-feedback");
+    FEEDBACK("Feedback", "/customer-feedback"),
+    // Appended for the same reason SLA was: slotting it next to QUOTATIONS, which it grows out
+    // of, would shift every section below it in the reference block for no gain.
+    // Scoped through the deal it belongs to, exactly like quotations - a contract row carries no
+    // assignee of its own.
+    CONTRACTS("Contracts", "/dashboard/contracts");
 
     private final String screenLabel;
     private final String screenPath;
