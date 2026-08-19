@@ -35,7 +35,11 @@ public enum CrmArea {
     // Not a record area like the others: it carries no per-user rows and nothing in
     // ChatCounts, so its section builds its own figures. Listed here anyway because the
     // question-to-area matching is what decides whether it is worth including at all.
-    ROOM_AVAILABILITY("Room Availability", "/room-availability", false);
+    ROOM_AVAILABILITY("Room Availability", "/room-availability", false),
+    // Counted per user through sales_staff_id, but filtered on submitted_at rather than
+    // created_at: the row is created when the survey link goes out and only becomes a
+    // customer's answer when they send it, so "feedback this month" means the second date.
+    FEEDBACK("Feedback", "/customer-feedback");
 
     private final String screenLabel;
     private final String screenPath;

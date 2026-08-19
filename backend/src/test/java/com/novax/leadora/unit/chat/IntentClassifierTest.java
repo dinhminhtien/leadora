@@ -142,13 +142,47 @@ class IntentClassifierTest {
                 "'task nào đang quá hạn',               ASSIGNED_DATA",
                 "'liệt kê các deal đang mở',            ASSIGNED_DATA",
                 "'tổng hợp doanh số cả team',           TEAM_SUMMARY",
-                "'xếp hạng nhân viên theo doanh thu',   TEAM_SUMMARY",
-                "'so sánh hiệu suất giữa các bạn',      TEAM_SUMMARY",
                 "'nội quy công ty quy định thế nào',    DOC_QUERY",
                 "'quy trình đặt phòng ra sao',          DOC_QUERY",
         })
         void routesToTheRightSource(String message, ChatIntent expected) {
             assertThat(classifier.classify(message, null).intent()).isEqualTo(expected);
+        }
+
+        /**
+         * These used to route to {@code TEAM_SUMMARY}, which counts records. Counting cannot answer
+         * them: "who converts best" is a ratio, and a snapshot of the ten newest deals has no ratio
+         * in it — which is why the assistant could only ever restate totals when asked to compare
+         * people. They now route to the Reporting module's rates and per-person aggregates.
+         *
+         * <p>Checked here rather than folded into the table above because the change of destination
+         * is the point: if one of these silently falls back to TEAM_SUMMARY again, the assistant
+         * goes back to being unable to judge performance.
+         */
+        @ParameterizedTest(name = "performance question: {0}")
+        @ValueSource(strings = {
+                "xếp hạng nhân viên theo doanh thu",
+                "so sánh hiệu suất giữa các bạn",
+                "tỷ lệ chuyển đổi lead của team là bao nhiêu",
+                "ai làm tốt nhất tháng này",
+                "báo cáo hiệu suất nhân viên",
+                "win rate của đội bán hàng",
+        })
+        void performanceQuestionsGoToTheReports(String message) {
+            assertThat(classifier.classify(message, null).intent())
+                    .isEqualTo(ChatIntent.PERFORMANCE_REPORT);
+        }
+
+        /**
+         * The possessive still outranks it: "hiệu suất của tôi" is a question about the asker, and
+         * routing it to the team-wide report would ignore the word they emphasised — the same rule
+         * that already protects "top 5 deal của tôi".
+         */
+        @Test
+        @DisplayName("a possessive outranks the performance vocabulary")
+        void possessiveBeatsPerformance() {
+            assertThat(classifier.classify("hiệu suất của tôi thế nào", null).intent())
+                    .isEqualTo(ChatIntent.PERSONAL_DATA);
         }
 
         /**
@@ -237,9 +271,28 @@ class IntentClassifierTest {
                 "'task nào quá hạn',                   TASKS",
                 "'deal nào vi phạm cam kết dịch vụ',   SLA",
                 "'còn bao nhiêu SLA chưa xử lý',       SLA",
+                "'có phản hồi nào của khách chưa',     FEEDBACK",
+                "'khách hàng có hài lòng không',       FEEDBACK",
+                "'xem các khiếu nại gần đây',          FEEDBACK",
+                "'đánh giá của khách tháng này',       FEEDBACK",
         })
         void detectsTheAreaAsked(String message, CrmArea expected) {
             assertThat(IntentClassifier.detectAreas(message)).contains(expected);
+        }
+
+        /**
+         * "đánh giá" is the ordinary Vietnamese word for assessing anything, so matching it bare
+         * would turn every question about judging a colleague's performance into a customer-survey
+         * question — and answer it with a listing of what customers said, which is a different
+         * subject and a different scope. Only phrases naming the customer or the survey count.
+         */
+        @ParameterizedTest(name = "{0} is not a customer-feedback question")
+        @ValueSource(strings = {
+                "đánh giá hiệu suất nhân viên tháng này",
+                "đánh giá tình hình kinh doanh quý này",
+        })
+        void doesNotTreatStaffAppraisalAsCustomerFeedback(String message) {
+            assertThat(IntentClassifier.detectAreas(message)).doesNotContain(CrmArea.FEEDBACK);
         }
 
         /**

@@ -70,6 +70,9 @@ class ChatQueryCompilationTest {
     @Autowired
     private CustomerRepository customerRepository;
 
+    @Autowired
+    private SalesFeedbackRepository feedbackRepository;
+
     @Test
     @DisplayName("every declared query compiles, including the chat snapshot projections")
     void declaredQueriesCompile() {
@@ -85,5 +88,6 @@ class ChatQueryCompilationTest {
         assertThat(bookingRepository).isNotNull();
         assertThat(paymentRepository).isNotNull();
         assertThat(customerRepository).isNotNull();
+        assertThat(feedbackRepository).isNotNull();
     }
 }

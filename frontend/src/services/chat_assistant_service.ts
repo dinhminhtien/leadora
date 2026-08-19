@@ -142,39 +142,66 @@ export const chatAssistantService = {
     let intent: string | undefined;
     let blocked = false;
 
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      // Events are separated by a blank line; the trailing piece may be half an event.
-      const frames = buffer.split("\n\n");
-      buffer = frames.pop() ?? "";
-
-      for (const frame of frames) {
-        const name = /^event:\s*(.*)$/m.exec(frame)?.[1]?.trim();
-        const raw = /^data:\s*(.*)$/m.exec(frame)?.[1];
-        if (!name || !raw) continue;
-        let payload: Record<string, unknown>;
-        try {
-          payload = JSON.parse(raw);
-        } catch {
-          continue; // never let one malformed frame kill the stream
-        }
-
-        if (name === "token") {
-          onToken(String(payload.t ?? ""));
-        } else if (name === "start") {
-          userMessage = payload.userMessage as ChatMessage;
-          intent = payload.intent as string | undefined;
-          blocked = Boolean(payload.blocked);
-          if (userMessage) onStart?.(userMessage, intent, blocked);
-        } else if (name === "done") {
-          assistantMessage = payload.assistantMessage as ChatMessage;
-        } else if (name === "error") {
-          onToken(String(payload.message ?? ""));
-        }
+    const handleFrame = (frame: string) => {
+      const name = /^event:\s*(.*)$/m.exec(frame)?.[1]?.trim();
+      const raw = /^data:\s*(.*)$/m.exec(frame)?.[1];
+      if (!name || !raw) return;
+      let payload: Record<string, unknown>;
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        return; // never let one malformed frame kill the stream
       }
+
+      if (name === "token") {
+        onToken(String(payload.t ?? ""));
+      } else if (name === "start") {
+        userMessage = payload.userMessage as ChatMessage;
+        intent = payload.intent as string | undefined;
+        blocked = Boolean(payload.blocked);
+        if (userMessage) onStart?.(userMessage, intent, blocked);
+      } else if (name === "done") {
+        assistantMessage = payload.assistantMessage as ChatMessage;
+      } else if (name === "error") {
+        onToken(String(payload.message ?? ""));
+      }
+    };
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Events are separated by a blank line; the trailing piece may be half an event.
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+        for (const frame of frames) handleFrame(frame);
+      }
+      // The loop above only ever parses what a blank line has closed off, so a terminal event
+      // that arrives without its trailing blank line — a server completing the response right
+      // after the write, a proxy trimming it — was left sitting in the buffer and dropped. That
+      // event is usually `done`, i.e. exactly the one carrying the finished message.
+      buffer += decoder.decode();
+      if (buffer.trim()) handleFrame(buffer);
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      // The fallback below used to cover only the connection being refused, not the stream dying
+      // midway, so a network blip after the first byte threw out of here with no reply at all.
+      //
+      // Retrying is only safe while the server has no record of the turn. `start` is emitted
+      // straight after the question is persisted, and the gap between that and the first token
+      // spans the whole context gather plus the model's prefill — several seconds. Retrying on
+      // "no token yet" therefore resent questions the server had already stored, giving the
+      // session the same question twice and paying for a second model call. `start` not having
+      // arrived is the real signal that nothing was written.
+      if (userMessage === undefined) {
+        const { data } = await chatAssistantService.sendMessage(sessionId, content);
+        if (data?.assistantMessage) onToken(data.assistantMessage.content);
+        return data;
+      }
+      // The turn is already recorded: keep whatever arrived rather than replacing it with an
+      // error, and let the caller reconcile against the server copy.
     }
 
     return {

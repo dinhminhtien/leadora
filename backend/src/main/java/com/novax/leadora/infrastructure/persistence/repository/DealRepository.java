@@ -300,9 +300,14 @@ public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpec
     @Query("""
             SELECT d FROM DealEntity d
             WHERE (:userId IS NULL OR d.assignedUser.userId = :userId)
+              AND d.createdAt >= :from
+              AND d.createdAt <= :to
             ORDER BY d.createdAt DESC
             """)
-    List<DealEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
+    List<DealEntity> findRecentForChat(@Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from,
+            @Param("to") OffsetDateTime to,
+            Pageable pageable);
 
     /**
      * Per-rep deal totals, one row per (rep, status). Grouping this way avoids CASE expressions,
@@ -312,9 +317,13 @@ public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpec
             SELECT new com.novax.leadora.application.usecase.chat.dto.RepDealStat(
                        u.fullName, d.status, COUNT(d), SUM(d.expectedRevenue))
             FROM DealEntity d JOIN d.assignedUser u
+            WHERE d.createdAt >= :from
+              AND d.createdAt <= :to
             GROUP BY u.fullName, d.status
             """)
-    List<RepDealStat> statsPerAssignee();
+    List<RepDealStat> statsPerAssignee(@Param("from") OffsetDateTime from,
+            @Param("to") OffsetDateTime to);
+
     /**
      * Load the {@link DealEntity} that owns a given quotation.
      *

@@ -12,10 +12,16 @@ import java.util.Map;
  * <p>Areas with no matching records are simply absent from the map; the accessors return zero for
  * them, so callers never have to distinguish "no rows" from "not asked for".
  *
- * @param byArea       status buckets per area
- * @param overdueTasks tasks past their deadline and not closed — derived, never stored (BR-17)
+ * <p>The derived figures are kept out of {@code byArea} on purpose. Each is a second count over
+ * rows already counted under their own status, so leaving them in the map would inflate every
+ * {@link #total} that includes them — an area would report more records than it holds.
+ *
+ * @param byArea            status buckets per area
+ * @param overdueTasks      tasks past their deadline and not closed — derived, never stored (BR-17)
+ * @param lowRatedFeedback  submitted feedback the customer scored 2 or less — derived likewise
  */
-public record ChatCounts(Map<CrmArea, List<StatusBucket>> byArea, long overdueTasks) {
+public record ChatCounts(Map<CrmArea, List<StatusBucket>> byArea, long overdueTasks,
+                         long lowRatedFeedback) {
 
     public List<StatusBucket> of(CrmArea area) {
         return byArea.getOrDefault(area, List.of());

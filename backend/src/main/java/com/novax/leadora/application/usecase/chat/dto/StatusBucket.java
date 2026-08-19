@@ -9,7 +9,10 @@ import java.math.BigDecimal;
  * spanning seven tables, each with its own status type. Callers compare against {@code Xxx.name()}
  * so the enum still supplies the constant.
  *
- * @param amount null for areas that carry no monetary value (leads, tasks, customers)
+ * @param amount null for areas that carry no monetary value (leads, tasks, customers). For
+ *               {@code FEEDBACK} it is not money at all but the mean customer rating of the
+ *               bucket, which is why the field is named for a number rather than for cash — a
+ *               reader who assumes currency here will render "4.2" as a sum of money
  */
 public record StatusBucket(String status, long count, BigDecimal amount) {
 
