@@ -64,4 +64,10 @@ public interface SlaTrackingRepository extends JpaRepository<SlaTrackingEntity, 
                         @Param("end") OffsetDateTime end,
                         @Param("entityType") String entityType,
                         @Param("activityType") String activityType);
+
+        @Query("""
+                        SELECT s.status, s.startedAt, s.deadlineAt, s.resolvedAt
+                        FROM SlaTrackingEntity s
+                        """)
+        List<Object[]> findSummaryMetrics();
 }

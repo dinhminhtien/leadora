@@ -10,6 +10,10 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -26,8 +30,9 @@ import java.util.List;
  *       API from serving the data, not just the sidebar from showing the link (BR-02).</li>
  * </ul>
  *
- * <p>Resolved per request from the database, so an Admin's permission change takes effect on the
- * caller's very next call — no re-login, no token refresh, no cache to invalidate (UC-6.4 POST-2).
+ * <p>Backed by a fast in-memory L1 Caffeine cache (5 min TTL) to avoid hitting PostgreSQL on
+ * every single HTTP request. Can be invalidated immediately via {@link #invalidate(String)}
+ * or {@link #invalidateAll()}.
  */
 @Component
 @RequiredArgsConstructor
@@ -38,11 +43,31 @@ public class JwtAuthoritiesResolver {
     private final UserRepository userRepository;
     private final EffectivePermissionsService effectivePermissionsService;
 
+    private final Cache<String, Collection<GrantedAuthority>> authorityCache = Caffeine.newBuilder()
+            .maximumSize(2000)
+            .expireAfterWrite(Duration.ofMinutes(5))
+            .build();
+
     public Collection<GrantedAuthority> resolve(String email) {
         if (!StringUtils.hasText(email)) {
             return List.of(FALLBACK);
         }
-        return userRepository.findWithRoleByEmailIgnoreCase(email)
+        String key = email.trim().toLowerCase();
+        return authorityCache.get(key, this::loadFromDatabase);
+    }
+
+    public void invalidate(String email) {
+        if (StringUtils.hasText(email)) {
+            authorityCache.invalidate(email.trim().toLowerCase());
+        }
+    }
+
+    public void invalidateAll() {
+        authorityCache.invalidateAll();
+    }
+
+    private Collection<GrantedAuthority> loadFromDatabase(String normalizedEmail) {
+        return userRepository.findWithRoleByEmailIgnoreCase(normalizedEmail)
                 .filter(user -> user.getRole() != null)
                 // BR-04 — a locked account gets no authorities at all, so its still-valid token
                 // fails every @PreAuthorize. Relying on the use cases to reject it is not enough:

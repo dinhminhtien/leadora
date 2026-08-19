@@ -8,6 +8,9 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
+
 @Repository
 public interface InteractTimelineRepository
         extends JpaRepository<InteractTimelineEntity, UUID>, JpaSpecificationExecutor<InteractTimelineEntity> {
@@ -16,4 +19,13 @@ public interface InteractTimelineRepository
     List<InteractTimelineEntity> findByLead_LeadIdOrderByOccurredAtDesc(UUID leadId);
 
     List<InteractTimelineEntity> findByDeal_DealIdOrderByOccurredAtDesc(UUID dealId);
+
+    @Query("""
+            SELECT u.fullName, COUNT(i)
+            FROM InteractTimelineEntity i JOIN i.user u
+            WHERE u.fullName IS NOT NULL
+            GROUP BY u.fullName
+            ORDER BY COUNT(i) DESC
+            """)
+    List<Object[]> findTopUserActivity(Pageable pageable);
 }

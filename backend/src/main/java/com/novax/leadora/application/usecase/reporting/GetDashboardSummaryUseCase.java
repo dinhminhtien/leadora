@@ -72,12 +72,15 @@ public class GetDashboardSummaryUseCase {
 
         long activeLeads = totalLeads - lostLeads - convertedLeads;
 
-        // Lead WoW Growth
-        List<LeadEntity> allLeads = leadRepository.findAll(totalLeadsSpec);
-        long recentLeads = allLeads.stream()
-                .filter(l -> l.getCreatedAt() != null && l.getCreatedAt().isAfter(sevenDaysAgo)).count();
-        long prevLeads = allLeads.stream().filter(l -> l.getCreatedAt() != null
-                && l.getCreatedAt().isAfter(fourteenDaysAgo) && l.getCreatedAt().isBefore(sevenDaysAgo)).count();
+        // Lead WoW Growth (calculated via DB count queries instead of full table scans)
+        Specification<LeadEntity> recentLeadsSpec = totalLeadsSpec.and((r, q, cb) -> cb.greaterThan(r.get("createdAt"), sevenDaysAgo));
+        long recentLeads = leadRepository.count(recentLeadsSpec);
+
+        Specification<LeadEntity> prevLeadsSpec = totalLeadsSpec.and((r, q, cb) -> cb.and(
+                cb.greaterThan(r.get("createdAt"), fourteenDaysAgo),
+                cb.lessThanOrEqualTo(r.get("createdAt"), sevenDaysAgo)));
+        long prevLeads = leadRepository.count(prevLeadsSpec);
+
         double activeLeadsGrowthPct = prevLeads == 0 ? (recentLeads > 0 ? 12.5 : 0.0)
                 : Math.round((double) (recentLeads - prevLeads) / prevLeads * 1000.0) / 10.0;
 
@@ -135,26 +138,31 @@ public class GetDashboardSummaryUseCase {
         long overdueTasks = taskRepository.count(overdueTasksSpec);
 
         // ── SLA Compliance & Response Speed ──────────────────────────────────
-        List<SlaTrackingEntity> slaRecords = slaTrackingRepository.findAll();
+        List<Object[]> slaRecords = slaTrackingRepository.findSummaryMetrics();
         int totalSla = slaRecords.size();
         int compliantCount = 0;
         double totalHrs = 0;
         int resolvedCount = 0;
 
-        for (SlaTrackingEntity e : slaRecords) {
-            if (e.getStatus() == SlaStatus.RESOLVED) {
+        for (Object[] row : slaRecords) {
+            SlaStatus status = (SlaStatus) row[0];
+            OffsetDateTime startedAt = (OffsetDateTime) row[1];
+            OffsetDateTime deadlineAt = (OffsetDateTime) row[2];
+            OffsetDateTime resolvedAt = (OffsetDateTime) row[3];
+
+            if (status == SlaStatus.RESOLVED) {
                 resolvedCount++;
-                if (e.getResolvedAt() != null && e.getDeadlineAt() != null
-                        && !e.getResolvedAt().isAfter(e.getDeadlineAt())) {
+                if (resolvedAt != null && deadlineAt != null
+                        && !resolvedAt.isAfter(deadlineAt)) {
                     compliantCount++;
                 }
-                if (e.getResolvedAt() != null && e.getStartedAt() != null) {
-                    double hrs = Duration.between(e.getStartedAt(), e.getResolvedAt()).toMinutes() / 60.0;
+                if (resolvedAt != null && startedAt != null) {
+                    double hrs = Duration.between(startedAt, resolvedAt).toMinutes() / 60.0;
                     if (hrs >= 0)
                         totalHrs += hrs;
                 }
-            } else if (e.getStatus() == SlaStatus.ACTIVE && e.getDeadlineAt() != null
-                    && !now.isAfter(e.getDeadlineAt())) {
+            } else if (status == SlaStatus.ACTIVE && deadlineAt != null
+                    && !now.isAfter(deadlineAt)) {
                 compliantCount++;
             }
         }
@@ -183,16 +191,13 @@ public class GetDashboardSummaryUseCase {
                     .build());
         }
 
-        // ── Team Activity Leaderboard ────────────────────────────────────────
-        List<InteractTimelineEntity> interactions = interactTimelineRepository.findAll();
-        Map<String, Long> userActionCounts = interactions.stream()
-                .filter(i -> i.getUser() != null && i.getUser().getFullName() != null)
-                .collect(Collectors.groupingBy(i -> i.getUser().getFullName(), Collectors.counting()));
-
-        List<LeaderboardEntry> leaderboard = userActionCounts.entrySet().stream()
-                .map(e -> LeaderboardEntry.builder().name(e.getKey()).actionCount(e.getValue()).build())
-                .sorted(Comparator.comparingLong((LeaderboardEntry e) -> e.getActionCount()).reversed())
-                .limit(5)
+        // ── Team Activity Leaderboard (Top 5 active users in single DB aggregate) ──
+        List<Object[]> topUsers = interactTimelineRepository.findTopUserActivity(org.springframework.data.domain.PageRequest.of(0, 5));
+        List<LeaderboardEntry> leaderboard = topUsers.stream()
+                .map(row -> LeaderboardEntry.builder()
+                        .name((String) row[0])
+                        .actionCount(((Number) row[1]).longValue())
+                        .build())
                 .collect(Collectors.toList());
 
         if (leaderboard.isEmpty()) {

@@ -9,7 +9,10 @@ import java.util.UUID;
 @Entity
 @Table(name = "leads", indexes = {
     @Index(name = "idx_leads_created_at", columnList = "created_at"),
-    @Index(name = "idx_leads_assigned_user_id", columnList = "assigned_user_id")
+    @Index(name = "idx_leads_assigned_user_id", columnList = "assigned_user_id"),
+    @Index(name = "idx_leads_status_created", columnList = "status, created_at"),
+    @Index(name = "idx_leads_assigned_status_created", columnList = "assigned_user_id, status, created_at"),
+    @Index(name = "idx_leads_customer_id", columnList = "customer_id")
 })
 @Getter
 @Setter

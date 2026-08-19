@@ -77,6 +77,8 @@ public class CacheConfig implements CachingConfigurer {
         // honest move is to keep it small. Every report cache is listed — one left out silently
         // falls back to the 10-minute default, which is not what a reporting screen wants.
         Map<String, RedisCacheConfiguration> customConfigs = new HashMap<>();
+        customConfigs.put("dashboard-summary", defaultConfig.entryTtl(Duration.ofMinutes(3)));
+        customConfigs.put("sla-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
         customConfigs.put("sales-performance-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
         customConfigs.put("pipeline-progression-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
         customConfigs.put("quotation-outcome-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
@@ -93,6 +95,7 @@ public class CacheConfig implements CachingConfigurer {
         customConfigs.put("task-performance-report", defaultConfig.entryTtl(Duration.ofMinutes(1)));
         customConfigs.put("product-catalogue", defaultConfig.entryTtl(Duration.ofMinutes(30)));
         customConfigs.put("room-allotment-nights", defaultConfig.entryTtl(Duration.ofSeconds(60)));
+        customConfigs.put("rag-context", defaultConfig.entryTtl(Duration.ofHours(1)));
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaultConfig)
