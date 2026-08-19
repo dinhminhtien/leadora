@@ -192,6 +192,18 @@ export function canAccessPath(
   // rep's pipeline. Gating it on a permission the API ignores just hid a working
   // screen, so the role decides here exactly as it does server-side.
   if (required === "LEAD_VIEW" && role === "MANAGER") return true;
+  // Two screens map to FEEDBACK_VIEW and only one of them is Sales'. `/customer-feedback` is
+  // shared (FeedbackController names SALES), but the ABSA analytics behind `/analytics/sentiment`
+  // are Manager-only server-side — every method on SentimentAnalyticsController is
+  // hasRole('MANAGER'). FEEDBACK_VIEW is applicable to Sales and an Admin may grant it, and the
+  // moment they did, a Sales rep got a "GX Insights" nav item leading to a screen whose every
+  // request 403s. The permission cannot tell the two screens apart, so the role does.
+  if (
+    matchesAny([ROUTE_PATHS.sentimentAnalytics], pathname) &&
+    role !== "MANAGER"
+  ) {
+    return false;
+  }
   // Quotation approval is Manager-only on the backend (@PreAuthorize hasRole('MANAGER'))
   // — enforce that here too, so a stray QUOTATION_APPROVE grant to a non-manager role
   // can't surface a nav link / route whose API calls would just 403 anyway.

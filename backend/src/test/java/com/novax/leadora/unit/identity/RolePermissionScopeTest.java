@@ -120,12 +120,45 @@ class RolePermissionScopeTest {
     }
 
     /**
-     * The reverse direction is deliberately not asserted. An endpoint may name a role for a code the
-     * scope still withholds, because reachability needs a screen as well as an annotation: Front
-     * Office is in {@code PaymentController}'s role list, yet no Front Office route opens the
-     * payments screen, so {@code PAYMENT_*} stays out of its scope (and out of SRS §2.2.2's actor
-     * list for UC-21.x). Narrower than the annotations is a decision; broader is a bug.
+     * The reverse direction, which used to be left unasserted on the reasoning that "narrower than
+     * the annotations is a decision, broader is a bug".
+     *
+     * <p>That reasoning cost the Front Office desk its payment screen. {@code PAYMENT_*} was
+     * withheld from FO because "no Front Office route opens the payments screen" — but
+     * {@code FO_ROUTES} did open it, the screen had FO-specific branches, and the seed granted the
+     * codes. So the desk worked until an Admin saved the FO row, at which point
+     * {@code ConfigureRolePermissionsUseCase} pruned the codes as inapplicable and the grid offered
+     * no toggle to restore them. A silent, one-way loss of a working feature.
+     *
+     * <p>A deliberate withholding is still allowed, but it now has to be written down here rather
+     * than inferred from the absence of a row. The list is empty: every (role, code) pair an
+     * endpoint honours is a pair the grid offers.
      */
+    private static final Map<String, Set<String>> WITHHELD_ON_PURPOSE = Map.of();
+
+    @Test
+    @DisplayName("Every code an endpoint honours for a role is offered by the grid, or explained")
+    void everyBackedCodeIsOfferedOrExplained() throws Exception {
+        Map<String, Set<String>> pairs = pairsFromAnnotations();
+
+        for (String role : new String[]{"SALES", "MANAGER", "FO", "RESERVATION"}) {
+            Set<String> honoured = new HashSet<>(pairs.getOrDefault(role, Set.of()));
+            if (role.equals("FO")) {
+                honoured.addAll(pairs.getOrDefault("FRONT_OFFICE", Set.of()));
+            }
+            Set<String> unoffered = new TreeSet<>(honoured);
+            unoffered.removeAll(RolePermissionScope.applicableCodes(role));
+            unoffered.removeAll(WITHHELD_ON_PURPOSE.getOrDefault(role, Set.of()));
+
+            assertThat(unoffered)
+                    .as("An endpoint honours %s for %s, but the UC-6.4 grid offers no toggle for it "
+                            + "— the grant survives only until the first Save, and cannot be "
+                            + "restored. Either add it to the role's scope, or narrow the "
+                            + "@PreAuthorize so the role never reaches it.", unoffered, role)
+                    .isEmpty();
+        }
+    }
+
     @Test
     @DisplayName("A role's default grant never exceeds what it can use")
     void defaultsStayInsideTheScope() {
@@ -139,10 +172,19 @@ class RolePermissionScopeTest {
     }
 
     @Test
-    @DisplayName("The desks are narrow, and Front Office holds neither payments nor chat")
+    @DisplayName("The desks stay narrow: Front Office is arrivals, payment settlement and nothing more")
     void desksStayNarrow() {
+        // Stated as a boundary, not as an exact set. This assertion used to pin FO with
+        // containsExactlyInAnyOrder(HANDOVER_VIEW, HANDOVER_WRITE, NOTIFICATION_VIEW), and that is
+        // precisely what let the payment grant rot: when the desk gained a payments screen, the
+        // test did not notice the scope was now wrong — it *defended* the stale answer, and anyone
+        // adding the codes had to delete an assertion that looked deliberate. The exact set is
+        // pinned by everyBackedCodeIsOfferedOrExplained against the annotations, which move with
+        // the feature. What belongs here is only the invariant: no desk gets a sales surface.
         assertThat(RolePermissionScope.applicableCodes("FO"))
-                .containsExactlyInAnyOrder("HANDOVER_VIEW", "HANDOVER_WRITE", "NOTIFICATION_VIEW");
+                .contains("HANDOVER_VIEW", "HANDOVER_WRITE", "NOTIFICATION_VIEW")
+                .doesNotContain("CHAT_VIEW", "LEAD_VIEW", "DEAL_VIEW", "QUOTATION_VIEW",
+                        "REPORTING_VIEW", "SLA_VIEW", "BOOKING_WRITE");
         assertThat(RolePermissionScope.applicableCodes("RESERVATION"))
                 .doesNotContain("CHAT_VIEW", "LEAD_VIEW", "DEAL_VIEW");
         // An unmodelled role is offered nothing rather than everything.
