@@ -90,9 +90,17 @@ public class TaskController {
                 .body(ApiResponse.success(task, "Task resigned successfully"));
     }
 
-    /** UC-17.5 — Resolve SLA Task (marks COMPLETED + resolves SLA tracking + cancels reminders) */
+    /**
+     * UC-17.5 — Resolve SLA Task (marks COMPLETED + resolves SLA tracking + cancels reminders).
+     *
+     * <p>Gated like every other write on this controller. It was {@code isAuthenticated()}, which
+     * put the one endpoint that closes a task, resolves its SLA record and cancels its reminders
+     * outside the permission model entirely: an Admin could revoke TASK_WRITE and this would keep
+     * answering. {@code TaskAccessPolicy} still scoped it per record, so nothing was exploitable —
+     * but "no code" also means "no toggle", and the grid is meant to describe the whole API.
+     */
     @PatchMapping("/{taskId}/resolve")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('SALES','MANAGER') and @access.can('TASK_WRITE')")
     public ResponseEntity<ApiResponse<TaskResponse>> resolveTask(
             @PathVariable UUID taskId,
             @Valid @RequestBody ResolveTaskRequest request) {

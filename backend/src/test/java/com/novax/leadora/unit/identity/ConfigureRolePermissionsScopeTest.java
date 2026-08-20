@@ -56,6 +56,7 @@ class ConfigureRolePermissionsScopeTest {
     @Mock private UserRepository userRepository;
     @Mock private SystemAuditLogService systemAuditLogService;
     @Mock private CurrentUserProvider currentUserProvider;
+    @Mock private com.novax.leadora.common.security.JwtAuthoritiesResolver jwtAuthoritiesResolver;
 
     private ConfigureRolePermissionsUseCase useCase;
 
@@ -67,7 +68,13 @@ class ConfigureRolePermissionsScopeTest {
             "CHAT_VIEW", 4,
             "PAYMENT_VIEW", 5,
             "PAYMENT_WRITE", 6,
-            "LEAD_VIEW", 7
+            "LEAD_VIEW", 7,
+            // The out-of-scope pair these tests prune. It used to be PAYMENT_*, which stopped
+            // working as an example once the arrival desk was given the payment settlement it had
+            // always had everywhere except RolePermissionScope. Reservation status is a genuine
+            // Reservation-desk surface with no Front Office route.
+            "RESERVATION_VIEW", 8,
+            "RESERVATION_WRITE", 9
     );
 
     private List<PermissionEntity> catalogue;
@@ -108,7 +115,7 @@ class ConfigureRolePermissionsScopeTest {
         useCase = new ConfigureRolePermissionsUseCase(
                 roleRepository, permissionRepository, rolePermissionRepository, userRepository,
                 new PermissionDependencyResolver(permissionRepository),
-                systemAuditLogService, currentUserProvider);
+                systemAuditLogService, currentUserProvider, jwtAuthoritiesResolver);
     }
 
     private void givenRole(String roleName) {
@@ -135,9 +142,9 @@ class ConfigureRolePermissionsScopeTest {
         UpdateRolePermissionsRequest request = new UpdateRolePermissionsRequest();
         request.setPermissionIds(List.of(
                 CODES.get("HANDOVER_VIEW"),
-                CODES.get("CHAT_VIEW"),       // ChatController is SALES/MANAGER only
-                CODES.get("PAYMENT_VIEW"),    // no Front Office payments screen exists
-                CODES.get("LEAD_VIEW")));     // not remotely this desk's job
+                CODES.get("CHAT_VIEW"),          // ChatController is SALES/MANAGER only
+                CODES.get("RESERVATION_VIEW"),   // no Front Office reservation-status screen
+                CODES.get("LEAD_VIEW")));        // not remotely this desk's job
 
         RoleResponse response = useCase.execute(9, request);
 
@@ -153,11 +160,11 @@ class ConfigureRolePermissionsScopeTest {
         givenRole("FO");
 
         UpdateRolePermissionsRequest request = new UpdateRolePermissionsRequest();
-        // PAYMENT_WRITE is out of scope and so is its PAYMENT_VIEW prerequisite: neither may
-        // survive, and the handover pair must not be collateral damage.
+        // RESERVATION_WRITE is out of scope and so is its RESERVATION_VIEW prerequisite: neither
+        // may survive, and the handover pair must not be collateral damage.
         request.setPermissionIds(List.of(
                 CODES.get("HANDOVER_VIEW"), CODES.get("HANDOVER_WRITE"),
-                CODES.get("PAYMENT_VIEW"), CODES.get("PAYMENT_WRITE")));
+                CODES.get("RESERVATION_VIEW"), CODES.get("RESERVATION_WRITE")));
 
         useCase.execute(9, request);
 

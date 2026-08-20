@@ -58,8 +58,18 @@ public class BookingController {
         return ResponseEntity.ok(ApiResponse.success(bookings));
     }
 
-    /** UC-18.4 — View Booking Request Detail */
+    /**
+     * UC-18.4 — View Booking Request Detail.
+     *
+     * <p>Front Office is named here and nowhere else on this controller. The arrival desk never
+     * triages the booking queue, but {@code DepositPaymentScreen}'s "Print receipt" resolves the
+     * booking behind a payment the desk is settling, and that call 403'd for FO — the receipt
+     * failed silently at the one counter that prints receipts. Detail only: the list stays with the
+     * desks that own the queue.
+     */
     @GetMapping("/{bookingId}")
+    @PreAuthorize("hasAnyRole('SALES','RESERVATION','MANAGER','ADMIN','FO','FRONT_OFFICE') "
+            + "and @access.can('BOOKING_VIEW')")
     public ResponseEntity<ApiResponse<BookingResponse>> getBookingDetail(
             @PathVariable UUID bookingId
     ) {

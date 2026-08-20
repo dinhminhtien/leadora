@@ -4,6 +4,7 @@ import com.novax.leadora.api.dto.request.CreateUserRequest;
 import com.novax.leadora.api.dto.response.UserAccountResponse;
 import com.novax.leadora.application.usecase.audit.SystemAuditLogService;
 import com.novax.leadora.application.usecase.identity.CreateUserUseCase;
+import com.novax.leadora.common.exception.BusinessException;
 import com.novax.leadora.application.usecase.activitylog.ActivityLogPublisher;
 import com.novax.leadora.common.exception.ResourceNotFoundException;
 import com.novax.leadora.common.security.CurrentUserProvider;
@@ -159,7 +160,7 @@ class CreateUserUseCaseTest {
     }
 
     @Test
-    @DisplayName("UT-CREATEUSER-05: Weak password (no symbol) → throws IllegalStateException")
+    @DisplayName("UT-CREATEUSER-05: Weak password (no symbol) → throws WEAK_PASSWORD")
     void testWeakPasswordThrows() {
         CreateUserRequest request = buildValidRequest();
         request.setPassword("WeakPass1");
@@ -168,8 +169,12 @@ class CreateUserUseCaseTest {
         when(userRepository.existsByEmailIgnoreCase("nguyenvana@leadora.vn")).thenReturn(false);
         when(roleRepository.findById(2)).thenReturn(Optional.of(staffRole));
 
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
+        // Typed refusal rather than IllegalStateException: PasswordPolicy now serves all four
+        // password flows, and the code is what lets the form point at the password box instead of
+        // showing a generic banner. Same rule, same message, same 422 - only the envelope changed.
+        BusinessException ex = assertThrows(BusinessException.class,
                 () -> createUserUseCase.execute(request));
+        assertEquals("WEAK_PASSWORD", ex.getErrorCode());
         assertTrue(ex.getMessage().contains("Password must contain"));
     }
 }

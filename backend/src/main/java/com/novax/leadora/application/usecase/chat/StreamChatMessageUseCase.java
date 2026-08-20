@@ -3,7 +3,9 @@ package com.novax.leadora.application.usecase.chat;
 import com.novax.leadora.api.dto.response.ChatMessageResponse;
 import com.novax.leadora.application.usecase.chat.intent.CrmArea;
 import com.novax.leadora.application.usecase.chat.intent.IntentClassifier;
+import com.novax.leadora.application.usecase.chat.intent.DateRangeResolver;
 import com.novax.leadora.application.usecase.chat.intent.IntentResult;
+import com.novax.leadora.application.usecase.chat.time.ChatDateRange;
 import com.novax.leadora.infrastructure.integration.ai.ChatLlmService;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import lombok.extern.slf4j.Slf4j;
@@ -52,15 +54,18 @@ public class StreamChatMessageUseCase {
 
     private final ChatTurnWriter turnWriter;
     private final IntentClassifier intentClassifier;
+    private final DateRangeResolver dateRangeResolver;
     private final ContextAssembler contextAssembler;
     private final ChatLlmService chatLlmService;
     private final Executor executor;
 
     public StreamChatMessageUseCase(ChatTurnWriter turnWriter, IntentClassifier intentClassifier,
+                                    DateRangeResolver dateRangeResolver,
                                     ContextAssembler contextAssembler, ChatLlmService chatLlmService,
                                     @Qualifier("chatStreamExecutor") Executor executor) {
         this.turnWriter = turnWriter;
         this.intentClassifier = intentClassifier;
+        this.dateRangeResolver = dateRangeResolver;
         this.contextAssembler = contextAssembler;
         this.chatLlmService = chatLlmService;
         this.executor = executor;
@@ -76,7 +81,15 @@ public class StreamChatMessageUseCase {
         SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MS);
         ChatActor actor = ChatActor.from(user);
 
-        emitter.onTimeout(emitter::complete);
+        // A terminal event, then close — never a bare close. A stream that ends without `done` or
+        // `error` leaves the client with tokens it cannot attribute to a message, and the reply it
+        // just watched arrive disappears off the screen.
+        emitter.onTimeout(() -> {
+            log.warn("Chat stream for session {} timed out after {}ms", sessionId, STREAM_TIMEOUT_MS);
+            trySend(emitter, "error", Map.of("message",
+                    GuardrailMessages.systemError(IntentClassifier.isVietnamese(content))));
+            emitter.complete();
+        });
         emitter.onError(ex -> log.debug("Chat stream for session {} ended early: {}",
                 sessionId, ex.getMessage()));
 
@@ -85,14 +98,20 @@ public class StreamChatMessageUseCase {
     }
 
     private void run(SseEmitter emitter, UUID sessionId, ChatActor actor, String content) {
+        // Tracked outside the try because the recovery path needs to know whether the question was
+        // ever recorded: if begin() itself failed there is nothing to answer, and writing a reply
+        // anyway could append to a session this caller does not own.
+        ChatTurnContext ctx = null;
+        boolean vi = IntentClassifier.isVietnamese(content);
         try {
-            ChatTurnContext ctx = turnWriter.begin(sessionId, actor, content);
+            ctx = turnWriter.begin(sessionId, actor, content);
             List<String> priorUserMessages = ctx.priorUserMessages();
 
             // Language and subject areas are resolved across the session, not from this turn
             // alone: a follow-up carries neither signal on its own.
-            boolean vi = IntentClassifier.resolveVietnamese(content, priorUserMessages);
+            vi = IntentClassifier.resolveVietnamese(content, priorUserMessages);
             Set<CrmArea> areas = IntentClassifier.resolveAreas(content, priorUserMessages);
+            ChatDateRange range = dateRangeResolver.resolve(content, priorUserMessages);
 
             IntentResult intent = intentClassifier.classify(content, ctx.lastIntent(), vi);
             send(emitter, "start", Map.of(
@@ -108,7 +127,7 @@ public class StreamChatMessageUseCase {
             }
 
             String referenceBlock =
-                    contextAssembler.assemble(intent.intent(), actor, areas, content);
+                    contextAssembler.assemble(intent.intent(), actor, areas, content, range);
 
             StringBuilder full = new StringBuilder();
             try {
@@ -148,10 +167,45 @@ public class StreamChatMessageUseCase {
             emitter.complete();
         } catch (Exception ex) {
             log.error("Chat stream failed for session {}: {}", sessionId, ex.getMessage(), ex);
-            trySend(emitter, "error", Map.of("message",
-                    GuardrailMessages.systemError(IntentClassifier.isVietnamese(content))));
-            emitter.complete();
+            recover(emitter, sessionId, ctx, ex, vi);
         }
+    }
+
+    /**
+     * Ends a failed turn with an answer rather than with silence.
+     *
+     * <p>The question is persisted at the very start of the turn, so a failure anywhere after that
+     * used to leave the conversation holding a question with no reply — and unlike a transient
+     * error banner, that survives a page reload for ever. The user sees a message they sent that
+     * was simply never answered, which reads as "the assistant ignored me" rather than "something
+     * broke". Worse, the next turn replays that history to the model.
+     *
+     * <p>So the failure itself becomes the reply: recorded like any other assistant turn and
+     * delivered as a normal {@code done}, which means the client needs no special case and the
+     * explanation is still there tomorrow.
+     *
+     * <p>Falls back to a transient {@code error} event only when the recording itself fails —
+     * typically because the database is the thing that broke — or when the question was never
+     * recorded, in which case there is no turn to answer and writing one could append to a session
+     * this caller does not own.
+     */
+    private void recover(SseEmitter emitter, UUID sessionId, ChatTurnContext ctx,
+                         Exception cause, boolean vietnamese) {
+        String message = AiErrorClassifier.userMessage(cause, vietnamese);
+        if (ctx != null) {
+            try {
+                ChatMessageResponse assistant = turnWriter.complete(sessionId, message, null);
+                trySend(emitter, "token", Map.of("t", message));
+                trySend(emitter, "done", Map.of("assistantMessage", assistant));
+                emitter.complete();
+                return;
+            } catch (Exception persistFailed) {
+                log.error("Could not record the failure reply for session {}: {}",
+                        sessionId, persistFailed.getMessage(), persistFailed);
+            }
+        }
+        trySend(emitter, "error", Map.of("message", GuardrailMessages.systemError(vietnamese)));
+        emitter.complete();
     }
 
     private void finish(SseEmitter emitter, UUID sessionId, String reply, String intentName) {

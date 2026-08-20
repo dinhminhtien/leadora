@@ -57,7 +57,7 @@ public class CreateUserUseCase {
             throw new IllegalStateException("The Admin role cannot be assigned to a new account.");
         }
 
-        validatePasswordComplexity(request.getPassword());
+        PasswordPolicy.validate(request.getPassword());
 
         UserEntity user = UserEntity.builder()
                 .fullName(request.getFullName().trim())
@@ -88,21 +88,5 @@ public class CreateUserUseCase {
                 null);
 
         return UserAccountResponse.from(savedUser);
-    }
-
-    private void validatePasswordComplexity(String password) {
-        if (password == null || password.length() < 6) {
-            throw new IllegalStateException("Password must be at least 6 characters.");
-        }
-        boolean hasUppercase = password.chars().anyMatch(Character::isUpperCase);
-        boolean hasLowercase = password.chars().anyMatch(Character::isLowerCase);
-        boolean hasDigit = password.chars().anyMatch(Character::isDigit);
-        boolean hasSymbol = password.chars()
-                .anyMatch(ch -> !Character.isLetterOrDigit(ch) && !Character.isWhitespace(ch));
-
-        if (!hasUppercase || !hasLowercase || !hasDigit || !hasSymbol) {
-            throw new IllegalStateException(
-                    "Password must contain at least one lowercase letter, one uppercase letter, one digit, and one symbol.");
-        }
     }
 }

@@ -153,10 +153,15 @@ public class UpdatePaymentStatusUseCase {
             }
         }
 
-        // RBAC: FRONT_OFFICE receptionist can only mark payments as PAID (skip for system actor == null)
+        // RBAC: the arrival desk can only mark payments as PAID (skip for system actor == null).
+        //
+        // Both spellings, because the `roles` table holds `FO` and `FRONT_OFFICE` is the legacy
+        // name (see RbacRoles). Matching only the legacy one meant this rule never fired for a real
+        // Front Office user: the desk that is capped at "confirm paid" in the UI could set any
+        // status at all through the API, and the cap read as enforced because the button was hidden.
         if (actor != null && actor.getRole() != null) {
             String roleName = actor.getRole().getRoleName();
-            if ("FRONT_OFFICE".equalsIgnoreCase(roleName)) {
+            if ("FO".equalsIgnoreCase(roleName) || "FRONT_OFFICE".equalsIgnoreCase(roleName)) {
                 if (newStatus != PaymentStatus.PAID) {
                     throw new IllegalStateException("Front office staff can only mark payments as PAID.");
                 }

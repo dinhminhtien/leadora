@@ -145,4 +145,26 @@ class ChangePasswordUseCaseTest {
                 () -> changePasswordUseCase.execute("user-id", request));
         assertEquals("WEAK_PASSWORD", ex.getErrorCode());
     }
+
+    /**
+     * Regression: this flow used to check the four character classes and <b>no length at all</b>,
+     * because its copy of the rule had drifted from the other three. "Ab1!" satisfies every class
+     * and is four characters, so it was an acceptable new password here while being refused on
+     * create, update and reset. PasswordPolicy is now the only copy, so it cannot drift again.
+     */
+    @Test
+    @DisplayName("UT-CHANGEPWD-07: New password shorter than 6 chars → throws PASSWORD_TOO_SHORT")
+    void testTooShortPasswordRejected() {
+        UserEntity user = buildUser();
+        ChangePasswordRequest request = buildRequest("OldPass123!", "Ab1!");
+
+        when(currentUserProvider.resolve(anyString())).thenReturn(user);
+        when(passwordEncoder.matches("OldPass123!", user.getPasswordHash())).thenReturn(true);
+        when(passwordEncoder.matches("Ab1!", user.getPasswordHash())).thenReturn(false);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> changePasswordUseCase.execute("user-id", request));
+        assertEquals("PASSWORD_TOO_SHORT", ex.getErrorCode());
+        verify(userRepository, never()).save(any(UserEntity.class));
+    }
 }

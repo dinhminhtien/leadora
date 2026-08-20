@@ -218,9 +218,14 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
     @Query("""
             SELECT q FROM QuotationEntity q
             WHERE (:userId IS NULL OR q.deal.assignedUser.userId = :userId)
+              AND q.createdAt >= :from
+              AND q.createdAt <= :to
             ORDER BY q.createdAt DESC
             """)
-    List<QuotationEntity> findRecentForChat(@Param("userId") UUID userId, Pageable pageable);
+    List<QuotationEntity> findRecentForChat(@Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from,
+            @Param("to") OffsetDateTime to,
+            Pageable pageable);
 
     @Query("SELECT q.quotationId FROM QuotationEntity q WHERE q.deal.assignedUser.userId = :userId")
     List<UUID> findQuotationIdsByAssignedUser_UserId(@Param("userId") UUID userId);

@@ -45,7 +45,17 @@ const API_PROXY_TARGET =
 
 const nextConfig: NextConfig = {
   experimental: {
-    optimizePackageImports: ["lucide-react"],
+    optimizePackageImports: ["lucide-react", "recharts", "date-fns"],
+  },
+  compress: true,
+  images: {
+    formats: ["image/avif", "image/webp"],
+  },
+  compiler: {
+    removeConsole:
+      process.env.NODE_ENV === "production"
+        ? { exclude: ["error", "warn"] }
+        : false,
   },
   turbopack: {},
   async rewrites() {

@@ -16,16 +16,20 @@ import java.util.Set;
  *
  * <p><b>What "applicable" means here.</b> A code is applicable to a role when the role can reach a
  * working surface guarded by it — i.e. some {@code @PreAuthorize} names both the role and the code,
- * <em>and</em> a screen exists that a user in that role can open. Both halves matter. Front Office
- * appears in {@code PaymentController}'s role list, but no Front Office route reaches the payments
- * screen, so {@code PAYMENT_*} is not applicable to it — which is also what SRS §2.2.2 says, where
- * UC-21.x lists only Sales Staff, Sales Manager and Admin.
+ * <em>and</em> a screen exists that a user in that role can open. Both halves matter, and both are
+ * evidence about the same question, so a disagreement between them is a bug to resolve rather than
+ * a licence to withhold. Front Office and {@code PAYMENT_*} was exactly that case: this file called
+ * the payments screen unreachable for the desk while {@code FO_ROUTES}, the screen's own FO
+ * branches, the controller, the access policy, the use case and the seed all implemented it. The
+ * answer was to correct this file, not to keep the four other layers honest by hand.
  *
  * <p><b>Keeping this honest.</b> These sets are a hand-maintained mirror of the annotations, and
  * nothing in the compiler ties the two together. {@code RolePermissionScopeTest} reads the codes
- * out of the {@code @PreAuthorize} expressions by reflection and fails if a role is declared
- * applicable for a code no endpoint pairs it with — so the drift is caught by the build rather than
- * by a user wondering why a toggle did nothing.
+ * out of the {@code @PreAuthorize} expressions by reflection and checks <em>both</em> directions:
+ * no role may be offered a code no endpoint pairs it with, and no endpoint may honour a code the
+ * grid never offers. The second direction is what let the Front Office payment grant rot — an
+ * endpoint kept answering for a code the Admin screen had quietly stopped offering, so the feature
+ * worked until the first Save and then vanished with no way back.
  */
 public final class RolePermissionScope {
 
@@ -91,11 +95,24 @@ public final class RolePermissionScope {
     );
 
     // ── Front Office desk ───────────────────────────────────────────────────────────────────────
-    // Three codes, and that is the whole job (SRS §2.2.2: Front Office Handover Management is the
-    // only feature listing Front Office Staff as an actor, plus Notification Management).
-    // PAYMENT_* is deliberately absent — see the class javadoc.
+    // The arrival desk, plus the one money task that happens at the counter.
+    //
+    // PAYMENT_* used to be withheld here on the reading that no Front Office route reached the
+    // payments screen. That reading was already false everywhere except this file: FO_ROUTES opens
+    // /payments, DepositPaymentScreen is written around the desk (it hides the Generate-Requests
+    // tab and Cancel-request for FO but deliberately keeps "Confirm paid"), PaymentController names
+    // FO on both the read and the write, PaymentAccessPolicy lists it in GLOBAL_ROLES,
+    // UpdatePaymentStatusUseCase carries an FO-only rule capping it at PAID, and the seed grants
+    // it. Withholding it here did not disable the feature — it armed a trap: the codes stayed live
+    // until an Admin saved the FO row, at which point applicableCodes pruned them and no toggle
+    // existed to put them back.
+    //
+    // BOOKING_VIEW is the receipt: "Print receipt" resolves the booking behind the payment. Only
+    // the detail endpoint names FO; the list stays with the desks that triage bookings.
     private static final Set<String> FRONT_OFFICE = Set.of(
             "HANDOVER_VIEW", "HANDOVER_WRITE",
+            "PAYMENT_VIEW", "PAYMENT_WRITE",
+            "BOOKING_VIEW",
             "NOTIFICATION_VIEW"
     );
 
@@ -144,7 +161,8 @@ public final class RolePermissionScope {
     );
 
     private static final Set<String> FRONT_OFFICE_DEFAULT = Set.of(
-            "HANDOVER_VIEW", "HANDOVER_WRITE", "PAYMENT_VIEW", "PAYMENT_WRITE", "NOTIFICATION_VIEW"
+            "HANDOVER_VIEW", "HANDOVER_WRITE", "PAYMENT_VIEW", "PAYMENT_WRITE", "BOOKING_VIEW",
+            "NOTIFICATION_VIEW"
     );
 
     private static final Set<String> RESERVATION_DEFAULT = Set.of(

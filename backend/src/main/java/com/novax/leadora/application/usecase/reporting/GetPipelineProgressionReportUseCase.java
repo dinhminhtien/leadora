@@ -223,6 +223,14 @@ public class GetPipelineProgressionReportUseCase {
         return Math.max(0, Duration.between(start, end).toDays());
     }
 
+    /**
+     * Display name for a stage.
+     *
+     * <p>Exhaustive on purpose — no {@code default}. A switch expression without one fails to
+     * compile when a constant is added, which is how the pipeline rename was caught here at all:
+     * the alternative is a report that silently labels every new stage "Other" and looks fine.
+     * Keep it exhaustive when the pipeline changes again.
+     */
     private String label(DealPipelineStage stage) {
         return switch (stage) {
             case INQUIRY -> "Inquiry";

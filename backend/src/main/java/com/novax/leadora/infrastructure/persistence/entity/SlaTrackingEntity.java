@@ -10,7 +10,9 @@ import java.util.UUID;
 @Table(name = "sla_tracking", indexes = {
     // UC-23.3 filters and orders by started_at; the schedulers probe status + a deadline column.
     @Index(name = "idx_sla_tracking_started_at", columnList = "started_at"),
-    @Index(name = "idx_sla_tracking_status", columnList = "status")
+    @Index(name = "idx_sla_tracking_status", columnList = "status"),
+    @Index(name = "idx_sla_tracking_status_deadline", columnList = "status, deadline_at"),
+    @Index(name = "idx_sla_tracking_entity", columnList = "entity_type, entity_id")
 })
 @Getter
 @Setter

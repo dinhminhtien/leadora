@@ -88,10 +88,14 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID>, JpaSpec
                         SELECT t FROM TaskEntity t
                         WHERE (:userId IS NULL OR t.assignedUser.userId = :userId)
                           AND t.status NOT IN :closedStatuses
+                          AND t.createdAt >= :from
+                          AND t.createdAt <= :to
                         ORDER BY t.endAt ASC NULLS LAST
                         """)
         List<TaskEntity> findOpenForChat(@Param("userId") UUID userId,
                         @Param("closedStatuses") List<TaskStatus> closedStatuses,
+                        @Param("from") OffsetDateTime from,
+                        @Param("to") OffsetDateTime to,
                         Pageable pageable);
 
         @Query("SELECT t.taskId FROM TaskEntity t WHERE t.assignedUser.userId = :userId")

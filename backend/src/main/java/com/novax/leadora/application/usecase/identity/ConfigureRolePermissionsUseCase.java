@@ -45,13 +45,15 @@ public class ConfigureRolePermissionsUseCase {
     private final PermissionDependencyResolver permissionDependencyResolver;
     private final SystemAuditLogService systemAuditLogService;
     private final CurrentUserProvider currentUserProvider;
+    private final com.novax.leadora.common.security.JwtAuthoritiesResolver jwtAuthoritiesResolver;
 
     @Transactional
     public RoleResponse execute(Integer roleId, UpdateRolePermissionsRequest request) {
         RoleEntity role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
 
-        // Only the two permission-driven job roles can be reconfigured. Admin is
+        // Only the permission-driven job roles can be reconfigured - SALES, MANAGER, FO and
+        // RESERVATION, per RbacRoles.CONFIGURABLE. Admin is
         // refused with its
         // own message because the reason differs: it is not "unsupported", it already
         // holds
@@ -125,6 +127,8 @@ public class ConfigureRolePermissionsUseCase {
                 currentUserProvider.resolveQuietly(),
                 codesOf(currentIds), codesOf(desired),
                 "role=" + role.getRoleName() + " (id=" + roleId + "), affectedUsers=" + userCount);
+
+        jwtAuthoritiesResolver.invalidateAll();
 
         return RoleResponse.from(role, permissions, userCount);
     }

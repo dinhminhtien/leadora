@@ -20,6 +20,8 @@ import {
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import { ToolCardGrid, type ToolCardItem } from "@/components/ui/tool-card";
 import { DashboardScreen } from "@/features/reporting/screens/DashboardScreen";
+import { canAccessPath, getUserRole } from "@/shared/auth/access";
+import { useAuthStore } from "@/stores/auth_store";
 
 const MANAGER_TOOLS: ToolCardItem[] = [
   {
@@ -60,13 +62,21 @@ const MANAGER_TOOLS: ToolCardItem[] = [
 ];
 
 export function ManagerDashboardScreen() {
+  const user = useAuthStore((s) => s.user);
+  const role = getUserRole(user);
+  const permissions = user?.permissions ?? [];
+
+  // Filtered through the same gate as the sidebar and command palette. These cards were a fixed
+  // list, so revoking a Manager's SLA_VIEW or FEEDBACK_VIEW in UC-6.4 left the tile on their home
+  // screen — clicking it bounced straight back here via the layout's route guard. The dashboard is
+  // the one surface that still described the old permission set.
+  const tools = MANAGER_TOOLS.filter((t) => canAccessPath(role, t.href, permissions));
+
   return (
     <div className="space-y-6">
-      <ToolCardGrid
-        title="Manager tools"
-        icon={ShieldCheck}
-        items={MANAGER_TOOLS}
-      />
+      {tools.length > 0 && (
+        <ToolCardGrid title="Manager tools" icon={ShieldCheck} items={tools} />
+      )}
 
       {/* Team-wide sales pipeline analytics (shared dashboard foundation). */}
       <DashboardScreen />

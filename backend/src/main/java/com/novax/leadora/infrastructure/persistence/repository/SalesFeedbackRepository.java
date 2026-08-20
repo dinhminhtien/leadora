@@ -1,6 +1,8 @@
 package com.novax.leadora.infrastructure.persistence.repository;
 
 import com.novax.leadora.infrastructure.persistence.entity.SalesFeedbackEntity;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
@@ -20,6 +22,34 @@ public interface SalesFeedbackRepository extends JpaRepository<SalesFeedbackEnti
     List<SalesFeedbackEntity> findByCustomer_CustomerId(UUID customerId);
     List<SalesFeedbackEntity> findByBooking_BookingId(UUID bookingId);
     boolean existsByBooking_BookingIdAndSubmittedAtIsNotNull(UUID bookingId);
+
+    // ── Chat-assistant snapshot ───────────────────────────────────────────────
+    // A null :userId means "every feedback" (Manager/Admin scope); a non-null value restricts to
+    // the rep the customer was rating. One parameterised query serves both, so the BR-36 filter is
+    // always applied in SQL and cannot be forgotten by a caller branching in Java.
+
+    /**
+     * Newest submitted feedback first, for the assistant's listing.
+     *
+     * <p>Unsubmitted rows are excluded rather than shown as pending answers: a row exists from the
+     * moment the survey link is issued, and one nobody has answered is not a customer opinion. The
+     * window is applied to {@code submittedAt} for the same reason — see
+     * {@code ChatAggregateRepository.dated}, whose count branch this listing has to mirror exactly,
+     * or the listing header will describe rows the counts never included.
+     */
+    @EntityGraph(attributePaths = {"customer", "salesStaff"})
+    @Query("""
+            SELECT f FROM SalesFeedbackEntity f
+            WHERE (:userId IS NULL OR f.salesStaff.userId = :userId)
+              AND f.submittedAt IS NOT NULL
+              AND f.submittedAt >= :from
+              AND f.submittedAt <= :to
+            ORDER BY f.submittedAt DESC
+            """)
+    List<SalesFeedbackEntity> findRecentForChat(@Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from,
+            @Param("to") OffsetDateTime to,
+            Pageable pageable);
 
     @Query("SELECT f.salesStaff.userId as staffId, " +
            "COUNT(f) as totalFeedbacks, " +

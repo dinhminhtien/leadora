@@ -10,17 +10,24 @@
  */
 
 import Link from "next/link";
-import { ArrowUpRight, CreditCard, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowUpRight, CreditCard, History, KeyRound, Sparkles } from "lucide-react";
 
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
+import { canAccessPath, getUserRole } from "@/shared/auth/access";
 import { useAuthStore } from "@/stores/auth_store";
 import { GreetingBar } from "@/components/ui/kpi-card";
 import { cn } from "@/lib/utils";
 
 /**
- * Two wide cards rather than the 5-up `ToolCardGrid`: Admin has only two
- * destinations, and each needs a full sentence of description. Squeezing them
- * into the compact grid would leave three empty columns.
+ * Wide cards rather than the 5-up `ToolCardGrid`: Admin has few destinations and
+ * each needs a full sentence of description. Squeezing them into the compact grid
+ * would leave most columns empty.
+ *
+ * This list must stay in step with `ADMIN_ROUTES` in `shared/auth/access.ts` —
+ * that is what the sidebar and the route guard read. Activity Log was in
+ * `ADMIN_ROUTES` and in the sidebar but missing here, so the console described
+ * two of the Admin's three jobs and the audit trail was reachable only by
+ * finding it in the nav.
  */
 const ADMIN_CARDS: {
   href: string;
@@ -44,10 +51,26 @@ const ADMIN_CARDS: {
     icon: CreditCard,
     accent: "border-teal/20 bg-teal/10 text-teal",
   },
+  {
+    href: ROUTE_PATHS.activityLogs,
+    label: "Activity Log",
+    description:
+      "Audit trail of pipeline changes, permission edits and login activity.",
+    icon: History,
+    accent: "border-warning/20 bg-warning/10 text-warning",
+  },
 ];
 
 export function AdminDashboardScreen() {
   const user = useAuthStore((s) => s.user);
+  const role = getUserRole(user);
+  const permissions = user?.permissions ?? [];
+
+  // Same gate as the sidebar, so the console can never offer a destination the
+  // route guard would bounce. For an Admin this is currently a no-op — the role
+  // holds every code implicitly — but it keeps the card list from becoming the
+  // one place that decides access on its own.
+  const cards = ADMIN_CARDS.filter((c) => canAccessPath(role, c.href, permissions));
 
   return (
     <div className="space-y-6">
@@ -57,8 +80,8 @@ export function AdminDashboardScreen() {
         subtitle="Manage user accounts, role permissions and system payment records."
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {ADMIN_CARDS.map((card) => {
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {cards.map((card) => {
           const Icon = card.icon;
           return (
             <Link

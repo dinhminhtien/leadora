@@ -3,11 +3,15 @@ server:
   compression:
     enabled: true
     mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json,application/xml
-    min-response-size: 2048
+    min-response-size: 1024
 
 spring:
   application:
     name: leadora
+
+  threads:
+    virtual:
+      enabled: true
 
   main:
     allow-bean-definition-overriding: true
@@ -35,12 +39,17 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:secret}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:15}
-      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE:5}
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:10}
+      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE:10}
       connection-timeout: 30000
       idle-timeout: 300000
       max-lifetime: 1800000
       leak-detection-threshold: ${SPRING_DATASOURCE_HIKARI_LEAK_DETECTION_THRESHOLD:0}
+      data-source-properties:
+        cachePrepStmts: true
+        prepStmtCacheSize: 250
+        prepStmtCacheSqlLimit: 2048
+        useServerPrepStmts: true
 
   jpa:
     open-in-view: false
@@ -65,6 +74,17 @@ spring:
   data:
     redis:
       url: ${REDIS_URL:redis://localhost:6379}
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+          max-wait: 2000ms
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
 
   cache:
     type: ${SPRING_CACHE_TYPE:simple}

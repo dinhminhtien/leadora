@@ -24,7 +24,12 @@ public class CreateUserRequest {
     private String email;
 
     @NotBlank(message = "Password is required")
-    @Size(min = 8, max = 100, message = "Password must be at least 8 characters")
+    // 6, not 8: SRS 3.3.2 specifies "Min 6 chars, uppercase, lowercase, digit, symbol" and
+    // the form says so in its own placeholder. Bean validation runs BEFORE the use case, so
+    // an 8 here silently overrode the specified rule - a valid 6-character password was
+    // refused with a 400 that PasswordPolicy never got the chance to disagree with.
+    // The complexity half of the rule stays in PasswordPolicy: it cannot be expressed as @Size.
+    @Size(min = 6, max = 100, message = "Password must be at least 6 characters")
     private String password;
 
     @Pattern(

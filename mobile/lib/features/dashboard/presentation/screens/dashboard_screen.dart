@@ -17,7 +17,7 @@ import '../../data/dashboard_models.dart';
 import '../../data/dashboard_repository.dart';
 import '../providers/dashboard_providers.dart';
 
-/// UC-24.1 — Mobile Sales Workspace. KPIs, funnel, quick actions and previews.
+/// UC-24.20 — Mobile Sales Workspace. KPIs, funnel, quick actions and previews.
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 

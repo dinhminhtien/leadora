@@ -116,7 +116,7 @@ export function useStreamChatMessage() {
       setIsStreaming(true);
 
       let accumulated = "";
-      return chatAssistantService.streamMessage(
+      const result = await chatAssistantService.streamMessage(
         sessionId,
         content,
         (fragment) => {
@@ -131,6 +131,29 @@ export function useStreamChatMessage() {
         },
         controller.signal,
       );
+
+      // The reply is held in component state while it streams and dropped in onSettled, so the
+      // copy that stays on screen is the one the server sends back in `done`. When that event
+      // never arrives — the stream timed out, the connection dropped after the last token, an
+      // `error` came instead — there was no copy to keep and the answer the user had just
+      // watched appear vanished on completion. That is the "no reply / replies only sometimes"
+      // symptom: nothing failed loudly, the text was simply thrown away.
+      //
+      // Keeping a local stand-in means the screen never goes backwards. It is marked as local
+      // so the caller knows not to reconcile it away against a server copy that may not exist.
+      if (!result.assistantMessage && accumulated.trim()) {
+        return {
+          ...result,
+          assistantMessage: {
+            messageId: `local-${Date.now()}`,
+            role: "ASSISTANT",
+            content: accumulated,
+            createdAt: new Date().toISOString(),
+          } as ChatMessage,
+          assistantIsLocal: true,
+        };
+      }
+      return { ...result, assistantIsLocal: false };
     },
     onSuccess: (res, variables) => {
       appendToCache(queryClient, variables.sessionId, [
@@ -138,7 +161,12 @@ export function useStreamChatMessage() {
         res.assistantMessage,
       ]);
       const key = ["chat-messages", variables.sessionId] as const;
-      queryClient.invalidateQueries({ queryKey: key });
+      // Only reconcile when the reply came from the server. Refetching after a locally
+      // reconstructed one would replace it with the server's feed, which may not contain the
+      // reply at all — putting the answer back on screen only to take it away again.
+      if (!res.assistantIsLocal) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
       // Refresh the session list so the auto-generated title and ordering update.
       queryClient.invalidateQueries({ queryKey: SESSIONS_KEY });
     },
