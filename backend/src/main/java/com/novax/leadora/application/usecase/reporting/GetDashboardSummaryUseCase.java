@@ -309,7 +309,7 @@ public class GetDashboardSummaryUseCase {
         }
         BigDecimal sum = inWindow.stream()
                 .map(d -> d.getExpectedRevenue() != null ? d.getExpectedRevenue() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, (a, b) -> a.add(b));
         return sum.doubleValue() / inWindow.size();
     }
 

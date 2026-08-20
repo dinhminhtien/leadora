@@ -83,24 +83,16 @@ public class CacheConfig implements CachingConfigurer {
         // a three-minute server cache answers every one of those polls with the same payload and
         // defeats the freshness the client is asking for. Worth a second opinion in review - the
         // trade is query load against how stale a manager's own edit may look.
-        customConfigs.put("dashboard-summary", defaultConfig.entryTtl(Duration.ofSeconds(30)));
-        customConfigs.put("sla-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
-        customConfigs.put("sales-performance-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
-        customConfigs.put("pipeline-progression-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
-        customConfigs.put("quotation-outcome-report", defaultConfig.entryTtl(Duration.ofMinutes(5)));
-        // UC-23.6: five round trips and the heaviest report here, but read far less often than the
-        // dashboards, so the same 5 minutes rather than anything longer — a stale scorecard is worse
-        // than a slow one when somebody is about to have a conversation about it.
-        customConfigs.put("rep-scorecard", defaultConfig.entryTtl(Duration.ofMinutes(5)));
-        // UC-23.7: an LLM call per miss, against a quota that returns 429 when exhausted. Ten
-        // minutes so a manager re-reading the same review, or two managers opening it at once,
-        // costs one generation rather than several — and so a double-click cannot burn the quota.
+        customConfigs.put("dashboard-summary", defaultConfig.entryTtl(Duration.ofSeconds(10)));
+        customConfigs.put("room-allotment-nights", defaultConfig.entryTtl(Duration.ofSeconds(15)));
+        customConfigs.put("task-performance-report", defaultConfig.entryTtl(Duration.ofSeconds(30)));
+        customConfigs.put("sla-report", defaultConfig.entryTtl(Duration.ofSeconds(30)));
+        customConfigs.put("sales-performance-report", defaultConfig.entryTtl(Duration.ofSeconds(30)));
+        customConfigs.put("pipeline-progression-report", defaultConfig.entryTtl(Duration.ofSeconds(30)));
+        customConfigs.put("quotation-outcome-report", defaultConfig.entryTtl(Duration.ofSeconds(30)));
+        customConfigs.put("rep-scorecard", defaultConfig.entryTtl(Duration.ofSeconds(30)));
         customConfigs.put("rep-scorecard-ai-review", defaultConfig.entryTtl(Duration.ofMinutes(10)));
-        // Shorter still: "overdue" is derived from the clock, so a cached copy of this report ages
-        // into being wrong rather than merely stale.
-        customConfigs.put("task-performance-report", defaultConfig.entryTtl(Duration.ofMinutes(1)));
         customConfigs.put("product-catalogue", defaultConfig.entryTtl(Duration.ofMinutes(30)));
-        customConfigs.put("room-allotment-nights", defaultConfig.entryTtl(Duration.ofSeconds(60)));
         customConfigs.put("rag-context", defaultConfig.entryTtl(Duration.ofHours(1)));
 
         return RedisCacheManager.builder(connectionFactory)
