@@ -171,7 +171,10 @@ spring:
 
 logging:
   level:
-    org.springframework.security: DEBUG
+    # DEBUG logs every filter-chain decision (JWT parsing, authority checks, CORS) on every
+    # single request — i.e. on every main workflow, all the time. Left at DEBUG this adds
+    # real per-request logging overhead app-wide for no benefit outside active auth debugging.
+    org.springframework.security: WARN
 
 # RAG ingestion tuning (custom namespace read by SemanticChunker).
 # semantic-chunking embeds EVERY sentence of a document to find topic boundaries — on top of the

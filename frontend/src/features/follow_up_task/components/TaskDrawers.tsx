@@ -1190,7 +1190,7 @@ export function EntitySearchPicker({
     phone: c.phone ?? null,
     companyName: c.company ?? null,
   }));
-  const dealResults: DealResult[] = (dealSearch.data?.data ?? []).map((d) => {
+  const dealResults: DealResult[] = (dealSearch.data?.data?.content ?? []).map((d) => {
     const rec = d as unknown as Record<string, unknown>;
     const contact = typeof rec.contactName === "string" ? rec.contactName : null;
     const stage = typeof rec.stage === "string" ? rec.stage : null;

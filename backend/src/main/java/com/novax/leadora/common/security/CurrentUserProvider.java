@@ -13,6 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.context.annotation.RequestScope;
 
 import java.util.Arrays;
 import java.util.UUID;
@@ -36,8 +37,19 @@ import java.util.UUID;
  * (→ HTTP 403). The old "first user in DB" fallback has been removed as it was
  * a
  * critical security hole allowing unauthenticated access.
+ *
+ * <p>
+ * Request-scoped: a single HTTP request commonly calls {@link #resolve} more than
+ * once (e.g. a controller resolves the actor, then a use case resolves it again for
+ * activity-log purposes), each time re-querying the DB for the same JWT principal.
+ * This bean is instantiated fresh per request (Spring's request scope), so the
+ * memoized result never survives past the request it was resolved in — unlike a
+ * cross-request cache, it can't leak one request's entity into another's, which
+ * matters because {@code UpdateMyProfileUseCase}/{@code ChangePasswordUseCase}
+ * mutate the returned entity in place before saving it.
  */
 @Component
+@RequestScope
 @RequiredArgsConstructor
 public class CurrentUserProvider {
 
@@ -49,7 +61,18 @@ public class CurrentUserProvider {
     @Value("${spring.profiles.active:}")
     private String activeProfiles;
 
+    private UserEntity cachedUser;
+
     public UserEntity resolve(String headerUserId) {
+        if (cachedUser != null) {
+            return cachedUser;
+        }
+        UserEntity user = doResolve(headerUserId);
+        cachedUser = user;
+        return user;
+    }
+
+    private UserEntity doResolve(String headerUserId) {
         // 1. Try to load from Security Context (Spring Security authenticated principal
         // from JWT)
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

@@ -211,10 +211,9 @@ export function InteractionTimelineScreen() {
           // company name server-side. This used to download every visible deal and
           // substring-match the title in the browser — one full-table read per
           // keystroke, and it could not find a deal by its customer.
-          const res = await dealService.getList({ search: searchQuery });
+          const res = await dealService.getList({ search: searchQuery, size: 8 });
           if (res && res.success && res.data) {
-            // The endpoint returns a plain array and ignores `size`, so cap here.
-            setSearchResults(res.data.slice(0, 8));
+            setSearchResults(res.data.content);
           }
         }
       } catch (err) {
