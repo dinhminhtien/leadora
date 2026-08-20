@@ -1,6 +1,7 @@
 package com.novax.leadora.infrastructure.persistence.specification;
 
 import com.novax.leadora.infrastructure.persistence.entity.DealEntity;
+import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
 import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -47,7 +48,7 @@ public final class DealSpecification {
             boolean unscoped,
             UUID scopedUserId
     ) {
-        return filter(search, null, unscoped, scopedUserId)
+        return filter(search, null, null, null, unscoped, scopedUserId)
                 .and((root, query, cb) -> cb.equal(root.get("status"), DealStatus.OPEN));
     }
 
@@ -57,9 +58,28 @@ public final class DealSpecification {
             boolean unscoped,
             UUID scopedUserId
     ) {
+        return filter(search, ownerId, null, null, unscoped, scopedUserId);
+    }
+
+    /**
+     * @param stage  narrows to one pipeline stage (the "Stage" filter on the Deals screen);
+     *               {@code null} matches every stage.
+     * @param status narrows to one outcome (OPEN/WON/LOST); {@code null} matches every status.
+     */
+    public static Specification<DealEntity> filter(
+            String search,
+            UUID ownerId,
+            DealPipelineStage stage,
+            DealStatus status,
+            boolean unscoped,
+            UUID scopedUserId
+    ) {
         return (root, query, cb) -> {
-            // Eager load associations to avoid N+1 queries
-            if (Long.class != query.getResultType()) {
+            // Eager load associations to avoid N+1 queries — but only when the query actually
+            // selects DealEntity rows. Fetch joins are invalid on an aggregate/projection query
+            // (e.g. count(), or GetDealStatsUseCase's SUM(expectedRevenue)); Hibernate rejects
+            // the combination rather than just ignoring the fetch.
+            if (query.getResultType() == DealEntity.class) {
                 root.fetch("assignedUser", JoinType.LEFT);
                 root.fetch("createdBy",    JoinType.LEFT);
                 root.fetch("customer",     JoinType.LEFT);
@@ -82,6 +102,14 @@ public final class DealSpecification {
             if (ownerId != null) {
                 var assignedJoin = root.join("assignedUser", JoinType.LEFT);
                 predicates.add(cb.equal(assignedJoin.get("userId"), ownerId));
+            }
+
+            if (stage != null) {
+                predicates.add(cb.equal(root.get("pipelineStage"), stage));
+            }
+
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
             }
 
             // Security visibility scoping for Sales Staff

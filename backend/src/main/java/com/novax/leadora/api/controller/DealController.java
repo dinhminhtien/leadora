@@ -3,17 +3,22 @@ package com.novax.leadora.api.controller;
 import com.novax.leadora.api.dto.request.DealRequest;
 import com.novax.leadora.api.dto.request.UpdateDealStatusRequest;
 import com.novax.leadora.api.dto.response.DealResponse;
+import com.novax.leadora.api.dto.response.DealStatsResponse;
 import com.novax.leadora.api.dto.response.PipelineDealCardResponse;
 import com.novax.leadora.api.dto.response.DealWorkflowSummaryResponse;
 import com.novax.leadora.application.usecase.deal.CreateDealUseCase;
+import com.novax.leadora.application.usecase.deal.DealMapper;
 import com.novax.leadora.application.usecase.deal.GetDealDetailUseCase;
 import com.novax.leadora.application.usecase.deal.GetDealListUseCase;
+import com.novax.leadora.application.usecase.deal.GetDealStatsUseCase;
 import com.novax.leadora.application.usecase.deal.GetPipelineDealsUseCase;
 import com.novax.leadora.application.usecase.deal.GetQuotableDealsUseCase;
 import com.novax.leadora.application.usecase.deal.GetDealWorkflowSummaryUseCase;
 import com.novax.leadora.application.usecase.deal.UpdateDealUseCase;
 import com.novax.leadora.application.usecase.deal.DealWorkflowSyncService;
 import com.novax.leadora.common.response.ApiResponse;
+import com.novax.leadora.infrastructure.persistence.entity.enums.DealPipelineStage;
+import com.novax.leadora.infrastructure.persistence.entity.enums.DealStatus;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -31,6 +36,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class DealController {
 
     private final GetDealListUseCase getDealListUseCase;
+    private final GetDealStatsUseCase getDealStatsUseCase;
     private final GetDealDetailUseCase getDealDetailUseCase;
     private final CreateDealUseCase createDealUseCase;
     private final UpdateDealUseCase updateDealUseCase;
@@ -38,13 +44,71 @@ public class DealController {
     private final GetQuotableDealsUseCase getQuotableDealsUseCase;
     private final GetDealWorkflowSummaryUseCase getDealWorkflowSummaryUseCase;
     private final DealWorkflowSyncService dealWorkflowSyncService;
+    private final DealMapper dealMapper;
 
+    /**
+     * The Deals list, paged and searchable — mirrors {@code LeadController#getLeads}.
+     *
+     * <p>{@code stage}/{@code status} are the wire-format strings the frontend already uses
+     * elsewhere ({@code DealMapper#mapStageToEnum}/{@code mapStatusToEnum}), e.g. {@code
+     * "Inquiry"}/{@code "Confirmed"} and {@code "active"}/{@code "won"}/{@code "lost"} — not the
+     * raw enum names — so the Deals screen's existing filter dropdowns can be wired through
+     * unchanged.
+     */
     @GetMapping
-    public ResponseEntity<ApiResponse<List<DealResponse>>> getAllDeals(
+    public ResponseEntity<ApiResponse<Page<DealResponse>>> getAllDeals(
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) UUID ownerId) {
-        List<DealResponse> deals = getDealListUseCase.execute(search, ownerId);
+            @RequestParam(required = false) UUID ownerId,
+            @RequestParam(required = false) String stage,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        Page<DealResponse> deals = getDealListUseCase.execute(
+                search, ownerId, parseStage(stage), parseStatus(status), page, size);
         return ResponseEntity.ok(ApiResponse.success(deals));
+    }
+
+    /**
+     * Counts and totals for the tiles above the list (UC-12.x), over the same filters and owner
+     * scope as {@link #getAllDeals}. Separate from the list because the list is paged and these
+     * are not — the client cannot total what it never received.
+     */
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<DealStatsResponse>> getDealStats(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) UUID ownerId,
+            @RequestParam(required = false) String stage) {
+        DealStatsResponse stats = getDealStatsUseCase.execute(search, ownerId, parseStage(stage));
+        return ResponseEntity.ok(ApiResponse.success(stats));
+    }
+
+    /**
+     * Every deal matching the current filters, unpaged — feeds the "Export" button, which has
+     * always exported the whole filtered set rather than one page. Kept as its own endpoint
+     * (rather than raising {@code size} on {@link #getAllDeals}) so nothing can accidentally ask
+     * the paged endpoint to return the whole table.
+     */
+    @GetMapping("/export")
+    public ResponseEntity<ApiResponse<List<DealResponse>>> exportDeals(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) UUID ownerId,
+            @RequestParam(required = false) String stage,
+            @RequestParam(required = false) String status) {
+        List<DealResponse> deals =
+                getDealListUseCase.executeAll(search, ownerId, parseStage(stage), parseStatus(status));
+        return ResponseEntity.ok(ApiResponse.success(deals));
+    }
+
+    private DealPipelineStage parseStage(String stage) {
+        return (stage == null || stage.isBlank() || "all".equalsIgnoreCase(stage))
+                ? null
+                : dealMapper.mapStageToEnum(stage);
+    }
+
+    private DealStatus parseStatus(String status) {
+        return (status == null || status.isBlank() || "all".equalsIgnoreCase(status))
+                ? null
+                : dealMapper.mapStatusToEnum(status);
     }
 
     /**

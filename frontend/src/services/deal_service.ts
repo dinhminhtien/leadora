@@ -20,6 +20,32 @@ export interface Deal {
 
 export type DealPayload = Record<string, unknown>;
 
+export type DealListParams = {
+  search?: string;
+  ownerId?: string;
+  /** One of {@link Deal}'s `stage` values, or omitted for every stage. */
+  stage?: Deal["stage"];
+  /** One of {@link Deal}'s `status` values, or omitted for every status. */
+  status?: Deal["status"];
+  page?: number;
+  size?: number;
+};
+
+/** Filters only — the stats and export endpoints are not paged. */
+export type DealFilterParams = Omit<DealListParams, "page" | "size">;
+
+/**
+ * Counts and totals across every deal matching the current filters, not just the page on screen
+ * — mirrors {@code LeadStats}. `winRate` is a percentage already rounded to one decimal, `null`
+ * when nothing has closed yet (a dash beats a misleading "0.0%").
+ */
+export type DealStats = {
+  activeCount: number;
+  activeValue: number;
+  wonValue: number;
+  winRate: number | null;
+};
+
 export interface PipelineDealCardResponse {
   deal: Deal;
   hasActiveQuotation: boolean;
@@ -44,8 +70,31 @@ export interface DealWorkflowSummaryResponse {
 const ENDPOINT = "/deals";
 
 export const dealService = {
-  async getList(params?: ListQuery) {
-    const response = await apiClient.get<ApiResponse<Deal[]>>(ENDPOINT, {
+  /** `GET /deals` — the Deals table, one page at a time. */
+  async getList(params?: DealListParams) {
+    const response = await apiClient.get<ApiResponse<PageResponse<Deal>>>(ENDPOINT, {
+      params,
+    });
+    return response.data;
+  },
+
+  /**
+   * `GET /deals/stats` — the summary tiles above the list. Not paged: the tiles describe the
+   * whole filtered set, which the client cannot total from a single page it never received.
+   */
+  async getStats(params?: DealFilterParams) {
+    const response = await apiClient.get<ApiResponse<DealStats>>(`${ENDPOINT}/stats`, {
+      params,
+    });
+    return response.data;
+  },
+
+  /**
+   * `GET /deals/export` — every deal matching the current filters, unpaged. Backs the "All
+   * matching rows" export option; "This page" exports straight from the loaded page instead.
+   */
+  async getExport(params?: DealFilterParams) {
+    const response = await apiClient.get<ApiResponse<Deal[]>>(`${ENDPOINT}/export`, {
       params,
     });
     return response.data;

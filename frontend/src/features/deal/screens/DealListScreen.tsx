@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Search,
   Plus,
@@ -25,7 +26,8 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { dealService, type Deal } from "@/services/deal_service";
+import { dealService, type Deal, type DealFilterParams } from "@/services/deal_service";
+import { useDeals, useDealStats } from "@/features/deal/hooks/use_deals";
 import { userService as taskUserService, type UserSummary } from "@/services/follow_up_task_service";
 import { customerProfileService, type CustomerSearchItem } from "@/services/customer_profile_service";
 import { Portal } from "@/components/ui/Portal";
@@ -38,13 +40,15 @@ const STAGES_ORDER: Deal["stage"][] = ["Inquiry", "Qualification", "Proposal", "
 import { UserSelect } from "@/components/ui/UserSelect";
 import { PageHeader } from "@/components/ui/page-header";
 import { PAGE_META } from "@/app/routes/page_meta";
-import { DataTable, type ColumnDef } from "@/components/ui/data-table";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
 import { DensityMenu } from "@/components/ui/list-toolbar";
 import {
   ColumnPicker,
   ExportMenu,
   RefreshButton,
   useTableControls,
+  toCsv,
+  downloadCsv,
 } from "@/components/ui/table-controls";
 import { RowActions, OwnerCell } from "@/components/ui/row-actions";
 import { BlockedHint } from "@/components/ui/guarded-action";
@@ -71,17 +75,64 @@ export function DealListScreen() {
     return role === "MANAGER" || role === "ADMIN";
   }, [profile]);
 
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const queryClient = useQueryClient();
+
+  const PAGE_SIZE = 10;
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("active");
+  const [page, setPage] = useState(0);
+
+  // Debounce search so every keystroke doesn't round-trip to the server.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(0);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const filterParams: DealFilterParams = {
+    search: search || undefined,
+    stage: stageFilter === "all" ? undefined : (stageFilter as Deal["stage"]),
+    status: statusFilter === "all" ? undefined : (statusFilter as Deal["status"]),
+  };
+
+  // The list is paged server-side (Blueprint §2.6/§9.1); the summary tiles below are counted
+  // over the whole filtered set by a separate, unpaged query — see `useDealStats`.
+  const dealsQuery = useDeals({ ...filterParams, page, size: PAGE_SIZE });
+  const statsQuery = useDealStats(filterParams);
+
+  const pageData = dealsQuery.data?.success ? dealsQuery.data.data : undefined;
+  const deals = useMemo<Deal[]>(() => pageData?.content ?? [], [pageData]);
+  const totalPages =
+    pageData?.page && typeof pageData.page === "object"
+      ? pageData.page.totalPages
+      : (pageData?.totalPages ?? 1);
+  const totalElements =
+    pageData?.page && typeof pageData.page === "object"
+      ? pageData.page.totalElements
+      : (pageData?.totalElements ?? 0);
+
+  const isRefreshing = dealsQuery.isFetching || statsQuery.isFetching;
+
+  const stats = useMemo(() => {
+    const s = statsQuery.data?.success ? statsQuery.data.data : undefined;
+    return {
+      activeCount: s?.activeCount ?? 0,
+      activeValue: s?.activeValue ?? 0,
+      wonValue: s?.wonValue ?? 0,
+      winRate: s?.winRate ?? null,
+    };
+  }, [statsQuery.data]);
+
+  /** Every list page and the stats tiles share the `["deals"]` prefix, so one call refreshes both. */
+  const refreshDeals = () => queryClient.invalidateQueries({ queryKey: ["deals"] });
+
   const [isNewDealDrawerOpen, setIsNewDealDrawerOpen] = useState(false);
   const [isEditDealDrawerOpen, setIsEditDealDrawerOpen] = useState(false);
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
-
-  // Pagination States
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
 
   const isAlreadyClosed = useMemo(() => {
     if (!editingDeal) return false;
@@ -105,6 +156,15 @@ export function DealListScreen() {
       setSuccessMessage(prev => (prev === msg ? null : prev));
     }, 4000);
   };
+
+  useEffect(() => {
+    if (dealsQuery.isError) {
+      console.error("Failed to fetch deals from API", dealsQuery.error);
+      showError("Could not load deals. Please check your connection and try again.");
+    }
+    // `showError` is a stable toast helper.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealsQuery.isError]);
 
   // Form State for new deal
   const [newDeal, setNewDeal] = useState({
@@ -160,27 +220,7 @@ export function DealListScreen() {
     }
   }, [profile, isManager, newDeal.owner]);
 
-  // Hoisted out of the mount effect so the toolbar's Refresh button can call the
-  // same loader the screen boots with — one code path, one error message.
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const fetchDeals = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      const response = await dealService.getList();
-      if (response && response.success && response.data) {
-        setDeals(response.data as Deal[]);
-      }
-    } catch (err) {
-      console.error("Failed to fetch deals from API", err);
-      showError("Could not load deals. Please check your connection and try again.");
-    } finally {
-      setIsRefreshing(false);
-    }
-    // `showError` is a stable toast helper.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Load deals and users on component mount
+  // Load users on component mount. The deal list itself is loaded by `dealsQuery` above.
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -192,9 +232,8 @@ export function DealListScreen() {
         console.error("Failed to fetch users from API", err);
       }
     };
-    fetchDeals();
     fetchUsers();
-  }, [fetchDeals]);
+  }, []);
 
   const getNextStage = (currentStage: Deal["stage"]): Deal["stage"] | null => {
     const idx = STAGES_ORDER.indexOf(currentStage);
@@ -255,9 +294,7 @@ export function DealListScreen() {
     try {
       const response = await dealService.update(deal.id, payload);
       if (response && response.success && response.data) {
-        setDeals(prev =>
-          prev.map(d => (d.id === deal.id ? (response.data as Deal) : d))
-        );
+        refreshDeals();
         showSuccess(`Advanced deal to ${nextStg} successfully!`);
       } else {
         showError(response?.message || "Failed to advance stage");
@@ -268,34 +305,6 @@ export function DealListScreen() {
       showError(errMsg);
     }
   };
-
-  // Filter Logic
-  const filteredDeals = useMemo(() => {
-    return deals.filter(deal => {
-      const titleLower = deal.title ? deal.title.toLowerCase() : "";
-      const contactLower = deal.contactName ? deal.contactName.toLowerCase() : "";
-      const matchesSearch =
-        titleLower.includes(searchTerm.toLowerCase()) ||
-        contactLower.includes(searchTerm.toLowerCase());
-
-      const matchesStage = stageFilter === "all" || deal.stage === stageFilter;
-      const matchesStatus = statusFilter === "all" || deal.status === statusFilter;
-
-      return matchesSearch && matchesStage && matchesStatus;
-    });
-  }, [deals, searchTerm, stageFilter, statusFilter]);
-
-  // Reset page when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, stageFilter, statusFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredDeals.length / pageSize));
-
-  const paginatedDeals = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredDeals.slice(startIndex, startIndex + pageSize);
-  }, [filteredDeals, currentPage, pageSize]);
 
   /**
    * Column set — Blueprint §10.6.
@@ -449,24 +458,6 @@ export function DealListScreen() {
 
   const controls = useTableControls<Deal>("deals", dealColumns);
 
-  // Statistics
-  const stats = useMemo(() => {
-    const activeDeals = deals.filter(d => d.status === "active");
-    const activeVal = activeDeals.reduce((sum, d) => sum + (d.value || 0), 0);
-    const wonDeals = deals.filter(d => d.status === "won");
-    const wonVal = wonDeals.reduce((sum, d) => sum + (d.value || 0), 0);
-    const totalWins = wonDeals.length;
-    const totalClosed = deals.filter(d => d.status !== "active").length;
-    const winRate = totalClosed > 0 ? (totalWins / totalClosed) * 100 : 0;
-
-    return {
-      activeCount: activeDeals.length,
-      activeValue: activeVal,
-      wonValue: wonVal,
-      winRate: winRate
-    };
-  }, [deals]);
-
   // Handle Close Status change (Won/Lost)
   const handleUpdateStatus = async (dealId: string, newStatus: Deal["status"]) => {
     const dealToUpdate = deals.find(d => d.id === dealId);
@@ -489,11 +480,7 @@ export function DealListScreen() {
     try {
       const response = await dealService.update(dealId, payload);
       if (response && response.success && response.data) {
-        setDeals(prev =>
-          prev.map(deal =>
-            deal.id === dealId ? (response.data as Deal) : deal
-          )
-        );
+        refreshDeals();
         showSuccess(`Deal marked as ${newStatus.toUpperCase()}!`);
       } else {
         showError(response?.message || "Failed to update status");
@@ -534,7 +521,7 @@ export function DealListScreen() {
     try {
       const response = await dealService.create(payload);
       if (response && response.success && response.data) {
-        setDeals(prev => [response.data as Deal, ...prev]);
+        refreshDeals();
         setIsNewDealDrawerOpen(false);
         // Reset Form
         setNewDeal({
@@ -601,11 +588,7 @@ export function DealListScreen() {
     try {
       const response = await dealService.update(editingDeal.id, payload);
       if (response && response.success && response.data) {
-        setDeals(prev =>
-          prev.map(deal =>
-            deal.id === editingDeal.id ? (response.data as Deal) : deal
-          )
-        );
+        refreshDeals();
         setIsEditDealDrawerOpen(false);
         setEditingDeal(null);
         showSuccess("Deal updated successfully!");
@@ -619,6 +602,28 @@ export function DealListScreen() {
     }
   };
 
+  /**
+   * "All matching rows" export — the list itself is now one page at a time, so the CSV has to
+   * come from its own unpaged fetch (`GET /deals/export`) over the same filters, rather than
+   * from whatever page happens to be loaded.
+   */
+  const handleExportAllDeals = async () => {
+    try {
+      const response = await dealService.getExport(filterParams);
+      if (response && response.success && response.data) {
+        downloadCsv(
+          `deals-${new Date().toISOString().slice(0, 10)}`,
+          toCsv(DEAL_EXPORT_HEADERS, response.data.map(dealExportRow)),
+        );
+      } else {
+        showError(response?.message || "Failed to export deals");
+      }
+    } catch (err: any) {
+      console.error("Error exporting deals", err);
+      const errMsg = err.response?.data?.message || err.message || "An error occurred while exporting deals.";
+      showError(errMsg);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -671,7 +676,9 @@ export function DealListScreen() {
         </div>
         <div className="px-4">
           <p className="text-[10px] font-semibold text-slate-400 uppercase">Win Ratio (Closed)</p>
-          <p className="text-lg font-bold text-slate-800 mt-1">{stats.winRate.toFixed(1)}%</p>
+          <p className="text-lg font-bold text-slate-800 mt-1">
+            {stats.winRate === null ? "—" : `${stats.winRate.toFixed(1)}%`}
+          </p>
         </div>
       </div>
 
@@ -685,8 +692,8 @@ export function DealListScreen() {
               <input
                 type="text"
                 placeholder="Search deal name, guest..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
               />
             </div>
@@ -694,7 +701,7 @@ export function DealListScreen() {
             {/* Stage Selector */}
             <div className="w-full md:w-40 flex items-center gap-1.5">
               <span className="text-[10px] text-slate-400 font-bold shrink-0">Stage:</span>
-              <Select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="w-full py-1.5">
+              <Select value={stageFilter} onChange={e => { setStageFilter(e.target.value); setPage(0); }} className="w-full py-1.5">
                 <option value="all">All</option>
                 <option value="Inquiry">Inquiry</option>
                 <option value="Qualification">Qualification</option>
@@ -708,7 +715,7 @@ export function DealListScreen() {
             {/* Status Selector */}
             <div className="w-full md:w-40 flex items-center gap-1.5">
               <span className="text-[10px] text-slate-400 font-bold shrink-0">Status:</span>
-              <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full py-1.5">
+              <Select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(0); }} className="w-full py-1.5">
                 <option value="all">All</option>
                 <option value="active">Active</option>
                 <option value="won">Won</option>
@@ -716,9 +723,9 @@ export function DealListScreen() {
               </Select>
             </div>
 
-            {/* §2.6 control cluster + count indicator */}
+            {/* §2.6 control cluster */}
             <div className="flex items-center gap-2 md:ml-auto">
-              <RefreshButton onRefresh={fetchDeals} isRefreshing={isRefreshing} />
+              <RefreshButton onRefresh={refreshDeals} isRefreshing={isRefreshing} />
               <ColumnPicker
                 columns={dealColumns}
                 hiddenIds={controls.hiddenColumnIds}
@@ -728,12 +735,10 @@ export function DealListScreen() {
               <ExportMenu
                 filename={`deals-${new Date().toISOString().slice(0, 10)}`}
                 headers={DEAL_EXPORT_HEADERS}
-                rows={filteredDeals.map(dealExportRow)}
+                rows={deals.map(dealExportRow)}
+                onExportAll={handleExportAllDeals}
               />
               <DensityMenu value={controls.density} onChange={controls.setDensity} />
-              <span className="hidden text-xs text-slate-400 xl:block">
-                Filtered <strong className="text-slate-700">{filteredDeals.length}</strong> of {deals.length}
-              </span>
             </div>
           </div>
         </CardContent>
@@ -741,7 +746,7 @@ export function DealListScreen() {
 
       <DataTable
         label="Deals"
-        rows={paginatedDeals}
+        rows={deals}
         columns={controls.visibleColumns}
         rowId={(deal) => deal.id}
         density={controls.density}
@@ -756,63 +761,23 @@ export function DealListScreen() {
           <ExportMenu
             filename={`deals-selected-${new Date().toISOString().slice(0, 10)}`}
             headers={DEAL_EXPORT_HEADERS}
-            rows={paginatedDeals.filter((d) => controls.selectedIds.has(d.id)).map(dealExportRow)}
+            rows={deals.filter((d) => controls.selectedIds.has(d.id)).map(dealExportRow)}
           />
         }
-        isFiltered={filteredDeals.length !== deals.length}
+        isFiltered={Boolean(search || stageFilter !== "all" || statusFilter !== "all")}
         emptyTitle="No deals yet"
         emptyMessage="Qualify a lead and the deal will appear here."
         emptyAction={{ label: "New Deal", onClick: () => setIsNewDealDrawerOpen(true) }}
+        footer={
+          <TablePagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            totalElements={totalElements}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        }
       />
-
-      {/* Pagination Controls */}
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white px-6 py-4 rounded-xl border border-slate-100 shadow-sm text-xs">
-        <div className="text-slate-500 font-medium">
-          Showing <strong className="text-slate-700">{filteredDeals.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}</strong> to{" "}
-          <strong className="text-slate-700">
-            {Math.min(currentPage * pageSize, filteredDeals.length)}
-          </strong>{" "}
-          of <strong className="text-slate-700">{filteredDeals.length}</strong> entries
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1}
-            className="border-slate-200 text-slate-600 font-bold px-3 py-1.5 h-8 disabled:opacity-50"
-          >
-            Previous
-          </Button>
-          <div className="flex items-center gap-1">
-            {Array.from({ length: totalPages }).map((_, idx) => {
-              const p = idx + 1;
-              const isCurrent = p === currentPage;
-              return (
-                <button
-                  key={p}
-                  onClick={() => setCurrentPage(p)}
-                  className={`size-8 rounded-lg font-bold transition flex items-center justify-center ${isCurrent
-                    ? "bg-[#185FA5] text-white shadow-xs"
-                    : "text-slate-600 hover:bg-slate-100"
-                    }`}
-                >
-                  {p}
-                </button>
-              );
-            })}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-            disabled={currentPage === totalPages}
-            className="border-slate-200 text-slate-600 font-bold px-3 py-1.5 h-8 disabled:opacity-50"
-          >
-            Next
-          </Button>
-        </div>
-      </div>
 
       {/* Slide-over Drawer for adding Deal */}
       {isNewDealDrawerOpen && (
