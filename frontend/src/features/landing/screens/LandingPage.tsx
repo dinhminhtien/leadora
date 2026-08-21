@@ -8,6 +8,7 @@ import { LandingNavbar } from "../components/LandingNavbar";
 import { LandingFooter } from "../components/LandingFooter";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
 import {
   Sparkles,
@@ -29,15 +30,21 @@ import {
   ShieldCheck,
   ChevronRight,
   Users,
-  Building2
+  Building2,
+  X
 } from "lucide-react";
 import { publicStatsService, type PublicStats } from "@/services/reporting_service";
+
+/** Google Drive share link rendered through Drive's own player (`/preview`). */
+const DEMO_VIDEO_EMBED_URL =
+  "https://drive.google.com/file/d/1ov7qkm6iR8dnLuMAfE1HJoP8blvgJWDM/preview";
 
 export function LandingPage() {
   const { isAuthenticated, isLoading } = useAuthStore();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"sales" | "ops" | "ai">("sales");
   const [stats, setStats] = useState<PublicStats | null>(null);
+  const [isDemoOpen, setIsDemoOpen] = useState(false);
 
   useEffect(() => {
     publicStatsService.getPublicStats()
@@ -118,11 +125,15 @@ export function LandingPage() {
                 Start Free Trial
               </Button>
             </Link>
-            <Link href={ROUTE_PATHS.login}>
-              <Button variant="ghost" size="lg" className="rounded-xl px-7 py-3 border border-border bg-white/40 dark:bg-zinc-900/40 backdrop-blur-xs" leftIcon={<Play className="size-4 fill-current text-zinc-700 dark:text-zinc-300" />}>
-                Watch Demo
-              </Button>
-            </Link>
+            <Button
+              variant="ghost"
+              size="lg"
+              onClick={() => setIsDemoOpen(true)}
+              className="rounded-xl px-7 py-3 border border-border bg-white/40 dark:bg-zinc-900/40 backdrop-blur-xs"
+              leftIcon={<Play className="size-4 fill-current text-zinc-700 dark:text-zinc-300" />}
+            >
+              Watch Demo
+            </Button>
             <a href="https://github.com/dinhminhtien/leadora/releases/download/mobile-v1.0.0/app-release.apk" target="_blank" rel="noopener noreferrer">
               <Button variant="ghost" size="lg" className="rounded-xl px-7 py-3 border border-border bg-white/40 dark:bg-zinc-900/40 backdrop-blur-xs" leftIcon={<Download className="size-4 text-zinc-700 dark:text-zinc-300" />}>
                 APK Download
@@ -546,6 +557,34 @@ export function LandingPage() {
           </div>
         </section>
       </main>
+
+      {/* Product demo — the iframe only mounts while the dialog is open, so the
+          Drive player never costs the landing page any load-time budget. */}
+      <Dialog open={isDemoOpen} onOpenChange={setIsDemoOpen}>
+        <DialogContent
+          size="xl"
+          showClose={false}
+          aria-describedby={undefined}
+          className="border-0 bg-black p-0 shadow-2xl"
+        >
+          <DialogTitle className="sr-only">Leadora product demo</DialogTitle>
+          <DialogClose
+            aria-label="Close demo video"
+            className="absolute right-3 top-3 z-20 grid size-9 place-items-center rounded-full bg-black/60 text-white backdrop-blur-xs transition-colors hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          >
+            <X className="size-4" />
+          </DialogClose>
+          <div className="relative aspect-video w-full">
+            <iframe
+              src={DEMO_VIDEO_EMBED_URL}
+              title="Leadora product demo"
+              className="absolute inset-0 size-full"
+              allow="autoplay; fullscreen"
+              allowFullScreen
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <LandingFooter />
     </div>
