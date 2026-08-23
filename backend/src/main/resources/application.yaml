@@ -39,17 +39,20 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:secret}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:10}
-      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE:10}
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAX_POOL_SIZE:15}
+      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE:5}
       connection-timeout: 30000
-      idle-timeout: 300000
-      max-lifetime: 1800000
+      idle-timeout: 120000
+      max-lifetime: 580000
+      keepalive-time: 30000
+      validation-timeout: 3000
       leak-detection-threshold: ${SPRING_DATASOURCE_HIKARI_LEAK_DETECTION_THRESHOLD:0}
       data-source-properties:
-        cachePrepStmts: true
-        prepStmtCacheSize: 250
-        prepStmtCacheSqlLimit: 2048
-        useServerPrepStmts: true
+        tcpKeepAlive: true
+        socketTimeout: 30
+        connectTimeout: 10
+        loginTimeout: 10
+        cancelSignalTimeout: 10
 
   jpa:
     open-in-view: false
