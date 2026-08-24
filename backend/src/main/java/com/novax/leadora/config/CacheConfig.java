@@ -94,6 +94,8 @@ public class CacheConfig implements CachingConfigurer {
         customConfigs.put("rep-scorecard-ai-review", defaultConfig.entryTtl(Duration.ofMinutes(10)));
         customConfigs.put("product-catalogue", defaultConfig.entryTtl(Duration.ofMinutes(30)));
         customConfigs.put("rag-context", defaultConfig.entryTtl(Duration.ofHours(1)));
+        customConfigs.put("roles-list", defaultConfig.entryTtl(Duration.ofMinutes(15)));
+        customConfigs.put("user-summaries", defaultConfig.entryTtl(Duration.ofMinutes(5)));
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaultConfig)

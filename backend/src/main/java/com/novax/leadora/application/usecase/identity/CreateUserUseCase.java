@@ -38,7 +38,11 @@ public class CreateUserUseCase {
     private final CurrentUserProvider currentUserProvider;
 
     @Transactional
-    @org.springframework.cache.annotation.CacheEvict(value = "user-roles", key = "#request.email.toLowerCase()")
+    @org.springframework.cache.annotation.Caching(evict = {
+        @org.springframework.cache.annotation.CacheEvict(value = "user-roles", key = "#request.email.toLowerCase()"),
+        @org.springframework.cache.annotation.CacheEvict(value = "roles-list", allEntries = true),
+        @org.springframework.cache.annotation.CacheEvict(value = "user-summaries", allEntries = true)
+    })
     public UserAccountResponse execute(CreateUserRequest request) {
         String email = request.getEmail().trim();
 

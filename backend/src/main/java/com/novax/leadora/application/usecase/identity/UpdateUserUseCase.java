@@ -45,7 +45,11 @@ public class UpdateUserUseCase {
     private final CurrentUserProvider currentUserProvider;
 
     @Transactional
-    @org.springframework.cache.annotation.CacheEvict(value = "user-roles", allEntries = true)
+    @org.springframework.cache.annotation.Caching(evict = {
+        @org.springframework.cache.annotation.CacheEvict(value = "user-roles", allEntries = true),
+        @org.springframework.cache.annotation.CacheEvict(value = "roles-list", allEntries = true),
+        @org.springframework.cache.annotation.CacheEvict(value = "user-summaries", allEntries = true)
+    })
     public UserAccountResponse execute(UUID userId, UpdateUserRequest request) {
         UserEntity user = userRepository.findWithRoleByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));

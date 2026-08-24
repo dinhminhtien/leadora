@@ -7,6 +7,7 @@ import com.novax.leadora.api.dto.response.UserSummaryResponse;
 import com.novax.leadora.application.usecase.identity.CreateUserUseCase;
 import com.novax.leadora.application.usecase.identity.GetUserDetailUseCase;
 import com.novax.leadora.application.usecase.identity.GetUserListUseCase;
+import com.novax.leadora.application.usecase.identity.GetUserSummariesUseCase;
 import com.novax.leadora.application.usecase.identity.UpdateUserUseCase;
 import com.novax.leadora.common.response.ApiResponse;
 import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
@@ -32,52 +33,21 @@ public class UserController {
     private final UserRepository userRepository;
     private final GetUserListUseCase getUserListUseCase;
     private final GetUserDetailUseCase getUserDetailUseCase;
+    private final GetUserSummariesUseCase getUserSummariesUseCase;
     private final CreateUserUseCase createUserUseCase;
     private final UpdateUserUseCase updateUserUseCase;
 
     /**
      * Lightweight list of users for assignee dropdowns (leads/tasks/deals, the Front Office
      * roster). Kept as a flat array (not paged) — existing callers depend on this shape.
-     *
-     * <p>Every authenticated user may call this, because every desk has some dropdown that needs a
-     * roster. What narrows it:
-     *
-     * <ul>
-     *   <li>{@code role} — callers that need one team ask for that team instead of pulling the whole
-     *       staff directory. The Front Office roster filter was doing this client-side, which meant
-     *       downloading every user in the company to display five of them.</li>
-     *   <li>{@link UserRepository#findAllWithRole()} already restricts to {@code ACTIVE}, so
-     *       suspended and dormant accounts are never offered as assignees. (An explicit
-     *       "exclude LOCKED" filter here would be dead code — ACTIVE-only is the stricter rule.)</li>
-     * </ul>
-     *
-     * <p>The payload still carries {@code email}: {@code components/ui/UserSelect} uses it as the
-     * selected value, so removing it needs that component keyed on {@code userId} first.
+     * Cached with high performance to ensure instant responses across all dropdowns.
      */
     @GetMapping
     public ResponseEntity<ApiResponse<List<UserSummaryResponse>>> getUsers(
             @RequestParam(required = false) String role
     ) {
-        String wanted = role != null ? role.trim().toUpperCase() : null;
-        List<UserSummaryResponse> users = userRepository.findAllWithRole()
-                .stream()
-                .filter(u -> wanted == null || wanted.isEmpty() || matchesRole(u, wanted))
-                .map(UserSummaryResponse::from)
-                .toList();
+        List<UserSummaryResponse> users = getUserSummariesUseCase.execute(role);
         return ResponseEntity.ok(ApiResponse.success(users));
-    }
-
-    /** {@code FO} and {@code FRONT_OFFICE} are the same desk under two spellings. */
-    private boolean matchesRole(UserEntity user, String wanted) {
-        if (user.getRole() == null || user.getRole().getRoleName() == null) {
-            return false;
-        }
-        String actual = user.getRole().getRoleName().trim().toUpperCase();
-        if (actual.equals(wanted)) {
-            return true;
-        }
-        boolean bothFrontOffice = Set.of("FO", "FRONT_OFFICE").containsAll(Set.of(actual, wanted));
-        return bothFrontOffice;
     }
 
     /** UC-6.1 — View User Accounts (paged management list). Admin only (BR-03). */
