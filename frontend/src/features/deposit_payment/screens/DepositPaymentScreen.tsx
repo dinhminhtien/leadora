@@ -787,20 +787,16 @@ export function DepositPaymentScreen() {
                   </span>
                   <input
                     type="number"
-                    placeholder="Enter amount in VND..."
+                    readOnly
+                    tabIndex={-1}
+                    placeholder="Locked to booking total amount..."
                     {...register("amount", { valueAsNumber: true })}
-                    className="w-full pl-7 pr-3 py-2 border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 transition font-bold"
+                    className="w-full pl-7 pr-3 py-2 border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800/80 text-slate-700 dark:text-zinc-300 font-bold cursor-not-allowed select-none focus:outline-none"
                   />
                 </div>
-                {watchPaymentMethod === "CASH" ? (
-                  <p className="text-[10px] text-slate-450 dark:text-zinc-400 mt-1 italic font-medium">
-                    Note: Manual cash collection logged via system.
-                  </p>
-                ) : (
-                  <p className="text-[10px] text-slate-455 dark:text-zinc-400 mt-1 italic font-medium">
-                    Note: Direct transfer via VietQR dynamic gateway.
-                  </p>
-                )}
+                <p className="text-[10px] text-slate-500 dark:text-zinc-400 mt-1 italic font-medium">
+                  {selectedBookingForRequest ? `Amount is fixed from booking ${selectedBookingForRequest.bookingCode} invoice.` : "Amount is fixed from booking invoice."}
+                </p>
                 {errors.amount && (
                   <p className="text-red-500 text-[10px] font-semibold mt-1">{errors.amount.message}</p>
                 )}

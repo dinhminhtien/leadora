@@ -63,7 +63,12 @@ class _GeneratePaymentScreenState extends ConsumerState<GeneratePaymentScreen> {
       showDragHandle: true,
       builder: (_) => const _BookingPickerSheet(),
     );
-    if (picked != null) setState(() => _booking = picked);
+    if (picked != null) {
+      setState(() {
+        _booking = picked;
+        _amount.text = picked.totalAmount?.toStringAsFixed(0) ?? '';
+      });
+    }
   }
 
   Future<void> _pickDueDate() async {
@@ -185,6 +190,7 @@ class _GeneratePaymentScreenState extends ConsumerState<GeneratePaymentScreen> {
               const SizedBox(height: AppSpacing.lg),
               TextFormField(
                 controller: _amount,
+                readOnly: true,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -192,6 +198,7 @@ class _GeneratePaymentScreenState extends ConsumerState<GeneratePaymentScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Amount *',
                   prefixIcon: Icon(Icons.payments_outlined),
+                  helperText: 'Amount is fixed to booking invoice',
                 ),
                 validator: _validateAmount,
               ),

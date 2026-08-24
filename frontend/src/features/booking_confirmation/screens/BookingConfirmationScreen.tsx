@@ -25,6 +25,7 @@ import { toast } from "@/stores/toast_store";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { PAGE_META } from "@/app/routes/page_meta";
+import { pageMeta } from "@/services/api_client";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
 
@@ -150,18 +151,10 @@ export function BookingConfirmationScreen() {
         sortDir: bookingControls.sortDir || "desc",
       });
       if (res.success && res.data) {
-        const data = res.data as any;
-        if (data.content) {
-          setBookings(data.content);
-          const totalElems = typeof data.page === "object" ? data.page.totalElements : (data.totalElements ?? data.content.length);
-          const totalPgs = typeof data.page === "object" ? data.page.totalPages : (data.totalPages ?? Math.max(1, Math.ceil(totalElems / currentSize)));
-          setTotalElements(totalElems || 0);
-          setTotalPages(totalPgs || 0);
-        } else if (Array.isArray(data)) {
-          setBookings(data);
-          setTotalElements(data.length);
-          setTotalPages(1);
-        }
+        const meta = pageMeta(res.data);
+        setBookings(res.data.content || (Array.isArray(res.data) ? res.data : []));
+        setTotalElements(meta.totalElements);
+        setTotalPages(meta.totalPages);
       }
     } catch (err) {
       console.error(err);
