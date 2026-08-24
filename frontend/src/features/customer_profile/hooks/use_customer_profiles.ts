@@ -76,7 +76,7 @@ export function useCustomerHistory(customerId: string | undefined) {
 /** Tasks linked to a specific customer — used in the service history tab. */
 export function useCustomerTasks(customerId: string | undefined) {
   return useQuery({
-    queryKey: ["tasks", { customerId }],
+    queryKey: ["tasks", "by-customer", customerId],
     queryFn: () => taskService.getList({ customerId, size: 100, page: 0 }),
     enabled: !!customerId,
   });

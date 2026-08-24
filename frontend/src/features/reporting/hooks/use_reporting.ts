@@ -44,7 +44,7 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 // Fetch all quotations for the discount report tab
 export function useQuotationsForReport() {
   return useQuery({
-    queryKey: ["quotations-for-report"],
+    queryKey: ["quotations", "report"],
     queryFn: () => quotationService.getList({ size: 200 }),
     select: (res) => res.data?.content ?? [],
     staleTime: 60_000,
@@ -57,8 +57,9 @@ export function useDashboardSummary() {
     queryKey: ["dashboard-summary"],
     queryFn: () => reportingService.getDashboardSummary(),
     select: (res) => res.data,
-    staleTime: 30_000,
-    refetchInterval: 8_000, // Background poll every 8s as fallback for active dashboards
+    staleTime: 10_000,
+    refetchInterval: 8_000,
+    refetchIntervalInBackground: false,
   });
 }
 
