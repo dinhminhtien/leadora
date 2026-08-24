@@ -3,11 +3,8 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  TrendingUp,
-  TrendingDown,
   Users,
   Briefcase,
-  AlertCircle,
   CheckCircle2,
   Clock,
   ArrowRight,
@@ -15,11 +12,7 @@ import {
   Mail,
   Calendar,
   FileText,
-  UserCheck,
-  ChevronRight,
-  Plus,
-  Sparkles,
-  Loader2
+  Plus
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -30,7 +23,6 @@ import { useTasks } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
 import { taskService } from "@/services/follow_up_task_service";
 import { interactionTimelineService } from "@/services/interaction_timeline_service";
 import { useAuthStore } from "@/stores/auth_store";
-import { apiClient, type ApiResponse } from "@/services/api_client";
 import { GreetingBar, KpiCard } from "@/components/ui/kpi-card";
 import { KpiSkeleton, CardSkeleton } from "@/components/ui/skeletons";
 import { ROUTE_PATHS } from "@/app/routes/route_paths";
@@ -105,14 +97,6 @@ export function DashboardScreen() {
     if (!name) return "U";
     return name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() || "U";
   };
-
-  const currentDateString = React.useMemo(() => {
-    return new Date().toLocaleDateString("en-US", {
-      month: "long",
-      day: "numeric",
-      year: "numeric"
-    });
-  }, []);
 
   // ── Display-only derived values ──
   const activeLeadsCount = summary?.activeLeadsCount ?? 0;
@@ -440,13 +424,29 @@ export function DashboardScreen() {
         {/* Task Queue Due Today */}
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-sm font-bold text-foreground">Tasks Queue</CardTitle>
+            <div
+              className="cursor-pointer group"
+              onClick={() => router.push(ROUTE_PATHS.manageFollowUpTasks)}
+            >
+              <CardTitle className="text-sm font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-1.5">
+                Tasks Queue
+                <ArrowRight className="size-3.5 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-primary" />
+              </CardTitle>
               <CardDescription className="text-xs text-muted-foreground">Due today or outstanding</CardDescription>
             </div>
-            <Badge variant="primary" className="text-[10px]">
-              {realTasks.filter(t => t.status !== "COMPLETED" && t.status !== "CANCELLED").length} Active
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="primary" className="text-[10px]">
+                {realTasks.filter(t => t.status !== "COMPLETED" && t.status !== "CANCELLED").length} Active
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs px-2 text-muted-foreground hover:text-foreground"
+                onClick={() => router.push(ROUTE_PATHS.manageFollowUpTasks)}
+              >
+                View all
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="px-2">
             <div className="divide-y divide-border">
@@ -462,23 +462,45 @@ export function DashboardScreen() {
                 const linkedName = task.leadName || task.dealName || task.customerName || "Unlinked";
 
                 return (
-                  <div key={task.taskId} className="py-2.5 px-3 flex items-start gap-2.5 hover:bg-muted/50 rounded-xl transition-all duration-150">
+                  <div
+                    key={task.taskId}
+                    onClick={() => router.push(`${ROUTE_PATHS.manageFollowUpTasks}?highlight=${task.taskId}`)}
+                    className="py-2.5 px-3 flex items-start gap-2.5 hover:bg-muted/60 rounded-xl transition-all duration-150 cursor-pointer group"
+                  >
                     <button
-                      onClick={() => handleToggleTask(task.taskId, task.status)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleTask(task.taskId, task.status);
+                      }}
                       className="mt-0.5 shrink-0 focus:outline-none cursor-pointer"
                     >
                       <CheckCircle2 className={`size-4.5 transition-all ${statusColor}`} />
                     </button>
                     <div className="flex-1 min-w-0">
                       <p
-                        className={`text-xs font-bold text-foreground/90 truncate ${isCompleted ? "line-through text-muted-foreground/60 font-normal" : ""
-                          }`}
+                        className={`text-xs font-bold text-foreground/90 truncate group-hover:text-primary transition-colors ${
+                          isCompleted ? "line-through text-muted-foreground/60 font-normal" : ""
+                        }`}
                       >
                         {task.title}
                       </p>
                       <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{task.description || "No description"}</p>
                       <div className="flex items-center gap-2 mt-2">
-                        <span className="text-[9px] text-muted-foreground font-semibold bg-muted px-1.5 py-0.5 rounded">
+                        <span
+                          onClick={(e) => {
+                            if (task.leadId) {
+                              e.stopPropagation();
+                              router.push(ROUTE_PATHS.leadDetail(task.leadId));
+                            } else if (task.dealId) {
+                              e.stopPropagation();
+                              router.push(`${ROUTE_PATHS.deals}?deal=${task.dealId}`);
+                            } else if (task.customerId) {
+                              e.stopPropagation();
+                              router.push(`${ROUTE_PATHS.customerProfiles}?customer=${task.customerId}`);
+                            }
+                          }}
+                          className="text-[9px] text-muted-foreground font-semibold bg-muted hover:bg-muted/80 px-1.5 py-0.5 rounded transition-colors"
+                        >
                           {linkedName}
                         </span>
                         <span
@@ -504,18 +526,38 @@ export function DashboardScreen() {
       {/* Activities & Recent Interactions Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-sm font-bold text-foreground">Recent Sales Interactions</CardTitle>
-            <CardDescription className="text-xs text-muted-foreground">
-              Live updates of customer outreach and timeline updates
-            </CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div
+              className="cursor-pointer group"
+              onClick={() => router.push(ROUTE_PATHS.interactionTimeline)}
+            >
+              <CardTitle className="text-sm font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-1.5">
+                Recent Sales Interactions
+                <ArrowRight className="size-3.5 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-primary" />
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground">
+                Live updates of customer outreach and timeline updates
+              </CardDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs px-2 text-muted-foreground hover:text-foreground"
+              onClick={() => router.push(ROUTE_PATHS.interactionTimeline)}
+            >
+              View all
+            </Button>
           </CardHeader>
           <CardContent className="px-2">
             <div className="relative border-l border-border ml-5 pl-6 space-y-5">
               {timelineData && timelineData.length > 0 ? (
                 timelineData.map((interaction) => (
-                  <div key={interaction.id} className="relative">
-                    <span className="absolute -left-9.5 top-0.5 flex size-7 items-center justify-center rounded-full bg-background border border-border shadow-xs">
+                  <div
+                    key={interaction.id}
+                    onClick={() => router.push(`${ROUTE_PATHS.interactionTimeline}?highlight=${interaction.id}`)}
+                    className="relative cursor-pointer group p-2.5 -ml-2 rounded-xl hover:bg-muted/50 transition-colors"
+                  >
+                    <span className="absolute -left-7.5 top-3 flex size-7 items-center justify-center rounded-full bg-background border border-border shadow-xs group-hover:border-primary/50 transition-colors">
                       {interaction.type === "call" && <Phone className="size-3.5 text-primary" />}
                       {interaction.type === "email" && <Mail className="size-3.5 text-emerald-500" />}
                       {interaction.type === "meeting" && <Calendar className="size-3.5 text-indigo-500" />}
@@ -524,9 +566,25 @@ export function DashboardScreen() {
 
                     <div>
                       <div className="flex justify-between items-center text-xs">
-                        <p className="font-bold text-foreground/90">
+                        <p className="font-bold text-foreground/90 group-hover:text-primary transition-colors">
                           {interaction.type.toUpperCase()} Logged for{" "}
-                          <span className="text-primary hover:underline cursor-pointer">{interaction.linkedName || "System Entity"}</span>
+                          <span
+                            onClick={(e) => {
+                              if (interaction.linkedType && interaction.linkedId) {
+                                e.stopPropagation();
+                                if (interaction.linkedType === "lead") {
+                                  router.push(ROUTE_PATHS.leadDetail(interaction.linkedId));
+                                } else if (interaction.linkedType === "deal") {
+                                  router.push(`${ROUTE_PATHS.deals}?deal=${interaction.linkedId}`);
+                                } else if (interaction.linkedType === "customer") {
+                                  router.push(`${ROUTE_PATHS.customerProfiles}?customer=${interaction.linkedId}`);
+                                }
+                              }
+                            }}
+                            className="text-primary hover:underline"
+                          >
+                            {interaction.linkedName || "System Entity"}
+                          </span>
                         </p>
                         <span className="text-muted-foreground text-[10px]">
                           {new Date(interaction.occurredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
