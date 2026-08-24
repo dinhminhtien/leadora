@@ -3,8 +3,10 @@ package com.novax.leadora.api.dto.response;
 import com.novax.leadora.common.security.RbacRoles;
 import com.novax.leadora.common.security.RolePermissionScope;
 import com.novax.leadora.infrastructure.persistence.entity.RoleEntity;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 import java.util.Set;
@@ -15,6 +17,8 @@ import java.util.Set;
  */
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class RoleResponse {
 
     private Integer roleId;

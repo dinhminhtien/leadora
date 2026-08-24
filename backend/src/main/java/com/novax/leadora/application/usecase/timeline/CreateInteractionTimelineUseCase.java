@@ -62,7 +62,7 @@ public class CreateInteractionTimelineUseCase {
 
         InteractTimelineEntity entity = InteractTimelineEntity.builder()
                 .user(currentUser)
-                .interactionType(request.getType())
+                .interactionType(request.getType().trim().toUpperCase())
                 .description(request.getDescription())
                 .occurredAt(request.getOccurredAt())
                 .lead(lead)

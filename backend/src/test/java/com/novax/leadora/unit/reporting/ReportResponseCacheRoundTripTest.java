@@ -236,4 +236,60 @@ class ReportResponseCacheRoundTripTest {
                     .satisfies(r -> assertThat(r.getCount()).isEqualTo(7));
         });
     }
+
+    @Test
+    @DisplayName("UserSummaryResponse list survives cache round trip")
+    void userSummariesRoundTrips() {
+        List<UserSummaryResponse> original = List.of(
+                UserSummaryResponse.builder()
+                        .userId(java.util.UUID.randomUUID())
+                        .fullName("Nguyen Van A")
+                        .email("a@hotel.com")
+                        .roleName("SALES")
+                        .build()
+        );
+
+        byte[] bytes = serializer.serialize(original);
+        Object restored = serializer.deserialize(bytes);
+
+        assertThat(restored).isInstanceOf(List.class);
+        @SuppressWarnings("unchecked")
+        List<UserSummaryResponse> list = (List<UserSummaryResponse>) restored;
+        assertThat(list).hasSize(1);
+        assertThat(list.get(0).getFullName()).isEqualTo("Nguyen Van A");
+    }
+
+    @Test
+    @DisplayName("RoleResponse list survives cache round trip")
+    void roleResponseListRoundTrips() {
+        List<RoleResponse> original = List.of(
+                RoleResponse.builder()
+                        .roleId(1)
+                        .roleName("SALES_STAFF")
+                        .description("Sales Staff")
+                        .userCount(5)
+                        .permissions(List.of(
+                                PermissionResponse.builder()
+                                        .permissionId(10)
+                                        .permissionCode("LEAD_READ")
+                                        .label("Read Leads")
+                                        .build()
+                        ))
+                        .configurable(true)
+                        .applicablePermissionCodes(List.of("LEAD_READ"))
+                        .defaultPermissionCodes(List.of("LEAD_READ"))
+                        .build()
+        );
+
+        byte[] bytes = serializer.serialize(original);
+        Object restored = serializer.deserialize(bytes);
+
+        assertThat(restored).isInstanceOf(List.class);
+        @SuppressWarnings("unchecked")
+        List<RoleResponse> list = (List<RoleResponse>) restored;
+        assertThat(list).hasSize(1);
+        assertThat(list.get(0).getRoleName()).isEqualTo("SALES_STAFF");
+        assertThat(list.get(0).getPermissions()).hasSize(1);
+        assertThat(list.get(0).getPermissions().get(0).getPermissionCode()).isEqualTo("LEAD_READ");
+    }
 }

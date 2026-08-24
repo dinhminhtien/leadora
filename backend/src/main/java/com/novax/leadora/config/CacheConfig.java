@@ -38,6 +38,7 @@ public class CacheConfig implements CachingConfigurer {
      * {@code ReportResponseCacheRoundTripTest} exercises the same construction rather than a
      * lookalike.
      */
+    @SuppressWarnings("deprecation")
     public static GenericJackson2JsonRedisSerializer valueSerializer() {
         ObjectMapper mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -59,7 +60,7 @@ public class CacheConfig implements CachingConfigurer {
                 .allowIfSubType("java.math.")
                 .allowIfSubType("java.time.")
                 .build();
-        mapper.activateDefaultTyping(typeValidator, ObjectMapper.DefaultTyping.NON_FINAL,
+        mapper.activateDefaultTyping(typeValidator, ObjectMapper.DefaultTyping.EVERYTHING,
                 JsonTypeInfo.As.PROPERTY);
 
         return new GenericJackson2JsonRedisSerializer(mapper);
@@ -108,8 +109,13 @@ public class CacheConfig implements CachingConfigurer {
         return new CacheErrorHandler() {
             @Override
             public void handleCacheGetError(RuntimeException exception, Cache cache, Object key) {
-                log.warn("Redis cache GET failed for cache '{}' (key: {}). Falling back to database. Error: {}", 
+                log.warn("Redis cache GET failed for cache '{}' (key: {}). Evicting invalid entry and falling back to database. Error: {}", 
                         cache.getName(), key, exception.getMessage());
+                try {
+                    cache.evict(key);
+                } catch (Exception e) {
+                    log.debug("Failed to evict invalid cache key", e);
+                }
             }
 
             @Override
