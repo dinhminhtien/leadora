@@ -15,7 +15,8 @@ import lombok.Setter;
 public class UpdateProfileRequest {
 
     @NotBlank(message = "Full name is required")
-    @Size(max = 255, message = "Full name must not exceed 255 characters")
+    @Size(min = 2, max = 255, message = "Full name must be between 2 and 255 characters")
+    @Pattern(regexp = CreateCustomerRequest.NAME_PATTERN, message = CreateCustomerRequest.NAME_MESSAGE)
     private String fullName;
 
     @Pattern(

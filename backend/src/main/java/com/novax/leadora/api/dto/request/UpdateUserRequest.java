@@ -15,10 +15,12 @@ import lombok.Setter;
 @Setter
 public class UpdateUserRequest {
 
-    @Size(max = 255)
+    @Size(min = 2, max = 255, message = "Full name must be between 2 and 255 characters")
+    @Pattern(regexp = "^$|" + CreateCustomerRequest.NAME_PATTERN, message = CreateCustomerRequest.NAME_MESSAGE)
     private String fullName;
 
     @Email(message = "Invalid email format")
+    @Pattern(regexp = "^$|" + CreateCustomerRequest.EMAIL_PATTERN, message = "Invalid email format")
     @Size(max = 255)
     private String email;
 

@@ -495,8 +495,13 @@ export function DealListScreen() {
   // Form Submit
   const handleCreateDeal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDeal.title) {
+    const titleTrimmed = (newDeal.title || "").trim();
+    if (!titleTrimmed) {
       showError("Please enter a Deal title.");
+      return;
+    }
+    if (titleTrimmed.length > 50) {
+      showError("Deal title cannot exceed 50 characters.");
       return;
     }
     if (!newDeal.customerId) {
@@ -504,14 +509,23 @@ export function DealListScreen() {
       return;
     }
 
+    if (newDeal.email?.trim() && !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(newDeal.email.trim())) {
+      showError("Please enter a valid email address.");
+      return;
+    }
+    if (newDeal.phone?.trim() && !/^(0|\+84|84)?[0-9]{9,10}$|^\d{10,11}$/.test(newDeal.phone.trim())) {
+      showError("Phone number must be a valid 10 or 11-digit number.");
+      return;
+    }
+
     const payload = {
       customerId: newDeal.customerId,
-      title: newDeal.title,
-      contactName: newDeal.contactName,
-      email: newDeal.email || "",
-      phone: newDeal.phone || "",
+      title: titleTrimmed,
+      contactName: newDeal.contactName?.trim() || "",
+      email: newDeal.email?.trim() || "",
+      phone: newDeal.phone?.trim() || "",
       stage: newDeal.stage,
-      value: Number(newDeal.value) || 0,
+      value: Math.max(0, Number(newDeal.value) || 0),
       expectedClose: newDeal.expectedClose || new Date().toISOString().split("T")[0],
       status: "active",
       owner: newDeal.owner,
@@ -567,17 +581,29 @@ export function DealListScreen() {
 
   const handleUpdateDeal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingDeal || !editingDeal.title || !editingDeal.contactName) {
+    if (!editingDeal || !editingDeal.title?.trim() || !editingDeal.contactName?.trim()) {
       showError("Please enter both Deal title and Primary Contact name.");
+      return;
+    }
+    if (editingDeal.title.trim().length > 50) {
+      showError("Deal title cannot exceed 50 characters.");
+      return;
+    }
+    if (editingDeal.email?.trim() && !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(editingDeal.email.trim())) {
+      showError("Please enter a valid email address.");
+      return;
+    }
+    if (editingDeal.phone?.trim() && !/^(0|\+84|84)?[0-9]{9,10}$|^\d{10,11}$/.test(editingDeal.phone.trim())) {
+      showError("Phone number must be a valid 10 or 11-digit number.");
       return;
     }
 
     const payload = {
-      title: editingDeal.title,
-      contactName: editingDeal.contactName,
-      email: editingDeal.email || "",
-      phone: editingDeal.phone || "",
-      value: Number(editingDeal.value) || 0,
+      title: editingDeal.title.trim(),
+      contactName: editingDeal.contactName.trim(),
+      email: editingDeal.email?.trim() || "",
+      phone: editingDeal.phone?.trim() || "",
+      value: Math.max(0, Number(editingDeal.value) || 0),
       stage: editingDeal.stage,
       expectedClose: editingDeal.expectedClose,
       status: editingDeal.status,

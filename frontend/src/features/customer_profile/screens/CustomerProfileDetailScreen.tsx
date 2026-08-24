@@ -94,31 +94,76 @@ function EditCustomerDrawer({
     assignedUserId: customer.assignedUserId ?? "",
   });
 
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const updateMutation = useUpdateCustomer(customer.customerId);
 
   function set<K extends keyof typeof form>(key: K, value: typeof form[K]) {
     setForm(f => ({ ...f, [key]: value }));
+    if (errors[key]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  }
+
+  const isCorporate = form.customerType === "CORPORATE";
+
+  function validate(): boolean {
+    const errs: Record<string, string> = {};
+    const nameTrimmed = (form.fullName ?? "").trim();
+    const emailTrimmed = (form.email ?? "").trim();
+    const phoneTrimmed = (form.phone ?? "").trim();
+
+    // 1. Full Name: 2-40 chars, letters/diacritics/standard punctuation
+    if (!nameTrimmed) {
+      errs.fullName = "Full name is required.";
+    } else if (nameTrimmed.length < 2 || nameTrimmed.length > 40) {
+      errs.fullName = "Full name must be between 2 and 40 characters.";
+    } else if (!/^[\p{L}\s'.-]{2,40}$/u.test(nameTrimmed)) {
+      errs.fullName = "Full name can only contain letters, spaces, and standard punctuation.";
+    }
+
+    // 2. Customer Type & Company Name (BR-09)
+    if (isCorporate && !(form.companyName ?? "").trim()) {
+      errs.companyName = "Company name is required for corporate customers.";
+    }
+
+    // 3. Email (if entered)
+    if (emailTrimmed) {
+      if (emailTrimmed.length > 40) {
+        errs.email = "Email cannot exceed 40 characters.";
+      } else if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(emailTrimmed)) {
+        errs.email = "Please enter a valid email address (e.g. name@example.com).";
+      }
+    }
+
+    // 4. Phone (if entered)
+    if (phoneTrimmed && !/^(0|\+84|84)?[0-9]{9,10}$|^\d{10,11}$/.test(phoneTrimmed)) {
+      errs.phone = "Phone number must be a valid 10 or 11-digit number.";
+    }
+
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
   }
 
   function handleSubmit(e: React.FormEvent | React.MouseEvent) {
     e.preventDefault();
-    if (!form.fullName?.trim()) {
-      toast.error("Full name is required.");
+    if (!validate()) {
+      toast.error("Please correct the errors in the form.");
       return;
     }
-    // BR-09: a corporate customer profile must name its company.
-    if (form.customerType === "CORPORATE" && !form.companyName?.trim()) {
-      toast.error("Company name is required for a corporate customer.");
-      return;
-    }
+
     updateMutation.mutate(
       {
         ...form,
-        email: form.email || undefined,
-        phone: form.phone || undefined,
-        companyName: form.companyName || undefined,
-        taxCode: form.taxCode || undefined,
-        address: form.address || undefined,
+        fullName: form.fullName?.trim(),
+        email: form.email?.trim() || undefined,
+        phone: form.phone?.trim() || undefined,
+        companyName: form.companyName?.trim() || undefined,
+        taxCode: form.taxCode?.trim() || undefined,
+        address: form.address?.trim() || undefined,
         assignedUserId: form.assignedUserId || undefined,
       },
       {
@@ -127,8 +172,6 @@ function EditCustomerDrawer({
       }
     );
   }
-
-  const isCorporate = form.customerType === "CORPORATE";
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -169,13 +212,24 @@ function EditCustomerDrawer({
             <label className="block text-xs font-semibold text-slate-600 mb-1">
               {isCorporate ? "Representative Name" : "Full Name"} *
             </label>
-            <Input required value={form.fullName} onChange={e => set("fullName", e.target.value)} />
+            <Input
+              required
+              value={form.fullName}
+              onChange={e => set("fullName", e.target.value)}
+              className={errors.fullName ? "border-rose-400 focus:border-rose-500 bg-rose-50/20" : ""}
+            />
+            {errors.fullName && <p className="text-xs text-rose-500 mt-1">{errors.fullName}</p>}
           </div>
 
           {isCorporate && (
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">Company Name *</label>
-              <Input value={form.companyName ?? ""} onChange={e => set("companyName", e.target.value)} />
+              <Input
+                value={form.companyName ?? ""}
+                onChange={e => set("companyName", e.target.value)}
+                className={errors.companyName ? "border-rose-400 focus:border-rose-500 bg-rose-50/20" : ""}
+              />
+              {errors.companyName && <p className="text-xs text-rose-500 mt-1">{errors.companyName}</p>}
             </div>
           )}
 
@@ -184,13 +238,25 @@ function EditCustomerDrawer({
               <label className="block text-xs font-semibold text-slate-600 mb-1">
                 {isCorporate ? "Business Phone" : "Phone"}
               </label>
-              <Input type="tel" value={form.phone ?? ""} onChange={e => set("phone", e.target.value)} />
+              <Input
+                type="tel"
+                value={form.phone ?? ""}
+                onChange={e => set("phone", e.target.value)}
+                className={errors.phone ? "border-rose-400 focus:border-rose-500 bg-rose-50/20" : ""}
+              />
+              {errors.phone && <p className="text-xs text-rose-500 mt-1">{errors.phone}</p>}
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
                 {isCorporate ? "Business Email" : "Email"}
               </label>
-              <Input type="email" value={form.email ?? ""} onChange={e => set("email", e.target.value)} />
+              <Input
+                type="email"
+                value={form.email ?? ""}
+                onChange={e => set("email", e.target.value)}
+                className={errors.email ? "border-rose-400 focus:border-rose-500 bg-rose-50/20" : ""}
+              />
+              {errors.email && <p className="text-xs text-rose-500 mt-1">{errors.email}</p>}
             </div>
           </div>
 

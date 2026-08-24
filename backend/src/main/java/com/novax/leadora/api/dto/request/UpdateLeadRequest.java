@@ -18,10 +18,12 @@ import java.util.UUID;
 @Setter
 public class UpdateLeadRequest {
 
-    @Size(max = LeadFieldLimits.FULL_NAME, message = "Full name must be at most 40 characters")
+    @Size(min = 2, max = LeadFieldLimits.FULL_NAME, message = "Full name must be between 2 and 40 characters")
+    @Pattern(regexp = "^$|" + CreateCustomerRequest.NAME_PATTERN, message = CreateCustomerRequest.NAME_MESSAGE)
     private String fullName;
 
     @Email(message = "Invalid email format")
+    @Pattern(regexp = "^$|" + CreateCustomerRequest.EMAIL_PATTERN, message = "Invalid email format")
     @Size(max = LeadFieldLimits.EMAIL, message = "Email must be at most 40 characters")
     private String email;
 

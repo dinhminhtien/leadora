@@ -31,9 +31,12 @@ public class CreateCustomerUseCase {
         customerProfilePolicy.assertCorporateHasCompany(
                 request.getCustomerType(), request.getCompanyName());
 
+        String email = blankToNull(request.getEmail());
+        String phone = blankToNull(request.getPhone());
+
         // Shared with UpdateCustomerUseCase and ConvertLeadUseCase — see CustomerDuplicatePolicy
         // for why this rule lives outside the use cases rather than being repeated in each.
-        customerDuplicatePolicy.assertNoDuplicate(request.getEmail(), request.getPhone());
+        customerDuplicatePolicy.assertNoDuplicate(email, phone);
 
         UserEntity currentUser = customerAccessPolicy.currentUser();
         UserEntity assignedUser = null;
@@ -45,9 +48,9 @@ public class CreateCustomerUseCase {
 
         CustomerEntity customer = CustomerEntity.builder()
                 .customerType(request.getCustomerType())
-                .fullName(request.getFullName())
-                .email(blankToNull(request.getEmail()))
-                .phone(blankToNull(request.getPhone()))
+                .fullName(request.getFullName() != null ? request.getFullName().trim() : null)
+                .email(email)
+                .phone(phone)
                 .companyName(blankToNull(request.getCompanyName()))
                 .taxCode(blankToNull(request.getTaxCode()))
                 .address(blankToNull(request.getAddress()))

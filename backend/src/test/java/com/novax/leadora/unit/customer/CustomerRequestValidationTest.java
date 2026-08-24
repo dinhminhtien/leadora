@@ -83,4 +83,47 @@ class CustomerRequestValidationTest {
         assertFalse(violations.isEmpty());
         assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("email")));
     }
+
+    @Test
+    @DisplayName("UT-CUST-VAL-06: Blank email → @NotBlank violation")
+    void testBlankEmailTriggersViolation() {
+        CreateCustomerRequest req = buildValidRequest();
+        req.setEmail("");
+
+        Set<ConstraintViolation<CreateCustomerRequest>> violations = validator.validate(req);
+        assertFalse(violations.isEmpty());
+        assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("email")));
+    }
+
+    @Test
+    @DisplayName("UT-CUST-VAL-07: Blank phone → @NotBlank violation")
+    void testBlankPhoneTriggersViolation() {
+        CreateCustomerRequest req = buildValidRequest();
+        req.setPhone("");
+
+        Set<ConstraintViolation<CreateCustomerRequest>> violations = validator.validate(req);
+        assertFalse(violations.isEmpty());
+        assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("phone")));
+    }
+
+    @Test
+    @DisplayName("UT-CUST-VAL-08: Invalid name format with numbers or symbols → @Pattern violation")
+    void testInvalidNamePatternTriggersViolation() {
+        CreateCustomerRequest req = buildValidRequest();
+        req.setFullName("Customer 123 #$%");
+
+        Set<ConstraintViolation<CreateCustomerRequest>> violations = validator.validate(req);
+        assertFalse(violations.isEmpty());
+        assertTrue(violations.stream().anyMatch(v -> v.getPropertyPath().toString().equals("fullName")));
+    }
+
+    @Test
+    @DisplayName("UT-CUST-VAL-09: Valid Vietnamese name with diacritics passes")
+    void testValidVietnameseNamePasses() {
+        CreateCustomerRequest req = buildValidRequest();
+        req.setFullName("Nguyễn Văn Ánh Dương");
+
+        Set<ConstraintViolation<CreateCustomerRequest>> violations = validator.validate(req);
+        assertTrue(violations.isEmpty(), "Vietnamese names with diacritics should pass validation");
+    }
 }
