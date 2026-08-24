@@ -33,7 +33,6 @@ import {
   type InteractionTimelineEntry,
   type CreateInteractionTimelinePayload,
   type UpdateInteractionTimelinePayload,
-  type InteractionAuditLog
 } from "@/services/interaction_timeline_service";
 import {
   userService,
@@ -78,21 +77,44 @@ type SearchEntityItem = {
   status?: string | null;
 };
 
+import {
+  useInteractions,
+  useCreateInteraction,
+  useUpdateInteraction,
+  useInteractionAuditLogs,
+} from "@/features/interaction_timeline/hooks/use_interactions";
+
 export function InteractionTimelineScreen() {
   const searchParams = useSearchParams();
   const { highlightedId, setRowRef } = useHighlightRow("highlight", "interaction");
   const highlightParam = searchParams.get("highlight") || searchParams.get("interaction") || searchParams.get("id");
   const openedHighlightRef = React.useRef<string | null>(null);
 
-  const [interactions, setInteractions] = useState<InteractionTimelineEntry[]>([]);
   const [agents, setAgents] = useState<UserSummary[]>([]);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [agentFilter, setAgentFilter] = useState("all");
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const queryParams = React.useMemo(() => {
+    const params: Record<string, string | number> = { page: 0, size: 200 };
+    if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+    if (typeFilter !== "all") params.type = typeFilter;
+    if (agentFilter !== "all") params.agentId = agentFilter;
+    return params;
+  }, [debouncedSearch, typeFilter, agentFilter]);
+
+  const { data: timelinePage, isLoading: loading, error: queryError } = useInteractions(queryParams);
+  const interactions = timelinePage?.data?.content ?? [];
+  const error = queryError ? (queryError instanceof Error ? queryError.message : "Failed to load interaction timeline") : null;
+
+  const createMutation = useCreateInteraction();
 
   // Detail Drawer state
   const [selectedInteraction, setSelectedInteraction] = useState<InteractionTimelineEntry | null>(null);
@@ -103,11 +125,16 @@ export function InteractionTimelineScreen() {
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
+  const updateMutation = useUpdateInteraction(selectedInteraction?.id ?? "");
+
   // Audit state
   const [detailTab, setDetailTab] = useState<"details" | "audit">("details");
-  const [auditLogs, setAuditLogs] = useState<InteractionAuditLog[]>([]);
-  const [auditLoading, setAuditLoading] = useState(false);
-  const [auditError, setAuditError] = useState<string | null>(null);
+  const { data: auditResponse, isLoading: auditLoading } = useInteractionAuditLogs(
+    selectedInteraction?.id,
+    detailTab === "audit" && !!selectedInteraction
+  );
+  const auditLogs = auditResponse?.data ?? [];
+  const auditError = null;
 
   // Create Drawer state
   const [showCreateDrawer, setShowCreateDrawer] = useState(false);
@@ -168,49 +195,6 @@ export function InteractionTimelineScreen() {
     fetchAgents();
   }, []);
 
-  // Fetch interaction list
-  const fetchInteractions = async (searchVal: string, typeVal: string, agentVal: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      // This screen shows the full recent history with no pager UI, so request
-      // a generous page — the backend list is paged (default size 20) and would
-      // otherwise silently cap the timeline.
-      const params: Record<string, string | number> = { page: 0, size: 200 };
-      if (searchVal.trim()) {
-        params.search = searchVal.trim();
-      }
-      if (typeVal !== "all") {
-        params.type = typeVal;
-      }
-      if (agentVal !== "all") {
-        params.agentId = agentVal;
-      }
-
-      const response = await interactionTimelineService.getList(params);
-      if (response && response.success && response.data) {
-        setInteractions(response.data.content ?? []);
-      } else {
-        setError(response?.message || "Failed to load interaction timeline");
-      }
-    } catch (err: unknown) {
-      console.error("Error loading interactions", err);
-      const errMsg = err instanceof Error ? err.message : (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(errMsg || "An unexpected error occurred.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Debounced timeline list fetch
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      fetchInteractions(searchTerm, typeFilter, agentFilter);
-    }, 300);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchTerm, typeFilter, agentFilter]);
-
   // Autocomplete search for target records
   useEffect(() => {
     if (searchQuery.trim().length < 1) {
@@ -234,10 +218,6 @@ export function InteractionTimelineScreen() {
             setSearchResults(res.data || []);
           }
         } else if (searchEntityType === "deal") {
-          // `GET /deals` accepts `?search=` and matches deal name, customer name and
-          // company name server-side. This used to download every visible deal and
-          // substring-match the title in the browser — one full-table read per
-          // keystroke, and it could not find a deal by its customer.
           const res = await dealService.getList({ search: searchQuery, size: 8 });
           if (res && res.success && res.data) {
             setSearchResults(res.data.content);
@@ -280,31 +260,8 @@ export function InteractionTimelineScreen() {
     }
   }, [highlightParam, selectedInteraction, handleOpenDetail]);
 
-  // Fetch audit logs when tab is selected
-  const fetchAuditLogs = async (id: string) => {
-    setAuditLoading(true);
-    setAuditError(null);
-    try {
-      const res = await interactionTimelineService.getAuditLogs(id);
-      if (res && res.success && res.data) {
-        setAuditLogs(res.data);
-      } else {
-        setAuditError(res.message || "Failed to load audit logs.");
-      }
-    } catch (err: unknown) {
-      console.error("Failed to load audit logs", err);
-      const errMsg = err instanceof Error ? err.message : (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setAuditError(errMsg || "An unexpected error occurred.");
-    } finally {
-      setAuditLoading(false);
-    }
-  };
-
   const handleSelectTab = (tab: "details" | "audit") => {
     setDetailTab(tab);
-    if (tab === "audit" && selectedInteraction) {
-      fetchAuditLogs(selectedInteraction.id);
-    }
   };
 
   // Open creation drawer
@@ -350,13 +307,12 @@ export function InteractionTimelineScreen() {
         dealId: selectedDeal?.dealId || selectedDeal?.id || undefined,
       };
 
-      const res = await interactionTimelineService.create(payload);
+      const res = await createMutation.mutateAsync(payload);
       if (res && res.success) {
         toast.success("Interaction logged successfully.");
         setShowCreateDrawer(false);
-        fetchInteractions(searchTerm, typeFilter, agentFilter);
       } else {
-        setCreateError(res.message || "Failed to log interaction.");
+        setCreateError(res?.message || "Failed to log interaction.");
       }
     } catch (err: unknown) {
       console.error("Failed to create log", err);
@@ -386,14 +342,13 @@ export function InteractionTimelineScreen() {
         occurredAt: new Date(editOccurredAt).toISOString()
       };
 
-      const res = await interactionTimelineService.update(selectedInteraction.id, payload);
+      const res = await updateMutation.mutateAsync(payload);
       if (res && res.success) {
         toast.success("Interaction updated successfully.");
         setIsEditingDetail(false);
         handleOpenDetail(selectedInteraction.id);
-        fetchInteractions(searchTerm, typeFilter, agentFilter);
       } else {
-        setEditError(res.message || "Failed to update interaction.");
+        setEditError(res?.message || "Failed to update interaction.");
       }
     } catch (err: unknown) {
       console.error("Failed to update log", err);

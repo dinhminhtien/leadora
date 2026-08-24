@@ -39,7 +39,7 @@ function useEntityOptions(entityType: string, enabled: boolean) {
       return [];
     },
     enabled: enabled && ENTITY_TYPES_WITH_LIST.includes(entityType),
-    staleTime: 60_000,
+    staleTime: 10 * 60_000,
   });
 }
 

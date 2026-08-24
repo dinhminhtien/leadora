@@ -71,7 +71,13 @@ export function useUpdateTask(taskId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: UpdateTaskPayload) => taskService.update(taskId, payload),
-    onSuccess: () => {
+    onSuccess: (updated, payload) => {
+      if (updated?.data) {
+        queryClient.setQueryData([QUERY_KEY, taskId], updated);
+      }
+      queryClient.setQueriesData({ queryKey: [QUERY_KEY], exact: false }, (old) =>
+        patchTaskInCache(old, taskId, payload as Partial<Task>)
+      );
       queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEY, taskId] });
     },
@@ -91,7 +97,10 @@ export function useUpdateTaskById() {
   return useMutation({
     mutationFn: ({ taskId, payload }: { taskId: string; payload: UpdateTaskPayload }) =>
       taskService.update(taskId, payload),
-    onSuccess: (_res, { taskId }) => {
+    onSuccess: (_res, { taskId, payload }) => {
+      queryClient.setQueriesData({ queryKey: [QUERY_KEY], exact: false }, (old) =>
+        patchTaskInCache(old, taskId, payload as Partial<Task>)
+      );
       queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEY, taskId] });
       // The calendar keeps its own query namespace.
@@ -115,7 +124,7 @@ export function useUsers() {
   return useQuery({
     queryKey: ["users"],
     queryFn: () => userService.getAll(),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
   });
 }
 
@@ -124,9 +133,13 @@ export function useResolveTask() {
   return useMutation({
     mutationFn: ({ taskId, resultNote }: { taskId: string; resultNote: string }) =>
       taskService.resolve(taskId, resultNote),
-    onSuccess: () => {
+    onSuccess: (_res, { taskId }) => {
+      queryClient.setQueriesData({ queryKey: [QUERY_KEY], exact: false }, (old) =>
+        patchTaskInCache(old, taskId, { status: "COMPLETED" })
+      );
       queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
       queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     },
   });
 }

@@ -1,6 +1,7 @@
 import axios, { type AxiosError } from "axios";
 
 import { createSupabaseBrowserClient } from "@/services/supabase/client";
+import { supabaseAuthService } from "@/services/supabase_auth_service";
 
 export type ApiResponse<T> = {
   success: boolean;
@@ -134,6 +135,34 @@ apiClient.interceptors.request.use(async (config) => {
   return config;
 });
 
+export type MutatedEntity =
+  | "leads"
+  | "tasks"
+  | "deals"
+  | "quotations"
+  | "customers"
+  | "interactions"
+  | "reminders"
+  | "contracts"
+  | "general";
+
+const ROUTE_ENTITY_MAP: Array<{ match: RegExp; entity: MutatedEntity }> = [
+  { match: /\/leads(\/|$|\?)/, entity: "leads" },
+  { match: /\/tasks(\/|$|\?)/, entity: "tasks" },
+  { match: /\/deals(\/|$|\?)/, entity: "deals" },
+  { match: /\/quotations(\/|$|\?)/, entity: "quotations" },
+  { match: /\/customers(\/|$|\?)/, entity: "customers" },
+  { match: /\/interactions(\/|$|\?)/, entity: "interactions" },
+  { match: /\/reminders(\/|$|\?)/, entity: "reminders" },
+  { match: /\/contracts(\/|$|\?)/, entity: "contracts" },
+];
+
+export function resolveEntityFromUrl(url?: string): MutatedEntity {
+  if (!url) return "general";
+  const found = ROUTE_ENTITY_MAP.find((m) => m.match.test(url));
+  return found ? found.entity : "general";
+}
+
 apiClient.interceptors.response.use(
   (response) => {
     // If it's a mutating request, broadcast invalidation to other tabs and dispatch locally
@@ -143,15 +172,17 @@ apiClient.interceptors.response.use(
       ["post", "put", "patch", "delete"].includes(method) &&
       typeof window !== "undefined"
     ) {
+      const entity = resolveEntityFromUrl(response.config.url);
+      const payload = { type: "invalidate", entity };
       try {
         const channel = new BroadcastChannel("leadora-channel");
-        channel.postMessage("invalidate-dashboard");
+        channel.postMessage(payload);
         channel.close();
       } catch (e) {
         console.warn("Failed to broadcast change", e);
       }
       try {
-        window.dispatchEvent(new Event("leadora-mutate"));
+        window.dispatchEvent(new CustomEvent("leadora-mutate", { detail: payload }));
       } catch (e) {
         console.warn("Failed to dispatch local mutation event", e);
       }
@@ -164,7 +195,6 @@ apiClient.interceptors.response.use(
       typeof window !== "undefined"
     ) {
       try {
-        const { supabaseAuthService } = require("@/services/supabase_auth_service");
         supabaseAuthService.clearLocalSession();
         supabaseAuthService.signOut();
       } catch (e) {

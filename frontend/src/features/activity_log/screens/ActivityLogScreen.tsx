@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   History, Search, Calendar, RefreshCw, X, ShieldAlert, Cpu, User, Info,
-  ChevronLeft, ChevronRight, List, GitFork, ArrowRight, Eye, LayoutGrid, CheckCircle2,
-  AlertTriangle, Play, HelpCircle, Terminal, Trash2
+  ChevronLeft, ChevronRight, List, GitFork, ArrowRight, Eye, LayoutGrid,
+  AlertTriangle, Terminal, Trash2
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -14,8 +14,9 @@ import { timelineEventIcon } from "@/components/ui/timeline";
 import { timelineEventKind } from "@/shared/design/timeline-events";
 import { Badge } from "@/components/ui/Badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
-import { activityLogService, type ActivityLog, type ActorType, type RecordOperation } from "@/services/activity_log_service";
-import { systemLogService, type SystemLogEntry } from "@/services/system_log_service";
+import { type ActorType, type RecordOperation } from "@/services/activity_log_service";
+import { type SystemLogEntry } from "@/services/system_log_service";
+import { useActivityLogs, useActivityLogDetail, useSystemLogs, useClearSystemLogs } from "@/features/activity_log/hooks/use_activity_logs";
 import { toast } from "@/stores/toast_store";
 
 const PAGE_SIZE = 15;
@@ -155,7 +156,7 @@ function getEntityStyle(entityType: string) {
   }
 }
 
-function renderPayloadSummary(payload: any) {
+function renderPayloadSummary(payload: Record<string, unknown> | null | undefined) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
   const keys = Object.keys(payload);
   if (keys.length === 0) return null;
@@ -205,22 +206,61 @@ export function ActivityLogScreen() {
   const [entityType, setEntityType] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-
   const [page, setPage] = useState(0);
-  const [logs, setLogs] = useState<ActivityLog[]>([]);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalElements, setTotalElements] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+
+  // Activity Log query
+  const activityLogParams = useMemo(() => {
+    return {
+      keyword: keyword || undefined,
+      actorType: actorType || undefined,
+      activityType: activityType || undefined,
+      entityType: entityType || undefined,
+      startDate: startDate ? new Date(startDate).toISOString() : undefined,
+      endDate: endDate ? new Date(endDate).toISOString() : undefined,
+      view: dataView,
+      category: categoryTab === "SYSTEM" ? undefined : categoryTab,
+      page,
+      size: PAGE_SIZE,
+    };
+  }, [keyword, actorType, activityType, entityType, startDate, endDate, dataView, categoryTab, page]);
+
+  const { data: activityResponse, isLoading: isLoadingLogs } = useActivityLogs(
+    categoryTab !== "SYSTEM" ? activityLogParams : undefined
+  );
+  const logs = activityResponse?.data?.content ?? [];
+  const totalPages =
+    activityResponse?.data?.totalPages ??
+    (activityResponse?.data?.page && typeof activityResponse?.data?.page === "object"
+      ? activityResponse.data.page.totalPages
+      : 1);
+  const totalElements =
+    activityResponse?.data?.totalElements ??
+    (activityResponse?.data?.page && typeof activityResponse?.data?.page === "object"
+      ? activityResponse.data.page.totalElements
+      : 0);
 
   // System Logs States
-  const [systemLogs, setSystemLogs] = useState<SystemLogEntry[]>([]);
   const [selectedSystemLogLevel, setSelectedSystemLogLevel] = useState<string>("ALL");
   const [selectedSystemLog, setSelectedSystemLog] = useState<SystemLogEntry | null>(null);
 
+  const systemLogParams = useMemo(() => ({
+    level: selectedSystemLogLevel === "ALL" ? undefined : selectedSystemLogLevel,
+    keyword: keyword || undefined,
+  }), [selectedSystemLogLevel, keyword]);
+
+  const { data: systemResponse, isLoading: isLoadingSystem } = useSystemLogs(
+    systemLogParams,
+    categoryTab === "SYSTEM"
+  );
+  const systemLogs = useMemo(() => systemResponse?.data ?? [], [systemResponse?.data]);
+  const clearSystemLogsMutation = useClearSystemLogs();
+
+  const isLoading = categoryTab === "SYSTEM" ? isLoadingSystem : isLoadingLogs;
+
   // Selected Activity Log for detailed Drawer
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
-  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const { data: detailResponse, isLoading: isLoadingDetail } = useActivityLogDetail(selectedId || undefined);
+  const selectedLog = detailResponse?.data ?? null;
 
   // System Logs client-side pagination
   const systemLogsPageSize = 25;
@@ -241,96 +281,6 @@ export function ActivityLogScreen() {
     }, 400);
     return () => clearTimeout(t);
   }, [searchInput]);
-
-  const fetchLogs = async () => {
-    setIsLoading(true);
-    try {
-      const params = {
-        keyword: keyword || undefined,
-        actorType: actorType || undefined,
-        activityType: activityType || undefined,
-        entityType: entityType || undefined,
-        startDate: startDate ? new Date(startDate).toISOString() : undefined,
-        endDate: endDate ? new Date(endDate).toISOString() : undefined,
-        view: dataView,
-        category: categoryTab === "SYSTEM" ? undefined : categoryTab,
-        page,
-        size: PAGE_SIZE,
-      };
-
-      const response = await activityLogService.getList(params);
-      if (response.success && response.data) {
-        setLogs(response.data.content || []);
-
-        // Support either PageResponse shape
-        const pageMeta = response.data.page;
-        if (pageMeta && typeof pageMeta === "object") {
-          setTotalPages(pageMeta.totalPages);
-          setTotalElements(pageMeta.totalElements);
-        } else {
-          setTotalPages(response.data.totalPages ?? 1);
-          setTotalElements(response.data.totalElements ?? 0);
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load activity logs", error);
-      toast.error("Failed to load activity logs. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fetchSystemLogs = async () => {
-    setIsLoading(true);
-    try {
-      const params = {
-        level: selectedSystemLogLevel === "ALL" ? undefined : selectedSystemLogLevel,
-        keyword: keyword || undefined,
-      };
-      const response = await systemLogService.getList(params);
-      if (response.success && response.data) {
-        setSystemLogs(response.data || []);
-      }
-    } catch (error) {
-      console.error("Failed to load system logs", error);
-      toast.error("Failed to load system logs. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (categoryTab === "SYSTEM") {
-      fetchSystemLogs();
-    } else {
-      fetchLogs();
-    }
-  }, [keyword, actorType, activityType, entityType, startDate, endDate, dataView, page, categoryTab, selectedSystemLogLevel]);
-
-  // Fetch detailed Activity Log payload when selectedId changes
-  useEffect(() => {
-    if (!selectedId) {
-      setSelectedLog(null);
-      return;
-    }
-
-    const fetchDetail = async () => {
-      setIsLoadingDetail(true);
-      try {
-        const response = await activityLogService.getById(selectedId);
-        if (response.success && response.data) {
-          setSelectedLog(response.data);
-        }
-      } catch (error) {
-        console.error("Failed to load activity details", error);
-        toast.error("Failed to load activity details.");
-      } finally {
-        setIsLoadingDetail(false);
-      }
-    };
-
-    fetchDetail();
-  }, [selectedId]);
 
   const handleClearFilters = () => {
     setSearchInput("");
@@ -487,9 +437,8 @@ export function ActivityLogScreen() {
                 onClick={async () => {
                   if (confirm("Are you sure you want to clear all in-memory server logs?")) {
                     try {
-                      await systemLogService.clear();
+                      await clearSystemLogsMutation.mutateAsync();
                       toast.success("Server logs cleared successfully.");
-                      fetchSystemLogs();
                     } catch {
                       toast.error("Failed to clear server logs.");
                     }
