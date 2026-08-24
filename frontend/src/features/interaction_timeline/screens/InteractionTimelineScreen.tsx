@@ -25,6 +25,9 @@ import { Badge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { PAGE_META } from "@/app/routes/page_meta";
 import { timelineEventIcon } from "@/components/ui/timeline";
+import { useSearchParams } from "next/navigation";
+import { cn } from "@/lib/utils";
+import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 import {
   interactionTimelineService,
   type InteractionTimelineEntry,
@@ -59,7 +62,28 @@ const INTERACTION_TYPE_OPTIONS = [
   { id: "note", label: "Note", icon: timelineEventIcon("note"), color: "text-warning border-warning/30 bg-warning/8", ringColor: "ring-warning/60" },
 ] as const;
 
+type SearchEntityItem = {
+  id?: string | null;
+  leadId?: string | null;
+  customerId?: string | null;
+  dealId?: string | null;
+  fullName?: string | null;
+  customerName?: string | null;
+  name?: string | null;
+  title?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  companyName?: string | null;
+  company?: string | null;
+  status?: string | null;
+};
+
 export function InteractionTimelineScreen() {
+  const searchParams = useSearchParams();
+  const { highlightedId, setRowRef } = useHighlightRow("highlight", "interaction");
+  const highlightParam = searchParams.get("highlight") || searchParams.get("interaction") || searchParams.get("id");
+  const openedHighlightRef = React.useRef<string | null>(null);
+
   const [interactions, setInteractions] = useState<InteractionTimelineEntry[]>([]);
   const [agents, setAgents] = useState<UserSummary[]>([]);
 
@@ -92,11 +116,11 @@ export function InteractionTimelineScreen() {
   const [formOccurredAt, setFormOccurredAt] = useState("");
   const [searchEntityType, setSearchEntityType] = useState<"lead" | "customer" | "deal">("lead");
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchEntityItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [selectedLead, setSelectedLead] = useState<any | null>(null);
-  const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
-  const [selectedDeal, setSelectedDeal] = useState<any | null>(null);
+  const [selectedLead, setSelectedLead] = useState<SearchEntityItem | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<SearchEntityItem | null>(null);
+  const [selectedDeal, setSelectedDeal] = useState<SearchEntityItem | null>(null);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -112,7 +136,7 @@ export function InteractionTimelineScreen() {
         hour: "2-digit",
         minute: "2-digit",
       });
-    } catch (e) {
+    } catch {
       return dateStr;
     }
   };
@@ -124,7 +148,7 @@ export function InteractionTimelineScreen() {
       const d = new Date(isoString);
       const offset = d.getTimezoneOffset() * 60000;
       return new Date(d.getTime() - offset).toISOString().slice(0, 16);
-    } catch (e) {
+    } catch {
       return "";
     }
   };
@@ -152,7 +176,7 @@ export function InteractionTimelineScreen() {
       // This screen shows the full recent history with no pager UI, so request
       // a generous page — the backend list is paged (default size 20) and would
       // otherwise silently cap the timeline.
-      const params: any = { page: 0, size: 200 };
+      const params: Record<string, string | number> = { page: 0, size: 200 };
       if (searchVal.trim()) {
         params.search = searchVal.trim();
       }
@@ -169,9 +193,10 @@ export function InteractionTimelineScreen() {
       } else {
         setError(response?.message || "Failed to load interaction timeline");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error loading interactions", err);
-      setError(err?.response?.data?.message || "An unexpected error occurred.");
+      const errMsg = err instanceof Error ? err.message : (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setError(errMsg || "An unexpected error occurred.");
     } finally {
       setLoading(false);
     }
@@ -189,8 +214,10 @@ export function InteractionTimelineScreen() {
   // Autocomplete search for target records
   useEffect(() => {
     if (searchQuery.trim().length < 1) {
-      setSearchResults([]);
-      return;
+      const resetTimer = setTimeout(() => {
+        setSearchResults([]);
+      }, 0);
+      return () => clearTimeout(resetTimer);
     }
 
     const timer = setTimeout(async () => {
@@ -227,7 +254,7 @@ export function InteractionTimelineScreen() {
   }, [searchQuery, searchEntityType]);
 
   // Load single interaction details (UC-13.3)
-  const handleOpenDetail = async (id: string) => {
+  const handleOpenDetail = React.useCallback(async (id: string) => {
     try {
       const response = await interactionTimelineService.getById(id);
       if (response && response.success && response.data) {
@@ -243,7 +270,15 @@ export function InteractionTimelineScreen() {
     } catch (err) {
       console.error("Failed to fetch interaction details", err);
     }
-  };
+  }, []);
+
+  // Auto-open interaction detail drawer when deep-linked
+  useEffect(() => {
+    if (highlightParam && openedHighlightRef.current !== highlightParam && !selectedInteraction) {
+      openedHighlightRef.current = highlightParam;
+      handleOpenDetail(highlightParam);
+    }
+  }, [highlightParam, selectedInteraction, handleOpenDetail]);
 
   // Fetch audit logs when tab is selected
   const fetchAuditLogs = async (id: string) => {
@@ -256,19 +291,21 @@ export function InteractionTimelineScreen() {
       } else {
         setAuditError(res.message || "Failed to load audit logs.");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to load audit logs", err);
-      setAuditError(err?.response?.data?.message || "An unexpected error occurred.");
+      const errMsg = err instanceof Error ? err.message : (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setAuditError(errMsg || "An unexpected error occurred.");
     } finally {
       setAuditLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (selectedInteraction && detailTab === "audit") {
+  const handleSelectTab = (tab: "details" | "audit") => {
+    setDetailTab(tab);
+    if (tab === "audit" && selectedInteraction) {
       fetchAuditLogs(selectedInteraction.id);
     }
-  }, [selectedInteraction, detailTab]);
+  };
 
   // Open creation drawer
   const handleOpenCreateDrawer = () => {
@@ -308,9 +345,9 @@ export function InteractionTimelineScreen() {
         type: formType,
         description: formDescription.trim(),
         occurredAt: new Date(formOccurredAt).toISOString(),
-        leadId: selectedLead?.leadId || undefined,
-        customerId: selectedCustomer?.id || undefined,
-        dealId: selectedDeal?.id || undefined,
+        leadId: selectedLead?.leadId || selectedLead?.id || undefined,
+        customerId: selectedCustomer?.customerId || selectedCustomer?.id || undefined,
+        dealId: selectedDeal?.dealId || selectedDeal?.id || undefined,
       };
 
       const res = await interactionTimelineService.create(payload);
@@ -321,9 +358,10 @@ export function InteractionTimelineScreen() {
       } else {
         setCreateError(res.message || "Failed to log interaction.");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to create log", err);
-      setCreateError(err?.response?.data?.message || "An unexpected error occurred.");
+      const errMsg = err instanceof Error ? err.message : (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setCreateError(errMsg || "An unexpected error occurred.");
     } finally {
       setCreateLoading(false);
     }
@@ -357,9 +395,10 @@ export function InteractionTimelineScreen() {
       } else {
         setEditError(res.message || "Failed to update interaction.");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to update log", err);
-      setEditError(err?.response?.data?.message || "An unexpected error occurred.");
+      const errMsg = err instanceof Error ? err.message : (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setEditError(errMsg || "An unexpected error occurred.");
     } finally {
       setEditLoading(false);
     }
@@ -453,67 +492,78 @@ export function InteractionTimelineScreen() {
             </div>
           ) : interactions.length > 0 ? (
             <div className="relative border-l border-slate-200 ml-6 pl-8 space-y-6">
-              {interactions.map((item) => (
-                <div key={item.id} className="relative group animate-in fade-in duration-200">
-                  {/* Timeline icon */}
-                  <span className={`absolute -left-11.25 top-0.5 flex size-8 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm transition group-hover:scale-105 ${item.type === "call" ? "group-hover:border-green-500 group-hover:bg-green-50/50" :
-                    item.type === "email" ? "group-hover:border-blue-500 group-hover:bg-blue-50/50" :
-                      item.type === "meeting" ? "group-hover:border-purple-500 group-hover:bg-purple-50/50" :
-                        "group-hover:border-amber-500 group-hover:bg-amber-50/50"
-                    }`}>
-                    {item.type === "call" && <Phone className="size-4 text-green-600" />}
-                    {item.type === "email" && <Mail className="size-4 text-blue-600" />}
-                    {item.type === "meeting" && <Calendar className="size-4 text-purple-600" />}
-                    {item.type === "note" && <FileText className="size-4 text-amber-600" />}
-                  </span>
+              {interactions.map((item) => {
+                const isHighlighted = item.id === highlightedId || item.id === highlightParam;
+                return (
+                  <div
+                    key={item.id}
+                    ref={setRowRef(item.id)}
+                    id={`interaction-${item.id}`}
+                    className={cn(
+                      "relative group animate-in fade-in duration-200 transition-all rounded-xl p-3 -ml-3",
+                      isHighlighted ? "bg-primary/10 ring-2 ring-primary/40 shadow-xs" : "hover:bg-slate-50/70"
+                    )}
+                  >
+                    {/* Timeline icon */}
+                    <span className={`absolute -left-11.25 top-3.5 flex size-8 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm transition group-hover:scale-105 ${item.type === "call" ? "group-hover:border-green-500 group-hover:bg-green-50/50" :
+                      item.type === "email" ? "group-hover:border-blue-500 group-hover:bg-blue-50/50" :
+                        item.type === "meeting" ? "group-hover:border-purple-500 group-hover:bg-purple-50/50" :
+                          "group-hover:border-amber-500 group-hover:bg-amber-50/50"
+                      }`}>
+                      {item.type === "call" && <Phone className="size-4 text-green-600" />}
+                      {item.type === "email" && <Mail className="size-4 text-blue-600" />}
+                      {item.type === "meeting" && <Calendar className="size-4 text-purple-600" />}
+                      {item.type === "note" && <FileText className="size-4 text-amber-600" />}
+                    </span>
 
-                  <div>
-                    <div className="flex justify-between items-center text-xs">
-                      <div className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
-                        <span className="capitalize">{item.type}</span> Logged for{" "}
-                        <span className="text-[#185FA5] hover:text-[#0C447C] hover:underline cursor-pointer" onClick={() => handleOpenDetail(item.id)}>
-                          {item.linkedName}
-                        </span>
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border capitalize ${item.linkedType === "lead" ? "bg-[#E6F1FB] text-[#0C447C] border-[#85B7EB]" :
-                          item.linkedType === "customer" ? "bg-[#EAF3DE] text-[#3B6D11] border-[#C0DD97]" :
-                            "bg-[#FAEEDA] text-[#854F0B] border-[#FAC775]"
-                          }`}>
-                          {item.linkedType}
-                        </span>
-                      </div>
-                      <span className="text-slate-400 text-[10px] flex items-center gap-1 font-semibold">
-                        <Clock className="size-3" />
-                        {formatDate(item.occurredAt)}
-                      </span>
-                    </div>
-
-                    <p
-                      onClick={() => handleOpenDetail(item.id)}
-                      className="text-xs text-slate-600 mt-1.5 leading-relaxed bg-slate-50 hover:bg-slate-100/70 p-3 rounded-lg border border-slate-100/50 cursor-pointer transition"
-                    >
-                      {item.description}
-                    </p>
-
-                    <div className="flex items-center justify-between mt-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="size-5 rounded-full bg-[#E6F1FB] text-[#0C447C] text-[9px] font-bold flex items-center justify-center">
-                          {item.agentName.slice(0, 2).toUpperCase()}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          Logged by <strong className="text-slate-600">{item.agentName}</strong>
+                    <div>
+                      <div className="flex justify-between items-center text-xs">
+                        <div className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                          <span className="capitalize">{item.type}</span> Logged for{" "}
+                          <span className="text-[#185FA5] hover:text-[#0C447C] hover:underline cursor-pointer" onClick={() => handleOpenDetail(item.id)}>
+                            {item.linkedName}
+                          </span>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border capitalize ${item.linkedType === "lead" ? "bg-[#E6F1FB] text-[#0C447C] border-[#85B7EB]" :
+                            item.linkedType === "customer" ? "bg-[#EAF3DE] text-[#3B6D11] border-[#C0DD97]" :
+                              "bg-[#FAEEDA] text-[#854F0B] border-[#FAC775]"
+                            }`}>
+                            {item.linkedType}
+                          </span>
+                        </div>
+                        <span className="text-slate-400 text-[10px] flex items-center gap-1 font-semibold">
+                          <Clock className="size-3" />
+                          {formatDate(item.occurredAt)}
                         </span>
                       </div>
 
-                      <button
+                      <p
                         onClick={() => handleOpenDetail(item.id)}
-                        className="text-[10px] text-[#185FA5] hover:text-[#0C447C] font-semibold transition"
+                        className="text-xs text-slate-600 mt-1.5 leading-relaxed bg-slate-50 hover:bg-slate-100/70 p-3 rounded-lg border border-slate-100/50 cursor-pointer transition"
                       >
-                        View Details →
-                      </button>
+                        {item.description}
+                      </p>
+
+                      <div className="flex items-center justify-between mt-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="size-5 rounded-full bg-[#E6F1FB] text-[#0C447C] text-[9px] font-bold flex items-center justify-center">
+                            {item.agentName.slice(0, 2).toUpperCase()}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            Logged by <strong className="text-slate-600">{item.agentName}</strong>
+                          </span>
+                        </div>
+
+                        <button
+                          onClick={() => handleOpenDetail(item.id)}
+                          className="text-[10px] text-[#185FA5] hover:text-[#0C447C] font-semibold transition"
+                        >
+                          View Details →
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="py-12 text-center text-slate-400 text-xs">
@@ -562,7 +612,7 @@ export function InteractionTimelineScreen() {
                           <button
                             key={option.id}
                             type="button"
-                            onClick={() => setFormType(option.id as any)}
+                            onClick={() => setFormType(option.id)}
                             className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs transition duration-200 ${isSelected
                               ? `${option.color} ring-1 ${option.ringColor} font-bold scale-[1.03]`
                               : "border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500"
@@ -599,15 +649,15 @@ export function InteractionTimelineScreen() {
                     {/* Radio-like Tabs */}
                     <div className="flex rounded-lg border border-slate-200 overflow-hidden text-[10px] font-semibold bg-white">
                       {[
-                        { id: "lead", label: "Lead" },
-                        { id: "customer", label: "Customer" },
-                        { id: "deal", label: "Deal" }
+                        { id: "lead" as const, label: "Lead" },
+                        { id: "customer" as const, label: "Customer" },
+                        { id: "deal" as const, label: "Deal" }
                       ].map(tab => (
                         <button
                           key={tab.id}
                           type="button"
                           onClick={() => {
-                            setSearchEntityType(tab.id as any);
+                            setSearchEntityType(tab.id);
                             setSearchQuery("");
                             setSearchResults([]);
                           }}
@@ -799,7 +849,7 @@ export function InteractionTimelineScreen() {
               {!isEditingDetail && (
                 <div className="flex border-b border-slate-100 text-xs font-semibold bg-slate-50/20">
                   <button
-                    onClick={() => setDetailTab("details")}
+                    onClick={() => handleSelectTab("details")}
                     className={`flex-1 py-3 text-center border-b-2 transition ${detailTab === "details"
                       ? "border-[#185FA5] text-[#185FA5] font-bold"
                       : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
@@ -808,7 +858,7 @@ export function InteractionTimelineScreen() {
                     Details
                   </button>
                   <button
-                    onClick={() => setDetailTab("audit")}
+                    onClick={() => handleSelectTab("audit")}
                     className={`flex-1 py-3 text-center border-b-2 transition ${detailTab === "audit"
                       ? "border-[#185FA5] text-[#185FA5] font-bold"
                       : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
@@ -835,7 +885,7 @@ export function InteractionTimelineScreen() {
                             <button
                               key={option.id}
                               type="button"
-                              onClick={() => setEditType(option.id as any)}
+                              onClick={() => setEditType(option.id)}
                               className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs transition duration-200 ${isSelected
                                 ? `${option.color} ring-1 ${option.ringColor} font-bold scale-[1.03]`
                                 : "border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500"

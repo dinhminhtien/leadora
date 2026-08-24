@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useMemo, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useState, useRef, useMemo } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
@@ -134,18 +134,15 @@ export function ProfileScreen() {
    * list toolbars read, under a `__default` view key, so a preference set here
    * applies to every list the user has not overridden individually.
    */
-  const [defaultDensity, setDefaultDensityState] = useState<TableDensity>("comfortable");
-
-  // Read after mount — touching localStorage during render desynchronises the
-  // server and client passes and React throws away the markup.
-  useEffect(() => {
+  const [defaultDensity, setDefaultDensityState] = useState<TableDensity>(() => {
+    if (typeof window === "undefined") return "comfortable";
     try {
       const raw = window.localStorage.getItem("leadora.table.__default.density");
-      if (raw) setDefaultDensityState(JSON.parse(raw) as TableDensity);
+      return raw ? (JSON.parse(raw) as TableDensity) : "comfortable";
     } catch {
-      /* blocked or corrupt storage — the default stands */
+      return "comfortable";
     }
-  }, []);
+  });
 
   const setDefaultDensity = (d: TableDensity) => {
     setDefaultDensityState(d);
@@ -198,14 +195,18 @@ export function ProfileScreen() {
     register: registerPassword,
     handleSubmit: handlePasswordSubmit,
     formState: { errors: passwordErrors },
-    watch: watchPassword,
+    control: controlPassword,
     reset: resetPassword,
   } = useForm<ChangePasswordSchema>({
     resolver: zodResolver(changePasswordSchema),
     defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
   });
 
-  const newPasswordValue = watchPassword("newPassword") ?? "";
+  const newPasswordValue = useWatch({
+    control: controlPassword,
+    name: "newPassword",
+    defaultValue: "",
+  }) ?? "";
   const passwordStrength = getPasswordStrength(newPasswordValue);
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -257,14 +258,15 @@ export function ProfileScreen() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Avatar image size must be under 5MB.");
+    if (!file.type || !file.type.startsWith("image/")) {
+      toast.error("Only image files are allowed.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
-    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-    if (!allowedTypes.includes(file.type)) {
-      toast.error("Only JPG, JPEG, PNG, and WEBP formats are allowed.");
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Avatar image size must be under 2MB.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
@@ -274,6 +276,7 @@ export function ProfileScreen() {
       setIsCropOpen(true);
     };
     reader.readAsDataURL(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleCropComplete = async (blob: Blob) => {
@@ -296,24 +299,28 @@ export function ProfileScreen() {
 
       const token = await resolveAccessToken();
       if (token) {
-        await supabase.auth.setSession({
-          access_token: token,
-          refresh_token: "dummy-refresh-token",
-        });
+        try {
+          await supabase.auth.setSession({
+            access_token: token,
+            refresh_token: "dummy-refresh-token",
+          });
+        } catch {
+          // Ignore session token if authenticated via backend-only JWT
+        }
       }
 
       const { error: uploadError } = await supabase.storage
-        .from("avatar")
+        .from("avatar_files")
         .upload(fileName, blob, {
           contentType: "image/jpeg",
           cacheControl: "3600",
-          upsert: true,
+          upsert: false,
         });
 
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage
-        .from("avatar")
+        .from("avatar_files")
         .getPublicUrl(fileName);
 
       const oldAvatarUrl = profile.avatarUrl;
@@ -331,12 +338,13 @@ export function ProfileScreen() {
       toast.success("Avatar updated successfully.");
 
       // Clean up previous avatar if it exists in Supabase storage
-      if (oldAvatarUrl && oldAvatarUrl.includes("/storage/v1/object/public/avatar/")) {
-        const parts = oldAvatarUrl.split("/storage/v1/object/public/avatar/");
-        if (parts.length > 1) {
-          const oldPath = parts[1];
+      if (oldAvatarUrl) {
+        const match = oldAvatarUrl.match(/\/storage\/v1\/object\/public\/(avatar_files|avatar)\/(.+)$/);
+        if (match) {
+          const bucketName = match[1];
+          const oldPath = match[2];
           supabase.storage
-            .from("avatar")
+            .from(bucketName)
             .remove([oldPath])
             .catch((err) => {
               console.error("Failed to delete previous avatar:", err);
@@ -413,6 +421,7 @@ export function ProfileScreen() {
                   className="group relative size-28 rounded-full border-4 border-background bg-zinc-150 dark:bg-zinc-850 shadow-md cursor-pointer overflow-hidden transition-all duration-300 hover:scale-105 hover:border-primary/20"
                 >
                   {avatarSource ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={avatarSource}
                       alt={profile?.fullName || "Avatar"}

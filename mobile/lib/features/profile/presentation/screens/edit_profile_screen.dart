@@ -54,7 +54,7 @@ class EditProfileLoader extends ConsumerWidget {
 /// Information card: full name (required, ≤255), phone (optional, ≤15),
 /// read-only email, and an avatar upload.
 ///
-/// The avatar goes to the shared Supabase Storage bucket `avatar`, under
+/// The avatar goes to the shared Supabase Storage bucket `avatar_files`, under
 /// `{userId}/{uuid}.jpg`, and only the resulting public URL is persisted — the image
 /// itself never enters Postgres. The previous object is deleted once the new URL is
 /// saved, so the bucket does not accumulate orphans. Identical to the web flow, so the
@@ -136,9 +136,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
       final file = File(picked.path);
       final length = await file.length();
-      if (length > 5 * 1024 * 1024) {
+      if (length > 2 * 1024 * 1024) {
         messenger.showSnackBar(
-          const SnackBar(content: Text('Avatar image size must be under 5MB.')),
+          const SnackBar(content: Text('Avatar image size must be under 2MB.')),
         );
         return;
       }
@@ -168,22 +168,26 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           }
         }
         ''';
-        await supabaseClient.auth.recoverSession(sessionJson);
+        try {
+          await supabaseClient.auth.recoverSession(sessionJson);
+        } catch (_) {
+          // Ignore session recovery failure if authenticated via backend-only JWT
+        }
       }
 
       final fileName = '${widget.profile.userId}/${const Uuid().v4()}.jpg';
 
-      await supabaseClient.storage.from('avatar').uploadBinary(
+      await supabaseClient.storage.from('avatar_files').uploadBinary(
         fileName,
         croppedBytes,
         fileOptions: const supabase.FileOptions(
           contentType: 'image/jpeg',
           cacheControl: '3600',
-          upsert: true,
+          upsert: false,
         ),
       );
 
-      final publicUrl = supabaseClient.storage.from('avatar').getPublicUrl(fileName);
+      final publicUrl = supabaseClient.storage.from('avatar_files').getPublicUrl(fileName);
       final oldAvatarUrl = _avatarUrl;
 
       await ref.read(profileRepositoryProvider).updateMyProfile(
@@ -208,14 +212,22 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         const SnackBar(content: Text('Avatar updated successfully.')),
       );
 
-      if (oldAvatarUrl != null && oldAvatarUrl.contains('/storage/v1/object/public/avatar/')) {
-        final parts = oldAvatarUrl.split('/storage/v1/object/public/avatar/');
-        if (parts.length > 1) {
-          final oldPath = parts[1];
-          try {
-            await supabaseClient.storage.from('avatar').remove([oldPath]);
-          } catch (err) {
-            debugPrint('Failed to delete previous avatar: $err');
+      if (oldAvatarUrl != null) {
+        final isAvatarFiles = oldAvatarUrl.contains('/storage/v1/object/public/avatar_files/');
+        final isLegacyAvatar = oldAvatarUrl.contains('/storage/v1/object/public/avatar/');
+        if (isAvatarFiles || isLegacyAvatar) {
+          final delimiter = isAvatarFiles
+              ? '/storage/v1/object/public/avatar_files/'
+              : '/storage/v1/object/public/avatar/';
+          final bucket = isAvatarFiles ? 'avatar_files' : 'avatar';
+          final parts = oldAvatarUrl.split(delimiter);
+          if (parts.length > 1) {
+            final oldPath = parts[1];
+            try {
+              await supabaseClient.storage.from(bucket).remove([oldPath]);
+            } catch (err) {
+              debugPrint('Failed to delete previous avatar: $err');
+            }
           }
         }
       }
@@ -259,31 +271,43 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         const SnackBar(content: Text('Avatar removed successfully.')),
       );
 
-      if (oldAvatarUrl != null && oldAvatarUrl.contains('/storage/v1/object/public/avatar/')) {
-        final parts = oldAvatarUrl.split('/storage/v1/object/public/avatar/');
-        if (parts.length > 1) {
-          final oldPath = parts[1];
-          final supabaseClient = supabase.Supabase.instance.client;
-          final token = ref.read(tokenStoreProvider).accessTokenSync;
-          if (token != null) {
-            final sessionJson = '''
-            {
-              "access_token": "$token",
-              "refresh_token": "dummy-refresh-token",
-              "expires_in": 86400,
-              "token_type": "bearer",
-              "user": {
-                "id": "${widget.profile.userId}",
-                "email": "${widget.profile.email}"
+      if (oldAvatarUrl != null) {
+        final isAvatarFiles = oldAvatarUrl.contains('/storage/v1/object/public/avatar_files/');
+        final isLegacyAvatar = oldAvatarUrl.contains('/storage/v1/object/public/avatar/');
+        if (isAvatarFiles || isLegacyAvatar) {
+          final delimiter = isAvatarFiles
+              ? '/storage/v1/object/public/avatar_files/'
+              : '/storage/v1/object/public/avatar/';
+          final bucket = isAvatarFiles ? 'avatar_files' : 'avatar';
+          final parts = oldAvatarUrl.split(delimiter);
+          if (parts.length > 1) {
+            final oldPath = parts[1];
+            final supabaseClient = supabase.Supabase.instance.client;
+            final token = ref.read(tokenStoreProvider).accessTokenSync;
+            if (token != null) {
+              final sessionJson = '''
+              {
+                "access_token": "$token",
+                "refresh_token": "dummy-refresh-token",
+                "expires_in": 86400,
+                "token_type": "bearer",
+                "user": {
+                  "id": "${widget.profile.userId}",
+                  "email": "${widget.profile.email}"
+                }
+              }
+              ''';
+              try {
+                await supabaseClient.auth.recoverSession(sessionJson);
+              } catch (_) {
+                // Ignore session recovery failure if authenticated via backend-only JWT
               }
             }
-            ''';
-            await supabaseClient.auth.recoverSession(sessionJson);
-          }
-          try {
-            await supabaseClient.storage.from('avatar').remove([oldPath]);
-          } catch (err) {
-            debugPrint('Failed to delete previous avatar: $err');
+            try {
+              await supabaseClient.storage.from(bucket).remove([oldPath]);
+            } catch (err) {
+              debugPrint('Failed to delete previous avatar: $err');
+            }
           }
         }
       }
