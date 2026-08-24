@@ -94,6 +94,7 @@ export function DepositPaymentScreen() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [paymentsPage, setPaymentsPage] = useState(0);
+  const [paymentsPageSize, setPaymentsPageSize] = useState(10);
   const [paymentsTotalPages, setPaymentsTotalPages] = useState(0);
   const [paymentsTotalElements, setPaymentsTotalElements] = useState(0);
 
@@ -102,6 +103,7 @@ export function DepositPaymentScreen() {
   const [loadingBookings, setLoadingBookings] = useState(false);
   const [bookingsSearch, setBookingsSearch] = useState("");
   const [bookingsPage, setBookingsPage] = useState(0);
+  const [bookingsPageSize, setBookingsPageSize] = useState(10);
   const [bookingsTotalPages, setBookingsTotalPages] = useState(0);
   const [bookingsTotalElements, setBookingsTotalElements] = useState(0);
 
@@ -159,7 +161,7 @@ export function DepositPaymentScreen() {
         status: statusFilter === "ALL" ? undefined : statusFilter,
         paymentType: typeFilter === "ALL" ? undefined : typeFilter,
         page: paymentsPage,
-        size: 10,
+        size: paymentsPageSize,
         sortBy: "createdAt",
         sortDir: "desc"
       });
@@ -174,7 +176,7 @@ export function DepositPaymentScreen() {
     } finally {
       setLoadingPayments(false);
     }
-  }, [paymentsSearch, statusFilter, typeFilter, paymentsPage]);
+  }, [paymentsSearch, statusFilter, typeFilter, paymentsPage, paymentsPageSize]);
 
   // Fetch bookings list
   const loadBookings = useCallback(async () => {
@@ -185,7 +187,7 @@ export function DepositPaymentScreen() {
         search: bookingsSearch.trim() || undefined,
         status: "CONFIRMED",
         page: bookingsPage,
-        size: 10,
+        size: bookingsPageSize,
         sortBy: "createdAt",
         sortDir: "desc"
       });
@@ -212,7 +214,7 @@ export function DepositPaymentScreen() {
     } finally {
       setLoadingBookings(false);
     }
-  }, [bookingsSearch, bookingsPage]);
+  }, [bookingsSearch, bookingsPage, bookingsPageSize]);
 
   // Handle data load on active tab or page change
   useEffect(() => {
@@ -627,10 +629,15 @@ export function DepositPaymentScreen() {
               footer={
                 <TablePagination
                   page={paymentsPage}
-                  pageSize={PAYMENTS_PAGE_SIZE}
+                  pageSize={paymentsPageSize}
                   totalElements={paymentsTotalElements}
                   totalPages={paymentsTotalPages}
                   onPageChange={setPaymentsPage}
+                  onPageSizeChange={(s) => {
+                    setPaymentsPageSize(s);
+                    setPaymentsPage(0);
+                  }}
+                  pageSizeOptions={[10, 20, 50]}
                 />
               }
             />
@@ -683,10 +690,15 @@ export function DepositPaymentScreen() {
             footer={
               <TablePagination
                 page={bookingsPage}
-                pageSize={PAYMENTS_PAGE_SIZE}
+                pageSize={bookingsPageSize}
                 totalElements={bookingsTotalElements}
                 totalPages={bookingsTotalPages}
                 onPageChange={setBookingsPage}
+                onPageSizeChange={(s) => {
+                  setBookingsPageSize(s);
+                  setBookingsPage(0);
+                }}
+                pageSizeOptions={[10, 20, 50]}
               />
             }
           />

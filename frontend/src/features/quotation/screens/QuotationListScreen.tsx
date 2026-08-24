@@ -73,7 +73,7 @@ type ClosureLog = {
 
 export function QuotationListScreen() {
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   // `null` means the priority ordering, which is the default and is computed server-side.
   const [sortField, setSortField] = useState<"total" | "validUntil" | null>(null);
@@ -95,7 +95,7 @@ export function QuotationListScreen() {
       sortBy: sortField === "total" ? "totalAmount" : (sortField ?? "priority"),
       sortDir: sortDir,
     };
-  }, [activeTab, statusFilter, search, currentPage, sortField, sortDir]);
+  }, [activeTab, statusFilter, search, currentPage, pageSize, sortField, sortDir]);
 
   const { data: pageResult, isLoading, isFetching, refetch } = useQuotations(params);
 
@@ -670,6 +670,11 @@ export function QuotationListScreen() {
             totalElements={meta.totalElements}
             totalPages={meta.totalPages}
             onPageChange={(p) => setCurrentPage(p + 1)}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setCurrentPage(1);
+            }}
+            pageSizeOptions={[10, 20, 50]}
           />
         }
       />

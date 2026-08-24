@@ -49,6 +49,13 @@ export function useTasks(params?: TaskListParams) {
   });
 }
 
+export function useTaskStats(params?: { search?: string; priority?: string; assignedUserId?: string; customerId?: string }) {
+  return useQuery({
+    queryKey: [QUERY_KEY, "stats", params],
+    queryFn: () => taskService.getStats(params),
+  });
+}
+
 export function useTaskDetail(taskId: string | undefined) {
   return useQuery({
     queryKey: [QUERY_KEY, taskId],

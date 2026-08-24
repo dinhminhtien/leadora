@@ -23,11 +23,14 @@ public class UpdateCustomerUseCase {
     private final UserRepository userRepository;
     private final CustomerDuplicatePolicy customerDuplicatePolicy;
     private final CustomerProfilePolicy customerProfilePolicy;
+    private final CustomerAccessPolicy customerAccessPolicy;
 
     @Transactional
     public CustomerResponse execute(UUID customerId, UpdateCustomerRequest request) {
         CustomerEntity customer = customerRepository.findByIdWithUsers(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer", customerId));
+
+        customerAccessPolicy.assertCanView(customerAccessPolicy.currentUser(), customer);
 
         // Shared rule (see CustomerDuplicatePolicy). Passing this customer's own id lets the policy
         // ignore a match against itself, which is what the two "skip if unchanged" guards used to

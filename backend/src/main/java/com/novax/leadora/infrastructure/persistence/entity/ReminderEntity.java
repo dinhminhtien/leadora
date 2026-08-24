@@ -9,7 +9,9 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "reminders", indexes = {
-    @Index(name = "idx_reminders_related", columnList = "related_entity, related_id")
+    @Index(name = "idx_reminders_related", columnList = "related_entity, related_id"),
+    @Index(name = "idx_reminders_user_status_date", columnList = "user_id, status, remind_at"),
+    @Index(name = "idx_reminders_status_remind", columnList = "status, remind_at")
 })
 @Getter
 @Setter

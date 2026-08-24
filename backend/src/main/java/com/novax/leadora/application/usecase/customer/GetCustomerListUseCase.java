@@ -2,6 +2,7 @@ package com.novax.leadora.application.usecase.customer;
 
 import com.novax.leadora.api.dto.response.CustomerResponse;
 import com.novax.leadora.infrastructure.persistence.entity.CustomerEntity;
+import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerStatus;
 import com.novax.leadora.infrastructure.persistence.entity.enums.CustomerType;
 import com.novax.leadora.infrastructure.persistence.repository.CustomerRepository;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -25,16 +27,21 @@ public class GetCustomerListUseCase {
             Set.of("createdAt", "fullName", "status", "customerType");
 
     private final CustomerRepository customerRepository;
+    private final CustomerAccessPolicy customerAccessPolicy;
 
     @Transactional(readOnly = true)
     public Page<CustomerResponse> execute(
             String search, String customerType, String status,
             String sortBy, String sortDir, int page, int size) {
 
+        UserEntity currentUser = customerAccessPolicy.currentUser();
+        UUID scopedOwnerId = customerAccessPolicy.listScopeOwnerId(currentUser);
+
         Specification<CustomerEntity> spec = Specification.allOf(
                 CustomerSpecification.search(StringUtils.hasText(search) ? search.trim() : null),
                 CustomerSpecification.hasType(parseEnum(CustomerType.class, customerType)),
-                CustomerSpecification.hasStatus(parseEnum(CustomerStatus.class, status))
+                CustomerSpecification.hasStatus(parseEnum(CustomerStatus.class, status)),
+                CustomerSpecification.isScopedToUser(scopedOwnerId)
         );
 
         String sortField = ALLOWED_SORT_FIELDS.contains(sortBy) ? sortBy : "createdAt";

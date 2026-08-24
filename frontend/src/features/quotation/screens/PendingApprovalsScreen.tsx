@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Search,
   CheckCircle2,
@@ -13,7 +13,7 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
-import { DataTable, type ColumnDef } from "@/components/ui/data-table";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
 import { useTableControls } from "@/components/ui/table-controls";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -285,6 +285,9 @@ export function PendingApprovalsScreen() {
   const [e3Error, setE3Error] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   const filtered = useMemo(
     () =>
       pending.filter(
@@ -295,6 +298,16 @@ export function PendingApprovalsScreen() {
       ),
     [pending, search]
   );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginatedPending = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
 
   /**
    * Column set — Blueprint §10.7 approvals queue.
@@ -494,7 +507,7 @@ export function PendingApprovalsScreen() {
 
           <DataTable
             label="Quotations awaiting approval"
-            rows={filtered}
+            rows={paginatedPending}
             columns={approvalControls.visibleColumns}
             rowId={(q) => q.id}
             isLoading={isLoading}
@@ -507,6 +520,20 @@ export function PendingApprovalsScreen() {
             onClearFilters={() => setSearch("")}
             emptyTitle="All clear — no pending approvals"
             emptyMessage="Quotations submitted for a discount exception land here automatically."
+            footer={
+              <TablePagination
+                page={currentPage - 1}
+                pageSize={pageSize}
+                totalElements={filtered.length}
+                totalPages={totalPages}
+                onPageChange={(p) => setCurrentPage(p + 1)}
+                onPageSizeChange={(s) => {
+                  setPageSize(s);
+                  setCurrentPage(1);
+                }}
+                pageSizeOptions={[10, 20, 50]}
+              />
+            }
           />
         </CardContent>
       </Card>

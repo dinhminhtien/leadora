@@ -31,6 +31,9 @@ class CreateCustomerUseCaseTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private com.novax.leadora.application.usecase.customer.CustomerAccessPolicy customerAccessPolicy;
+
     /** Built by hand so the real CustomerDuplicatePolicy and CustomerProfilePolicy run over the
      *  mocked repository — the duplicate and BR-09 rules moved there, and mocking them out would
      *  leave these cases asserting nothing. */
@@ -40,7 +43,8 @@ class CreateCustomerUseCaseTest {
     void wireUseCase() {
         createCustomerUseCase = new CreateCustomerUseCase(customerRepository, userRepository,
                 new CustomerDuplicatePolicy(customerRepository),
-                new com.novax.leadora.application.usecase.customer.CustomerProfilePolicy());
+                new com.novax.leadora.application.usecase.customer.CustomerProfilePolicy(),
+                customerAccessPolicy);
     }
 
     private CreateCustomerRequest buildValidRequest() {

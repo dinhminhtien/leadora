@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/page-header";
 import { PAGE_META } from "@/app/routes/page_meta";
 import { Badge } from "@/components/ui/Badge";
+import { TablePagination } from "@/components/ui/data-table";
 import { useAuthStore } from "@/stores/auth_store";
 import { Portal } from "@/components/ui/Portal";
 import {
@@ -141,6 +142,8 @@ function MonitorTab() {
   const { highlightedId, setRowRef } = useHighlightRow();
   const [entityTypeFilter, setEntityTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<SlaDisplayStatus | "">("");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolveTarget, setResolveTarget] = useState<{ trackingId: string; entityId?: string; isTask: boolean } | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
@@ -159,6 +162,14 @@ function MonitorTab() {
   const breachedCount = records.filter((r) => r.displayStatus === "BREACHED").length;
   const warningCount  = records.filter((r) => r.displayStatus === "WARNING").length;
   const withinCount   = records.filter((r) => r.displayStatus === "WITHIN_SLA").length;
+
+  const totalElements = records.length;
+  const totalPages = Math.ceil(totalElements / pageSize);
+
+  const paginatedRecords = React.useMemo(() => {
+    const start = page * pageSize;
+    return records.slice(start, start + pageSize);
+  }, [records, page, pageSize]);
 
   const handleConfirmResolve = async () => {
     if (!resolveTarget) return;
@@ -260,7 +271,10 @@ function MonitorTab() {
       <div className="flex flex-wrap items-center gap-3">
         <select
           value={entityTypeFilter}
-          onChange={(e) => setEntityTypeFilter(e.target.value)}
+          onChange={(e) => {
+            setEntityTypeFilter(e.target.value);
+            setPage(0);
+          }}
           className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-400 transition"
         >
           <option value="">All entity types</option>
@@ -271,7 +285,10 @@ function MonitorTab() {
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as SlaDisplayStatus | "")}
+          onChange={(e) => {
+            setStatusFilter(e.target.value as SlaDisplayStatus | "");
+            setPage(0);
+          }}
           className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-400 transition"
         >
           <option value="">All statuses</option>
@@ -296,7 +313,7 @@ function MonitorTab() {
         </div>
       ) : (
         <div className="space-y-2">
-          {records.map((r) => (
+          {paginatedRecords.map((r) => (
             <SlaTrackingRow
               key={r.trackingId}
               record={r}
@@ -315,6 +332,23 @@ function MonitorTab() {
               isHighlighted={highlightedId === r.trackingId}
             />
           ))}
+
+          {totalElements > 0 && (
+            <div className="mt-4 flex items-center justify-between rounded-lg border border-slate-100 bg-white px-4 py-3 text-[12.5px] text-slate-500 shadow-xs dark:border-border dark:bg-surface">
+              <TablePagination
+                page={page}
+                pageSize={pageSize}
+                totalElements={totalElements}
+                totalPages={totalPages}
+                onPageChange={setPage}
+                onPageSizeChange={(newSize) => {
+                  setPageSize(newSize);
+                  setPage(0);
+                }}
+                pageSizeOptions={[10, 20, 50, 100]}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -788,6 +822,13 @@ function ConfigureTab() {
   };
 
   const activeCount = rules.filter((r) => r.active).length;
+  const [rulePage, setRulePage] = useState(0);
+  const [rulePageSize, setRulePageSize] = useState(10);
+  const totalRulePages = Math.ceil(rules.length / rulePageSize);
+  const paginatedRules = React.useMemo(() => {
+    const start = rulePage * rulePageSize;
+    return rules.slice(start, start + rulePageSize);
+  }, [rules, rulePage, rulePageSize]);
 
   return (
     <>
@@ -829,7 +870,7 @@ function ConfigureTab() {
         </div>
       ) : (
         <div className="space-y-3">
-          {rules.map((rule) => (
+          {paginatedRules.map((rule) => (
             <Card key={rule.id} className={`border-slate-100 shadow-xs bg-white ${!rule.active ? "opacity-60" : ""}`}>
               {canEdit && editingId === rule.id ? (
                 <CardContent className="p-4">
@@ -868,6 +909,23 @@ function ConfigureTab() {
               )}
             </Card>
           ))}
+
+          {rules.length > 10 && (
+            <div className="mt-4 flex items-center justify-between rounded-lg border border-slate-100 bg-white px-4 py-3 text-[12.5px] text-slate-500 shadow-xs dark:border-border dark:bg-surface">
+              <TablePagination
+                page={rulePage}
+                pageSize={rulePageSize}
+                totalElements={rules.length}
+                totalPages={totalRulePages}
+                onPageChange={setRulePage}
+                onPageSizeChange={(newSize) => {
+                  setRulePageSize(newSize);
+                  setRulePage(0);
+                }}
+                pageSizeOptions={[5, 10, 20]}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

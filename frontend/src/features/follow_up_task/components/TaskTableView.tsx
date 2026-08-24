@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import {
   DataTable,
+  TablePagination,
   type ColumnDef,
   type TableDensity,
 } from "@/components/ui/data-table";
@@ -50,6 +51,12 @@ type TaskTableViewProps = {
   onPriorityChange?: (task: Task, priority: string) => void;
   onBulkPriority: (priority: string) => void;
   onBulkAssign: (userId: string) => void;
+  page?: number;
+  pageSize?: number;
+  totalElements?: number;
+  totalPages?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (size: number) => void;
 };
 
 export function TaskTableView({
@@ -64,6 +71,12 @@ export function TaskTableView({
   onComplete,
   onBulkPriority,
   onBulkAssign,
+  page,
+  pageSize,
+  totalElements,
+  totalPages,
+  onPageChange,
+  onPageSizeChange,
 }: TaskTableViewProps) {
   const [density, setDensity] = React.useState<TableDensity>("comfortable");
 
@@ -221,9 +234,21 @@ export function TaskTableView({
           </>
         }
         footer={
-          <span className="numeric">
-            {tasks.length} {tasks.length === 1 ? "task" : "tasks"} loaded
-          </span>
+          typeof page === "number" && totalElements !== undefined && totalPages !== undefined && onPageChange ? (
+            <TablePagination
+              page={page}
+              pageSize={pageSize ?? 20}
+              totalElements={totalElements}
+              totalPages={totalPages}
+              onPageChange={onPageChange}
+              onPageSizeChange={onPageSizeChange}
+              pageSizeOptions={[10, 20, 50, 100]}
+            />
+          ) : (
+            <span className="numeric">
+              {tasks.length} {tasks.length === 1 ? "task" : "tasks"} loaded
+            </span>
+          )
         }
       />
     </div>

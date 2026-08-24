@@ -72,7 +72,7 @@ export function ContractListScreen() {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   // Sorting
   const [sortField, setSortField] = useState<"createdAt" | "code" | null>("createdAt");
@@ -475,6 +475,11 @@ export function ContractListScreen() {
             totalElements={filteredContracts.length}
             totalPages={totalPages}
             onPageChange={(p) => setCurrentPage(p + 1)}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setCurrentPage(1);
+            }}
+            pageSizeOptions={[10, 20, 50]}
           />
         }
       />

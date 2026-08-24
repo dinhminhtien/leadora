@@ -8,7 +8,14 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "interact_timelines")
+@Table(
+    name = "interact_timelines",
+    indexes = {
+        @Index(name = "idx_interact_timelines_customer", columnList = "customer_id, created_at"),
+        @Index(name = "idx_interact_timelines_lead", columnList = "lead_id, created_at"),
+        @Index(name = "idx_interact_timelines_deal", columnList = "deal_id, created_at")
+    }
+)
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter

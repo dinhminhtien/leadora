@@ -642,6 +642,7 @@ export function LeadListScreen() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [page,        setPage]        = useState(0);
+  const [pageSize,    setPageSize]    = useState(10);
   const [drawerOpen,  setDrawer]      = useState(false);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   // The row the detail drawer is showing. Holding the record rather than an id
@@ -692,7 +693,7 @@ export function LeadListScreen() {
     scope: isStaff ? ownerView : undefined,
     unassigned: canAssign && needsAssignment ? true : undefined,
     page,
-    size: PAGE_SIZE,
+    size: pageSize,
   });
 
   const pageData = resp?.data;
@@ -1088,10 +1089,15 @@ export function LeadListScreen() {
         footer={
           <TablePagination
             page={page}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             totalElements={totalElements}
             totalPages={totalPages}
             onPageChange={setPage}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setPage(0);
+            }}
+            pageSizeOptions={[10, 20, 50]}
           />
         }
       />

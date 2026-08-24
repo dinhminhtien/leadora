@@ -50,7 +50,8 @@ public class ContractResponse {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public static ContractResponse fromEntity(ContractEntity entity) {
-        if (entity == null) return null;
+        if (entity == null)
+            return null;
 
         JsonNode snapshotNode = null;
         try {
@@ -58,14 +59,18 @@ public class ContractResponse {
                 snapshotNode = objectMapper.readTree(entity.getCommercialSnapshot());
                 if (snapshotNode.isObject()) {
                     com.fasterxml.jackson.databind.node.ObjectNode obj = (com.fasterxml.jackson.databind.node.ObjectNode) snapshotNode;
-                    if (!obj.has("checkInDate") && entity.getQuotation() != null && entity.getQuotation().getCheckInDate() != null) {
+                    if (!obj.has("checkInDate") && entity.getQuotation() != null
+                            && entity.getQuotation().getCheckInDate() != null) {
                         obj.put("checkInDate", entity.getQuotation().getCheckInDate().toString());
                     }
-                    if (!obj.has("checkOutDate") && entity.getQuotation() != null && entity.getQuotation().getCheckOutDate() != null) {
+                    if (!obj.has("checkOutDate") && entity.getQuotation() != null
+                            && entity.getQuotation().getCheckOutDate() != null) {
                         obj.put("checkOutDate", entity.getQuotation().getCheckOutDate().toString());
                     }
                     if (!obj.has("totalAmount")) {
-                        obj.put("totalAmount", entity.getTotalContractValue() != null ? entity.getTotalContractValue().doubleValue() : 0.0);
+                        obj.put("totalAmount",
+                                entity.getTotalContractValue() != null ? entity.getTotalContractValue().doubleValue()
+                                        : 0.0);
                     }
                 }
             }

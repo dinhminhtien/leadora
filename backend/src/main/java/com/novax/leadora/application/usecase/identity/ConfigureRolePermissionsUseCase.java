@@ -15,6 +15,7 @@ import com.novax.leadora.infrastructure.persistence.repository.RolePermissionRep
 import com.novax.leadora.infrastructure.persistence.repository.RoleRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,6 +48,7 @@ public class ConfigureRolePermissionsUseCase {
     private final CurrentUserProvider currentUserProvider;
     private final com.novax.leadora.common.security.JwtAuthoritiesResolver jwtAuthoritiesResolver;
 
+    @CacheEvict(value = "roles-list", allEntries = true)
     @Transactional
     public RoleResponse execute(Integer roleId, UpdateRolePermissionsRequest request) {
         RoleEntity role = roleRepository.findById(roleId)

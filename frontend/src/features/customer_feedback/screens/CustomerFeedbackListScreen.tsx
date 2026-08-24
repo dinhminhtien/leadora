@@ -92,7 +92,7 @@ export function CustomerFeedbackListScreen() {
   const [ratingFilter, setRatingFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
-  const [pageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
 
@@ -141,7 +141,7 @@ export function CustomerFeedbackListScreen() {
 
   useEffect(() => {
     fetchFeedbacks();
-  }, [page, ratingFilter, statusFilter]);
+  }, [page, pageSize, ratingFilter, statusFilter]);
 
   // Handle search with local debounce or trigger on button/enter
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -334,10 +334,15 @@ export function CustomerFeedbackListScreen() {
         footer={
           <TablePagination
             page={page}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             totalElements={totalElements}
             totalPages={totalPages}
             onPageChange={setPage}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setPage(0);
+            }}
+            pageSizeOptions={[10, 20, 50]}
           />
         }
       />

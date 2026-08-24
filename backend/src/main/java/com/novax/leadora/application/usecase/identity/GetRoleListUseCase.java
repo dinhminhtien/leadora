@@ -8,6 +8,7 @@ import com.novax.leadora.infrastructure.persistence.repository.RolePermissionRep
 import com.novax.leadora.infrastructure.persistence.repository.RoleRepository;
 import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,7 @@ public class GetRoleListUseCase {
     private final RolePermissionRepository rolePermissionRepository;
     private final UserRepository userRepository;
 
+    @Cacheable(value = "roles-list", unless = "#result == null")
     @Transactional(readOnly = true)
     public List<RoleResponse> execute() {
         List<RoleEntity> roles = roleRepository.findAllByOrderByRoleIdAsc();

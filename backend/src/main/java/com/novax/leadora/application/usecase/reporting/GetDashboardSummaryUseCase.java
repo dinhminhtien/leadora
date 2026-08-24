@@ -47,7 +47,7 @@ public class GetDashboardSummaryUseCase {
      * {@link com.novax.leadora.application.usecase.deal.DealMapper}.
      */
     private static final List<String> PIPELINE_STAGES = List.of(
-            "Inquiry", "Site Visit", "Proposal", "Negotiation", "Contract", "Confirmed");
+            "Inquiry", "Qualification", "Proposal", "Negotiation", "Contract", "Confirmed");
 
     @Cacheable(value = "dashboard-summary", key = "#actor.userId", unless = "#result == null")
     @Transactional(readOnly = true)
