@@ -8,7 +8,12 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
-@Table(name = "product_services")
+@Table(
+    name = "product_services",
+    indexes = {
+        @Index(name = "idx_product_services_category", columnList = "category")
+    }
+)
 @Getter
 @Setter
 @NoArgsConstructor
