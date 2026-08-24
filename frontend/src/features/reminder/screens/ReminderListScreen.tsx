@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Bell, Clock, AlertTriangle, Plus, Filter, Search,
   FileSpreadsheet, Calendar, LayoutList, ChevronLeft, ChevronRight,
   Users, Building2, CreditCard, ChevronUp, ChevronDown, ArrowUpDown, Pencil,
 } from "lucide-react";
-import { DataTable, type ColumnDef } from "@/components/ui/data-table";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
 import { ExportMenu, useTableControls } from "@/components/ui/table-controls";
 import { OwnerCell } from "@/components/ui/row-actions";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -407,6 +407,21 @@ export function ReminderListScreen() {
     return applySort(list, sortField, sortDir);
   }, [allReminders, listTab, statusFilter, entityFilter, dateFilter, calendarDay, searchQuery, sortField, sortDir]);
 
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Reset to page 1 on filter/tab/search/sort change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [listTab, statusFilter, dateFilter, entityFilter, calendarDay, filterUserId, searchQuery, sortField, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(displayed.length / pageSize));
+  const paginatedReminders = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return displayed.slice(start, start + pageSize);
+  }, [displayed, currentPage, pageSize]);
+
   const hasFilters = !!(statusFilter || dateFilter || entityFilter || calendarDay || filterUserId || searchQuery);
 
   const clearFilters = () => {
@@ -613,7 +628,7 @@ export function ReminderListScreen() {
       {viewMode === "list" && (
         <DataTable
           label="Reminders"
-          rows={displayed}
+          rows={paginatedReminders}
           columns={controls.visibleColumns}
           rowId={(r) => r.reminderId}
           isLoading={isLoading || isAuthLoading}
@@ -644,6 +659,20 @@ export function ReminderListScreen() {
           emptyTitle="No reminders found"
           emptyMessage="Reminders you set on a lead, deal or booking show up here."
           emptyAction={{ label: "New Reminder", onClick: () => setShowCreate(true) }}
+          footer={
+            <TablePagination
+              page={currentPage - 1}
+              pageSize={pageSize}
+              totalElements={displayed.length}
+              totalPages={totalPages}
+              onPageChange={(p) => setCurrentPage(p + 1)}
+              onPageSizeChange={(s) => {
+                setPageSize(s);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[10, 20, 50]}
+            />
+          }
         />
       )}
 

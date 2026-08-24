@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Download, Search, Receipt, Check, X, RefreshCw, AlertTriangle } from "lucide-react";
-import { DataTable, type ColumnDef } from "@/components/ui/data-table";
+import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
 import { ExportMenu, useTableControls } from "@/components/ui/table-controls";
 
 const BOOKING_EXPORT_HEADERS = [
@@ -61,6 +61,10 @@ export function BookingConfirmationScreen() {
   const [loadingBookings, setLoadingBookings] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
 
   /** Column set — Blueprint §10.9. */
   const bookingColumns: ColumnDef<Booking>[] = useMemo(() => [
@@ -129,22 +133,35 @@ export function BookingConfirmationScreen() {
   const [errorMsg, setErrorMsg] = useState("");
 
   // Fetch bookings list from server
-  const loadBookings = async () => {
+  const loadBookings = async (overridePage?: number, overrideSize?: number) => {
     setLoadingBookings(true);
     setErrorMsg("");
     try {
       const statusParam = statusFilter === "all" ? undefined : statusFilter;
       const searchParam = search.trim() === "" ? undefined : search;
+      const currentPage = overridePage !== undefined ? overridePage : page;
+      const currentSize = overrideSize !== undefined ? overrideSize : pageSize;
       const res = await bookingConfirmationService.getList({
         search: searchParam,
         status: statusParam,
-        page: 0,
-        size: 50,
-        sortBy: "createdAt",
-        sortDir: "desc"
+        page: currentPage,
+        size: currentSize,
+        sortBy: bookingControls.sortBy || "createdAt",
+        sortDir: bookingControls.sortDir || "desc",
       });
-      if (res.success && res.data?.content) {
-        setBookings(res.data.content);
+      if (res.success && res.data) {
+        const data = res.data as any;
+        if (data.content) {
+          setBookings(data.content);
+          const totalElems = typeof data.page === "object" ? data.page.totalElements : (data.totalElements ?? data.content.length);
+          const totalPgs = typeof data.page === "object" ? data.page.totalPages : (data.totalPages ?? Math.max(1, Math.ceil(totalElems / currentSize)));
+          setTotalElements(totalElems || 0);
+          setTotalPages(totalPgs || 0);
+        } else if (Array.isArray(data)) {
+          setBookings(data);
+          setTotalElements(data.length);
+          setTotalPages(1);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -155,13 +172,13 @@ export function BookingConfirmationScreen() {
   };
 
   useEffect(() => {
-    const timer = setTimeout(loadBookings, 0);
-    return () => clearTimeout(timer);
-  }, [statusFilter]);
+    loadBookings();
+  }, [page, pageSize, statusFilter, bookingControls.sortBy, bookingControls.sortDir]);
 
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
-      loadBookings();
+      setPage(0);
+      loadBookings(0);
     }
   };
 
@@ -272,7 +289,10 @@ export function BookingConfirmationScreen() {
                 <span className="text-xs text-muted-foreground font-bold uppercase tracking-wide">Status:</span>
                 <select
                   value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value)}
+                  onChange={e => {
+                    setStatusFilter(e.target.value);
+                    setPage(0);
+                  }}
                   className="h-9 rounded-xl border border-border bg-input px-3 text-xs text-foreground focus:outline-none focus:border-primary"
                 >
                   <option value="all">All Request Queue</option>
@@ -283,7 +303,7 @@ export function BookingConfirmationScreen() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={loadBookings}
+                  onClick={() => loadBookings()}
                   isLoading={loadingBookings}
                   className="flex items-center justify-center h-9 w-9 p-0 rounded-xl shrink-0 border-border"
                   title="Refresh bookings"
@@ -326,6 +346,20 @@ export function BookingConfirmationScreen() {
             isFiltered={!!search || statusFilter !== "all"}
             emptyTitle="No booking requests"
             emptyMessage="Requests raised from an accepted quotation land here for confirmation."
+            footer={
+              <TablePagination
+                page={page}
+                pageSize={pageSize}
+                totalElements={totalElements}
+                totalPages={totalPages}
+                onPageChange={setPage}
+                onPageSizeChange={(s) => {
+                  setPageSize(s);
+                  setPage(0);
+                }}
+                pageSizeOptions={[10, 20, 50]}
+              />
+            }
           />
       </div>
 

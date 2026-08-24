@@ -288,6 +288,7 @@ export function CustomerProfileListScreen() {
   const [typeFilter, setTypeFilter] = useState<CustomerType | "">("");
   const [statusFilter, setStatusFilter] = useState<"ACTIVE" | "INACTIVE" | "">("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   // Peek at a customer without losing the list's filters, page or scroll (§2.11).
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
@@ -299,10 +300,10 @@ export function CustomerProfileListScreen() {
     customerType: typeFilter || undefined,
     status: statusFilter || undefined,
     page,
-    size: PAGE_SIZE,
+    size: pageSize,
     sortBy: "createdAt",
     sortDir: "desc",
-  }), [debouncedSearch, typeFilter, statusFilter, page]);
+  }), [debouncedSearch, typeFilter, statusFilter, page, pageSize]);
 
   const { data, isLoading, isFetching, refetch } = useCustomers(params);
   const controls = useTableControls<Customer>("customers", CUSTOMER_COLUMNS);
@@ -461,10 +462,15 @@ export function CustomerProfileListScreen() {
         footer={
           <TablePagination
             page={page}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             totalElements={totalElements}
             totalPages={totalPages}
             onPageChange={handlePageChange}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setPage(0);
+            }}
+            pageSizeOptions={[10, 20, 50]}
           />
         }
       />

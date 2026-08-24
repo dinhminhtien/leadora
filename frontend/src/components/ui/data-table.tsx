@@ -301,7 +301,7 @@ export function DataTable<T>({
                       col.width,
                       col.numeric && "text-right",
                       col.minWidth && MIN_WIDTH_CLASS[col.minWidth],
-                      col.sticky === "left" && "sticky left-10 z-20 bg-muted",
+                      col.sticky === "left" && (selectable ? "sticky left-10 z-20 bg-muted" : "sticky left-0 z-20 bg-muted"),
                       col.sticky === "right" && "sticky right-0 z-20 bg-muted",
                       col.className,
                     )}
@@ -432,7 +432,7 @@ export function DataTable<T>({
                           col.width,
                           col.numeric && "numeric text-right",
                           col.minWidth && MIN_WIDTH_CLASS[col.minWidth],
-                          col.sticky === "left" && "sticky left-10 z-10 bg-inherit",
+                          col.sticky === "left" && (selectable ? "sticky left-10 z-10 bg-inherit" : "sticky left-0 z-10 bg-inherit"),
                           col.sticky === "right" && "sticky right-0 z-10 bg-inherit",
                           col.className,
                         )}

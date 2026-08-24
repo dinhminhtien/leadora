@@ -112,6 +112,7 @@ export function FrontOfficeHandoverScreen() {
   // Scoping to your own queue is the deliberate narrowing, which is what the checkbox is for.
   const [deskWide, setDeskWide] = useState(true);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [foStaff, setFoStaff] = useState<UserSummary[]>([]);
 
@@ -156,7 +157,7 @@ export function FrontOfficeHandoverScreen() {
     // box would stop meaning "my queue" the moment that default changed.
     deskWide,
     page,
-    size: PAGE_SIZE,
+    size: pageSize,
   });
 
   // Same filters as the list minus readinessStatus — see the service for why.
@@ -404,10 +405,15 @@ export function FrontOfficeHandoverScreen() {
         footer={
           <TablePagination
             page={page}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             totalElements={totalElements}
             totalPages={totalPages}
             onPageChange={setPage}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setPage(0);
+            }}
+            pageSizeOptions={[10, 20, 50]}
           />
         }
       />

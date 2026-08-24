@@ -81,7 +81,8 @@ export function RoomRequestInboxScreen() {
   const { highlightedId, setRowRef } = useHighlightRow("highlight", "request");
   const [status, setStatus] = useState<string>("PENDING");
   const [page, setPage] = useState(0);
-  const { data, isLoading } = useRoomRequestInbox({ status, page, size: 10 });
+  const [pageSize, setPageSize] = useState(10);
+  const { data, isLoading } = useRoomRequestInbox({ status, page, size: pageSize });
   const respond = useRespondRoomRequest();
 
   const [answering, setAnswering] = useState<RoomRequest | null>(null);
@@ -321,10 +322,15 @@ export function RoomRequestInboxScreen() {
         footer={
           <TablePagination
             page={page}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             totalElements={totalElements}
             totalPages={totalPages}
             onPageChange={setPage}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setPage(0);
+            }}
+            pageSizeOptions={[10, 20, 50]}
           />
         }
       />

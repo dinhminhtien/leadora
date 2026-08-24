@@ -88,6 +88,7 @@ export function OperationalHandoverScreen() {
   const [logsSearch, setLogsSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [logsPage, setLogsPage] = useState(0);
+  const [logsPageSize, setLogsPageSize] = useState(10);
   const [logsTotalPages, setLogsTotalPages] = useState(0);
   const [logsTotalElements, setLogsTotalElements] = useState(0);
   const [loadingLogs, setLoadingLogs] = useState(false);
@@ -96,6 +97,7 @@ export function OperationalHandoverScreen() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsSearch, setBookingsSearch] = useState("");
   const [bookingsPage, setBookingsPage] = useState(0);
+  const [bookingsPageSize, setBookingsPageSize] = useState(10);
   const [bookingsTotalPages, setBookingsTotalPages] = useState(0);
   const [bookingsTotalElements, setBookingsTotalElements] = useState(0);
   const [loadingBookings, setLoadingBookings] = useState(false);
@@ -152,7 +154,7 @@ export function OperationalHandoverScreen() {
         search: logsSearch,
         status: statusFilter,
         page: logsPage,
-        size: 10,
+        size: logsPageSize,
       });
       if (res.data) {
         setHandovers(res.data.content || []);
@@ -170,7 +172,7 @@ export function OperationalHandoverScreen() {
     } finally {
       setLoadingLogs(false);
     }
-  }, [logsSearch, statusFilter, logsPage]);
+  }, [logsSearch, statusFilter, logsPage, logsPageSize]);
 
   // Fetch Confirmed Bookings waiting for Handover
   const fetchBookings = React.useCallback(async () => {
@@ -180,7 +182,7 @@ export function OperationalHandoverScreen() {
         search: bookingsSearch,
         status: "CONFIRMED",
         page: bookingsPage,
-        size: 10,
+        size: bookingsPageSize,
       });
       if (res.data) {
         // Which bookings already have a handover — asked of the server. Deriving it here from the
@@ -485,10 +487,15 @@ export function OperationalHandoverScreen() {
             footer={
               <TablePagination
                 page={logsPage}
-                pageSize={LOGS_PAGE_SIZE}
+                pageSize={logsPageSize}
                 totalElements={logsTotalElements}
                 totalPages={logsTotalPages}
                 onPageChange={setLogsPage}
+                onPageSizeChange={(s) => {
+                  setLogsPageSize(s);
+                  setLogsPage(0);
+                }}
+                pageSizeOptions={[10, 20, 50]}
               />
             }
           />
@@ -539,10 +546,15 @@ export function OperationalHandoverScreen() {
             footer={
               <TablePagination
                 page={bookingsPage}
-                pageSize={LOGS_PAGE_SIZE}
+                pageSize={bookingsPageSize}
                 totalElements={bookingsTotalElements}
                 totalPages={bookingsTotalPages}
                 onPageChange={setBookingsPage}
+                onPageSizeChange={(s) => {
+                  setBookingsPageSize(s);
+                  setBookingsPage(0);
+                }}
+                pageSizeOptions={[10, 20, 50]}
               />
             }
           />

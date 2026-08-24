@@ -90,7 +90,7 @@ export function ReservationStatusScreen() {
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
-  const [pageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState("");
   const [searchVal, setSearchVal] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -234,14 +234,9 @@ export function ReservationStatusScreen() {
       <PageHeader
         {...PAGE_META.reservationStatus}
         actions={
-          <>
-            <Button variant="secondary" onClick={fetchList} leftIcon={<RefreshCw className="size-4" />}>
-              Refresh
-            </Button>
-            <Badge variant="primary" className="text-xs h-9 px-3 flex items-center justify-center font-bold uppercase bg-blue-100 text-blue-800 rounded-lg">
-              PMS Live Sync
-            </Badge>
-          </>
+          <Button variant="secondary" onClick={fetchList} leftIcon={<RefreshCw className="size-4" />}>
+            Refresh
+          </Button>
         }
       />
 
@@ -347,6 +342,11 @@ export function ReservationStatusScreen() {
             totalElements={totalElements}
             totalPages={totalPages}
             onPageChange={setCurrentPage}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setCurrentPage(0);
+            }}
+            pageSizeOptions={[10, 20, 50]}
           />
         }
       />

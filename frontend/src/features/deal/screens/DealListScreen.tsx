@@ -77,7 +77,7 @@ export function DealListScreen() {
 
   const queryClient = useQueryClient();
 
-  const PAGE_SIZE = 10;
+  const [pageSize, setPageSize] = useState(10);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
@@ -101,7 +101,7 @@ export function DealListScreen() {
 
   // The list is paged server-side (Blueprint §2.6/§9.1); the summary tiles below are counted
   // over the whole filtered set by a separate, unpaged query — see `useDealStats`.
-  const dealsQuery = useDeals({ ...filterParams, page, size: PAGE_SIZE });
+  const dealsQuery = useDeals({ ...filterParams, page, size: pageSize });
   const statsQuery = useDealStats(filterParams);
 
   const pageData = dealsQuery.data?.success ? dealsQuery.data.data : undefined;
@@ -771,10 +771,15 @@ export function DealListScreen() {
         footer={
           <TablePagination
             page={page}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             totalElements={totalElements}
             totalPages={totalPages}
             onPageChange={setPage}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setPage(0);
+            }}
+            pageSizeOptions={[10, 20, 50]}
           />
         }
       />

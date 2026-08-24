@@ -147,6 +147,7 @@ export function NotificationListScreen() {
   const [dateTo, setDateTo] = useState("");
   const [sortBy, setSortBy] = useState<"createdAt" | "priority">("createdAt");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
   // Manager/Admin only — org-wide "who did what" activity feed instead of just their own.
   const [viewAllUsers, setViewAllUsers] = useState(false);
   const allUsers = canViewAll && viewAllUsers;
@@ -160,7 +161,7 @@ export function NotificationListScreen() {
     createdTo: dateTo ? new Date(dateTo + "T23:59:59").toISOString() : undefined,
     sortBy: sortBy === "priority" ? "priority" : undefined,
     page,
-    size: PAGE_SIZE,
+    size: pageSize,
   });
   const { data: unreadCount = 0 } = useUnreadNotificationCount();
   const markRead = useMarkNotificationRead();
@@ -473,10 +474,15 @@ export function NotificationListScreen() {
         footer={
           <TablePagination
             page={page}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             totalElements={totalElements}
             totalPages={totalPages}
             onPageChange={setPage}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setPage(0);
+            }}
+            pageSizeOptions={[10, 20, 50]}
           />
         }
       />

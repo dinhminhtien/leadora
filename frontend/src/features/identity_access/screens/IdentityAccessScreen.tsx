@@ -396,6 +396,7 @@ function UsersTab({ roles }: { roles: Role[] }) {
   const [roleFilter, setRoleFilter] = useState<number | "">("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
   const [drawer, setDrawer] = useState<{ mode: "create" | "edit"; user?: UserAccount } | null>(null);
 
   useEffect(() => {
@@ -407,7 +408,7 @@ function UsersTab({ roles }: { roles: Role[] }) {
     search: search || undefined,
     roleId: roleFilter === "" ? undefined : Number(roleFilter),
     status: statusFilter || undefined,
-    sortBy: "createdAt", sortDir: "desc", page, size: PAGE_SIZE,
+    sortBy: "createdAt", sortDir: "desc", page, size: pageSize,
   });
 
   const userColumns = useMemo(
@@ -486,10 +487,15 @@ function UsersTab({ roles }: { roles: Role[] }) {
         footer={
           <TablePagination
             page={page}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             totalElements={totalElements}
             totalPages={totalPages}
             onPageChange={setPage}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setPage(0);
+            }}
+            pageSizeOptions={[10, 20, 50]}
           />
         }
       />

@@ -23,6 +23,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/page-header";
+import { TablePagination } from "@/components/ui/data-table";
 import { PAGE_META } from "@/app/routes/page_meta";
 import { timelineEventIcon } from "@/components/ui/timeline";
 import { useSearchParams } from "next/navigation";
@@ -97,21 +98,31 @@ export function InteractionTimelineScreen() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [agentFilter, setAgentFilter] = useState("all");
 
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  useEffect(() => {
+    setPage(0);
+  }, [debouncedSearch, typeFilter, agentFilter]);
+
   const queryParams = React.useMemo(() => {
-    const params: Record<string, string | number> = { page: 0, size: 200 };
+    const params: Record<string, string | number> = { page, size: pageSize };
     if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
     if (typeFilter !== "all") params.type = typeFilter;
     if (agentFilter !== "all") params.agentId = agentFilter;
     return params;
-  }, [debouncedSearch, typeFilter, agentFilter]);
+  }, [page, pageSize, debouncedSearch, typeFilter, agentFilter]);
 
   const { data: timelinePage, isLoading: loading, error: queryError } = useInteractions(queryParams);
-  const interactions = timelinePage?.data?.content ?? [];
+  const timelineData = timelinePage?.data;
+  const interactions = timelineData?.content ?? [];
+  const totalElements = typeof timelineData?.page === "object" ? timelineData.page.totalElements : (timelineData?.totalElements ?? interactions.length);
+  const totalPages = typeof timelineData?.page === "object" ? timelineData.page.totalPages : (timelineData?.totalPages ?? Math.max(1, Math.ceil(totalElements / pageSize)));
   const error = queryError ? (queryError instanceof Error ? queryError.message : "Failed to load interaction timeline") : null;
 
   const createMutation = useCreateInteraction();
@@ -429,7 +440,7 @@ export function InteractionTimelineScreen() {
           </div>
 
           <div className="md:ml-auto text-xs text-slate-400">
-            Total records: <strong className="text-slate-700">{interactions.length}</strong>
+            Total records: <strong className="text-slate-700">{totalElements.toLocaleString()}</strong>
           </div>
         </CardContent>
       </Card>
@@ -523,6 +534,23 @@ export function InteractionTimelineScreen() {
           ) : (
             <div className="py-12 text-center text-slate-400 text-xs">
               No matching interactions logged. Check filters or search query.
+            </div>
+          )}
+
+          {interactions.length > 0 && (
+            <div className="mt-8 -mx-6 -mb-8 border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50 px-6 py-3.5 rounded-b-xl flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+              <TablePagination
+                page={page}
+                pageSize={pageSize}
+                totalElements={totalElements}
+                totalPages={totalPages}
+                onPageChange={setPage}
+                onPageSizeChange={(s) => {
+                  setPageSize(s);
+                  setPage(0);
+                }}
+                pageSizeOptions={[10, 20, 50]}
+              />
             </div>
           )}
         </CardContent>
