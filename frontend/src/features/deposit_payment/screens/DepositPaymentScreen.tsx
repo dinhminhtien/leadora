@@ -46,6 +46,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PAGE_META } from "@/app/routes/page_meta";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
+import { pageMeta } from "@/services/api_client";
 import {
   depositPaymentService,
   type Payment,
@@ -152,6 +153,125 @@ export function DepositPaymentScreen() {
   const watchPaymentMethod = watch("paymentMethod", "TRANSFER");
   const watchAmount = watch("amount", 0);
 
+  // Render status badge helper
+  const getStatusBadge = (status: PaymentStatus) => {
+    switch (status) {
+      case "PAID":
+        return <Badge variant="success" className="bg-emerald-55 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-450 dark:border-emerald-900 font-bold uppercase text-[9px] py-1 min-w-22.5 justify-center text-center">PAID</Badge>;
+      case "PENDING":
+        return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-200 dark:border-amber-900 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">PENDING</Badge>;
+      case "CANCELLED":
+        return <Badge variant="default" className="bg-slate-100 text-slate-800 dark:bg-zinc-800 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">CANCELLED</Badge>;
+      case "FAILED":
+        return <Badge variant="danger" className="bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-200 dark:border-rose-900 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">FAILED</Badge>;
+      case "EXPIRED":
+        return <Badge variant="default" className="bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">EXPIRED</Badge>;
+      default:
+        return <Badge>{status}</Badge>;
+    }
+  };
+
+  /** Column set — Blueprint §10.11 transaction register. */
+  const paymentColumns: ColumnDef<Payment>[] = useMemo(() => [
+    {
+      id: "booking",
+      header: "Booking Reference",
+      sticky: "left",
+      cell: (p) => (
+        <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-bold text-primary">
+          <CreditCard className="size-3.5 shrink-0 text-muted-foreground" />
+          {p.bookingCode || "N/A"}
+        </span>
+      ),
+    },
+    {
+      id: "guest",
+      header: "Guest Name",
+      className: "max-w-37.5 truncate text-xs font-bold",
+      cell: (p) => <span title={p.customerName || "N/A"}>{p.customerName || "N/A"}</span>,
+    },
+    {
+      id: "type",
+      header: "Payment Type",
+      minWidth: "md",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (p) => (p.paymentType === "DEPOSIT" ? "Deposit Hold" : "Full Bill Settlement"),
+    },
+    {
+      id: "dueDate",
+      header: "Due Date",
+      minWidth: "lg",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (p) => p.dueDate || "N/A",
+    },
+    {
+      id: "status",
+      header: "Gateway Status",
+      cell: (p) => getStatusBadge(p.status),
+    },
+    {
+      id: "amount",
+      header: "Amount Paid",
+      numeric: true,
+      sticky: "right",
+      className: "font-bold",
+      cell: (p) => `${p.amount?.toLocaleString("vi-VN") ?? 0} ₫`,
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const paymentControls = useTableControls<Payment>("payments", paymentColumns);
+
+  /**
+   * Confirmed bookings that have no payment request yet (UC-21.1). Status is
+   * always CONFIRMED here — the query filters on it — so the pill is a constant
+   * label rather than a variable one.
+   */
+  const awaitingColumns: ColumnDef<Booking>[] = useMemo(() => [
+    {
+      id: "code",
+      header: "Booking Reference",
+      sticky: "left",
+      className: "whitespace-nowrap text-xs font-bold",
+      cell: (b) => b.bookingCode,
+    },
+    {
+      id: "customer",
+      header: "Customer Name",
+      className: "max-w-37.5 truncate text-xs font-bold",
+      cell: (b) => <span title={b.customerName}>{b.customerName}</span>,
+    },
+    {
+      id: "checkIn",
+      header: "Check In",
+      minWidth: "md",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (b) => b.checkInDate,
+    },
+    {
+      id: "checkOut",
+      header: "Check Out",
+      minWidth: "md",
+      className: "whitespace-nowrap text-xs text-muted-foreground",
+      cell: (b) => b.checkOutDate,
+    },
+    {
+      id: "status",
+      header: "Booking Status",
+      cell: (b) => <StatusPill size="sm" domain="booking" value={b.status} />,
+    },
+    {
+      id: "total",
+      header: "Total Invoice",
+      numeric: true,
+      sticky: "right",
+      className: "font-bold",
+      cell: (b) => `${b.totalAmount?.toLocaleString("vi-VN") ?? 0} ₫`,
+    },
+  ], []);
+
+  const awaitingControls = useTableControls<Booking>("payments-awaiting", awaitingColumns);
+
   // Fetch payments list
   const loadPayments = useCallback(async () => {
     setLoadingPayments(true);
@@ -162,13 +282,14 @@ export function DepositPaymentScreen() {
         paymentType: typeFilter === "ALL" ? undefined : typeFilter,
         page: paymentsPage,
         size: paymentsPageSize,
-        sortBy: "createdAt",
-        sortDir: "desc"
+        sortBy: paymentControls.sortBy || "createdAt",
+        sortDir: paymentControls.sortDir || "desc"
       });
       if (res.success && res.data) {
+        const meta = pageMeta(res.data);
         setPayments(res.data.content || []);
-        setPaymentsTotalPages(res.data.totalPages || 0);
-        setPaymentsTotalElements(res.data.totalElements ?? (res.data.content?.length ?? 0));
+        setPaymentsTotalPages(meta.totalPages);
+        setPaymentsTotalElements(meta.totalElements);
       }
     } catch (err) {
       console.error(err);
@@ -176,24 +297,24 @@ export function DepositPaymentScreen() {
     } finally {
       setLoadingPayments(false);
     }
-  }, [paymentsSearch, statusFilter, typeFilter, paymentsPage, paymentsPageSize]);
+  }, [paymentsSearch, statusFilter, typeFilter, paymentsPage, paymentsPageSize, paymentControls.sortBy, paymentControls.sortDir]);
 
   // Fetch bookings list
   const loadBookings = useCallback(async () => {
     setLoadingBookings(true);
     try {
       // Get all confirmed bookings to generate payment requests
-      const res = await bookingConfirmationService.getList({
-        search: bookingsSearch.trim() || undefined,
-        status: "CONFIRMED",
-        page: bookingsPage,
-        size: bookingsPageSize,
-        sortBy: "createdAt",
-        sortDir: "desc"
-      });
-      if (res.success && res.data) {
-        // Fetch all active payments to filter out bookings that already have active (PENDING or PAID) payments
-        const paymentsRes = await depositPaymentService.getList({ size: 1000 });
+      const [bookingsRes, paymentsRes] = await Promise.all([
+        bookingConfirmationService.getList({
+          status: "CONFIRMED",
+          size: 1000,
+          sortBy: awaitingControls.sortBy || "createdAt",
+          sortDir: awaitingControls.sortDir || "desc"
+        }),
+        depositPaymentService.getList({ size: 1000 })
+      ]);
+
+      if (bookingsRes.success && bookingsRes.data) {
         const existingBookingCodes = new Set(
           paymentsRes.data?.content
             ?.filter(p => p.status === "PENDING" || p.status === "PAID")
@@ -201,12 +322,28 @@ export function DepositPaymentScreen() {
             .filter(Boolean) || []
         );
 
-        const filteredBookings = (res.data.content || []).filter(
+        let filtered = (bookingsRes.data.content || []).filter(
           b => !existingBookingCodes.has(b.bookingCode)
         );
-        setBookings(filteredBookings);
-        setBookingsTotalPages(res.data.totalPages || 0);
-        setBookingsTotalElements(res.data.totalElements ?? (res.data.content?.length ?? 0));
+
+        const term = bookingsSearch.trim().toLowerCase();
+        if (term) {
+          filtered = filtered.filter(
+            b =>
+              (b.bookingCode && b.bookingCode.toLowerCase().includes(term)) ||
+              (b.customerName && b.customerName.toLowerCase().includes(term)) ||
+              (b.specialRequests && b.specialRequests.toLowerCase().includes(term))
+          );
+        }
+
+        const totalElements = filtered.length;
+        const totalPages = Math.ceil(totalElements / bookingsPageSize) || 1;
+        const pageStart = bookingsPage * bookingsPageSize;
+        const pageContent = filtered.slice(pageStart, pageStart + bookingsPageSize);
+
+        setBookings(pageContent);
+        setBookingsTotalPages(totalPages);
+        setBookingsTotalElements(totalElements);
       }
     } catch (err) {
       console.error(err);
@@ -214,7 +351,7 @@ export function DepositPaymentScreen() {
     } finally {
       setLoadingBookings(false);
     }
-  }, [bookingsSearch, bookingsPage, bookingsPageSize]);
+  }, [bookingsSearch, bookingsPage, bookingsPageSize, awaitingControls.sortBy, awaitingControls.sortDir]);
 
   // Handle data load on active tab or page change
   useEffect(() => {
@@ -386,125 +523,6 @@ export function DepositPaymentScreen() {
     navigator.clipboard.writeText(text);
     toast.success("Copied to clipboard!");
   };
-
-  // Render status badge helper
-  const getStatusBadge = (status: PaymentStatus) => {
-    switch (status) {
-      case "PAID":
-        return <Badge variant="success" className="bg-emerald-55 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-450 dark:border-emerald-900 font-bold uppercase text-[9px] py-1 min-w-22.5 justify-center text-center">PAID</Badge>;
-      case "PENDING":
-        return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-200 dark:border-amber-900 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">PENDING</Badge>;
-      case "CANCELLED":
-        return <Badge variant="default" className="bg-slate-100 text-slate-800 dark:bg-zinc-800 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">CANCELLED</Badge>;
-      case "FAILED":
-        return <Badge variant="danger" className="bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-200 dark:border-rose-900 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">FAILED</Badge>;
-      case "EXPIRED":
-        return <Badge variant="default" className="bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 uppercase text-[9px] font-bold py-1 min-w-22.5 justify-center text-center">EXPIRED</Badge>;
-      default:
-        return <Badge>{status}</Badge>;
-    }
-  };
-
-  /** Column set — Blueprint §10.11 transaction register. */
-  const paymentColumns: ColumnDef<Payment>[] = useMemo(() => [
-    {
-      id: "booking",
-      header: "Booking Reference",
-      sticky: "left",
-      cell: (p) => (
-        <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-bold text-primary">
-          <CreditCard className="size-3.5 shrink-0 text-muted-foreground" />
-          {p.bookingCode || "N/A"}
-        </span>
-      ),
-    },
-    {
-      id: "guest",
-      header: "Guest Name",
-      className: "max-w-37.5 truncate text-xs font-bold",
-      cell: (p) => <span title={p.customerName || "N/A"}>{p.customerName || "N/A"}</span>,
-    },
-    {
-      id: "type",
-      header: "Payment Type",
-      minWidth: "md",
-      className: "whitespace-nowrap text-xs text-muted-foreground",
-      cell: (p) => (p.paymentType === "DEPOSIT" ? "Deposit Hold" : "Full Bill Settlement"),
-    },
-    {
-      id: "dueDate",
-      header: "Due Date",
-      minWidth: "lg",
-      className: "whitespace-nowrap text-xs text-muted-foreground",
-      cell: (p) => p.dueDate || "N/A",
-    },
-    {
-      id: "status",
-      header: "Gateway Status",
-      cell: (p) => getStatusBadge(p.status),
-    },
-    {
-      id: "amount",
-      header: "Amount Paid",
-      numeric: true,
-      sticky: "right",
-      className: "font-bold",
-      cell: (p) => `${p.amount?.toLocaleString("vi-VN") ?? 0} ₫`,
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
-
-  const paymentControls = useTableControls<Payment>("payments", paymentColumns);
-
-  /**
-   * Confirmed bookings that have no payment request yet (UC-21.1). Status is
-   * always CONFIRMED here — the query filters on it — so the pill is a constant
-   * label rather than a variable one.
-   */
-  const awaitingColumns: ColumnDef<Booking>[] = useMemo(() => [
-    {
-      id: "code",
-      header: "Booking Reference",
-      sticky: "left",
-      className: "whitespace-nowrap text-xs font-bold",
-      cell: (b) => b.bookingCode,
-    },
-    {
-      id: "customer",
-      header: "Customer Name",
-      className: "max-w-37.5 truncate text-xs font-bold",
-      cell: (b) => <span title={b.customerName}>{b.customerName}</span>,
-    },
-    {
-      id: "checkIn",
-      header: "Check In",
-      minWidth: "md",
-      className: "whitespace-nowrap text-xs text-muted-foreground",
-      cell: (b) => b.checkInDate,
-    },
-    {
-      id: "checkOut",
-      header: "Check Out",
-      minWidth: "md",
-      className: "whitespace-nowrap text-xs text-muted-foreground",
-      cell: (b) => b.checkOutDate,
-    },
-    {
-      id: "status",
-      header: "Booking Status",
-      cell: (b) => <StatusPill size="sm" domain="booking" value={b.status} />,
-    },
-    {
-      id: "total",
-      header: "Total Invoice",
-      numeric: true,
-      sticky: "right",
-      className: "font-bold",
-      cell: (b) => `${b.totalAmount?.toLocaleString("vi-VN") ?? 0} ₫`,
-    },
-  ], []);
-
-  const awaitingControls = useTableControls<Booking>("payments-awaiting", awaitingColumns);
 
   return (
     <div className="space-y-6 min-h-[101vh]" style={{ scrollbarGutter: "stable" }}>

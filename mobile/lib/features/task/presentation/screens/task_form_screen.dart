@@ -8,6 +8,7 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_dimens.dart';
 import '../../../../shared/formatters.dart';
+import '../../../lead/data/lead_models.dart' show LeadFieldRules;
 import '../../../user/data/user_models.dart';
 import '../../data/task_models.dart';
 import '../../data/task_repository.dart';
@@ -687,6 +688,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                         labelText: 'Phone',
                         isDense: true,
                       ),
+                      validator: LeadFieldRules.validatePhone,
                     ),
                   ),
                 ],

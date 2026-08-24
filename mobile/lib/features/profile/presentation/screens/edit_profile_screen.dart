@@ -445,9 +445,17 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 counterText: '',
               ),
               onChanged: (_) => setState(() {}), // live avatar initials
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? 'Full name is required'
-                  : null,
+              validator: (v) {
+                final val = v?.trim() ?? '';
+                if (val.isEmpty) return 'Full name is required';
+                if (val.length < 2 || val.length > 255) {
+                  return 'Full name must be between 2 and 255 characters';
+                }
+                if (!RegExp(r"^[\p{L}\s'.-]{2,255}$", unicode: true).hasMatch(val)) {
+                  return 'Full name can only contain letters, spaces, dots, hyphens, and apostrophes';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -464,8 +472,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
               validator: (v) {
                 final value = (v ?? '').trim();
                 if (value.isEmpty) return null;
-                if (!RegExp(r'^[0-9+\-\s()]{6,15}$').hasMatch(value)) {
-                  return 'Enter a valid phone number';
+                final compact = value.replaceAll(RegExp(r'[\s.\-()]'), '');
+                final normalized = compact.startsWith('+84') ? '0${compact.substring(3)}' : compact;
+                if (!RegExp(r'^\d{10,11}$').hasMatch(normalized)) {
+                  return 'Phone number must be 10 or 11 digits';
                 }
                 return null;
               },

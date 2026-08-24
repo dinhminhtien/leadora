@@ -375,15 +375,23 @@ class LeadFieldRules {
   /// a call establishes.
   static final RegExp phonePattern = RegExp(r'^\d{10,11}$');
 
+  static final RegExp namePattern = RegExp(
+    r"^[\p{L}\s'.-]{2,40}$",
+    unicode: true,
+  );
+
   static final RegExp _emailPattern = RegExp(
-    r'^[\w.\-+]+@([\w\-]+\.)+[\w\-]{2,}$',
+    r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
   );
 
   static String? validateFullName(String? v) {
     final value = v?.trim() ?? '';
     if (value.isEmpty) return 'Full name is required';
-    if (value.length > fullName) {
-      return 'Full name must be at most $fullName characters';
+    if (value.length < 2 || value.length > fullName) {
+      return 'Full name must be between 2 and $fullName characters';
+    }
+    if (!namePattern.hasMatch(value)) {
+      return 'Full name can only contain letters, spaces, dots, hyphens, and apostrophes';
     }
     return null;
   }

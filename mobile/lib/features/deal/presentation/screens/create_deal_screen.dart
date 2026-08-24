@@ -69,8 +69,21 @@ class _CreateDealScreenState extends ConsumerState<CreateDealScreen> {
   String? _validateEmail(String? v) {
     final email = v?.trim() ?? '';
     if (email.isEmpty) return null; // optional
-    final ok = RegExp(r'^[\w.\-+]+@([\w\-]+\.)+[\w\-]{2,}$').hasMatch(email);
-    return ok ? null : 'Enter a valid email';
+    final ok = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(email);
+    if (!ok) return 'Enter a valid email';
+    if (email.length > 40) return 'Email must be at most 40 characters';
+    return null;
+  }
+
+  String? _validatePhone(String? v) {
+    final raw = (v ?? '').trim();
+    if (raw.isEmpty) return null; // optional
+    final compact = raw.replaceAll(RegExp(r'[\s.\-()]'), '');
+    final normalized = compact.startsWith('+84') ? '0${compact.substring(3)}' : compact;
+    if (!RegExp(r'^\d{10,11}$').hasMatch(normalized)) {
+      return 'Phone number must be 10 or 11 digits';
+    }
+    return null;
   }
 
   String? _validateValue(String? v) {
@@ -140,7 +153,21 @@ class _CreateDealScreenState extends ConsumerState<CreateDealScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: Text(_isEdit ? 'Edit deal' : 'New deal')),
+      appBar: AppBar(
+        title: Text(_isEdit ? 'Edit Deal' : 'New Deal'),
+        actions: [
+          TextButton(
+            onPressed: _submitting ? null : _submit,
+            child: _submitting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Save'),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -157,9 +184,12 @@ class _CreateDealScreenState extends ConsumerState<CreateDealScreen> {
                   labelText: 'Deal name *',
                   prefixIcon: Icon(Icons.work_outline_rounded),
                 ),
-                validator: (v) => (v?.trim().isEmpty ?? true)
-                    ? 'Deal name is required'
-                    : null,
+                validator: (v) {
+                  final val = v?.trim() ?? '';
+                  if (val.isEmpty) return 'Deal name is required';
+                  if (val.length > 50) return 'Deal name must be at most 50 characters';
+                  return null;
+                },
               ),
               const SizedBox(height: AppSpacing.lg),
               TextFormField(
@@ -172,9 +202,17 @@ class _CreateDealScreenState extends ConsumerState<CreateDealScreen> {
                       'email already exists',
                   helperMaxLines: 2,
                 ),
-                validator: (v) => (v?.trim().isEmpty ?? true)
-                    ? 'Contact name is required'
-                    : null,
+                validator: (v) {
+                  final val = v?.trim() ?? '';
+                  if (val.isEmpty) return 'Contact name is required';
+                  if (val.length < 2 || val.length > 40) {
+                    return 'Contact name must be between 2 and 40 characters';
+                  }
+                  if (!RegExp(r"^[\p{L}\s'.-]{2,40}$", unicode: true).hasMatch(val)) {
+                    return 'Contact name can only contain letters, spaces, dots, hyphens, and apostrophes';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: AppSpacing.lg),
               TextFormField(
@@ -196,6 +234,7 @@ class _CreateDealScreenState extends ConsumerState<CreateDealScreen> {
                   labelText: 'Phone',
                   prefixIcon: Icon(Icons.phone_outlined),
                 ),
+                validator: _validatePhone,
               ),
               const SizedBox(height: AppSpacing.lg),
               TextFormField(
