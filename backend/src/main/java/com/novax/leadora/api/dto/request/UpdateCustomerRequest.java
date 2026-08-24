@@ -16,25 +16,28 @@ import java.util.UUID;
 public class UpdateCustomerRequest {
 
     @NotBlank(message = "Full name is required")
-    @Size(max = 255)
+    @Size(min = 2, max = LeadFieldLimits.FULL_NAME, message = "Full name must be between 2 and 40 characters")
+    @Pattern(regexp = CreateCustomerRequest.NAME_PATTERN, message = CreateCustomerRequest.NAME_MESSAGE)
     private String fullName;
 
     private CustomerType customerType;
 
     @Email(message = "Invalid email format")
-    @Size(max = 255)
+    @Pattern(regexp = "^$|" + CreateCustomerRequest.EMAIL_PATTERN, message = "Invalid email format")
+    @Size(max = LeadFieldLimits.EMAIL, message = "Email cannot exceed 40 characters")
     private String email;
 
     @Pattern(
             regexp = LeadFieldLimits.PHONE_PATTERN,
             message = LeadFieldLimits.PHONE_MESSAGE
     )
+    @Size(max = 20, message = "Phone number cannot exceed 20 characters")
     private String phone;
 
-    @Size(max = 255)
+    @Size(max = LeadFieldLimits.COMPANY_NAME, message = "Company name cannot exceed 40 characters")
     private String companyName;
 
-    @Size(max = 50)
+    @Size(max = LeadFieldLimits.TAX_CODE, message = "Tax code cannot exceed 25 characters")
     private String taxCode;
 
     private String address;

@@ -288,3 +288,70 @@ class UpdateCustomerPayload {
     };
   }
 }
+
+/// Validation rules and limits for Customer profile forms.
+class CustomerFieldRules {
+  const CustomerFieldRules._();
+
+  static const int fullNameMax = 40;
+  static const int emailMax = 40;
+  static const int companyNameMax = 40;
+
+  static final RegExp namePattern = RegExp(r"^[\p{L}\s'.-]{2,40}$", unicode: true);
+  static final RegExp phonePattern = RegExp(r'^(0|\+84|84)?[0-9]{9,10}$|^\d{10,11}$');
+  static final RegExp emailPattern = RegExp(
+    r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+  );
+
+  static String? validateFullName(String? v) {
+    final value = v?.trim() ?? '';
+    if (value.isEmpty) return 'Full name is required';
+    if (value.length < 2 || value.length > fullNameMax) {
+      return 'Full name must be between 2 and $fullNameMax characters';
+    }
+    if (!namePattern.hasMatch(value)) {
+      return 'Full name can only contain letters, spaces, dots, hyphens, and apostrophes';
+    }
+    return null;
+  }
+
+  static String? validateEmail(String? v, {bool required = true}) {
+    final value = v?.trim() ?? '';
+    if (value.isEmpty) {
+      return required ? 'Email is required' : null;
+    }
+    if (value.length > emailMax) {
+      return 'Email must be at most $emailMax characters';
+    }
+    if (!emailPattern.hasMatch(value)) {
+      return 'Please enter a valid email address';
+    }
+    return null;
+  }
+
+  static String normalizePhone(String? v) {
+    final compact = (v ?? '').replaceAll(RegExp(r'[\s.\-()]'), '');
+    return compact.startsWith('+84') ? '0${compact.substring(3)}' : compact;
+  }
+
+  static String? validatePhone(String? v, {bool required = true}) {
+    final value = normalizePhone(v);
+    if (value.isEmpty) {
+      return required ? 'Phone number is required' : null;
+    }
+    return phonePattern.hasMatch(value)
+        ? null
+        : 'Phone number must be 10 or 11 digits';
+  }
+
+  static String? validateCompanyName(String? v, {required bool isCorporate}) {
+    final value = v?.trim() ?? '';
+    if (isCorporate && value.isEmpty) {
+      return 'Company name is required for a corporate customer';
+    }
+    if (value.length > companyNameMax) {
+      return 'Company name must be at most $companyNameMax characters';
+    }
+    return null;
+  }
+}

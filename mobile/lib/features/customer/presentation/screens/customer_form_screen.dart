@@ -133,19 +133,11 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
     }
   }
 
-  static final _emailRe = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
-
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
-    if (_fullName.text.trim().isEmpty) {
+    if (!_formKey.currentState!.validate()) {
       setState(() => _autovalidate = true);
-      _snack('A name is required.');
-      return;
-    }
-    if (_email.text.trim().isNotEmpty &&
-        !_emailRe.hasMatch(_email.text.trim())) {
-      setState(() => _autovalidate = true);
-      _snack('Please enter a valid email address.');
+      _snack('Please fix the validation errors before submitting.');
       return;
     }
     setState(() => _submitting = true);
@@ -158,13 +150,13 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
       if (_isCreate) {
         saved = await repo.createCustomer(
           CreateCustomerPayload(
-            fullName: _fullName.text,
+            fullName: _fullName.text.trim(),
             customerType: _type,
-            companyName: _isCorporate ? _companyName.text : null,
-            phone: _phone.text,
-            email: _email.text,
-            taxCode: _isCorporate ? _taxCode.text : null,
-            address: _address.text,
+            companyName: _isCorporate ? _companyName.text.trim() : null,
+            phone: CustomerFieldRules.normalizePhone(_phone.text),
+            email: _email.text.trim(),
+            taxCode: _isCorporate ? _taxCode.text.trim() : null,
+            address: _address.text.trim(),
             assignedUserId: _assigneeId,
           ),
         );
@@ -172,13 +164,13 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
         saved = await repo.updateCustomer(
           widget.customer!.customerId,
           UpdateCustomerPayload(
-            fullName: _fullName.text,
+            fullName: _fullName.text.trim(),
             customerType: _type,
-            companyName: _isCorporate ? _companyName.text : null,
-            phone: _phone.text,
-            email: _email.text,
-            taxCode: _isCorporate ? _taxCode.text : null,
-            address: _address.text,
+            companyName: _isCorporate ? _companyName.text.trim() : null,
+            phone: _phone.text.trim().isEmpty ? null : CustomerFieldRules.normalizePhone(_phone.text),
+            email: _email.text.trim().isEmpty ? null : _email.text.trim(),
+            taxCode: _isCorporate ? _taxCode.text.trim() : null,
+            address: _address.text.trim(),
             status: _status,
             assignedUserId: _assigneeId,
           ),
@@ -199,40 +191,56 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
       router.pop();
     } on AppException catch (e) {
       if (mounted) setState(() => _submitting = false);
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      _snack(e.message);
+    } catch (e) {
+      if (mounted) setState(() => _submitting = false);
+      _snack('Could not save the customer.');
     }
   }
 
-  void _snack(String message) => ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text(message)));
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final title = _isCreate ? 'New Customer' : 'Edit Customer';
     return Scaffold(
-      appBar: AppBar(title: Text(_isCreate ? 'New customer' : 'Edit customer')),
+      appBar: AppBar(
+        title: Text(title),
+        actions: [
+          TextButton(
+            onPressed: _submitting ? null : _submit,
+            child: _submitting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Save'),
+          ),
+        ],
+      ),
       body: Form(
         key: _formKey,
         autovalidateMode: _autovalidate
             ? AutovalidateMode.onUserInteraction
             : AutovalidateMode.disabled,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.huge),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           children: [
-            Text('Customer type', style: theme.textTheme.labelLarge),
-            const SizedBox(height: 8),
             SegmentedButton<CustomerType>(
               segments: const [
                 ButtonSegment(
                   value: CustomerType.individual,
-                  icon: Icon(Icons.person_rounded),
                   label: Text('Individual'),
+                  icon: Icon(Icons.person_outline),
                 ),
                 ButtonSegment(
                   value: CustomerType.corporate,
-                  icon: Icon(Icons.apartment_rounded),
                   label: Text('Corporate'),
+                  icon: Icon(Icons.apartment_outlined),
                 ),
               ],
               selected: {_type},
@@ -251,8 +259,7 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
                     : 'Full name *',
                 prefixIcon: const Icon(Icons.badge_outlined),
               ),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'A name is required' : null,
+              validator: CustomerFieldRules.validateFullName,
             ),
             if (_isCorporate) ...[
               const SizedBox(height: 16),
@@ -260,13 +267,13 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
                 controller: _companyName,
                 enabled: !_submitting,
                 decoration: const InputDecoration(
-                  labelText: 'Company name',
+                  labelText: 'Company name *',
                   prefixIcon: Icon(Icons.apartment_outlined),
                 ),
-                // BR-09: a corporate customer must name its company.
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? 'Company name is required for a corporate customer'
-                    : null,
+                validator: (v) => CustomerFieldRules.validateCompanyName(
+                  v,
+                  isCorporate: _isCorporate,
+                ),
               ),
             ],
             const SizedBox(height: 16),
@@ -275,8 +282,14 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
               enabled: !_submitting,
               keyboardType: TextInputType.phone,
               decoration: InputDecoration(
-                labelText: _isCorporate ? 'Business phone' : 'Phone',
+                labelText: _isCreate
+                    ? (_isCorporate ? 'Business phone *' : 'Phone *')
+                    : (_isCorporate ? 'Business phone' : 'Phone'),
                 prefixIcon: const Icon(Icons.phone_outlined),
+              ),
+              validator: (v) => CustomerFieldRules.validatePhone(
+                v,
+                required: _isCreate,
               ),
             ),
             const SizedBox(height: 16),
@@ -285,15 +298,15 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
               enabled: !_submitting,
               keyboardType: TextInputType.emailAddress,
               decoration: InputDecoration(
-                labelText: _isCorporate ? 'Business email' : 'Email',
+                labelText: _isCreate
+                    ? (_isCorporate ? 'Business email *' : 'Email *')
+                    : (_isCorporate ? 'Business email' : 'Email'),
                 prefixIcon: const Icon(Icons.email_outlined),
               ),
-              validator: (v) =>
-                  (v != null &&
-                      v.trim().isNotEmpty &&
-                      !_emailRe.hasMatch(v.trim()))
-                  ? 'Invalid email'
-                  : null,
+              validator: (v) => CustomerFieldRules.validateEmail(
+                v,
+                required: _isCreate,
+              ),
             ),
             if (_isCorporate) ...[
               const SizedBox(height: 16),

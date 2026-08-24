@@ -46,11 +46,13 @@ import { Badge } from "@/components/ui/Badge";
 const updateProfileSchema = z.object({
   fullName: z
     .string()
-    .min(1, "Full name is required")
-    .max(255, "Full name must not exceed 255 characters"),
+    .min(2, "Full name must be at least 2 characters")
+    .max(255, "Full name must not exceed 255 characters")
+    .regex(/^[\p{L}\s'.-]{2,255}$/u, "Full name can only contain letters, spaces, and standard punctuation"),
   phone: z
     .string()
-    .max(15, "Phone number must not exceed 15 characters")
+    .max(20, "Phone number must not exceed 20 characters")
+    .regex(/^$|^(0|\+84|84)?[0-9]{9,10}$|^\d{10,11}$/, "Phone number must be 10 or 11 digits")
     .optional()
     .or(z.literal("")),
   avatarUrl: z

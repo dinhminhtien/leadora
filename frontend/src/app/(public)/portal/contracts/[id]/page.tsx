@@ -84,13 +84,14 @@ export default function PublicContractPortalPage() {
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!otpCode || otpCode.length < 6) {
+    const code = otpCode.trim();
+    if (!/^\d{6}$/.test(code)) {
       setOtpError("Please enter a valid 6-digit verification code.");
       return;
     }
     setOtpError("");
     try {
-      await confirmOtpMutation.mutateAsync({ id, token, otpCode });
+      await confirmOtpMutation.mutateAsync({ id, token, otpCode: code });
       setStep("success");
     } catch (err: any) {
       setOtpError(err?.response?.data?.message || "Invalid or expired OTP code.");

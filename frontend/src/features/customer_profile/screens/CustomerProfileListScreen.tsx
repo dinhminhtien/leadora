@@ -98,24 +98,78 @@ function CreateCustomerDrawer({
     assignedUserId: "",
   });
 
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const createMutation = useCreateCustomer();
 
   function set(key: keyof typeof form, value: string) {
     setForm(f => ({ ...f, [key]: value }));
+    if (errors[key]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  }
+
+  const isCorporate = form.customerType === "CORPORATE";
+
+  function validate(): boolean {
+    const errs: Record<string, string> = {};
+    const nameTrimmed = form.fullName.trim();
+    const emailTrimmed = form.email.trim();
+    const phoneTrimmed = form.phone.trim();
+
+    // 1. Full Name: 2-40 chars, letters/diacritics/standard punctuation
+    if (!nameTrimmed) {
+      errs.fullName = "Full name is required.";
+    } else if (nameTrimmed.length < 2 || nameTrimmed.length > 40) {
+      errs.fullName = "Full name must be between 2 and 40 characters.";
+    } else if (!/^[\p{L}\s'.-]{2,40}$/u.test(nameTrimmed)) {
+      errs.fullName = "Full name can only contain letters, spaces, and standard punctuation.";
+    }
+
+    // 2. Customer Type & Company Name (BR-09)
+    if (isCorporate && !form.companyName.trim()) {
+      errs.companyName = "Company name is required for corporate customers.";
+    }
+
+    // 3. Email
+    if (!emailTrimmed) {
+      errs.email = "Email is required.";
+    } else if (emailTrimmed.length > 40) {
+      errs.email = "Email cannot exceed 40 characters.";
+    } else if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(emailTrimmed)) {
+      errs.email = "Please enter a valid email address (e.g. name@example.com).";
+    }
+
+    // 4. Phone
+    if (!phoneTrimmed) {
+      errs.phone = "Phone number is required.";
+    } else if (!/^(0|\+84|84)?[0-9]{9,10}$|^\d{10,11}$/.test(phoneTrimmed)) {
+      errs.phone = "Phone number must be a valid 10 or 11-digit number.";
+    }
+
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
   }
 
   function handleSubmit(e: React.FormEvent | React.MouseEvent) {
     e.preventDefault();
-    if (!form.fullName.trim()) return;
+    if (!validate()) {
+      toast.error("Please correct the errors in the form.");
+      return;
+    }
+
     createMutation.mutate(
       {
         fullName: form.fullName.trim(),
         customerType: form.customerType,
-        email: form.email || undefined,
-        phone: form.phone || undefined,
-        companyName: form.companyName || undefined,
-        taxCode: form.taxCode || undefined,
-        address: form.address || undefined,
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        companyName: form.companyName.trim() || undefined,
+        taxCode: form.taxCode.trim() || undefined,
+        address: form.address.trim() || undefined,
         assignedUserId: form.assignedUserId || undefined,
       },
       {
@@ -127,8 +181,6 @@ function CreateCustomerDrawer({
       }
     );
   }
-
-  const isCorporate = form.customerType === "CORPORATE";
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -176,18 +228,22 @@ function CreateCustomerDrawer({
               value={form.fullName}
               onChange={e => set("fullName", e.target.value)}
               placeholder={isCorporate ? "Contact person name" : "Customer full name"}
+              className={errors.fullName ? "border-rose-400 focus:border-rose-500 bg-rose-50/20" : ""}
             />
+            {errors.fullName && <p className="text-xs text-rose-500 mt-1">{errors.fullName}</p>}
           </div>
 
           {/* Corporate: Company Name */}
           {isCorporate && (
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Company Name</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Company Name *</label>
               <Input
                 value={form.companyName}
                 onChange={e => set("companyName", e.target.value)}
                 placeholder="Company or organization name"
+                className={errors.companyName ? "border-rose-400 focus:border-rose-500 bg-rose-50/20" : ""}
               />
+              {errors.companyName && <p className="text-xs text-rose-500 mt-1">{errors.companyName}</p>}
             </div>
           )}
 
@@ -195,25 +251,29 @@ function CreateCustomerDrawer({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
-                {isCorporate ? "Business Phone" : "Phone"}
+                {isCorporate ? "Business Phone" : "Phone"} *
               </label>
               <Input
                 type="tel"
                 value={form.phone}
                 onChange={e => set("phone", e.target.value)}
                 placeholder="0909 xxx xxx"
+                className={errors.phone ? "border-rose-400 focus:border-rose-500 bg-rose-50/20" : ""}
               />
+              {errors.phone && <p className="text-xs text-rose-500 mt-1">{errors.phone}</p>}
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
-                {isCorporate ? "Business Email" : "Email"}
+                {isCorporate ? "Business Email" : "Email"} *
               </label>
               <Input
                 type="email"
                 value={form.email}
                 onChange={e => set("email", e.target.value)}
                 placeholder="email@example.com"
+                className={errors.email ? "border-rose-400 focus:border-rose-500 bg-rose-50/20" : ""}
               />
+              {errors.email && <p className="text-xs text-rose-500 mt-1">{errors.email}</p>}
             </div>
           </div>
 
