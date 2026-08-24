@@ -124,6 +124,13 @@ export type ResignTaskPayload = {
   resignNote?: string;
 };
 
+export type TaskStats = {
+  total: number;
+  open: number;
+  completed: number;
+  overdue: number;
+};
+
 export type TaskListParams = {
   search?: string;
   status?: string;
@@ -142,6 +149,11 @@ const ENDPOINT = "/tasks";
 export const taskService = {
   async getList(params?: TaskListParams): Promise<ApiResponse<PageResponse<Task>>> {
     const { data } = await apiClient.get<ApiResponse<PageResponse<Task>>>(ENDPOINT, { params });
+    return data;
+  },
+
+  async getStats(params?: { search?: string; priority?: string; assignedUserId?: string; customerId?: string }): Promise<ApiResponse<TaskStats>> {
+    const { data } = await apiClient.get<ApiResponse<TaskStats>>(`${ENDPOINT}/stats`, { params });
     return data;
   },
 

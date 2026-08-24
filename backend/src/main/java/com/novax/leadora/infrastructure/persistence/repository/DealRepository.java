@@ -43,6 +43,8 @@ public interface DealRepository extends JpaRepository<DealEntity, UUID>, JpaSpec
     List<DealEntity> findByAssignedUser_UserId(UUID assignedUserId);
     List<DealEntity> findByCustomer_CustomerId(UUID customerId);
     List<DealEntity> findByStatus(DealStatus status);
+    boolean existsByCustomer_CustomerIdAndAssignedUser_UserId(UUID customerId, UUID userId);
+    boolean existsByCustomer_CustomerIdAndCreatedBy_UserId(UUID customerId, UUID userId);
 
     @Query("SELECT d.assignedUser.userId as staffId, " +
            "COUNT(d) as totalDeals, " +

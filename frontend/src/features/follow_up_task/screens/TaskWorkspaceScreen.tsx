@@ -55,6 +55,7 @@ import { PAGE_META } from "@/app/routes/page_meta";
 import {
   useResolveTask,
   useTasks,
+  useTaskStats,
   useUpdateTaskById,
   useUsers,
 } from "@/features/follow_up_task/hooks/use_follow_up_tasks";
@@ -87,11 +88,11 @@ const VIEW_ICONS: Record<TaskViewId, React.ComponentType<{ className?: string }>
   manager: Users,
 };
 
+import { TablePagination } from "@/components/ui/data-table";
+import { pageMeta } from "@/services/api_client";
+
 const STATUS_FILTERS = ["OPEN", "COMPLETED", "CANCELLED"] as const;
 const PRIORITY_FILTERS = ["HIGH", "MEDIUM", "LOW"] as const;
-
-/** §9.1.6 — Tasks uses 50 per page "for productivity". */
-const PAGE_SIZE = 50;
 
 import { useHighlightRow } from "@/shared/hooks/use_highlight_row";
 
@@ -103,6 +104,8 @@ export function TaskWorkspaceScreen() {
   const isManager = hasFullAccess(user);
 
   const [view, setView] = React.useState<TaskViewId>("table");
+  const [page, setPage] = React.useState(0);
+  const [pageSize, setPageSize] = React.useState(20);
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<string | null>(null);
   const [priorityFilter, setPriorityFilter] = React.useState<string | null>(null);
@@ -127,8 +130,8 @@ export function TaskWorkspaceScreen() {
   const highlightId = searchParams.get("highlight");
 
   const { data, isLoading, isError, error, refetch } = useTasks({
-    page: 0,
-    size: PAGE_SIZE,
+    page,
+    size: pageSize,
     search: search || undefined,
     status: statusFilter ?? undefined,
     priority: priorityFilter ?? undefined,
@@ -143,27 +146,20 @@ export function TaskWorkspaceScreen() {
   const resolveTask = useResolveTask();
 
   const tasks = React.useMemo(() => data?.data?.content ?? [], [data]);
+  const meta = React.useMemo(() => pageMeta(data?.data), [data]);
+
+  const { data: statsResponse } = useTaskStats({
+    search: search || undefined,
+    priority: priorityFilter ?? undefined,
+    assignedUserId: isManager ? (assigneeFilter ?? undefined) : undefined,
+  });
+  const stats = statsResponse?.data;
 
   // §10.14.8 — Manager View is manager-only. Resolved during render rather than
   // corrected in an effect, so a non-manager never paints a frame of a view they
   // are not allowed to see.
   const activeView: TaskViewId =
     view === "manager" && !isManager ? "table" : view;
-
-  /* ── Derived counters for the stat strip ──────────────────────────────── */
-
-  const counters = React.useMemo(() => {
-    let open = 0;
-    let overdue = 0;
-    let completed = 0;
-    for (const t of tasks) {
-      const s = (t.status ?? "").toUpperCase();
-      if (s === "OPEN") open++;
-      if (s === "COMPLETED") completed++;
-      if (isTaskOverdue(t)) overdue++;
-    }
-    return { open, overdue, completed, total: tasks.length };
-  }, [tasks]);
 
   /* ── Mutations ────────────────────────────────────────────────────────── */
 
@@ -267,25 +263,37 @@ export function TaskWorkspaceScreen() {
     chips.push({
       id: "status",
       label: `Status: ${statusFilter.toLowerCase()}`,
-      onRemove: () => setStatusFilter(null),
+      onRemove: () => {
+        setStatusFilter(null);
+        setPage(0);
+      },
     });
   if (priorityFilter)
     chips.push({
       id: "priority",
       label: `Priority: ${priorityFilter.toLowerCase()}`,
-      onRemove: () => setPriorityFilter(null),
+      onRemove: () => {
+        setPriorityFilter(null);
+        setPage(0);
+      },
     });
   if (overdueOnly)
     chips.push({
       id: "overdue",
       label: "Overdue only",
-      onRemove: () => setOverdueOnly(false),
+      onRemove: () => {
+        setOverdueOnly(false);
+        setPage(0);
+      },
     });
   if (assigneeFilter)
     chips.push({
       id: "assignee",
       label: `Owner: ${users.find((u) => u.userId === assigneeFilter)?.fullName ?? "selected"}`,
-      onRemove: () => setAssigneeFilter(null),
+      onRemove: () => {
+        setAssigneeFilter(null);
+        setPage(0);
+      },
     });
 
   const clearFilters = () => {
@@ -294,6 +302,7 @@ export function TaskWorkspaceScreen() {
     setOverdueOnly(false);
     setAssigneeFilter(null);
     setSearch("");
+    setPage(0);
   };
 
   const viewOptions = TASK_VIEWS.filter((v) => !v.managerOnly || isManager).map(
@@ -336,35 +345,45 @@ export function TaskWorkspaceScreen() {
         tiles={[
           {
             label: "Open",
-            value: counters.open,
+            value: stats?.open ?? 0,
             tone: "brand",
             active: statusFilter === "OPEN",
-            onClick: () =>
-              setStatusFilter((s) => (s === "OPEN" ? null : "OPEN")),
+            onClick: () => {
+              setStatusFilter((s) => (s === "OPEN" ? null : "OPEN"));
+              setPage(0);
+            },
           },
           {
             label: "Overdue",
-            value: counters.overdue,
+            value: stats?.overdue ?? 0,
             tone: "danger",
             active: overdueOnly,
-            onClick: () => setOverdueOnly((v) => !v),
+            onClick: () => {
+              setOverdueOnly((v) => !v);
+              setPage(0);
+            },
           },
           {
             label: "Completed",
-            value: counters.completed,
+            value: stats?.completed ?? 0,
             tone: "success",
             active: statusFilter === "COMPLETED",
-            onClick: () =>
-              setStatusFilter((s) => (s === "COMPLETED" ? null : "COMPLETED")),
+            onClick: () => {
+              setStatusFilter((s) => (s === "COMPLETED" ? null : "COMPLETED"));
+              setPage(0);
+            },
           },
-          { label: "Loaded", value: counters.total, tone: "muted" },
+          { label: "Total", value: stats?.total ?? meta.totalElements, tone: "muted" },
         ]}
       />
 
       <ListToolbar chips={chips} onClearFilters={clearFilters}>
         <ToolbarSearch
           value={search}
-          onChange={setSearch}
+          onChange={(val) => {
+            setSearch(val);
+            setPage(0);
+          }}
           placeholder="Search title, customer, contact…"
         />
 
@@ -374,7 +393,10 @@ export function TaskWorkspaceScreen() {
             <button
               key={s}
               type="button"
-              onClick={() => setStatusFilter((cur) => (cur === s ? null : s))}
+              onClick={() => {
+                setStatusFilter((cur) => (cur === s ? null : s));
+                setPage(0);
+              }}
               className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-pill"
               aria-pressed={statusFilter === s}
             >
@@ -396,7 +418,10 @@ export function TaskWorkspaceScreen() {
             <button
               key={p}
               type="button"
-              onClick={() => setPriorityFilter((cur) => (cur === p ? null : p))}
+              onClick={() => {
+                setPriorityFilter((cur) => (cur === p ? null : p));
+                setPage(0);
+              }}
               aria-pressed={priorityFilter === p}
               className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
             >
@@ -416,7 +441,10 @@ export function TaskWorkspaceScreen() {
         {isManager && (
           <select
             value={assigneeFilter ?? ""}
-            onChange={(e) => setAssigneeFilter(e.target.value || null)}
+            onChange={(e) => {
+              setAssigneeFilter(e.target.value || null);
+              setPage(0);
+            }}
             aria-label="Filter by owner"
             className="h-9 rounded-md border border-input bg-surface px-2 text-[12.5px] text-foreground focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
           >
@@ -455,6 +483,15 @@ export function TaskWorkspaceScreen() {
             users={users}
             onBulkPriority={bulkSetPriority}
             onBulkAssign={bulkAssign}
+            page={page}
+            pageSize={pageSize}
+            totalElements={meta.totalElements}
+            totalPages={meta.totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setPage(0);
+            }}
             {...handlers}
           />
         ) : activeView === "board" ? (
@@ -488,6 +525,23 @@ export function TaskWorkspaceScreen() {
             >
               Open calendar
             </Button>
+          </div>
+        )}
+
+        {activeView !== "table" && activeView !== "calendar" && (
+          <div className="mt-4 flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 text-[12.5px] text-muted-foreground shadow-xs">
+            <TablePagination
+              page={page}
+              pageSize={pageSize}
+              totalElements={meta.totalElements}
+              totalPages={meta.totalPages}
+              onPageChange={setPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setPage(0);
+              }}
+              pageSizeOptions={[10, 20, 50, 100]}
+            />
           </div>
         )}
       </div>

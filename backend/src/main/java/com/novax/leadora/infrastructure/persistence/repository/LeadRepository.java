@@ -204,4 +204,7 @@ public interface LeadRepository
 
         @Query("SELECT l.leadId FROM LeadEntity l WHERE l.assignedUser.userId = :userId")
         List<UUID> findLeadIdsByAssignedUser_UserId(@Param("userId") UUID userId);
+
+        boolean existsByCustomer_CustomerIdAndAssignedUser_UserId(UUID customerId, UUID userId);
+        boolean existsByCustomer_CustomerIdAndCreatedBy_UserId(UUID customerId, UUID userId);
 }

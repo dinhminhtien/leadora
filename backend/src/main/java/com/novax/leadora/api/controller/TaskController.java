@@ -5,9 +5,11 @@ import com.novax.leadora.api.dto.request.ResignTaskRequest;
 import com.novax.leadora.api.dto.request.UpdateTaskRequest;
 import com.novax.leadora.api.dto.request.ResolveTaskRequest;
 import com.novax.leadora.api.dto.response.TaskResponse;
+import com.novax.leadora.api.dto.response.TaskStatsResponse;
 import com.novax.leadora.application.usecase.task.CreateTaskUseCase;
 import com.novax.leadora.application.usecase.task.GetTaskDetailUseCase;
 import com.novax.leadora.application.usecase.task.GetTaskListUseCase;
+import com.novax.leadora.application.usecase.task.GetTaskStatsUseCase;
 import com.novax.leadora.application.usecase.task.ResignTaskUseCase;
 import com.novax.leadora.application.usecase.task.ResolveTaskUseCase;
 import com.novax.leadora.application.usecase.task.UpdateTaskUseCase;
@@ -30,6 +32,7 @@ public class TaskController {
 
     private final CreateTaskUseCase createTaskUseCase;
     private final GetTaskListUseCase getTaskListUseCase;
+    private final GetTaskStatsUseCase getTaskStatsUseCase;
     private final GetTaskDetailUseCase getTaskDetailUseCase;
     private final UpdateTaskUseCase updateTaskUseCase;
     private final ResignTaskUseCase resignTaskUseCase;
@@ -58,6 +61,18 @@ public class TaskController {
     ) {
         Page<TaskResponse> tasks = getTaskListUseCase.execute(search, status, priority, assignedUserId, customerId, overdue, page, size);
         return ResponseEntity.ok(ApiResponse.success(tasks));
+    }
+
+    /** UC-10.2 / UC-10.5 — Aggregate Task Summary Stats */
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<TaskStatsResponse>> getTaskStats(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) String assignedUserId,
+            @RequestParam(required = false) String customerId
+    ) {
+        TaskStatsResponse stats = getTaskStatsUseCase.execute(search, priority, assignedUserId, customerId);
+        return ResponseEntity.ok(ApiResponse.success(stats));
     }
 
     /** UC-10.3 — View Follow-up Task Detail */

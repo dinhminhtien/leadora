@@ -10,8 +10,6 @@ import com.novax.leadora.application.usecase.identity.GetUserListUseCase;
 import com.novax.leadora.application.usecase.identity.GetUserSummariesUseCase;
 import com.novax.leadora.application.usecase.identity.UpdateUserUseCase;
 import com.novax.leadora.common.response.ApiResponse;
-import com.novax.leadora.infrastructure.persistence.entity.UserEntity;
-import com.novax.leadora.infrastructure.persistence.repository.UserRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -20,7 +18,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 
@@ -30,7 +27,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @PreAuthorize("isAuthenticated()")
 public class UserController {
 
-    private final UserRepository userRepository;
     private final GetUserListUseCase getUserListUseCase;
     private final GetUserDetailUseCase getUserDetailUseCase;
     private final GetUserSummariesUseCase getUserSummariesUseCase;
@@ -38,14 +34,16 @@ public class UserController {
     private final UpdateUserUseCase updateUserUseCase;
 
     /**
-     * Lightweight list of users for assignee dropdowns (leads/tasks/deals, the Front Office
-     * roster). Kept as a flat array (not paged) — existing callers depend on this shape.
-     * Cached with high performance to ensure instant responses across all dropdowns.
+     * Lightweight list of users for assignee dropdowns (leads/tasks/deals, the
+     * Front Office
+     * roster). Kept as a flat array (not paged) — existing callers depend on this
+     * shape.
+     * Cached with high performance to ensure instant responses across all
+     * dropdowns.
      */
     @GetMapping
     public ResponseEntity<ApiResponse<List<UserSummaryResponse>>> getUsers(
-            @RequestParam(required = false) String role
-    ) {
+            @RequestParam(required = false) String role) {
         List<UserSummaryResponse> users = getUserSummariesUseCase.execute(role);
         return ResponseEntity.ok(ApiResponse.success(users));
     }
@@ -60,9 +58,9 @@ public class UserController {
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
-    ) {
-        Page<UserAccountResponse> users = getUserListUseCase.execute(search, roleId, status, sortBy, sortDir, page, size);
+            @RequestParam(defaultValue = "10") int size) {
+        Page<UserAccountResponse> users = getUserListUseCase.execute(search, roleId, status, sortBy, sortDir, page,
+                size);
         return ResponseEntity.ok(ApiResponse.success(users));
     }
 
@@ -87,8 +85,7 @@ public class UserController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<UserAccountResponse>> updateUser(
             @PathVariable UUID userId,
-            @Valid @RequestBody UpdateUserRequest request
-    ) {
+            @Valid @RequestBody UpdateUserRequest request) {
         UserAccountResponse user = updateUserUseCase.execute(userId, request);
         return ResponseEntity.ok(ApiResponse.success(user, "User account has been updated successfully."));
     }

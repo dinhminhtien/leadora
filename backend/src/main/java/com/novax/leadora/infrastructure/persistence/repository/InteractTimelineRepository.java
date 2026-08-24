@@ -19,6 +19,8 @@ public interface InteractTimelineRepository
 
     List<InteractTimelineEntity> findByDeal_DealIdOrderByOccurredAtDesc(UUID dealId);
 
+    boolean existsByCustomer_CustomerIdAndUser_UserId(UUID customerId, UUID userId);
+
     /**
      * Logged actions per staff member, busiest first - the dashboard's activity leaderboard.
      *

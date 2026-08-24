@@ -21,6 +21,7 @@ public class CreateCustomerUseCase {
     private final UserRepository userRepository;
     private final CustomerDuplicatePolicy customerDuplicatePolicy;
     private final CustomerProfilePolicy customerProfilePolicy;
+    private final CustomerAccessPolicy customerAccessPolicy;
 
     @Transactional
     public CustomerResponse execute(CreateCustomerRequest request) {
@@ -34,9 +35,12 @@ public class CreateCustomerUseCase {
         // for why this rule lives outside the use cases rather than being repeated in each.
         customerDuplicatePolicy.assertNoDuplicate(request.getEmail(), request.getPhone());
 
+        UserEntity currentUser = customerAccessPolicy.currentUser();
         UserEntity assignedUser = null;
         if (request.getAssignedUserId() != null) {
             assignedUser = userRepository.findById(request.getAssignedUserId()).orElse(null);
+        } else if (currentUser != null) {
+            assignedUser = currentUser;
         }
 
         CustomerEntity customer = CustomerEntity.builder()
@@ -48,6 +52,7 @@ public class CreateCustomerUseCase {
                 .taxCode(blankToNull(request.getTaxCode()))
                 .address(blankToNull(request.getAddress()))
                 .assignedUser(assignedUser)
+                .createdBy(currentUser)
                 .status(CustomerStatus.ACTIVE)
                 .build();
 
