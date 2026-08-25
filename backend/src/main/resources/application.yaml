@@ -196,6 +196,20 @@ ai:
       # embedding calls. Set AI_SEMANTIC_CHUNKING=false to fall back to cheap token splitting.
       enabled: ${AI_SEMANTIC_CHUNKING:true}
 
+    # Vision OCR - transcribes text trapped inside images (scanned pages, charts, screenshots)
+    # so Tika's text layer is not the only route into RAG. It runs on the SAME Gemini model and
+    # quota as the assistant, and an image costs far more tokens than a line of text, hence the
+    # per-document cap below.
+    #   OFF          - never; image-only uploads are rejected up front with that reason.
+    #   SCANNED_ONLY - only when the text layer came back near-empty. Digital documents that
+    #                  already carry text cost nothing.
+    #   ALL_IMAGES   - every embedded image, even in a text-rich document. Highest quota cost.
+    # Without this block the keys fell back to the code default (OFF) and AI_VISION_OCR_MODE -
+    # the variable the upload error message tells you to set - bound to nothing.
+    vision-ocr:
+      mode: ${AI_VISION_OCR_MODE:ALL_IMAGES}
+      max-images: ${AI_VISION_OCR_MAX_IMAGES:20}
+
 # SLA deadline calculation (BR-32/BR-42) — applies uniformly to every SLA rule.
 sla:
   business-hours:
