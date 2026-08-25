@@ -35,7 +35,7 @@ public final class InteractionTimelineSpecification {
 
             List<Predicate> predicates = new ArrayList<>();
 
-            // Search by description, agent name, lead name, customer name, deal name
+            // Search by description, interaction type, agent name, lead name, customer name, deal name
             if (search != null && !search.isBlank()) {
                 String pattern = "%" + search.toLowerCase().trim() + "%";
                 var userJoin = root.join("user", JoinType.LEFT);
@@ -44,6 +44,7 @@ public final class InteractionTimelineSpecification {
                 var dealJoin = root.join("deal", JoinType.LEFT);
 
                 predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("interactionType")), pattern),
                         cb.like(cb.lower(root.get("description")), pattern),
                         cb.like(cb.lower(userJoin.get("fullName")), pattern),
                         cb.like(cb.lower(leadJoin.get("fullName")), pattern),
@@ -52,9 +53,18 @@ public final class InteractionTimelineSpecification {
                 ));
             }
 
-            // Filter by interactionType
+            // Filter by interactionType (supports exact, singular/plural, and substring matches)
             if (type != null && !type.isBlank() && !"all".equalsIgnoreCase(type)) {
-                predicates.add(cb.equal(cb.lower(root.get("interactionType")), type.toLowerCase().trim()));
+                String cleanType = type.toLowerCase().trim();
+                String singular = cleanType.endsWith("s") && cleanType.length() > 3
+                        ? cleanType.substring(0, cleanType.length() - 1)
+                        : cleanType;
+
+                predicates.add(cb.or(
+                        cb.equal(cb.lower(root.get("interactionType")), cleanType),
+                        cb.equal(cb.lower(root.get("interactionType")), singular),
+                        cb.like(cb.lower(root.get("interactionType")), "%" + singular + "%")
+                ));
             }
 
             // Filter by agentId (request param)

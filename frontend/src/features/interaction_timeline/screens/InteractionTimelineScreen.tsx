@@ -17,7 +17,8 @@ import {
   AlertCircle,
   Building2,
   User,
-  Briefcase
+  Briefcase,
+  MapPin
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -59,8 +60,79 @@ const INTERACTION_TYPE_OPTIONS = [
   { id: "call", label: "Call", icon: timelineEventIcon("call"), color: "text-success border-success/30 bg-success/8", ringColor: "ring-success/60" },
   { id: "email", label: "Email", icon: timelineEventIcon("email"), color: "text-primary border-primary/30 bg-primary/8", ringColor: "ring-primary/60" },
   { id: "meeting", label: "Meeting", icon: timelineEventIcon("meeting"), color: "text-info border-info/30 bg-info/8", ringColor: "ring-info/60" },
+  { id: "site_visit", label: "Site Visit", icon: MapPin, color: "text-teal-600 border-teal-300 bg-teal-50", ringColor: "ring-teal-400" },
   { id: "note", label: "Note", icon: timelineEventIcon("note"), color: "text-warning border-warning/30 bg-warning/8", ringColor: "ring-warning/60" },
 ] as const;
+
+const normalizeInteractionType = (type?: string | null): "call" | "email" | "meeting" | "site_visit" | "note" | "other" => {
+  const t = (type || "").trim().toLowerCase();
+  if (t === "call" || t.includes("call")) return "call";
+  if (t === "email" || t.includes("mail")) return "email";
+  if (t === "meeting" || t.includes("meet")) return "meeting";
+  if (t === "site_visit" || t.includes("visit") || t.includes("site")) return "site_visit";
+  if (t === "note" || t.includes("note")) return "note";
+  return "other";
+};
+
+const getInteractionTypeStyle = (type?: string | null) => {
+  const norm = normalizeInteractionType(type);
+  switch (norm) {
+    case "call":
+      return {
+        key: "call",
+        label: "Call",
+        Icon: Phone,
+        medallion: "bg-emerald-500 text-white shadow-md shadow-emerald-500/25 ring-4 ring-emerald-50 dark:ring-emerald-950/40",
+        badge: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
+        cardBorder: "border-l-emerald-500 hover:border-emerald-300 dark:hover:border-emerald-800",
+      };
+    case "email":
+      return {
+        key: "email",
+        label: "Email",
+        Icon: Mail,
+        medallion: "bg-blue-500 text-white shadow-md shadow-blue-500/25 ring-4 ring-blue-50 dark:ring-blue-950/40",
+        badge: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800",
+        cardBorder: "border-l-blue-500 hover:border-blue-300 dark:hover:border-blue-800",
+      };
+    case "meeting":
+      return {
+        key: "meeting",
+        label: "Meeting",
+        Icon: Calendar,
+        medallion: "bg-purple-500 text-white shadow-md shadow-purple-500/25 ring-4 ring-purple-50 dark:ring-purple-950/40",
+        badge: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800",
+        cardBorder: "border-l-purple-500 hover:border-purple-300 dark:hover:border-purple-800",
+      };
+    case "site_visit":
+      return {
+        key: "site_visit",
+        label: "Site Visit",
+        Icon: MapPin,
+        medallion: "bg-teal-500 text-white shadow-md shadow-teal-500/25 ring-4 ring-teal-50 dark:ring-teal-950/40",
+        badge: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-800",
+        cardBorder: "border-l-teal-500 hover:border-teal-300 dark:hover:border-teal-800",
+      };
+    case "note":
+      return {
+        key: "note",
+        label: "Note",
+        Icon: FileText,
+        medallion: "bg-amber-500 text-white shadow-md shadow-amber-500/25 ring-4 ring-amber-50 dark:ring-amber-950/40",
+        badge: "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+        cardBorder: "border-l-amber-500 hover:border-amber-300 dark:hover:border-amber-800",
+      };
+    default:
+      return {
+        key: "other",
+        label: "Other",
+        Icon: MessageSquare,
+        medallion: "bg-slate-500 text-white shadow-md shadow-slate-500/25 ring-4 ring-slate-50 dark:ring-slate-950/40",
+        badge: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-950/40 dark:text-slate-300 dark:border-slate-800",
+        cardBorder: "border-l-slate-400 hover:border-slate-300 dark:hover:border-slate-800",
+      };
+  }
+};
 
 type SearchEntityItem = {
   id?: string | null;
@@ -130,7 +202,7 @@ export function InteractionTimelineScreen() {
   // Detail Drawer state
   const [selectedInteraction, setSelectedInteraction] = useState<InteractionTimelineEntry | null>(null);
   const [isEditingDetail, setIsEditingDetail] = useState(false);
-  const [editType, setEditType] = useState<"call" | "email" | "meeting" | "note">("call");
+  const [editType, setEditType] = useState<"call" | "email" | "meeting" | "site_visit" | "note" | "other">("call");
   const [editDescription, setEditDescription] = useState("");
   const [editOccurredAt, setEditOccurredAt] = useState("");
   const [editLoading, setEditLoading] = useState(false);
@@ -149,7 +221,7 @@ export function InteractionTimelineScreen() {
 
   // Create Drawer state
   const [showCreateDrawer, setShowCreateDrawer] = useState(false);
-  const [formType, setFormType] = useState<"call" | "email" | "meeting" | "note">("call");
+  const [formType, setFormType] = useState<"call" | "email" | "meeting" | "site_visit" | "note" | "other">("call");
   const [formDescription, setFormDescription] = useState("");
   const [formOccurredAt, setFormOccurredAt] = useState("");
   const [searchEntityType, setSearchEntityType] = useState<"lead" | "customer" | "deal">("lead");
@@ -254,7 +326,7 @@ export function InteractionTimelineScreen() {
         setDetailTab("details");
         setEditError(null);
         // Prep edit fields
-        setEditType(response.data.type);
+        setEditType(normalizeInteractionType(response.data.type));
         setEditDescription(response.data.description);
         setEditOccurredAt(toLocalDateTimeLocal(response.data.occurredAt));
       }
@@ -386,49 +458,70 @@ export function InteractionTimelineScreen() {
         }
       />
 
-      <Card className="border-slate-100 shadow-sm bg-white">
-        <CardContent className="py-3 px-4 flex flex-col md:flex-row items-center gap-3">
-          {/* Search bar */}
-          <div className="relative w-full md:w-72">
+      {/* Filters & Search Toolbar */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white dark:bg-zinc-900 p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-2xs">
+        {/* Left Side: Search Bar + Segmented Type Tabs */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 min-w-0">
+          {/* Search bar (Far Left) */}
+          <div className="relative w-full sm:w-64 md:w-72 shrink-0">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               placeholder="Search descriptions, guests, agents..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
+              className="w-full pl-8 pr-7 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-xs text-slate-800 dark:text-zinc-200 placeholder:text-slate-400 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white dark:focus:bg-zinc-900 transition"
             />
-          </div>
-
-          {/* Type filter buttons */}
-          <div className="flex flex-wrap gap-2">
-            {[
-              { id: "all", label: "All Logs" },
-              { id: "call", label: "Calls" },
-              { id: "email", label: "Emails" },
-              { id: "meeting", label: "Meetings" },
-              { id: "note", label: "Notes" }
-            ].map(tab => (
+            {searchTerm && (
               <button
-                key={tab.id}
-                onClick={() => setTypeFilter(tab.id)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${typeFilter === tab.id
-                  ? "bg-[#185FA5] text-[#E6F1FB] border-[#0C447C] shadow-xs"
-                  : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                  }`}
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
-                {tab.label}
+                <X className="size-3" />
               </button>
-            ))}
+            )}
           </div>
 
+          {/* Type filter tabs - Sleek Segmented Control */}
+          <div className="flex items-center gap-1 p-1 bg-slate-100/90 dark:bg-zinc-800/80 rounded-xl overflow-x-auto no-scrollbar shrink-0">
+            {[
+              { id: "all", label: "All Logs", Icon: MessageSquare, activeColor: "bg-white dark:bg-zinc-900 text-slate-900 dark:text-zinc-100 shadow-xs", iconColor: "text-slate-500" },
+              { id: "call", label: "Calls", Icon: Phone, activeColor: "bg-white dark:bg-zinc-900 text-emerald-700 dark:text-emerald-400 shadow-xs", iconColor: "text-emerald-600" },
+              { id: "email", label: "Emails", Icon: Mail, activeColor: "bg-white dark:bg-zinc-900 text-blue-700 dark:text-blue-400 shadow-xs", iconColor: "text-blue-600" },
+              { id: "meeting", label: "Meetings", Icon: Calendar, activeColor: "bg-white dark:bg-zinc-900 text-purple-700 dark:text-purple-400 shadow-xs", iconColor: "text-purple-600" },
+              { id: "site_visit", label: "Site Visits", Icon: MapPin, activeColor: "bg-white dark:bg-zinc-900 text-teal-700 dark:text-teal-400 shadow-xs", iconColor: "text-teal-600" },
+              { id: "note", label: "Notes", Icon: FileText, activeColor: "bg-white dark:bg-zinc-900 text-amber-700 dark:text-amber-400 shadow-xs", iconColor: "text-amber-600" },
+            ].map(tab => {
+              const TabIcon = tab.Icon;
+              const isSelected = typeFilter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setTypeFilter(tab.id)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer",
+                    isSelected
+                      ? cn(tab.activeColor, "font-bold ring-1 ring-black/5 dark:ring-white/10")
+                      : "text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 hover:bg-slate-200/60 dark:hover:bg-zinc-700/50"
+                  )}
+                >
+                  <TabIcon className={cn("size-3.5", isSelected ? tab.iconColor : "text-slate-400")} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right Side: Agent Dropdown + Counter */}
+        <div className="flex items-center gap-2.5 shrink-0">
           {/* Agent Filter dropdown */}
-          <div className="w-full md:w-48 flex items-center gap-2">
-            <Filter className="size-3.5 text-slate-400 shrink-0" />
+          <div className="relative w-full sm:w-44">
+            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-slate-400 pointer-events-none" />
             <select
               value={agentFilter}
               onChange={e => setAgentFilter(e.target.value)}
-              className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
+              className="w-full pl-7 pr-4 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-xs text-slate-800 dark:text-zinc-200 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white dark:focus:bg-zinc-900 transition cursor-pointer"
             >
               <option value="all">All Agents</option>
               {agents.map(agent => (
@@ -439,11 +532,11 @@ export function InteractionTimelineScreen() {
             </select>
           </div>
 
-          <div className="md:ml-auto text-xs text-slate-400">
-            Total records: <strong className="text-slate-700">{totalElements.toLocaleString()}</strong>
+          <div className="text-[11px] text-slate-400 whitespace-nowrap hidden md:block shrink-0 px-1 font-medium">
+            {totalElements} logs
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <Card className="border-slate-100 shadow-sm bg-white">
         <CardContent className="px-6 py-8">
@@ -457,73 +550,103 @@ export function InteractionTimelineScreen() {
               {error}
             </div>
           ) : interactions.length > 0 ? (
-            <div className="relative border-l border-slate-200 ml-6 pl-8 space-y-6">
+            <div className="relative ml-4 pl-7 sm:ml-6 sm:pl-9 space-y-6 before:absolute before:left-3.5 sm:before:left-4 before:top-4 before:bottom-4 before:w-0.5 before:bg-gradient-to-b before:from-slate-200 before:via-slate-200 before:to-slate-100 dark:before:from-zinc-700 dark:before:via-zinc-800 dark:before:to-zinc-900">
               {interactions.map((item) => {
                 const isHighlighted = item.id === highlightedId || item.id === highlightParam;
+                const typeStyle = getInteractionTypeStyle(item.type);
+                const TypeIcon = typeStyle.Icon;
+                const linkedStyle = item.linkedType === "customer"
+                  ? { label: "Customer", Icon: Building2, badge: "bg-[#EAF3DE] text-[#3B6D11] border-[#C0DD97]" }
+                  : item.linkedType === "deal"
+                  ? { label: "Deal", Icon: Briefcase, badge: "bg-[#FAEEDA] text-[#854F0B] border-[#FAC775]" }
+                  : { label: "Lead", Icon: User, badge: "bg-[#E6F1FB] text-[#0C447C] border-[#85B7EB]" };
+                const LinkedIcon = linkedStyle.Icon;
+
                 return (
                   <div
                     key={item.id}
                     ref={setRowRef(item.id)}
                     id={`interaction-${item.id}`}
                     className={cn(
-                      "relative group animate-in fade-in duration-200 transition-all rounded-xl p-3 -ml-3",
-                      isHighlighted ? "bg-primary/10 ring-2 ring-primary/40 shadow-xs" : "hover:bg-slate-50/70"
+                      "relative group animate-in fade-in duration-200 transition-all",
+                      isHighlighted && "ring-2 ring-primary/40 rounded-xl"
                     )}
                   >
-                    {/* Timeline icon */}
-                    <span className={`absolute -left-11.25 top-3.5 flex size-8 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm transition group-hover:scale-105 ${item.type === "call" ? "group-hover:border-green-500 group-hover:bg-green-50/50" :
-                      item.type === "email" ? "group-hover:border-blue-500 group-hover:bg-blue-50/50" :
-                        item.type === "meeting" ? "group-hover:border-purple-500 group-hover:bg-purple-50/50" :
-                          "group-hover:border-amber-500 group-hover:bg-amber-50/50"
-                      }`}>
-                      {item.type === "call" && <Phone className="size-4 text-green-600" />}
-                      {item.type === "email" && <Mail className="size-4 text-blue-600" />}
-                      {item.type === "meeting" && <Calendar className="size-4 text-purple-600" />}
-                      {item.type === "note" && <FileText className="size-4 text-amber-600" />}
+                    {/* Node Icon on Timeline Rail */}
+                    <span
+                      className={cn(
+                        "absolute -left-[39px] sm:-left-[47px] top-3.5 flex size-8 sm:size-9 items-center justify-center rounded-full transition-all duration-200 group-hover:scale-110",
+                        typeStyle.medallion
+                      )}
+                      title={`${typeStyle.label} Log`}
+                    >
+                      <TypeIcon className="size-4 sm:size-4.5" />
                     </span>
 
-                    <div>
-                      <div className="flex justify-between items-center text-xs">
-                        <div className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
-                          <span className="capitalize">{item.type}</span> Logged for{" "}
-                          <span className="text-[#185FA5] hover:text-[#0C447C] hover:underline cursor-pointer" onClick={() => handleOpenDetail(item.id)}>
+                    {/* Timeline Card */}
+                    <div
+                      className={cn(
+                        "border border-slate-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 rounded-xl p-4 shadow-2xs hover:shadow-md transition-all duration-200 border-l-4",
+                        typeStyle.cardBorder,
+                        isHighlighted && "bg-primary/5 dark:bg-primary/10 border-primary/40"
+                      )}
+                    >
+                      {/* Header */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* Type Pill */}
+                          <span className={cn("inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border", typeStyle.badge)}>
+                            <TypeIcon className="size-3" />
+                            {typeStyle.label}
+                          </span>
+
+                          <span className="text-slate-400 text-xs font-normal">with</span>
+                          <span
+                            className="font-semibold text-slate-800 dark:text-zinc-100 hover:text-[#185FA5] hover:underline cursor-pointer"
+                            onClick={() => handleOpenDetail(item.id)}
+                          >
                             {item.linkedName}
                           </span>
-                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border capitalize ${item.linkedType === "lead" ? "bg-[#E6F1FB] text-[#0C447C] border-[#85B7EB]" :
-                            item.linkedType === "customer" ? "bg-[#EAF3DE] text-[#3B6D11] border-[#C0DD97]" :
-                              "bg-[#FAEEDA] text-[#854F0B] border-[#FAC775]"
-                            }`}>
+
+                          {/* Linked Entity Type Badge */}
+                          <span className={cn("inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border capitalize", linkedStyle.badge)}>
+                            <LinkedIcon className="size-3" />
                             {item.linkedType}
                           </span>
                         </div>
-                        <span className="text-slate-400 text-[10px] flex items-center gap-1 font-semibold">
-                          <Clock className="size-3" />
+
+                        {/* Timestamp */}
+                        <span className="text-slate-400 text-[11px] flex items-center gap-1 font-medium shrink-0 ml-auto">
+                          <Clock className="size-3 text-slate-400" />
                           {formatDate(item.occurredAt)}
                         </span>
                       </div>
 
+                      {/* Description / Notes Body */}
                       <p
                         onClick={() => handleOpenDetail(item.id)}
-                        className="text-xs text-slate-600 mt-1.5 leading-relaxed bg-slate-50 hover:bg-slate-100/70 p-3 rounded-lg border border-slate-100/50 cursor-pointer transition"
+                        className="text-xs text-slate-700 dark:text-zinc-300 mt-2.5 leading-relaxed bg-slate-50/80 dark:bg-zinc-800/50 hover:bg-slate-100/80 dark:hover:bg-zinc-800 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 cursor-pointer transition"
                       >
                         {item.description}
                       </p>
 
-                      <div className="flex items-center justify-between mt-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="size-5 rounded-full bg-[#E6F1FB] text-[#0C447C] text-[9px] font-bold flex items-center justify-center">
+                      {/* Footer Metadata */}
+                      <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-100 dark:border-zinc-800 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="size-5 rounded-full bg-[#E6F1FB] text-[#0C447C] text-[9px] font-bold flex items-center justify-center border border-[#85B7EB]/40">
                             {item.agentName.slice(0, 2).toUpperCase()}
                           </span>
-                          <span className="text-[10px] text-slate-400">
-                            Logged by <strong className="text-slate-600">{item.agentName}</strong>
+                          <span className="text-[11px] text-slate-500 dark:text-zinc-400">
+                            Logged by <strong className="text-slate-700 dark:text-zinc-200 font-semibold">{item.agentName}</strong>
                           </span>
                         </div>
 
                         <button
                           onClick={() => handleOpenDetail(item.id)}
-                          className="text-[10px] text-[#185FA5] hover:text-[#0C447C] font-semibold transition"
+                          className="text-[11px] text-[#185FA5] hover:text-[#0C447C] font-semibold transition inline-flex items-center gap-1 group/btn"
                         >
-                          View Details →
+                          View Details
+                          <span className="transition-transform group-hover/btn:translate-x-0.5">→</span>
                         </button>
                       </div>
                     </div>
@@ -944,27 +1067,26 @@ export function InteractionTimelineScreen() {
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
                   {/* Main Info */}
                   <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <span className="flex size-10 items-center justify-center rounded-full bg-slate-50 border border-slate-200">
-                        {selectedInteraction.type === "call" && <Phone className="size-5 text-green-600" />}
-                        {selectedInteraction.type === "email" && <Mail className="size-5 text-blue-600" />}
-                        {selectedInteraction.type === "meeting" && <Calendar className="size-5 text-purple-600" />}
-                        {selectedInteraction.type === "note" && <FileText className="size-5 text-amber-600" />}
-                      </span>
-                      <div>
-                        <Badge className={
-                          selectedInteraction.type === "call" ? "bg-green-100 text-green-800 hover:bg-green-100 border-none font-bold" :
-                            selectedInteraction.type === "email" ? "bg-blue-100 text-blue-800 hover:bg-blue-100 border-none font-bold" :
-                              selectedInteraction.type === "meeting" ? "bg-purple-100 text-purple-800 hover:bg-purple-100 border-none font-bold" :
-                                "bg-amber-100 text-amber-800 hover:bg-amber-100 border-none font-bold"
-                        }>
-                          {selectedInteraction.type.toUpperCase()}
-                        </Badge>
-                        <div className="text-[10px] text-slate-400 mt-1 font-semibold">
-                          Logged on {formatDate(selectedInteraction.occurredAt)}
+                    {(() => {
+                      const detailTypeStyle = getInteractionTypeStyle(selectedInteraction.type);
+                      const DetailIcon = detailTypeStyle.Icon;
+                      return (
+                        <div className="flex items-center gap-3">
+                          <span className={cn("flex size-10 items-center justify-center rounded-full transition-transform", detailTypeStyle.medallion)}>
+                            <DetailIcon className="size-5" />
+                          </span>
+                          <div>
+                            <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border", detailTypeStyle.badge)}>
+                              <DetailIcon className="size-3.5" />
+                              {detailTypeStyle.label.toUpperCase()}
+                            </span>
+                            <div className="text-[10px] text-slate-400 mt-1 font-semibold">
+                              Logged on {formatDate(selectedInteraction.occurredAt)}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
 
                     <div className="bg-slate-50 rounded-xl p-4 border border-slate-100/80">
                       <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Description / Notes</h3>

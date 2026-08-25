@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { PAGE_META } from "@/app/routes/page_meta";
+import { Portal } from "@/components/ui/Portal";
 import { DataTable, TablePagination, type ColumnDef } from "@/components/ui/data-table";
 import {
   ColumnPicker,
@@ -484,220 +485,258 @@ export function ContractListScreen() {
         }
       />
 
-      {/* Contract Detail Drawer */}
+      {/* Contract Detail Drawer (Aligned with Deal Drawer pattern) */}
       {activeDetail && (
-        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl bg-white shadow-2xl border-l border-slate-100 flex flex-col transition-all duration-300">
-          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <FileText className="size-5 text-blue-600" />
-                Contract {activeDetail.contractCode}
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Version {activeDetail.version} · Created on {new Date(activeDetail.createdAt).toLocaleDateString()}
-              </p>
-            </div>
-            <button
-              onClick={() => setDetailTarget(null)}
-              className="p-2 hover:bg-slate-100 rounded-full transition"
-            >
-              <X className="size-5 text-slate-500" />
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {/* Status Section */}
-            <div className="bg-slate-50 p-4 rounded-xl flex items-center justify-between border border-slate-100">
+        <Portal>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40 transition-opacity"
+            onClick={() => setDetailTarget(null)}
+          />
+          {/* Drawer Element */}
+          <div className="fixed inset-y-0 right-0 w-full max-w-xl bg-white dark:bg-zinc-900 shadow-2xl border-l border-slate-200 dark:border-zinc-800 z-50 flex flex-col animate-in slide-in-from-right duration-300">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/50">
               <div>
-                <span className="text-[10px] text-slate-400 font-semibold block uppercase tracking-wider">Current Status</span>
-                <span className="mt-1 block">
-                  <Badge variant={statusBadgeVariant(activeDetail.status)} className="font-bold px-2 py-0.5 text-xs">
-                    {activeDetail.status}
-                  </Badge>
-                </span>
+                <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
+                  <FileText className="size-4.5 text-[#185FA5]" />
+                  Contract Details & Terms
+                </h3>
+                <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">
+                  Agreement {activeDetail.contractCode} · Version {activeDetail.version} · Created {new Date(activeDetail.createdAt).toLocaleDateString()}
+                </p>
               </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400 font-semibold block uppercase tracking-wider">Billing Method</span>
-                <span className="text-sm font-bold text-slate-800 mt-1 block">
-                  {activeDetail.billingMethod.replace("_", " ")}
-                </span>
-              </div>
+              <button
+                onClick={() => setDetailTarget(null)}
+                className="p-1 rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-600 dark:hover:text-zinc-200 transition"
+              >
+                <X className="size-4.5" />
+              </button>
             </div>
 
-            {/* Commercial terms snapshot */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Commercial Terms Snapshot</h3>
-              <div className="border border-slate-100 rounded-xl overflow-hidden shadow-sm bg-white">
-                <table className="min-w-full divide-y divide-slate-100 text-xs">
-                  <tbody className="divide-y divide-slate-100">
-                    <tr>
-                      <td className="px-4 py-3 font-semibold text-slate-500 bg-slate-50 w-1/3">Client Name</td>
-                      <td className="px-4 py-3 font-medium text-slate-800">{activeDetail.customerName || "—"}</td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3 font-semibold text-slate-500 bg-slate-50">Customer Type Snapshot</td>
-                      <td className="px-4 py-3 font-medium text-slate-800">{activeDetail.customerTypeSnapshot}</td>
-                    </tr>
-                    {activeDetail.contactName && (
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Status Section */}
+              <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-xl flex items-center justify-between border border-slate-100 dark:border-zinc-800">
+                <div>
+                  <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold block uppercase tracking-wider">Current Status</span>
+                  <span className="mt-1 block">
+                    <Badge variant={statusBadgeVariant(activeDetail.status)} className="font-bold px-2 py-0.5 text-xs">
+                      {activeDetail.status}
+                    </Badge>
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold block uppercase tracking-wider">Billing Method</span>
+                  <span className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-1 block">
+                    {activeDetail.billingMethod.replace("_", " ")}
+                  </span>
+                </div>
+              </div>
+
+              {/* Commercial terms snapshot */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider">Commercial Terms Snapshot</h3>
+                <div className="border border-slate-100 dark:border-zinc-800 rounded-xl overflow-hidden shadow-xs bg-white dark:bg-zinc-900">
+                  <table className="min-w-full divide-y divide-slate-100 dark:divide-zinc-800 text-xs">
+                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                       <tr>
-                        <td className="px-4 py-3 font-semibold text-slate-500 bg-slate-50">Primary Contact</td>
-                        <td className="px-4 py-3 font-medium text-slate-800">{activeDetail.contactName}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800/50 w-1/3">Client Name</td>
+                        <td className="px-4 py-3 font-medium text-slate-800 dark:text-zinc-200">{activeDetail.customerName || "—"}</td>
                       </tr>
-                    )}
-                    <tr>
-                      <td className="px-4 py-3 font-semibold text-slate-500 bg-slate-50">Check-in Date</td>
-                      <td className="px-4 py-3 font-medium text-slate-800">
-                        {activeDetail.commercialSnapshot?.checkInDate || "—"}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3 font-semibold text-slate-500 bg-slate-50">Check-out Date</td>
-                      <td className="px-4 py-3 font-medium text-slate-800">
-                        {activeDetail.commercialSnapshot?.checkOutDate || "—"}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3 font-semibold text-slate-500 bg-slate-50">Total Amount</td>
-                      <td className="px-4 py-3 font-bold text-slate-900">
-                        {activeDetail.commercialSnapshot?.totalAmount?.toLocaleString("vi-VN")} ₫
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Document / PDF Status */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Legal Document (PDF)</h3>
-              <div className="border border-slate-100 rounded-xl p-4 flex items-center justify-between shadow-sm bg-white">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-red-50 text-red-600 rounded-lg">
-                    <FileText className="size-6" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 block">Contract Document File</span>
-                    <span className="text-[10px] text-slate-400 block mt-0.5">
-                      PDF Status: <span className="font-semibold text-slate-600">{activeDetail.pdfStatus}</span>
-                    </span>
-                  </div>
-                </div>
-                {activeDetail.pdfUrl ? (
-                  <a
-                    href={activeDetail.pdfUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700"
-                  >
-                    View Document
-                    <ExternalLink className="size-3.5" />
-                  </a>
-                ) : (
-                  <span className="text-xs text-slate-400 italic">No PDF generated yet.</span>
-                )}
-              </div>
-            </div>
-
-            {/* Cancelled / Expired — regeneration callout */}
-            {["CANCELLED", "EXPIRED"].includes(activeDetail.status) && (
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Contract Recovery</h3>
-                <div className="border border-red-100 bg-red-50/60 rounded-xl p-4 space-y-3">
-                  <p className="text-xs text-red-700 leading-relaxed">
-                    This contract is <span className="font-bold">{activeDetail.status}</span>. The quotation is still active and can have a new contract generated. This will create a fresh <span className="font-bold">DRAFT v{(activeDetail.version ?? 0) + 1}</span> linked to the same quotation.
-                  </p>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    isLoading={regenerateContractMutation.isPending}
-                    leftIcon={<FileSpreadsheet className="size-3.5" />}
-                    onClick={() => handleRegenerateContract(activeDetail.id)}
-                  >
-                    Generate New Contract
-                  </Button>
+                      <tr>
+                        <td className="px-4 py-3 font-semibold text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800/50">Customer Type Snapshot</td>
+                        <td className="px-4 py-3 font-medium text-slate-800 dark:text-zinc-200">{activeDetail.customerTypeSnapshot}</td>
+                      </tr>
+                      {activeDetail.contactName && (
+                        <tr>
+                          <td className="px-4 py-3 font-semibold text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800/50">Primary Contact</td>
+                          <td className="px-4 py-3 font-medium text-slate-800 dark:text-zinc-200">{activeDetail.contactName}</td>
+                        </tr>
+                      )}
+                      <tr>
+                        <td className="px-4 py-3 font-semibold text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800/50">Check-in Date</td>
+                        <td className="px-4 py-3 font-medium text-slate-800 dark:text-zinc-200">
+                          {activeDetail.commercialSnapshot?.checkInDate || "—"}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-semibold text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800/50">Check-out Date</td>
+                        <td className="px-4 py-3 font-medium text-slate-800 dark:text-zinc-200">
+                          {activeDetail.commercialSnapshot?.checkOutDate || "—"}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-3 font-semibold text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800/50">Total Amount</td>
+                        <td className="px-4 py-3 font-bold text-slate-900 dark:text-zinc-100">
+                          {activeDetail.commercialSnapshot?.totalAmount?.toLocaleString("vi-VN")} ₫
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            )}
 
-            {/* Public Secure OTP Link */}
-            {activeDetail.status === "SENT" && (
+              {/* Document / PDF Status */}
               <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Public Client Verification</h3>
-                <div className="border border-slate-100 bg-blue-50/50 rounded-xl p-4 space-y-3">
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    Provide this secure confirmation link to the customer. They can click the link, inspect the contract details, and acknowledge the terms securely with an OTP code sent directly to their email.
-                  </p>
-                  <div className="flex gap-2 flex-wrap">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      leftIcon={<Copy className="size-3.5" />}
-                      className="bg-white hover:bg-slate-50 border border-slate-200"
-                      onClick={() => copySecurePortalLink(activeDetail)}
+                <h3 className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider">Legal Document (PDF)</h3>
+                <div className="border border-slate-100 dark:border-zinc-800 rounded-xl p-4 flex items-center justify-between shadow-xs bg-white dark:bg-zinc-900">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 rounded-lg">
+                      <FileText className="size-6" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 block">Contract Document File</span>
+                      <span className="text-[10px] text-slate-400 dark:text-zinc-500 block mt-0.5">
+                        PDF Status: <span className="font-semibold text-slate-600 dark:text-zinc-300">{activeDetail.pdfStatus}</span>
+                      </span>
+                    </div>
+                  </div>
+                  {activeDetail.pdfUrl ? (
+                    <a
+                      href={activeDetail.pdfUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700"
                     >
-                      Copy Secured Link
-                    </Button>
+                      View Document
+                      <ExternalLink className="size-3.5" />
+                    </a>
+                  ) : (
+                    <span className="text-xs text-slate-400 italic">No PDF generated yet.</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Cancelled / Expired — regeneration callout */}
+              {["CANCELLED", "EXPIRED"].includes(activeDetail.status) && (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider">Contract Recovery</h3>
+                  <div className="border border-red-100 dark:border-red-900/50 bg-red-50/60 dark:bg-red-950/20 rounded-xl p-4 space-y-3">
+                    <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed">
+                      This contract is <span className="font-bold">{activeDetail.status}</span>. The quotation is still active and can have a new contract generated. This will create a fresh <span className="font-bold">DRAFT v{(activeDetail.version ?? 0) + 1}</span> linked to the same quotation.
+                    </p>
                     <Button
                       variant="primary"
                       size="sm"
-                      isLoading={resendContractMutation.isPending}
-                      leftIcon={<RefreshCw className="size-3.5" />}
-                      onClick={() => handleResendContract(activeDetail.id)}
+                      isLoading={regenerateContractMutation.isPending}
+                      leftIcon={<FileSpreadsheet className="size-3.5" />}
+                      onClick={() => handleRegenerateContract(activeDetail.id)}
                     >
-                      Resend Email
+                      Generate New Contract
                     </Button>
-                    <a
-                      href={`${window.location.origin}/portal/contracts/${activeDetail.id}?token=CLIENT_SECURED_OTP_TOKEN`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                    >
-                      Open Portal
-                      <ExternalLink className="ml-1.5 size-3.5" />
-                    </a>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+
+              {/* Public Secure OTP Link */}
+              {activeDetail.status === "SENT" && (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider">Public Client Verification</h3>
+                  <div className="border border-slate-100 dark:border-zinc-800 bg-blue-50/50 dark:bg-blue-950/20 rounded-xl p-4 space-y-3">
+                    <p className="text-xs text-slate-600 dark:text-zinc-300 leading-relaxed">
+                      Provide this secure confirmation link to the customer. They can click the link, inspect the contract details, and acknowledge the terms securely with an OTP code sent directly to their email.
+                    </p>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        leftIcon={<Copy className="size-3.5" />}
+                        className="bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200"
+                        onClick={() => copySecurePortalLink(activeDetail)}
+                      >
+                        Copy Secured Link
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        isLoading={resendContractMutation.isPending}
+                        leftIcon={<RefreshCw className="size-3.5" />}
+                        onClick={() => handleResendContract(activeDetail.id)}
+                      >
+                        Resend Email
+                      </Button>
+                      <a
+                        href={`${window.location.origin}/portal/contracts/${activeDetail.id}?token=CLIENT_SECURED_OTP_TOKEN`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-zinc-200 shadow-xs transition hover:bg-slate-50 dark:hover:bg-zinc-700"
+                      >
+                        Open Portal
+                        <ExternalLink className="ml-1.5 size-3.5" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Drawer Footer */}
+            <div className="flex justify-end gap-2 p-4 border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/50">
+              <Button variant="secondary" size="sm" onClick={() => setDetailTarget(null)}>
+                Close
+              </Button>
+            </div>
           </div>
-        </div>
+        </Portal>
       )}
 
-      {/* Edit Billing Method Modal */}
+      {/* Edit Billing Method Modal (Styled to match Deal Modal) */}
       {billingTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-slate-100">
-            <h3 className="text-sm font-bold text-slate-800 mb-4">Update Billing Method</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-500 uppercase block mb-1.5">Select Payment Method</label>
-                <select
-                  value={selectedBillingMethod}
-                  onChange={(e) => setSelectedBillingMethod(e.target.value as BillingMethod)}
-                  className="w-full py-2 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition appearance-none"
+        <Portal>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-200"
+            onClick={() => setBillingTarget(null)}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl bg-white dark:bg-zinc-900 p-6 shadow-2xl border border-slate-100 dark:border-zinc-800 animate-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-800 mb-4">
+                <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
+                  <CreditCard className="size-4.5 text-[#185FA5]" />
+                  Update Billing Method
+                </h3>
+                <button
+                  onClick={() => setBillingTarget(null)}
+                  className="p-1 rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-600 transition"
                 >
-                  <option value="BANK_TRANSFER">Bank Transfer</option>
-                  <option value="CREDIT_CARD">Credit Card</option>
-                  <option value="CASH">Cash</option>
-                  <option value="DIRECT_BILLING">Direct Billing</option>
-                </select>
+                  <X className="size-4" />
+                </button>
               </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="secondary" size="sm" onClick={() => setBillingTarget(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  isLoading={updateBillingMethodMutation.isPending}
-                  onClick={handleUpdateBillingMethod}
-                >
-                  Save
-                </Button>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase block mb-1.5">
+                    Select Payment / Billing Method
+                  </label>
+                  <select
+                    value={selectedBillingMethod}
+                    onChange={(e) => setSelectedBillingMethod(e.target.value as BillingMethod)}
+                    className="w-full py-2 px-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-[#185FA5] focus:bg-white dark:focus:bg-zinc-900 transition"
+                  >
+                    <option value="BANK_TRANSFER">Bank Transfer</option>
+                    <option value="CREDIT_CARD">Credit Card</option>
+                    <option value="CASH">Cash</option>
+                    <option value="DIRECT_BILLING">Direct Billing</option>
+                  </select>
+                </div>
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-zinc-800">
+                  <Button variant="secondary" size="sm" onClick={() => setBillingTarget(null)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    isLoading={updateBillingMethodMutation.isPending}
+                    onClick={handleUpdateBillingMethod}
+                  >
+                    Save Changes
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
 
       {confirmElement}

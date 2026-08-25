@@ -1,11 +1,15 @@
 package com.novax.leadora.api.dto.response;
 
 import com.novax.leadora.infrastructure.persistence.entity.PermissionEntity;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class PermissionResponse {
 
     private Integer permissionId;

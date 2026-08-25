@@ -116,11 +116,9 @@ public final class LeadSpecification {
             // the "Created by me" view — exactly as the staff workflow requires.
             if (!unscoped && ownerId != null) {
                 if (createdByMe) {
-                    var cbJoin = root.join("createdBy", JoinType.LEFT);
-                    predicates.add(cb.equal(cbJoin.get("userId"), ownerId));
+                    predicates.add(cb.equal(root.get("createdBy").get("userId"), ownerId));
                 } else {
-                    var auJoin = root.join("assignedUser", JoinType.LEFT);
-                    predicates.add(cb.equal(auJoin.get("userId"), ownerId));
+                    predicates.add(cb.equal(root.get("assignedUser").get("userId"), ownerId));
                 }
             }
 

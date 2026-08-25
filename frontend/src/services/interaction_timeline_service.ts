@@ -3,7 +3,7 @@ import type { ListQuery } from "@/shared/types/api";
 
 export type InteractionTimelineEntry = {
   id: string;
-  type: "call" | "email" | "meeting" | "note";
+  type: "call" | "email" | "meeting" | "site_visit" | "note" | "other" | string;
   description: string;
   agentName: string;
   agentId?: string;
@@ -22,7 +22,7 @@ export type InteractionTimelineQuery = ListQuery & {
 };
 
 export type CreateInteractionTimelinePayload = {
-  type: "call" | "email" | "meeting" | "note";
+  type: "call" | "email" | "meeting" | "site_visit" | "note" | "other" | string;
   description: string;
   occurredAt: string; // ISO datetime
   leadId?: string;
@@ -31,7 +31,7 @@ export type CreateInteractionTimelinePayload = {
 };
 
 export type UpdateInteractionTimelinePayload = {
-  type: "call" | "email" | "meeting" | "note";
+  type: "call" | "email" | "meeting" | "site_visit" | "note" | "other" | string;
   description: string;
   occurredAt: string; // ISO datetime
 };

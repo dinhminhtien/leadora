@@ -52,8 +52,7 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
               AND (coalesce(:statuses, null) IS NULL OR q.status IN :statuses)
               AND (CAST(:search AS string) IS NULL OR
                    LOWER(c.fullName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR
-                   LOWER(d.dealName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR
-                   LOWER(CAST(q.quotationId AS string)) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                   LOWER(d.dealName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
                   )
             """)
     Page<QuotationSummaryDto> findAllSummaries(
@@ -112,8 +111,7 @@ public interface QuotationRepository extends JpaRepository<QuotationEntity, UUID
               AND (coalesce(:statuses, null) IS NULL OR q.status IN :statuses)
               AND (CAST(:search AS string) IS NULL OR
                    LOWER(c.fullName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR
-                   LOWER(d.dealName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR
-                   LOWER(CAST(q.quotationId AS string)) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                   LOWER(d.dealName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
                   )
             ORDER BY
               CASE q.status

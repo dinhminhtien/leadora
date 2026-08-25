@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/page-header";
 import { PAGE_META } from "@/app/routes/page_meta";
 import { Select } from "@/components/ui/Select";
+import { pageMeta } from "@/services/api_client";
 import { customerFeedbackService, type CustomerFeedback } from "@/services/customer_feedback_service";
 import { useAuthStore } from "@/stores/auth_store";
 import { getUserRole } from "@/shared/auth/access";
@@ -120,17 +121,10 @@ export function CustomerFeedbackListScreen() {
 
       const response = await customerFeedbackService.getList(paramsObj);
       if (response.success && response.data) {
-        // Handle both standard Page interface and direct wrap
-        const data = response.data as any;
-        if (data.content) {
-          setFeedbacks(data.content);
-          setTotalElements(data.totalElements || 0);
-          setTotalPages(data.totalPages || 0);
-        } else {
-          setFeedbacks(data);
-          setTotalElements(data.length || 0);
-          setTotalPages(1);
-        }
+        const meta = pageMeta(response.data);
+        setFeedbacks(response.data.content || (Array.isArray(response.data) ? response.data : []));
+        setTotalElements(meta.totalElements);
+        setTotalPages(meta.totalPages);
       }
     } catch (error) {
       console.error("Error fetching feedbacks:", error);
@@ -141,7 +135,7 @@ export function CustomerFeedbackListScreen() {
 
   useEffect(() => {
     fetchFeedbacks();
-  }, [page, pageSize, ratingFilter, statusFilter]);
+  }, [page, pageSize, ratingFilter, statusFilter, controls.sortBy, controls.sortDir]);
 
   // Handle search with local debounce or trigger on button/enter
   const handleSearchSubmit = (e: React.FormEvent) => {

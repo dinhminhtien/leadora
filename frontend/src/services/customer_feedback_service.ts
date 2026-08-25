@@ -1,5 +1,5 @@
 import axios from "axios";
-import { apiClient, type ApiResponse } from "@/services/api_client";
+import { apiClient, type ApiResponse, type PageResponse } from "@/services/api_client";
 import type { ListQuery } from "@/shared/types/api";
 
 export type ReviewStatus = "PENDING" | "REVIEWED" | "DISMISSED";
@@ -58,7 +58,7 @@ const ENDPOINT = "/feedback";
 
 export const customerFeedbackService = {
   async getList(params?: ListQuery & { reviewStatus?: string; rating?: number; search?: string }) {
-    const response = await apiClient.get<ApiResponse<{ content: CustomerFeedback[]; totalElements: number; totalPages: number }>>(
+    const response = await apiClient.get<ApiResponse<PageResponse<CustomerFeedback>>>(
       ENDPOINT,
       { params },
     );

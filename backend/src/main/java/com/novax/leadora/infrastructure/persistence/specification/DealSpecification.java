@@ -90,18 +90,16 @@ public final class DealSpecification {
             // Search by dealName, customer fullName, customer companyName
             if (search != null && !search.isBlank()) {
                 String pattern = "%" + search.toLowerCase().trim() + "%";
-                var customerJoin = root.join("customer", JoinType.LEFT);
                 predicates.add(cb.or(
                         cb.like(cb.lower(root.get("dealName")), pattern),
-                        cb.like(cb.lower(customerJoin.get("fullName")), pattern),
-                        cb.like(cb.lower(customerJoin.get("companyName")), pattern)
+                        cb.like(cb.lower(root.get("customer").get("fullName")), pattern),
+                        cb.like(cb.lower(root.get("customer").get("companyName")), pattern)
                 ));
             }
 
             // Owner-based filter (from request parameters)
             if (ownerId != null) {
-                var assignedJoin = root.join("assignedUser", JoinType.LEFT);
-                predicates.add(cb.equal(assignedJoin.get("userId"), ownerId));
+                predicates.add(cb.equal(root.get("assignedUser").get("userId"), ownerId));
             }
 
             if (stage != null) {
@@ -114,11 +112,9 @@ public final class DealSpecification {
 
             // Security visibility scoping for Sales Staff
             if (!unscoped && scopedUserId != null) {
-                var assignedJoin = root.join("assignedUser", JoinType.LEFT);
-                var createdJoin = root.join("createdBy", JoinType.LEFT);
                 predicates.add(cb.or(
-                        cb.equal(assignedJoin.get("userId"), scopedUserId),
-                        cb.equal(createdJoin.get("userId"), scopedUserId)
+                        cb.equal(root.get("assignedUser").get("userId"), scopedUserId),
+                        cb.equal(root.get("createdBy").get("userId"), scopedUserId)
                 ));
             }
 

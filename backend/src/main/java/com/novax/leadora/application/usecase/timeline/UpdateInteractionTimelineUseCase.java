@@ -41,7 +41,7 @@ public class UpdateInteractionTimelineUseCase {
                 .createdAt(entity.getCreatedAt())
                 .build();
 
-        entity.setInteractionType(request.getType());
+        entity.setInteractionType(request.getType().trim().toUpperCase());
         entity.setDescription(request.getDescription());
         entity.setOccurredAt(request.getOccurredAt());
 

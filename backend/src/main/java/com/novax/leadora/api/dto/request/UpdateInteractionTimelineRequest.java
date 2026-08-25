@@ -15,7 +15,7 @@ public class UpdateInteractionTimelineRequest {
 
     @NotBlank(message = "Interaction type is required")
     @Pattern(
-            regexp = "^(CALL|EMAIL|MEETING|NOTE|SITE_VISIT|OTHER)$",
+            regexp = "(?i)^(CALL|EMAIL|MEETING|NOTE|SITE_VISIT|OTHER)$",
             message = "Type must be one of: CALL, EMAIL, MEETING, NOTE, SITE_VISIT, OTHER"
     )
     private String type;           // CALL | EMAIL | MEETING | NOTE | SITE_VISIT | OTHER
