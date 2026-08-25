@@ -458,29 +458,39 @@ export function InteractionTimelineScreen() {
         }
       />
 
-      <Card className="border-slate-100 shadow-sm bg-white">
-        <CardContent className="py-3 px-4 flex flex-col md:flex-row items-center gap-3">
-          {/* Search bar */}
-          <div className="relative w-full md:w-72">
+      {/* Filters & Search Toolbar */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white dark:bg-zinc-900 p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-2xs">
+        {/* Left Side: Search Bar + Segmented Type Tabs */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 min-w-0">
+          {/* Search bar (Far Left) */}
+          <div className="relative w-full sm:w-64 md:w-72 shrink-0">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               placeholder="Search descriptions, guests, agents..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
+              className="w-full pl-8 pr-7 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-xs text-slate-800 dark:text-zinc-200 placeholder:text-slate-400 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white dark:focus:bg-zinc-900 transition"
             />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="size-3" />
+              </button>
+            )}
           </div>
 
-          {/* Type filter buttons */}
-          <div className="flex flex-wrap gap-2">
+          {/* Type filter tabs - Sleek Segmented Control */}
+          <div className="flex items-center gap-1 p-1 bg-slate-100/90 dark:bg-zinc-800/80 rounded-xl overflow-x-auto no-scrollbar shrink-0">
             {[
-              { id: "all", label: "All Logs", Icon: MessageSquare },
-              { id: "call", label: "Calls", Icon: Phone },
-              { id: "email", label: "Emails", Icon: Mail },
-              { id: "meeting", label: "Meetings", Icon: Calendar },
-              { id: "site_visit", label: "Site Visits", Icon: MapPin },
-              { id: "note", label: "Notes", Icon: FileText }
+              { id: "all", label: "All Logs", Icon: MessageSquare, activeColor: "bg-white dark:bg-zinc-900 text-slate-900 dark:text-zinc-100 shadow-xs", iconColor: "text-slate-500" },
+              { id: "call", label: "Calls", Icon: Phone, activeColor: "bg-white dark:bg-zinc-900 text-emerald-700 dark:text-emerald-400 shadow-xs", iconColor: "text-emerald-600" },
+              { id: "email", label: "Emails", Icon: Mail, activeColor: "bg-white dark:bg-zinc-900 text-blue-700 dark:text-blue-400 shadow-xs", iconColor: "text-blue-600" },
+              { id: "meeting", label: "Meetings", Icon: Calendar, activeColor: "bg-white dark:bg-zinc-900 text-purple-700 dark:text-purple-400 shadow-xs", iconColor: "text-purple-600" },
+              { id: "site_visit", label: "Site Visits", Icon: MapPin, activeColor: "bg-white dark:bg-zinc-900 text-teal-700 dark:text-teal-400 shadow-xs", iconColor: "text-teal-600" },
+              { id: "note", label: "Notes", Icon: FileText, activeColor: "bg-white dark:bg-zinc-900 text-amber-700 dark:text-amber-400 shadow-xs", iconColor: "text-amber-600" },
             ].map(tab => {
               const TabIcon = tab.Icon;
               const isSelected = typeFilter === tab.id;
@@ -488,25 +498,30 @@ export function InteractionTimelineScreen() {
                 <button
                   key={tab.id}
                   onClick={() => setTypeFilter(tab.id)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition ${isSelected
-                    ? "bg-[#185FA5] text-[#E6F1FB] border-[#0C447C] shadow-xs"
-                    : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                    }`}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer",
+                    isSelected
+                      ? cn(tab.activeColor, "font-bold ring-1 ring-black/5 dark:ring-white/10")
+                      : "text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 hover:bg-slate-200/60 dark:hover:bg-zinc-700/50"
+                  )}
                 >
-                  <TabIcon className="size-3" />
+                  <TabIcon className={cn("size-3.5", isSelected ? tab.iconColor : "text-slate-400")} />
                   {tab.label}
                 </button>
               );
             })}
           </div>
+        </div>
 
+        {/* Right Side: Agent Dropdown + Counter */}
+        <div className="flex items-center gap-2.5 shrink-0">
           {/* Agent Filter dropdown */}
-          <div className="w-full md:w-48 flex items-center gap-2">
-            <Filter className="size-3.5 text-slate-400 shrink-0" />
+          <div className="relative w-full sm:w-44">
+            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-slate-400 pointer-events-none" />
             <select
               value={agentFilter}
               onChange={e => setAgentFilter(e.target.value)}
-              className="w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white transition"
+              className="w-full pl-7 pr-4 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60 text-xs text-slate-800 dark:text-zinc-200 focus:outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 focus:bg-white dark:focus:bg-zinc-900 transition cursor-pointer"
             >
               <option value="all">All Agents</option>
               {agents.map(agent => (
@@ -517,11 +532,11 @@ export function InteractionTimelineScreen() {
             </select>
           </div>
 
-          <div className="md:ml-auto text-xs text-slate-400">
-            Total records: <strong className="text-slate-700">{totalElements.toLocaleString()}</strong>
+          <div className="text-[11px] text-slate-400 whitespace-nowrap hidden md:block shrink-0 px-1 font-medium">
+            {totalElements} logs
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <Card className="border-slate-100 shadow-sm bg-white">
         <CardContent className="px-6 py-8">

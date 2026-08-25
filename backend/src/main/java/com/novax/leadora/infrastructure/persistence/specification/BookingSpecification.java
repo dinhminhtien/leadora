@@ -2,8 +2,6 @@ package com.novax.leadora.infrastructure.persistence.specification;
 
 import com.novax.leadora.infrastructure.persistence.entity.BookingEntity;
 import com.novax.leadora.infrastructure.persistence.entity.enums.BookingStatus;
-import jakarta.persistence.criteria.Join;
-import jakarta.persistence.criteria.JoinType;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.StringUtils;
 
@@ -18,8 +16,7 @@ public final class BookingSpecification {
         String pattern = "%" + keyword.trim().toLowerCase() + "%";
         return (root, query, cb) -> cb.or(
                 cb.like(cb.lower(root.get("bookingCode")), pattern),
-                cb.like(cb.lower(root.get("customer").get("fullName")), pattern)
-        );
+                cb.like(cb.lower(root.get("customer").get("fullName")), pattern));
     }
 
     public static Specification<BookingEntity> hasStatus(BookingStatus status) {
